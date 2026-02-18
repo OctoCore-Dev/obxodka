@@ -1,0 +1,46 @@
+﻿<Page x:Class="ObxodkaWindows.DeleteAccountPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      Title="Удаление аккаунта" Background="Transparent"
+      d:DesignHeight="520" d:DesignWidth="380"
+      mc:Ignorable="d">
+
+    <Grid Margin="20,10,20,25">
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="⚠" FontSize="60" Foreground="#FF0044" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+
+            <TextBlock Text="УДАЛЕНИЕ" FontSize="36" FontWeight="Bold" 
+                       Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+
+            <TextBlock Text="Это действие необратимо" FontSize="13" Foreground="#FF0044" 
+                       HorizontalAlignment="Center" Margin="0,0,0,30" FontWeight="Bold"/>
+
+            <Border Background="#111113" CornerRadius="28" BorderBrush="#440011" BorderThickness="1" Padding="25">
+                <StackPanel>
+                    <TextBlock Text="Все данные, включая оставшееся время и настройки VPN, будут стерты навсегда." 
+                               Foreground="#AAAAAA" FontSize="14" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,25"/>
+
+                    <Border x:Name="DeleteButtonBorder" Height="50" CornerRadius="25">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#FF0044" Offset="0.0" />
+                                <GradientStop Color="#660011" Offset="1.0" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <Button Content="УДАЛИТЬ АККАУНТ" FontSize="18" FontWeight="Bold" Foreground="White"
+                                Background="Transparent" BorderThickness="0" Click="OnConfirmDeleteClicked" Cursor="Hand">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </Grid>
+</Page>

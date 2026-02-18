@@ -1,0 +1,21 @@
+# Сборка
+[Bb]in/
+[Oo]bj/
+Generated Files/
+
+# Секреты и данные
+*.dat
+*.db
+*.log
+session.dat
+WebView2Data/
+
+# Настройки VS
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.csproj.Backup.tmp
+
+# Движок (если не хочешь его светить)
+# Engine/*.exe

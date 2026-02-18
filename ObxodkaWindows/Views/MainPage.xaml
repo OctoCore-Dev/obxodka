@@ -1,0 +1,101 @@
+﻿<Page x:Class="ObxodkaWindows.MainPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d"
+      Title="obxodka" 
+      Background="Transparent" 
+      d:DesignHeight="520" d:DesignWidth="380">
+
+    <Grid Margin="20,40,20,25">
+        <Grid VerticalAlignment="Top" Height="60">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="15"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" x:Name="ProfileCard" 
+                    Background="#111113" CornerRadius="20" 
+                    BorderBrush="#2A2A2A" BorderThickness="1"
+                    Cursor="Hand" MouseLeftButtonDown="OnAccountHeaderTapped">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Image Source="pack://application:,,,/Resources/user_icon.png" Width="40" Height="40" Opacity="0.8"/>
+                    <TextBlock Text="ПРОФИЛЬ" Foreground="#88FFFFFF" FontSize="15" 
+                               FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                </StackPanel>
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#1A1A1C"/>
+                                <Setter Property="BorderBrush" Value="#44FFFFFF"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+            </Border>
+
+            <Border Grid.Column="2" x:Name="TimeCard" 
+                    Background="#111113" CornerRadius="20" 
+                    BorderBrush="#2A2A2A" BorderThickness="1">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock x:Name="TokenAmountLabel" Text="0T / 00:00" 
+                               Foreground="White" FontSize="17" FontWeight="Bold"
+                               FontFamily="Consolas" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <TextBlock x:Name="LogoLabel" Text="obxodka" FontSize="70" FontWeight="Bold" 
+                   Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,100,0,0"/>
+
+        <Grid VerticalAlignment="Center" Margin="0,110,0,0">
+            <Border x:Name="ConnectButtonBorder" Width="260" Height="90" CornerRadius="45"
+                    RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="ButtonScale" ScaleX="1" ScaleY="1" />
+                </Border.RenderTransform>
+                <Border.Effect>
+                    <DropShadowEffect x:Name="ButtonShadow" BlurRadius="40" Color="#FF0044" Opacity="0.6" ShadowDepth="0"/>
+                </Border.Effect>
+                <Grid>
+                    <Border x:Name="ConnectGradient" CornerRadius="45">
+                        <Border.Background>
+                            <LinearGradientBrush x:Name="MainButtonBrush" StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop x:Name="GradStart" Color="#FF0044" Offset="0.0" />
+                                <GradientStop x:Name="GradEnd" Color="#660011" Offset="1.0" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Button x:Name="ConnectButton" Content="ПОДКЛЮЧИТЬ" 
+                            FontSize="28" FontWeight="Bold" Foreground="White"
+                            Background="Transparent" BorderThickness="0"
+                            Click="OnConnectClicked" Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,5">
+            <TextBlock x:Name="StatusLabel" Text="ОТКЛЮЧЕНО" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,3">
+                <TextBlock.Foreground>
+                    <SolidColorBrush x:Name="StatusBrush" Color="#FF0044" />
+                </TextBlock.Foreground>
+            </TextBlock>
+            <TextBlock Text="© obxodka secure network" Foreground="#555555" FontSize="11" HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</Page>

@@ -1,0 +1,143 @@
+﻿<Page x:Class="ObxodkaWindows.UserProfilePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      Title="Профиль" Background="Transparent"
+      d:DesignHeight="520" d:DesignWidth="380"
+      mc:Ignorable="d">
+
+    <Grid Margin="20,40,20,15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="HeaderTitle" Grid.Row="0" Text="Профиль" FontSize="32" FontWeight="Bold" 
+                   Foreground="White" Margin="0,0,0,20">
+            <TextBlock.RenderTransform>
+                <TranslateTransform x:Name="HeaderTrans"/>
+            </TextBlock.RenderTransform>
+        </TextBlock>
+
+        <Border x:Name="BalanceCard" Grid.Row="1" Background="#111113" 
+                BorderThickness="1" BorderBrush="#2A2A2A" CornerRadius="28" Padding="20" Margin="0,0,0,15">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="BalanceTrans"/>
+            </Border.RenderTransform>
+            <StackPanel>
+                <Grid Margin="0,0,0,15">
+                    <StackPanel>
+                        <TextBlock Text="ДОСТУПНО ВРЕМЕНИ" FontSize="10" Foreground="Gray" FontWeight="Bold" />
+                        <TextBlock x:Name="TokenAmountLabel" Text="0T / 00:00" FontSize="28" 
+                                   FontWeight="Bold" Foreground="#00AAFF" FontFamily="Consolas"/>
+                    </StackPanel>
+                    <Image Source="pack://application:,,,/Resources/user_icon.png" Width="50" Height="50" HorizontalAlignment="Right"/>
+                </Grid>
+
+                <Border Height="55" CornerRadius="20">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#FF0044" Offset="0.0" />
+                            <GradientStop Color="#660011" Offset="1.0" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Button Content="ПРОДЛИТЬ ДОСТУП" Click="OnBuyTokensClicked"
+                            Background="Transparent" Foreground="White" FontSize="16"
+                            FontWeight="Bold" BorderThickness="0" Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="AccountCard" Grid.Row="2" Background="#0F0F11" 
+                BorderThickness="1" BorderBrush="#222224" CornerRadius="24" Padding="15">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="AccountTrans"/>
+            </Border.RenderTransform>
+            <StackPanel Orientation="Horizontal">
+                <Border Width="40" Height="40" CornerRadius="20" Background="#1C1C1E">
+                    <TextBlock Text="👤" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center" Margin="12,0,0,0">
+                    <TextBlock Text="ВАША ПОЧТА" FontSize="9" Foreground="Gray" FontWeight="Bold"/>
+                    <TextBlock x:Name="EmailLabel" Text="loading..." Foreground="White" FontSize="14" FontWeight="SemiBold"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <StackPanel x:Name="BottomButtons" Grid.Row="3" VerticalAlignment="Bottom">
+            <StackPanel.RenderTransform>
+                <TranslateTransform x:Name="ButtonsTrans"/>
+            </StackPanel.RenderTransform>
+
+            <Button Content="Выйти из аккаунта" Click="OnLogoutClicked"
+                    Background="#1C1C1E" Foreground="White" FontSize="14" 
+                    Height="50" Margin="0,0,0,10">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="20" BorderBrush="#2A2A2A" BorderThickness="1">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Content="Удалить" Click="OnDeleteAccountClicked" Foreground="#8A0020" Height="40" Margin="0,0,5,0">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="#0A0A0B" CornerRadius="15" BorderBrush="#2A0000" BorderThickness="1">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Grid.Column="1" Content="Пароль" Click="OnChangePasswordClicked" Foreground="Gray" Height="40" Margin="5,0,0,0">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="#0A0A0B" CornerRadius="15" BorderBrush="#2A2A2A" BorderThickness="1">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</Page>
