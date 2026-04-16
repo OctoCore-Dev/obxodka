@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="obxodka.Pages.PaymentPage"
+             x:ClassModifier="internal"
+             Title="Оплата"
+             BackgroundColor="{DynamicResource AppBackground}">
+
+    <Grid>
+        <WebView x:Name="PaymentWebView" Navigating="OnWebViewNavigating" />
+        <ActivityIndicator x:Name="Loader" IsRunning="True" Color="{DynamicResource StatusBlue}" WidthRequest="50" HeightRequest="50" HorizontalOptions="Center" VerticalOptions="Center"/>
+    </Grid>
+</ContentPage>

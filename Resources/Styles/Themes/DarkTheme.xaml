@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                    x:Class="obxodka.Resources.Styles.Themes.DarkTheme">
+
+    <Color x:Key="AppBackground">#050505</Color>
+    <Color x:Key="SurfaceDark">#0D0D11</Color>
+    <Color x:Key="SurfaceLight">#1A1A24</Color>
+
+    <Color x:Key="TextPrimary">#FFFFFF</Color>
+    <Color x:Key="TextSecondary">#A0A0A5</Color>
+
+    <Color x:Key="PrimaryAccent">#FF0044</Color>
+    <Color x:Key="SecondaryAccent">#FF3366</Color>
+    <Color x:Key="StatusBlue">#00E5FF</Color>
+    <Color x:Key="ErrorColor">#FF3333</Color>
+    <Color x:Key="SuccessColor">#00E676</Color>
+
+    <Color x:Key="BorderColor">#222226</Color>
+    <Color x:Key="ShadowColor">#80FF0044</Color>
+    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#0D0D11" />
+
+    <LinearGradientBrush x:Key="CardBorderBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#66FF0044" Offset="0.0" />
+        <GradientStop Color="#10FFFFFF" Offset="1.0" />
+    </LinearGradientBrush>
+
+</ResourceDictionary>

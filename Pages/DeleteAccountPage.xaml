@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="obxodka.Pages.DeleteAccountPage"
+             x:ClassModifier="internal"
+             Title="Удаление аккаунта"
+             BackgroundColor="{DynamicResource AppBackground}">
+
+    <Grid Margin="20,10,20,25">
+        <VerticalStackLayout VerticalOptions="Center" Spacing="10">
+            <Label Text="⚠" FontSize="60" TextColor="{DynamicResource ErrorColor}" HorizontalOptions="Center"/>
+            <Label Text="УДАЛЕНИЕ" FontSize="36" FontAttributes="Bold" TextColor="{DynamicResource TextPrimary}" HorizontalOptions="Center"/>
+            <Label Text="Это действие необратимо" FontSize="13" TextColor="{DynamicResource ErrorColor}" FontAttributes="Bold" HorizontalOptions="Center" Margin="0,0,0,20"/>
+
+            <Border Background="{DynamicResource CardBackgroundBrush}" Stroke="{DynamicResource CardBorderBrush}" StrokeThickness="1" Padding="25">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="28" />
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="25">
+                    <Label Text="Все данные, включая оставшееся время и настройки VPN, будут стерты навсегда." TextColor="{DynamicResource TextSecondary}" FontSize="14" HorizontalTextAlignment="Center" />
+
+                    <Border BackgroundColor="{DynamicResource ErrorColor}" StrokeThickness="0" HeightRequest="50">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="25" />
+                        </Border.StrokeShape>
+                        <Button Text="УДАЛИТЬ АККАУНТ" FontSize="18" FontAttributes="Bold" TextColor="White" BackgroundColor="Transparent" Clicked="OnConfirmDeleteClicked" />
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

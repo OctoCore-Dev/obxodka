@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="obxodka.Pages.UpdatePage"
+             x:ClassModifier="internal"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource AppBackground}">
+
+    <Grid Padding="30">
+        <Ellipse WidthRequest="300" HeightRequest="300" 
+                 Fill="{DynamicResource PrimaryAccent}" Opacity="0.1" 
+                 HorizontalOptions="Center" VerticalOptions="Center"
+                 TranslationY="-150">
+            <Ellipse.Shadow>
+                <Shadow Brush="{DynamicResource PrimaryAccent}" Radius="100" Opacity="0.5" Offset="0,0" />
+            </Ellipse.Shadow>
+        </Ellipse>
+
+        <VerticalStackLayout Spacing="0" VerticalOptions="FillAndExpand">
+
+            <Image x:Name="AppLogo"
+                   Source="splash_win.png" 
+                   WidthRequest="120" HeightRequest="120" 
+                   HorizontalOptions="Center"
+                   Margin="0,40,0,20"
+                   Opacity="0" Scale="0.8">
+                <Image.Shadow>
+                    <Shadow Brush="{DynamicResource StatusBlue}" Radius="15" Opacity="0.4" />
+                </Image.Shadow>
+            </Image>
+
+            <Label Text="ДОСТУПНО ОБНОВЛЕНИЕ" 
+                   TextColor="{DynamicResource StatusBlue}" 
+                   FontFamily="CommissionerExtraBold" 
+                   FontSize="14" 
+                   HorizontalOptions="Center" 
+                   CharacterSpacing="2" />
+
+            <Label x:Name="VersionLabel" 
+                   Text="Версия ---" 
+                   TextColor="{DynamicResource TextPrimary}" 
+                   FontSize="32" 
+                   FontAttributes="Bold" 
+                   HorizontalOptions="Center" 
+                   Margin="0,5,0,30" 
+                   Opacity="0" Scale="0.8" />
+
+            <Border x:Name="InfoBorder"
+                    BackgroundColor="{DynamicResource SurfaceDark}" 
+                    Stroke="{DynamicResource CardBorderBrush}" 
+                    StrokeThickness="1" 
+                    Padding="20" 
+                    VerticalOptions="FillAndExpand"
+                    Opacity="0" Scale="0.8">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="20" />
+                </Border.StrokeShape>
+
+                <ScrollView VerticalScrollBarVisibility="Never">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="ЧТО НОВОГО:" 
+                               TextColor="{DynamicResource StatusBlue}" 
+                               FontSize="11" 
+                               FontAttributes="Bold" 
+                               CharacterSpacing="1" />
+
+                        <Label x:Name="ReleaseNotesLabel" 
+                               Text="..." 
+                               TextColor="{DynamicResource TextSecondary}" 
+                               FontSize="14" 
+                               LineHeight="1.4" />
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+
+            <VerticalStackLayout x:Name="ProgressLayout" IsVisible="False" Spacing="15" Margin="0,30,0,0">
+                <ProgressBar x:Name="UpdateProgressBar" 
+                             Progress="0" 
+                             ProgressColor="{DynamicResource StatusBlue}" 
+                             ScaleY="2" />
+                <Label x:Name="ProgressLabel" 
+                       Text="СКАЧИВАНИЕ ФАЙЛОВ..." 
+                       TextColor="{DynamicResource StatusBlue}" 
+                       FontSize="12" 
+                       FontAttributes="Bold" 
+                       HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="ButtonsLayout" Spacing="12" Margin="0,30,0,10" Opacity="0" Scale="0.8">
+                <Button x:Name="UpdateBtn" 
+                        Text="ОБНОВИТЬ СЕЙЧАС" 
+                        BackgroundColor="{DynamicResource StatusBlue}" 
+                        TextColor="White" 
+                        FontAttributes="Bold" 
+                        CornerRadius="15" 
+                        HeightRequest="55" 
+                        Clicked="OnUpdateClicked" />
+
+                <Button x:Name="SkipBtn" 
+                        Text="НАПОМНИТЬ ПОЗЖЕ" 
+                        BackgroundColor="Transparent" 
+                        TextColor="{DynamicResource TextSecondary}" 
+                        FontAttributes="Bold" 
+                        FontSize="13"
+                        HeightRequest="45"
+                        Clicked="OnSkipClicked" />
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

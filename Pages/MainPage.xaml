@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="obxodka.Pages.MainPage"
+             x:ClassModifier="internal"
+             Title="obxodka"
+             BackgroundColor="{DynamicResource AppBackground}">
+
+    <Grid>
+        <Grid x:Name="AmbientGlowContainer" Opacity="0" InputTransparent="True" IgnoreSafeArea="True">
+            <Ellipse x:Name="GlowBlob1" Fill="{DynamicResource StatusBlue}" Opacity="0.15" WidthRequest="600" HeightRequest="600" HorizontalOptions="Start" VerticalOptions="Start" TranslationX="-150" TranslationY="-100" />
+            <Ellipse x:Name="GlowBlob2" Fill="{DynamicResource PrimaryAccent}" Opacity="0.12" WidthRequest="700" HeightRequest="700" HorizontalOptions="End" VerticalOptions="End" TranslationX="200" TranslationY="150" />
+            <Ellipse x:Name="GlowBlob3" Fill="{DynamicResource SecondaryAccent}" Opacity="0.1" WidthRequest="500" HeightRequest="500" HorizontalOptions="Center" VerticalOptions="Center" TranslationY="-200" />
+        </Grid>
+
+        <Grid Margin="{OnPlatform Android='20, 60, 20, 25', WinUI='20, 30, 20, 25'}">
+
+            <Grid x:Name="TopCardsGrid" VerticalOptions="Start" HeightRequest="70" ColumnDefinitions="*, 15, *" Opacity="0">
+                <Border x:Name="ProfileCard" Grid.Column="0" Style="{DynamicResource GlassCardStyle}" Padding="10,0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAccountHeaderTapped" />
+                    </Border.GestureRecognizers>
+                    <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="{OnPlatform Android=5, WinUI=10}">
+                        <Image Source="user_icon.png" WidthRequest="50" HeightRequest="50" Opacity="0.8"/>
+                        <Label Text="ПРОФИЛЬ" TextColor="{DynamicResource TextSecondary}" FontSize="{OnPlatform Android=17, WinUI=25}" FontAttributes="Bold" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </Border>
+
+                <Border x:Name="TimeCard" Grid.Column="2" Style="{DynamicResource GlassCardStyle}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20" />
+                    </Border.StrokeShape>
+                    <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center">
+                        <Label x:Name="TokenAmountLabel" Text="0T / 00:00" TextColor="{DynamicResource StatusBlue}" FontSize="25" FontAttributes="Bold" FontFamily="Consolas" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </Border>
+            </Grid>
+
+            <Label x:Name="LogoLabel" Text="obxodka" LineBreakMode="NoWrap" MaxLines="1" HorizontalTextAlignment="Center" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="1" TextColor="{DynamicResource TextPrimary}" HorizontalOptions="Center" VerticalOptions="Start" Margin="0,130,0,0" Opacity="0"/>
+
+            <Grid VerticalOptions="Center" Margin="0,150,0,0">
+                <Border x:Name="PulseRing"
+                        BackgroundColor="Transparent"
+                        Stroke="{DynamicResource StatusBlue}"
+                        StrokeThickness="4"
+                        HorizontalOptions="Fill"
+                        Margin="{OnPlatform Android='20,0', WinUI='40,0'}"
+                        HeightRequest="{OnPlatform Android=120, WinUI=130}"
+                        Opacity="0"
+                        InputTransparent="True">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="65" />
+                    </Border.StrokeShape>
+                </Border>
+
+                <Border x:Name="ConnectButtonBorder" 
+                        BackgroundColor="{DynamicResource PrimaryAccent}" 
+                        StrokeThickness="0" 
+                        HorizontalOptions="Fill" 
+                        Margin="{OnPlatform Android='20,0', WinUI='40,0'}" 
+                        HeightRequest="{OnPlatform Android=120, WinUI=130}" 
+                        Opacity="0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="65" />
+                    </Border.StrokeShape>
+                    <Border.Shadow>
+                        <Shadow x:Name="ConnectButtonShadow" Brush="{DynamicResource PrimaryAccent}" Radius="50" Opacity="0.6" Offset="0,0" />
+                    </Border.Shadow>
+
+                    <Grid IsClippedToBounds="True">
+                        <Ellipse x:Name="SideWave" 
+                                 Fill="{DynamicResource StatusBlue}" 
+                                 HorizontalOptions="Start" 
+                                 VerticalOptions="Center" 
+                                 WidthRequest="1000" 
+                                 HeightRequest="1000" 
+                                 TranslationX="-1000" />
+
+                        <Button x:Name="ConnectButton" Text="ПУСК" FontSize="58" FontAttributes="Bold" TextColor="White" BackgroundColor="Transparent" Clicked="OnConnectClicked" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <VerticalStackLayout x:Name="BottomStack" VerticalOptions="End" HorizontalOptions="Center" Spacing="3" Margin="0,0,0,5" Opacity="0">
+                <Label x:Name="StatusLabel" Text="ОТКЛЮЧЕНО" FontSize="25" FontAttributes="Bold" HorizontalOptions="Center" TextColor="{DynamicResource ErrorColor}"/>
+                <Label x:Name="PingLabel" Text="Ping: -- ms" TextColor="{DynamicResource StatusBlue}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" IsVisible="False"/>
+                <Label Text="© obxodka secure network" TextColor="{DynamicResource TextSecondary}" FontSize="11" HorizontalOptions="Center"/>
+            </VerticalStackLayout>
+
+        </Grid>
+    </Grid>
+</ContentPage>
