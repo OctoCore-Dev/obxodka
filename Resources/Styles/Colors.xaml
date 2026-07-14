@@ -1,54 +1,71 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<ResourceDictionary 
-    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
-    <!-- НАШИ ФИРМЕННЫЕ ЦВЕТА -->
-    <Color x:Key="Primary">#8B5CF6</Color>
-    <Color x:Key="PrimaryDark">#4C1D95</Color>
-    <Color x:Key="PrimaryDarkText">#F3E8FF</Color>
-    
-    <Color x:Key="Secondary">#00F0FF</Color>
-    <Color x:Key="SecondaryDarkText">#E0F7FA</Color>
-    
-    <Color x:Key="Tertiary">#3B82F6</Color>
-    
-    <Color x:Key="White">White</Color>
-    <Color x:Key="Black">Black</Color>
-    <Color x:Key="Magenta">#AD36CB</Color>
-    
-    <Color x:Key="MidnightBlue">#050507</Color>
+    <Color x:Key="BgBase">#080808</Color>
+    <Color x:Key="BgSurface">#121212</Color>
+    <Color x:Key="BgElevated">#1A1A1A</Color>
+    <Color x:Key="BgInput">#0A0A0A</Color>
+    <Color x:Key="BgOverlay">#99000000</Color>
+
+    <Color x:Key="BgBaseLight">#F5F5F5</Color>
+    <Color x:Key="BgSurfaceLight">#FFFFFF</Color>
+    <Color x:Key="BgElevatedLight">#EAEAEA</Color>
+    <Color x:Key="BgInputLight">#E0E0E0</Color>
+
+    <Color x:Key="Primary">#7C3AED</Color>
+    <Color x:Key="PrimaryBright">#9F6FF0</Color>
+    <Color x:Key="PrimaryLight">#C4ABFF</Color>
+    <Color x:Key="PrimaryDim">#2D1B69</Color>
+    <Color x:Key="PrimaryGlow">#4D1FA0</Color>
+    <Color x:Key="PrimaryLight2">#6D28D9</Color>
+    <Color x:Key="PrimaryBrightLight">#7C3AED</Color>
+
+    <Color x:Key="Accent">#00E5FF</Color>
+    <Color x:Key="AccentDim">#005F6B</Color>
+    <Color x:Key="AccentGlow">#0097A7</Color>
+    <Color x:Key="AccentLight">#0284C7</Color>
+
+    <Color x:Key="TextPrimary">#E0E0E0</Color>
+    <Color x:Key="TextSecondary">#A0A0A0</Color>
+    <Color x:Key="TextMuted">#707070</Color>
+    <Color x:Key="TextOnPrimary">#FFFFFF</Color>
+
+    <Color x:Key="TextPrimaryLight">#111111</Color>
+    <Color x:Key="TextSecondaryLight">#555555</Color>
+    <Color x:Key="TextMutedLight">#888888</Color>
+
+    <Color x:Key="BorderSubtle">#222222</Color>
+    <Color x:Key="BorderMedium">#333333</Color>
+    <Color x:Key="BorderStrong">#555555</Color>
+
+    <Color x:Key="BorderSubtleLight">#DCDCDC</Color>
+    <Color x:Key="BorderMediumLight">#B0B0B0</Color>
+
+    <Color x:Key="NeoShadowLight">#202020</Color>
+    <Color x:Key="NeoShadowDark">#050505</Color>
+
+    <Color x:Key="NeoShadowLightL">#FFFFFF</Color>
+    <Color x:Key="NeoShadowDarkL">#C8C8C8</Color>
+
     <Color x:Key="Success">#10B981</Color>
+    <Color x:Key="SuccessDim">#064E3B</Color>
     <Color x:Key="Warning">#F59E0B</Color>
+    <Color x:Key="WarningDim">#78350F</Color>
     <Color x:Key="Error">#EF4444</Color>
-    <!-- Очень глубокий темный фон -->
-    <Color x:Key="OffBlack">#08080C</Color>
-    <!-- Цвет карточек -->
+    <Color x:Key="ErrorDim">#7F1D1D</Color>
+    <Color x:Key="White">#FFFFFF</Color>
+    <Color x:Key="Black">#000000</Color>
+    <Color x:Key="Transparent">#00000000</Color>
 
-    <!-- ИДЕАЛЬНЫЕ СЕРЫЕ ОТТЕНКИ (Для текстов и рамок) -->
-    <Color x:Key="Gray100">#E1E1E1</Color>
-    <Color x:Key="Gray200">#C8C8C8</Color>
-    <Color x:Key="Gray300">#ACACAC</Color>
-    <Color x:Key="Gray400">#919191</Color>
-    <Color x:Key="Gray500">#7A7A8A</Color>
-    <Color x:Key="Gray600">#404040</Color>
-    <Color x:Key="Gray900">#222226</Color>
-    <!-- Цвет тонких рамок -->
-    <Color x:Key="Gray950">#111116</Color>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}" />
+    <SolidColorBrush x:Key="PrimaryBrightBrush" Color="{StaticResource PrimaryBright}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
+    <SolidColorBrush x:Key="BgBaseBrush" Color="{StaticResource BgBase}" />
+    <SolidColorBrush x:Key="BgSurfaceBrush" Color="{StaticResource BgSurface}" />
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtle}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource Success}" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource Error}" />
+    <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
 
-    <!-- КИСТИ (Brushes) для XAML -->
-    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}"/>
-    <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource Secondary}"/>
-    <SolidColorBrush x:Key="TertiaryBrush" Color="{StaticResource Tertiary}"/>
-    <SolidColorBrush x:Key="WhiteBrush" Color="{StaticResource White}"/>
-    <SolidColorBrush x:Key="BlackBrush" Color="{StaticResource Black}"/>
-
-    <SolidColorBrush x:Key="Gray100Brush" Color="{StaticResource Gray100}"/>
-    <SolidColorBrush x:Key="Gray200Brush" Color="{StaticResource Gray200}"/>
-    <SolidColorBrush x:Key="Gray300Brush" Color="{StaticResource Gray300}"/>
-    <SolidColorBrush x:Key="Gray400Brush" Color="{StaticResource Gray400}"/>
-    <SolidColorBrush x:Key="Gray500Brush" Color="{StaticResource Gray500}"/>
-    <SolidColorBrush x:Key="Gray600Brush" Color="{StaticResource Gray600}"/>
-    <SolidColorBrush x:Key="Gray900Brush" Color="{StaticResource Gray900}"/>
-    <SolidColorBrush x:Key="Gray950Brush" Color="{StaticResource Gray950}"/>
 </ResourceDictionary>

@@ -1,4 +1,4 @@
-﻿namespace obxodka.Services;
+namespace obxodka.Services;
 
 public class HydraConfig
 {
@@ -8,22 +8,21 @@ public class HydraConfig
 
 public class DiscoveryService
 {
-    // The public Gist URL containing the hydra.json configuration.
-    // Example: https://gist.githubusercontent.com/username/gist_id/raw/hydra.json
-    // The user needs to populate this with their actual Gist raw URL.
     private const string GistUrl = "https://gist.githubusercontent.com/irovbyte/4f1063b597cba0a716f29431424c9d4e/raw/hydra.json";
 
-    private static readonly HttpClient t_httpClient = new();
+    private static readonly SocketsHttpHandler t_handler = new()
+    {
+        UseProxy = false
+    };
+    private static readonly HttpClient t_httpClient = new(t_handler) { Timeout = TimeSpan.FromSeconds(5) };
     private static HydraConfig? t_cachedConfig;
     private static readonly SemaphoreSlim t_fetchLock = new(1, 1);
-    private static readonly JsonSerializerOptions t_jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public static async Task<string> GetActiveBridgeUrlAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
         var gistUrl = GistUrl;
         if (gistUrl == "INSERT_GIST_RAW_URL_HERE")
         {
-            // If the user hasn't set up the Gist yet, fallback to the hardcoded domain
             return "obxodka.one";
         }
 
@@ -36,7 +35,6 @@ public class DiscoveryService
         await t_fetchLock.WaitAsync(ct);
         try
         {
-            // Double-check after acquiring lock
             if (!forceRefresh && t_cachedConfig != null)
             {
                 var host = new Uri(t_cachedConfig.ActiveBridge).Host;
@@ -44,16 +42,12 @@ public class DiscoveryService
             }
 
             Debug.WriteLine("[DISCOVERY] Fetching latest Hydra config from Gist...");
-
-            // Appending a random query parameter to bypass cache
             var url = $"{GistUrl}?t={DateTime.UtcNow.Ticks}";
             var response = await t_httpClient.GetAsync(url, ct);
-
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(ct);
-                t_cachedConfig = JsonSerializer.Deserialize<HydraConfig>(json, t_jsonOptions);
-
+                t_cachedConfig = JsonSerializer.Deserialize(json, AppJsonContext.Default.HydraConfig);
                 if (t_cachedConfig != null && !string.IsNullOrEmpty(t_cachedConfig.ActiveBridge))
                 {
                     Debug.WriteLine($"[DISCOVERY] Successfully resolved active bridge: {t_cachedConfig.ActiveBridge}");
@@ -72,9 +66,6 @@ public class DiscoveryService
         {
             _ = t_fetchLock.Release();
         }
-
-        // Fallback to the main domain if discovery totally fails
         return t_cachedConfig != null ? new Uri(t_cachedConfig.ActiveBridge).Host : "obxodka.one";
     }
 }
-

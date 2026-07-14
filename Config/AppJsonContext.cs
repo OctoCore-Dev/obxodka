@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace obxodka.Config;
 
 [JsonSourceGenerationOptions(
@@ -8,6 +6,11 @@ namespace obxodka.Config;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(AuthRequest))]
+[JsonSerializable(typeof(EmailAuthRequest))]
+[JsonSerializable(typeof(EmailVerifyRequest))]
+[JsonSerializable(typeof(RegisterRequest))]
+[JsonSerializable(typeof(SendCodeRequest))]
+[JsonSerializable(typeof(ResetPasswordRequest))]
 [JsonSerializable(typeof(LoginResponse))]
 [JsonSerializable(typeof(ChangePasswordRequest))]
 [JsonSerializable(typeof(List<DeviceItem>))]
@@ -19,7 +22,14 @@ namespace obxodka.Config;
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(VpnServerDto))]
 [JsonSerializable(typeof(List<VpnServerDto>))]
+[JsonSerializable(typeof(MessageResponse))]
+[JsonSerializable(typeof(PaymentLinkResponse))]
 [JsonSerializable(typeof(object), TypeInfoPropertyName = "JsonObject")]
+#if ANDROID
+[JsonSerializable(typeof(UpdatesRoot))]
+[JsonSerializable(typeof(UpdateInfo))]
+#endif
+[JsonSerializable(typeof(HydraConfig))]
 internal sealed partial class AppJsonContext : JsonSerializerContext
 {
 }

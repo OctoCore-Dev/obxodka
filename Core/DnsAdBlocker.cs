@@ -1,5 +1,3 @@
-﻿using System.Buffers.Binary;
-
 namespace obxodka.Core;
 
 public static class DnsAdBlocker
@@ -47,24 +45,18 @@ public static class DnsAdBlocker
         "applovin.com",
         "vungle.com"
     };
-
-
-
-
     public static byte[]? ProcessPacket(byte[] packet, int length)
     {
         if (!Preferences.Default.Get("use_adblock_dns", false))
         {
             return null;
         }
-
         try
         {
             if (length < 20)
             {
                 return null;
             }
-
             var version = packet[0] >> 4;
             var ipHeaderLen = 0;
             var protocol = 0;
@@ -76,7 +68,6 @@ public static class DnsAdBlocker
                 {
                     return null;
                 }
-
                 protocol = packet[9];
             }
             else if (version == 6)
@@ -86,7 +77,6 @@ public static class DnsAdBlocker
                 {
                     return null;
                 }
-
                 protocol = packet[6];
             }
             else
@@ -98,7 +88,6 @@ public static class DnsAdBlocker
             {
                 return null;
             }
-
             var udpHeaderOffset = ipHeaderLen;
             var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(udpHeaderOffset, 2));
             var dstPort = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(udpHeaderOffset + 2, 2));
@@ -107,13 +96,11 @@ public static class DnsAdBlocker
             {
                 return null;
             }
-
             var dnsOffset = udpHeaderOffset + 8;
             if (length < dnsOffset + 12)
             {
                 return null;
             }
-
             var dnsSpan = packet.AsSpan(dnsOffset, length - dnsOffset);
             var flags = BinaryPrimitives.ReadUInt16BigEndian(dnsSpan.Slice(2, 2));
             var qdCount = BinaryPrimitives.ReadUInt16BigEndian(dnsSpan.Slice(4, 2));
@@ -122,13 +109,11 @@ public static class DnsAdBlocker
             {
                 return null;
             }
-
             var queryName = ParseDnsName(dnsSpan, 12, out var bytesRead);
             if (string.IsNullOrEmpty(queryName))
             {
                 return null;
             }
-
             if (IsBlocked(queryName))
             {
                 Debug.WriteLine($"[ADBLOCK] Blocked: {queryName}");
@@ -151,7 +136,6 @@ public static class DnsAdBlocker
             {
                 return;
             }
-
             var version = packet[0] >> 4;
             var ipHeaderLen = 0;
             var protocol = 0;
@@ -164,7 +148,6 @@ public static class DnsAdBlocker
                 {
                     return;
                 }
-
                 protocol = packet[9];
             }
             else if (version == 6)
@@ -174,19 +157,16 @@ public static class DnsAdBlocker
                 {
                     return;
                 }
-
                 protocol = packet[6];
             }
             else
             {
                 return;
             }
-
             if (protocol != 17)
             {
                 return;
             }
-
             var udpOffset = ipHeaderLen;
             var dstPort = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(udpOffset + 2, 2));
 
@@ -194,13 +174,11 @@ public static class DnsAdBlocker
             {
                 return;
             }
-
             var dnsOffset = udpOffset + 8;
             if (length < dnsOffset + 12)
             {
                 return;
             }
-
             var dnsSpan = packet.AsSpan(dnsOffset, length - dnsOffset);
             var flags = BinaryPrimitives.ReadUInt16BigEndian(dnsSpan.Slice(2, 2));
             var qdCount = BinaryPrimitives.ReadUInt16BigEndian(dnsSpan.Slice(4, 2));
@@ -209,13 +187,11 @@ public static class DnsAdBlocker
             {
                 return;
             }
-
             var queryName = ParseDnsName(dnsSpan, 12, out var bytesRead);
             if (string.IsNullOrEmpty(queryName))
             {
                 return;
             }
-
             if (IsBlocked(queryName))
             {
                 Debug.WriteLine($"[ADBLOCK_LOCAL] Blocked: {queryName}");
@@ -234,7 +210,6 @@ public static class DnsAdBlocker
             {
                 return;
             }
-
             var recvTask = udp.ReceiveAsync();
             if (await Task.WhenAny(recvTask, Task.Delay(2000)) == recvTask)
             {
@@ -289,12 +264,10 @@ public static class DnsAdBlocker
             {
                 sum += (uint)((resp[i] << 8) + resp[i + 1]);
             }
-
             while ((sum >> 16) != 0)
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
-
             sum = ~sum;
             resp[10] = (byte)(sum >> 8);
             resp[11] = (byte)(sum & 0xFF);
@@ -306,7 +279,6 @@ public static class DnsAdBlocker
             {
                 sum += (uint)((resp[i] << 8) + resp[i + 1]);
             }
-
             var udpLen = totalLen - udpOffset;
             sum += (uint)udpLen;
             sum += 17;
@@ -325,13 +297,11 @@ public static class DnsAdBlocker
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
-
             sum = ~sum;
             if (sum == 0)
             {
                 sum = 0xFFFF;
             }
-
             resp[udpOffset + 6] = (byte)(sum >> 8);
             resp[udpOffset + 7] = (byte)(sum & 0xFF);
         }
@@ -345,7 +315,6 @@ public static class DnsAdBlocker
         {
             return true;
         }
-
         foreach (var blocked in t_blockedDomains)
         {
             if (domain.EndsWith("." + blocked, StringComparison.OrdinalIgnoreCase))
@@ -382,7 +351,6 @@ public static class DnsAdBlocker
             {
                 _ = sb.Append('.');
             }
-
             if (currentOffset + len <= dnsSpan.Length)
             {
                 _ = sb.Append(Encoding.UTF8.GetString(dnsSpan.Slice(currentOffset, len)));
@@ -420,8 +388,6 @@ public static class DnsAdBlocker
 
             BinaryPrimitives.WriteUInt16BigEndian(resp.AsSpan(4, 2), (ushort)(totalLen - 40));
         }
-
-
         Buffer.BlockCopy(req, udpOffset, resp, udpOffset + 2, 2);
         Buffer.BlockCopy(req, udpOffset + 2, resp, udpOffset, 2);
 
@@ -463,12 +429,10 @@ public static class DnsAdBlocker
             {
                 sum += (uint)((resp[i] << 8) + resp[i + 1]);
             }
-
             while ((sum >> 16) != 0)
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
-
             sum = ~sum;
             resp[10] = (byte)(sum >> 8);
             resp[11] = (byte)(sum & 0xFF);
@@ -482,7 +446,6 @@ public static class DnsAdBlocker
             {
                 sum += (uint)((resp[i] << 8) + resp[i + 1]);
             }
-
             var udpLen = totalLen - udpOffset;
             sum += (uint)udpLen;
             sum += 17;
@@ -502,13 +465,11 @@ public static class DnsAdBlocker
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
-
             sum = ~sum;
             if (sum == 0)
             {
                 sum = 0xFFFF;
             }
-
             resp[udpOffset + 6] = (byte)(sum >> 8);
             resp[udpOffset + 7] = (byte)(sum & 0xFF);
         }
@@ -516,5 +477,3 @@ public static class DnsAdBlocker
         return resp;
     }
 }
-
-

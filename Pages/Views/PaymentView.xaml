@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.PaymentView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+    <Grid>
+        <Grid RowDefinitions="Auto, *" RowSpacing="0">
+            <Label
+                Grid.Row="0"
+                Margin="0,20,0,12"
+                HorizontalOptions="Center"
+                Style="{StaticResource TitleMedium}"
+                Text="Оплата" />
+            <Grid Grid.Row="1">
+                <ScrollView x:Name="CardsScrollView" Margin="{OnIdiom Desktop='32,0,32,28', Default='0'}">
+                    <VerticalStackLayout
+                        Padding="12,0,12,24"
+                        HorizontalOptions="Center"
+                        Spacing="16"
+                        WidthRequest="{OnIdiom Desktop=500,
+                                               Default=360}">
+                        <Border x:Name="Card300" Padding="20" Opacity="0" TranslationY="28" Style="{StaticResource NeoCard}">
+                            <VerticalStackLayout Spacing="8">
+                                <Label
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="СТАРТОВЫЙ" />
+                                <Label
+                                    FontSize="24"
+                                    Style="{StaticResource TitleMedium}"
+                                    Text="300 ₽"
+                                    TextColor="{StaticResource Primary}" />
+                                <Label Style="{StaticResource TitleSmall}" Text="300 часов доступа" />
+                                <Border x:Name="Btn300Border" Margin="0,12,0,0" HeightRequest="44" Style="{StaticResource NeoBtnPrimary}">
+                                    <Grid>
+                                        <Button
+                                            x:Name="Btn300"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuy300ClickedAsync"
+                                            FontFamily="RobotoMedium"
+                                            FontSize="14"
+                                            Text="Купить за 300 ₽"
+                                            TextColor="{StaticResource TextOnPrimary}" />
+                                        <ActivityIndicator x:Name="Loader300" HeightRequest="24" WidthRequest="24" IsVisible="False" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" Color="{StaticResource TextOnPrimary}" />
+                                    </Grid>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border x:Name="Card500" Padding="20" Opacity="0" TranslationY="28" Style="{StaticResource NeoCard}">
+                            <VerticalStackLayout Spacing="8">
+                                <Label
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="БАЗОВЫЙ" />
+                                <Label
+                                    FontSize="24"
+                                    Style="{StaticResource TitleMedium}"
+                                    Text="500 ₽"
+                                    TextColor="#00E5FF" />
+                                <Label Style="{StaticResource TitleSmall}" Text="500 часов (+200 бонус)" />
+                                <Border x:Name="Btn500Border" Margin="0,12,0,0" HeightRequest="44" Style="{StaticResource NeoBtnPrimary}">
+                                    <Grid>
+                                        <Button
+                                            x:Name="Btn500"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuy500ClickedAsync"
+                                            FontFamily="RobotoMedium"
+                                            FontSize="14"
+                                            Text="Купить за 500 ₽"
+                                            TextColor="{StaticResource TextOnPrimary}" />
+                                        <ActivityIndicator x:Name="Loader500" HeightRequest="24" WidthRequest="24" IsVisible="False" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" Color="{StaticResource TextOnPrimary}" />
+                                    </Grid>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border x:Name="Card1000" Padding="20" Opacity="0" TranslationY="28" Style="{StaticResource NeoCard}">
+                            <VerticalStackLayout Spacing="8">
+                                <Label
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="ПРОФИ" />
+                                <Label
+                                    FontSize="24"
+                                    Style="{StaticResource TitleMedium}"
+                                    Text="1000 ₽"
+                                    TextColor="#F59E0B" />
+                                <Label Style="{StaticResource TitleSmall}" Text="1000 часов (+1000 бонус)" />
+                                <Border x:Name="Btn1000Border" Margin="0,12,0,0" HeightRequest="44" Style="{StaticResource NeoBtnPrimary}">
+                                    <Grid>
+                                        <Button
+                                            x:Name="Btn1000"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuy1000ClickedAsync"
+                                            FontFamily="RobotoMedium"
+                                            FontSize="14"
+                                            Text="Купить за 1000 ₽"
+                                            TextColor="{StaticResource TextOnPrimary}" />
+                                        <ActivityIndicator x:Name="Loader1000" HeightRequest="24" WidthRequest="24" IsVisible="False" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" Color="{StaticResource TextOnPrimary}" />
+                                    </Grid>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <Border
+                    x:Name="BrowserBorder"
+                    Margin="{OnIdiom Desktop='32,0,32,28',
+                                     Default='12,0,12,24'}"
+                    IsVisible="False"
+                    Style="{StaticResource NeoCard}">
+                    <Grid RowDefinitions="Auto, *">
+                        <Border
+                            Grid.Row="0"
+                            Padding="12,12,16,12"
+                            BackgroundColor="Transparent"
+                            HorizontalOptions="End"
+                            StrokeThickness="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCancelPaymentTapped" />
+                            </Border.GestureRecognizers>
+                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                <Label
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Отменить оплату"
+                                    VerticalOptions="Center" />
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=Dismiss24}"
+                                    IconColor="{AppThemeBinding Light=#9080B0,
+                                                                Dark=#6A5A8A}"
+                                    IconSize="16"
+                                    VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+
+                        <WebView
+                            x:Name="PaymentWebView"
+                            Grid.Row="1"
+                            Navigated="OnPaymentWebViewNavigated"
+                            Navigating="OnPaymentWebViewNavigatingAsync" />
+                        <ActivityIndicator
+                            x:Name="PaymentLoader"
+                            Grid.Row="1"
+                            HorizontalOptions="Center"
+                            IsRunning="True"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</ContentView>

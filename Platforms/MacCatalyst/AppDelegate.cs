@@ -1,3 +1,4 @@
+#pragma warning disable CA1711
 using Foundation;
 namespace obxodka;
 

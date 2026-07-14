@@ -9,8 +9,9 @@ namespace obxodka;
 [Activity(
     Theme = "@style/Maui.SplashTheme",
     MainLauncher = true,
+    Exported = true,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
-[SupportedOSPlatform("android30.0")]
+[SupportedOSPlatform("android29.0")]
 public sealed class MainActivity : MauiAppCompatActivity
 {
     private const int VpnRequestCode = 1001;
@@ -18,13 +19,30 @@ public sealed class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
         RequestIgnoreBatteryOptimizations();
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.Lollipop)
+        RequestNotificationPermission();
+        AndroidX.Core.View.WindowCompat.SetDecorFitsSystemWindows(Window!, false);
+#pragma warning disable CA1422
+        Window!.SetStatusBarColor(Android.Graphics.Color.Transparent);
+        Window!.SetNavigationBarColor(Android.Graphics.Color.Transparent);
+#pragma warning restore CA1422
+    }
+    private void RequestNotificationPermission()
+    {
+        try
         {
-            AndroidX.Core.View.WindowCompat.SetDecorFitsSystemWindows(Window!, false);
-#pragma warning disable CA1422, CS0618
-            Window!.SetStatusBarColor(Android.Graphics.Color.Transparent);
-            Window!.SetNavigationBarColor(Android.Graphics.Color.Transparent);
-#pragma warning restore CA1422, CS0618
+            if (OperatingSystem.IsAndroidVersionAtLeast(33))
+            {
+#pragma warning disable CA1416
+                if (CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Permission.Granted)
+                {
+                    RequestPermissions([Android.Manifest.Permission.PostNotifications], 1002);
+                }
+#pragma warning restore CA1416
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NOTIFICATION REQ ERROR] {ex.Message}");
         }
     }
     private void RequestIgnoreBatteryOptimizations()
@@ -33,9 +51,19 @@ public sealed class MainActivity : MauiAppCompatActivity
         {
             if (GetSystemService(PowerService) is PowerManager pm && !pm.IsIgnoringBatteryOptimizations(PackageName))
             {
-                var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations)
-                    .SetData(Android.Net.Uri.Parse("package:" + PackageName));
-                StartActivity(intent);
+#pragma warning disable CS8602
+                _ = new AlertDialog.Builder(this)
+                    .SetTitle("Внимание: Батарея")
+                    .SetMessage("Для стабильной работы VPN-соединения необходимо отключить экономию заряда батареи для нашего приложения. Иначе система может прервать работу VPN в фоновом режиме.\n\nПожалуйста, нажмите «ОК», чтобы перейти в настройки и разрешить фоновую работу.")
+                    .SetPositiveButton("ОК", (sender, args) =>
+                    {
+                        var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations)
+                            .SetData(Android.Net.Uri.Parse("package:" + PackageName));
+                        StartActivity(intent);
+                    })
+                    .SetCancelable(false)
+                    .Show();
+#pragma warning restore CS8602
             }
         }
         catch (Exception ex)
@@ -84,9 +112,7 @@ public sealed class MainActivity : MauiAppCompatActivity
     {
         var intent = new Intent(context, typeof(OctopusVpnService))
             .SetAction("START");
-        _ = Build.VERSION.SdkInt >= BuildVersionCodes.O
-            ? context.StartForegroundService(intent)
-            : context.StartService(intent);
+        _ = context.StartForegroundService(intent);
     }
     private static TaskCompletionSource<bool>? t_vpnPermTcs;
     public static async Task<bool> RequestVpnPermissionAsync(Intent intent)

@@ -1,0 +1,142 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.SplitView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:m="clr-namespace:obxodka.Models"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:views="clr-namespace:obxodka.Views"
+    x:Name="ThisView">
+    <Grid>
+
+        <Grid>
+            <ActivityIndicator
+                x:Name="SplitLoadingOverlay"
+                HorizontalOptions="Center"
+                IsRunning="True"
+                IsVisible="False"
+                VerticalOptions="Center" />
+            <Label
+                x:Name="SplitAppsErrorLabel"
+                HorizontalOptions="Center"
+                IsVisible="False"
+                Opacity="0"
+                Style="{StaticResource LabelError}"
+                VerticalOptions="Center" />
+            <CollectionView x:Name="SplitAppsList" VerticalScrollBarVisibility="Never">
+                <CollectionView.Header>
+
+                    <ContentView HeightRequest="{OnIdiom Desktop=160, Default=190}" />
+                </CollectionView.Header>
+                <CollectionView.Footer>
+                    <ContentView HeightRequest="80" />
+                </CollectionView.Footer>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="m:AppInfoItem">
+                        <Border
+                            Margin="{OnIdiom Desktop='32,2',
+                                             Default='16,2'}"
+                            Padding="16"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource BgSurfaceLight},
+                                                              Dark={StaticResource BgSurface}}"
+                            StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="40, *, Auto" ColumnSpacing="12">
+                                <Grid
+                                    Grid.Column="0"
+                                    HeightRequest="40"
+                                    WidthRequest="40">
+                                    <Image
+                                        Aspect="AspectFit"
+                                        HeightRequest="40"
+                                        Source="{Binding IconSource}"
+                                        WidthRequest="40" />
+                                </Grid>
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontSize="13"
+                                        Style="{StaticResource TitleSmall}"
+                                        Text="{Binding Name}" />
+                                    <Label
+                                        FontSize="10"
+                                        Style="{StaticResource LabelAccent}"
+                                        Text="{Binding PackageName}" />
+                                </VerticalStackLayout>
+                                <Switch
+                                    Grid.Column="2"
+                                    IsToggled="{Binding IsBypassed}"
+                                    Toggled="OnSplitAppToggledAsync"
+                                    VerticalOptions="Center">
+                                    <Switch.IsEnabled>
+                                        <Binding
+                                            x:DataType="views:SplitView"
+                                            Path="IsSplitEditingAllowed"
+                                            Source="{x:Reference ThisView}" />
+                                    </Switch.IsEnabled>
+                                </Switch>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+        <Border
+            x:Name="FloatingHeader"
+            Padding="{OnIdiom Desktop='32,28,32,16',
+                              Default='16,40,16,16'}"
+            BackgroundColor="Transparent"
+            StrokeThickness="0"
+            VerticalOptions="Start">
+            <Border.Background>
+                <LinearGradientBrush EndPoint="0,1">
+                    <GradientStop Offset="0.0" Color="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
+                    <GradientStop Offset="0.75" Color="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
+                    <GradientStop Offset="1.0" Color="Transparent" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <VerticalStackLayout Spacing="12">
+                <Label
+                    HorizontalOptions="Center"
+                    Style="{StaticResource TitleMedium}"
+                    Text="Разделение трафика" />
+                <Border Style="{StaticResource NeoInput}">
+                    <Entry
+                        x:Name="SplitSearchEntry"
+                        Placeholder="Поиск приложения..."
+                        TextChanged="OnSplitSearchTextChanged" />
+                </Border>
+                <Border
+                    Margin="0,0,0,4"
+                    Padding="12,12"
+                    BackgroundColor="#2D1A1A"
+                    Stroke="#EF4444"
+                    StrokeThickness="1">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="8" />
+                    </Border.StrokeShape>
+                    <Label
+                        FontSize="12"
+                        HorizontalTextAlignment="Center"
+                        Text="Изменение списка возможно только при выключенном VPN."
+                        TextColor="#FCA5A5"
+                        VerticalTextAlignment="Center" />
+                    <Border.Triggers>
+                        <DataTrigger
+                            Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=views:SplitView}"
+                            TargetType="Border"
+                            Value="True">
+                            <Setter Property="IsVisible" Value="False" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                </Border>
+            </VerticalStackLayout>
+        </Border>
+
+    </Grid>
+</ContentView>

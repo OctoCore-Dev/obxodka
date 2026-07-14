@@ -1,4 +1,3 @@
-using obxodka.Pages;
 namespace obxodka;
 
 public sealed partial class AppShell : Shell

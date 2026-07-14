@@ -301,7 +301,6 @@ node_modules/
 **/*.DesktopClient/ModelManifest.xml
 **/*.Server/GeneratedArtifacts
 **/*.Server/ModelManifest.xml
-**/AppSecrets.cs
 _Pvt_Extensions
 
 # Paket dependency manager

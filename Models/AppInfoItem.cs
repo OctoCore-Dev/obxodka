@@ -1,9 +1,14 @@
 namespace obxodka.Models;
 
-public class AppInfoItem
+public partial class AppInfoItem : ObservableObject
 {
     public string Name { get; set; } = string.Empty;
     public string PackageName { get; set; } = string.Empty;
-    public bool IsBypassed { get; set; }
-    public ImageSource? Icon { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsBypassed { get; set; }
+
+    public string? IconPath { get; set; }
+
+    public ImageSource? IconSource => IconPath != null ? ImageSource.FromFile(IconPath) : null;
 }

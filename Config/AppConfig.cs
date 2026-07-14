@@ -2,9 +2,8 @@ namespace obxodka.Config;
 
 public static class AppConfig
 {
-    public const string ApiBaseUrl = "https://obxodka.one/";
-    public static readonly string BaseUrl = ApiBaseUrl;
-
+    public static string ApiBaseUrl { get; set; } = "https://obxodka.one/";
+    public static string BaseUrl => ApiBaseUrl;
     public static string ApiUrl(string endpoint)
     {
         ArgumentNullException.ThrowIfNull(endpoint);

@@ -1,6 +1,3 @@
-﻿using Grpc.Core;
-using obxodka.Core.Protos;
-
 namespace obxodka.Core;
 
 public partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPacket, TunnelPacket> call) : Stream
@@ -47,7 +44,7 @@ public partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPacket, Tun
                 return copyLen;
             }
 
-            return 0; // EOF
+            return 0;
         }
     }
 
@@ -65,7 +62,7 @@ public partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPacket, Tun
     public override void SetLength(long value) => throw new NotSupportedException();
 
     private bool _disposed;
-    protected override void Dispose(bool disposing)
+    protected override async void Dispose(bool disposing)
     {
         if (disposing && !_disposed)
         {
@@ -74,10 +71,17 @@ public partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPacket, Tun
             { _cts.Cancel(); }
             catch { }
             try
-            { _call.RequestStream.CompleteAsync().Wait(); }
+            {
+                if (_call != null)
+                {
+                    _ = await Task.WhenAny(_call.RequestStream.CompleteAsync(), Task.Delay(500));
+                }
+            }
             catch { }
             try
-            { _call.Dispose(); }
+            {
+                _call?.Dispose();
+            }
             catch { }
             try
             { _cts.Dispose(); }
@@ -86,4 +90,3 @@ public partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPacket, Tun
         base.Dispose(disposing);
     }
 }
-

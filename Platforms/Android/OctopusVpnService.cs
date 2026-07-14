@@ -6,15 +6,44 @@ using AndroidX.Core.App;
 using Java.IO;
 namespace obxodka.Platforms.Android;
 
-[Service(Name = "obxodka.OctopusVpnService", Permission = "android.permission.BIND_VPN_SERVICE", Exported = false)]
-[SupportedOSPlatform("android30.0")]
+[Service(Name = "obxodka.OctopusVpnService", Permission = "android.permission.BIND_VPN_SERVICE", Exported = false, ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeDataSync)]
+[IntentFilter(["android.net.VpnService"])]
+[SupportedOSPlatform("android29.0")]
 public class OctopusVpnService : VpnService, IDisposable
 {
+#pragma warning disable CA2213
     private ParcelFileDescriptor? _tunInterface;
+    private FileInputStream? _tunInputStream;
     private FileOutputStream? _tunOutputStream;
     private CancellationTokenSource? _vpnCts;
+#pragma warning restore CA2213
     private const int NotificationId = 2026;
     private const string ChannelId = "obxodka_vpn_channel";
+    public static OctopusVpnService? Instance { get; private set; }
+
+    private PowerManager.WakeLock? _wakeLock;
+
+    private void AcquireWakeLock()
+    {
+        if (_wakeLock == null)
+        {
+            var powerManager = (PowerManager?)GetSystemService(PowerService);
+            _wakeLock = powerManager?.NewWakeLock(WakeLockFlags.Partial, "obxodka::VpnWakeLock");
+        }
+        if (_wakeLock != null && !_wakeLock.IsHeld)
+        {
+            _wakeLock.Acquire();
+        }
+    }
+
+    private void ReleaseWakeLock()
+    {
+        if (_wakeLock != null && _wakeLock.IsHeld)
+        {
+            _wakeLock.Release();
+        }
+    }
+
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
         if (intent?.Action == "STOP")
@@ -24,9 +53,10 @@ public class OctopusVpnService : VpnService, IDisposable
         }
         if (intent?.Action == "START")
         {
+            Instance = this;
             CreateNotificationChannel();
 #pragma warning disable CA1422, CS0618
-            StartForeground(NotificationId, CreateNotification());
+            StartForeground(NotificationId, CreateNotification(), global::Android.Content.PM.ForegroundService.TypeDataSync);
 #pragma warning restore CA1422, CS0618
             StartNativeVpn();
             OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
@@ -39,24 +69,21 @@ public class OctopusVpnService : VpnService, IDisposable
     private void HandleEngineDrop() => AndroidVpnService.Instance.HandleEngineDrop();
     private void CreateNotificationChannel()
     {
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+        var channel = new NotificationChannel(ChannelId, "Obxodka VPN Status", NotificationImportance.Low)
         {
-            var channel = new NotificationChannel(ChannelId, "Obxodka VPN Status", NotificationImportance.Low)
-            {
-                Description = "Показывает статус подключения"
-            };
-            var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
-            notificationManager?.CreateNotificationChannel(channel);
-        }
+            Description = "Показывает статус подключения"
+        };
+        var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
+        notificationManager?.CreateNotificationChannel(channel);
     }
     private Notification CreateNotification()
     {
         var pendingIntent = PendingIntent.GetActivity(this, 0, new Intent(this, typeof(MainActivity)), PendingIntentFlags.Immutable);
 #pragma warning disable CS8602
         return new NotificationCompat.Builder(this, ChannelId)
-            .SetContentTitle("Obxodka VPN")
+            .SetContentTitle("Obxodka")
             .SetContentText("Трафик защищен (Stealth Mode)")
-            .SetSmallIcon(Resource.Mipmap.appicon)
+            .SetSmallIcon(Resource.Drawable.notification_icon)
             .SetOngoing(true)
             .SetContentIntent(pendingIntent)
             .Build()!;
@@ -100,16 +127,44 @@ public class OctopusVpnService : VpnService, IDisposable
                 .AddAddress("fd00::2", 128)
                 .SetMtu(1350)
                 .AddRoute("0.0.0.0", 0)
-                .AddRoute("::", 0)
-                .AddDnsServer("8.8.8.8")
-                .AddDnsServer("2001:4860:4860::8888");
-            _ = builder.AddDisallowedApplication(ApplicationContext?.PackageName ?? string.Empty);
+                .AddRoute("::", 0);
+
+            var useAdBlock = Preferences.Default.Get("use_adblock_dns", false);
+            _ = useAdBlock
+                ? builder.AddDnsServer("94.140.14.14")
+                       .AddDnsServer("94.140.15.15")
+                       .AddDnsServer("2a10:50c0::ad1:ff")
+                       .AddDnsServer("2a10:50c0::ad2:ff")
+                : builder.AddDnsServer("8.8.8.8")
+                       .AddDnsServer("8.8.4.4")
+                       .AddDnsServer("2001:4860:4860::8888")
+                       .AddDnsServer("2001:4860:4860::8844");
+
+            var bypassed = new AppManager().GetBypassedPackages();
+            foreach (var pkg in bypassed)
+            {
+                try
+                { _ = builder.AddDisallowedApplication(pkg); }
+                catch { }
+            }
+
+            try
+            { _ = builder.AddDisallowedApplication(PackageName ?? "com.octocore.obxodka"); }
+            catch { }
+
             _tunInterface = builder.Establish();
             if (_tunInterface != null)
             {
+                AcquireWakeLock();
                 _tunOutputStream = new FileOutputStream(_tunInterface.FileDescriptor);
                 AndroidVpnService.Instance.ChangeState(AppVpnState.Connected);
-                _ = Task.Run(() => ProcessTrafficAsync(_vpnCts.Token));
+                var thread = new Thread(() => ProcessTraffic(_vpnCts.Token))
+                {
+                    IsBackground = true,
+                    Priority = System.Threading.ThreadPriority.Highest,
+                    Name = "AndroidTunReader"
+                };
+                thread.Start();
             }
         }
         catch
@@ -118,58 +173,111 @@ public class OctopusVpnService : VpnService, IDisposable
             StopSelf();
         }
     }
-    private async Task ProcessTrafficAsync(CancellationToken ct)
+    private void ProcessTraffic(CancellationToken ct)
     {
         if (_tunInterface?.FileDescriptor == null)
         {
             return;
         }
-#pragma warning disable CS0618, CA1422
-        using var safeHandle = new Microsoft.Win32.SafeHandles.SafeFileHandle(_tunInterface.FileDescriptor.Handle, ownsHandle: false);
-#pragma warning restore CS0618, CA1422
-        using var stream = new FileStream(safeHandle, FileAccess.ReadWrite);
-        var buffer = new byte[16384];
-        while (!ct.IsCancellationRequested)
+        FileInputStream? inputStream = null;
+        try
+        {
+            inputStream = new FileInputStream(_tunInterface.FileDescriptor);
+            _tunInputStream = inputStream;
+            while (!ct.IsCancellationRequested)
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent(16384);
+                var length = inputStream.Read(buffer);
+                if (length < 0)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    break;
+                }
+                if (length > 0)
+                {
+                    _ = OctopusEngine.Current.SendPacketFromPoolAsync(buffer, length);
+                }
+                else
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+        }
+        catch { }
+        finally
         {
             try
             {
-                var length = await stream.ReadAsync(buffer.AsMemory(), ct);
-                if (length > 0)
-                {
-                    var packet = new byte[length];
-                    Array.Copy(buffer, 0, packet, 0, length);
-                    await OctopusEngine.Current.SendPacketAsync(packet);
-                }
+                inputStream?.Close();
+                inputStream?.Dispose();
             }
-            catch { break; }
+            catch { }
+            _tunInputStream = null;
         }
     }
-    private void StopNativeVpn()
+    public void StopNativeVpn()
     {
         OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        _vpnCts?.Cancel();
-        _vpnCts?.Dispose();
+        var cts = _vpnCts;
         _vpnCts = null;
-        _tunOutputStream?.Close();
-        _tunOutputStream?.Dispose();
+        var tunIn = _tunInputStream;
+        _tunInputStream = null;
+        var tunOut = _tunOutputStream;
         _tunOutputStream = null;
-        _tunInterface?.Close();
-        _tunInterface?.Dispose();
+        var tunIf = _tunInterface;
         _tunInterface = null;
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+
+        try
+        { cts?.Cancel(); }
+        catch { }
+        try
+        { tunIn?.Close(); }
+        catch { }
+        try
+        { tunOut?.Close(); }
+        catch { }
+        try
+        { tunIf?.Close(); }
+        catch { }
+
+        ReleaseWakeLock();
+
+        _ = Task.Run(() =>
         {
+            try
+            {
+                cts?.Dispose();
+                tunIn?.Dispose();
+                tunOut?.Dispose();
+                tunIf?.Dispose();
+            }
+            catch { }
+        });
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try
+            {
+                if (OperatingSystem.IsAndroidVersionAtLeast(33))
+                {
 #pragma warning disable CA1416
-            StopForeground(StopForegroundFlags.Remove);
+                    StopForeground(StopForegroundFlags.Remove);
 #pragma warning restore CA1416
-        }
-        else
-        {
+                }
+                else
+                {
 #pragma warning disable CS0618, CA1422
-            StopForeground(true);
+                    StopForeground(true);
 #pragma warning restore CS0618, CA1422
-        }
-        StopSelf();
+                }
+                StopSelf();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[VPN ERROR] Failed to stop foreground service: {ex.Message}");
+            }
+        });
     }
     protected override void Dispose(bool disposing)
     {

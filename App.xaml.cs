@@ -1,8 +1,8 @@
-using obxodka.Pages;
 namespace obxodka;
 
 internal sealed partial class App : Application
 {
+    public static event Action? AppResumed;
     public static bool PendingTileAction { get; set; }
     public App() => InitializeComponent();
     public static void HandleTileClick()
@@ -24,6 +24,7 @@ internal sealed partial class App : Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var window = new Window(new AppShell());
+        window.Resumed += (s, e) => AppResumed?.Invoke();
 #if WINDOWS
         window.Destroying += (s, e) =>
         {

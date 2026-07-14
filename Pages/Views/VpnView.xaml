@@ -1,0 +1,387 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.VpnView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls">
+    <Grid Padding="{OnIdiom Desktop='32,28', Phone='8,0,8,16', Default='24,24'}">
+
+        <Grid
+            x:Name="ContentGrid"
+            ColumnDefinitions="{OnIdiom Desktop='5*, 4*',
+                                        Default='*'}"
+            ColumnSpacing="{OnIdiom Desktop=28,
+                                    Default=0}"
+            RowDefinitions="{OnIdiom Phone='4*, 6*',
+                                     Default='*'}"
+            RowSpacing="{OnIdiom Phone=20,
+                                 Default=0}">
+
+            <Grid
+                Grid.Row="{OnIdiom Desktop=0,
+                                   Default=0}"
+                Grid.Column="{OnIdiom Desktop=1,
+                                      Default=0}"
+                Margin="{OnIdiom Desktop='0,0,0,14',
+                                 Default='0'}"
+                RowDefinitions="{OnIdiom Desktop='Auto, 2*, *',
+                                         Phone='*, 2*, *',
+                                         Default='Auto, Auto, Auto'}"
+                RowSpacing="14"
+                VerticalOptions="Fill">
+
+                <Grid
+                    x:Name="CardIpWrapper"
+                    Grid.Row="0"
+                    Opacity="0"
+                    TranslationY="28"
+                    VerticalOptions="Fill">
+                    <Border
+                        x:Name="CardIp"
+                        Padding="18,14"
+                        Style="{StaticResource NeoCard}"
+                        VerticalOptions="Fill">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <HorizontalStackLayout
+                                Grid.Column="0"
+                                Spacing="8"
+                                VerticalOptions="Center">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=Earth24}"
+                                    IconColor="{AppThemeBinding Light=#7C3AED,
+                                                                Dark=#9F6FF0}"
+                                    IconSize="15" />
+                                <Label
+                                    FontFamily="RobotoMedium"
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="IP Адрес" />
+                            </HorizontalStackLayout>
+
+                            <Label
+                                x:Name="IpAddressLabel"
+                                Grid.Column="1"
+                                FontFamily="RobotoMedium"
+                                FontSize="12"
+                                Style="{StaticResource LabelMuted}"
+                                Text="IP: не назначен"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid
+                    x:Name="Card2Wrapper"
+                    Grid.Row="1"
+                    Opacity="0"
+                    TranslationY="28"
+                    VerticalOptions="Fill">
+                    <Border
+                        x:Name="Card2"
+                        Padding="18,14"
+                        Style="{StaticResource NeoCard}"
+                        VerticalOptions="Fill">
+                        <Grid RowDefinitions="Auto, *">
+                            <Grid
+                                Grid.Row="0"
+                                Margin="0,0,0,8"
+                                ColumnDefinitions="*, *">
+                                <VerticalStackLayout
+                                    Grid.Column="0"
+                                    Spacing="1"
+                                    VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="4">
+                                        <mi:MauiIcon
+                                            Icon="{mi:Fluent Icon=ArrowUp24}"
+                                            IconColor="{AppThemeBinding Light=#7C3AED,
+                                                                        Dark=#9F6FF0}"
+                                            IconSize="12" />
+                                        <Label
+                                            FontSize="10"
+                                            Style="{StaticResource LabelMuted}"
+                                            Text="Отправлено" />
+                                    </HorizontalStackLayout>
+                                    <Label
+                                        x:Name="TrafficUpLabel"
+                                        FontSize="16"
+                                        Style="{StaticResource LabelValue}"
+                                        Text="0 B/s" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="1"
+                                    VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="4">
+                                        <mi:MauiIcon
+                                            Icon="{mi:Fluent Icon=ArrowDown24}"
+                                            IconColor="{AppThemeBinding Light=#0284C7,
+                                                                        Dark=#00E5FF}"
+                                            IconSize="12" />
+                                        <Label
+                                            FontSize="10"
+                                            Style="{StaticResource LabelMuted}"
+                                            Text="Получено" />
+                                    </HorizontalStackLayout>
+                                    <Label
+                                        x:Name="TrafficDownLabel"
+                                        FontSize="16"
+                                        Style="{StaticResource LabelValue}"
+                                        Text="0 B/s" />
+                                </VerticalStackLayout>
+                            </Grid>
+
+                            <Grid
+                                x:Name="GraphContainer"
+                                Grid.Row="1"
+                                SizeChanged="OnGraphContainerSizeChanged"
+                                VerticalOptions="Fill">
+                                <Polyline
+                                    x:Name="TrafficGraphUp"
+                                    Fill="{AppThemeBinding Light=#1A7C3AED,
+                                                           Dark=#1A9F6FF0}"
+                                    Stroke="{AppThemeBinding Light=#7C3AED,
+                                                             Dark=#9F6FF0}"
+                                    StrokeThickness="2" />
+                                <Polyline
+                                    x:Name="TrafficGraphDown"
+                                    Fill="{AppThemeBinding Light=#1A0284C7,
+                                                           Dark=#1A00E5FF}"
+                                    Stroke="{AppThemeBinding Light=#0284C7,
+                                                             Dark=#00E5FF}"
+                                    StrokeThickness="2" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid
+                    x:Name="Card5Wrapper"
+                    Grid.Row="2"
+                    ColumnDefinitions="*, *"
+                    ColumnSpacing="14"
+                    Opacity="0"
+                    TranslationY="28"
+                    VerticalOptions="Fill">
+                    <Border
+                        x:Name="Card5"
+                        Grid.Column="0"
+                        Padding="18,14"
+                        HeightRequest="{OnIdiom Phone=82,
+                                                Default=-1}"
+                        Style="{StaticResource NeoCard}"
+                        VerticalOptions="Fill">
+                        <Grid RowDefinitions="Auto, *">
+                            <HorizontalStackLayout
+                                Grid.Row="0"
+                                Margin="0,0,0,8"
+                                Spacing="8">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=Clock24}"
+                                    IconColor="{AppThemeBinding Light=#7C3AED,
+                                                                Dark=#9F6FF0}"
+                                    IconSize="15" />
+                                <Label
+                                    FontFamily="RobotoMedium"
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Время" />
+                            </HorizontalStackLayout>
+                            <HorizontalStackLayout
+                                Grid.Row="1"
+                                Spacing="10"
+                                VerticalOptions="Center">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=Timer24}"
+                                    IconColor="{AppThemeBinding Light=#0284C7,
+                                                                Dark=#00E5FF}"
+                                    IconSize="24" />
+                                <Label
+                                    x:Name="TokenAmountLabel"
+                                    FontSize="18"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="Считаем..."
+                                    VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="Card6"
+                        Grid.Column="1"
+                        Padding="18,14"
+                        HeightRequest="{OnIdiom Phone=82,
+                                                Default=-1}"
+                        Style="{StaticResource NeoCard}"
+                        VerticalOptions="Fill">
+                        <Grid RowDefinitions="Auto, *">
+                            <HorizontalStackLayout
+                                Grid.Row="0"
+                                Margin="0,0,0,8"
+                                Spacing="8">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=DataArea24}"
+                                    IconColor="{AppThemeBinding Light=#7C3AED,
+                                                                Dark=#9F6FF0}"
+                                    IconSize="15" />
+                                <Label
+                                    FontFamily="RobotoMedium"
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Трафик" />
+                            </HorizontalStackLayout>
+                            <HorizontalStackLayout
+                                Grid.Row="1"
+                                Spacing="10"
+                                VerticalOptions="Center">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=ArrowDown24}"
+                                    IconColor="{AppThemeBinding Light=#0284C7,
+                                                                Dark=#00E5FF}"
+                                    IconSize="24" />
+                                <Label
+                                    x:Name="TotalTrafficLabelMain"
+                                    FontSize="18"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="0 B"
+                                    VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+            </Grid>
+
+            <Border
+                x:Name="Card1Wrapper"
+                Grid.Row="{OnIdiom Desktop=0,
+                                   Default=1}"
+                Grid.Column="0"
+                Opacity="0"
+                Style="{StaticResource NeoCard}"
+                TranslationY="28"
+                VerticalOptions="Fill">
+
+                <Grid
+                    Padding="{OnIdiom Phone='20,24',
+                                      Default='28,32'}"
+                    HorizontalOptions="Center"
+                    RowDefinitions="Auto, Auto"
+                    VerticalOptions="Center">
+
+                    <Grid
+                        Grid.Row="0"
+                        HeightRequest="{OnIdiom Phone=280,
+                                                Default=300}"
+                        HorizontalOptions="Center"
+                        WidthRequest="{OnIdiom Phone=280,
+                                               Default=300}">
+
+                        <skia:SKCanvasView
+                            x:Name="OuterAura"
+                            HorizontalOptions="Fill"
+                            IgnorePixelScaling="True"
+                            Opacity="0"
+                            VerticalOptions="Fill" />
+
+                        <skia:SKCanvasView
+                            x:Name="LoaderCanvas"
+                            HorizontalOptions="Fill"
+                            IgnorePixelScaling="True"
+                            IsVisible="False"
+                            PaintSurface="OnPaintLoaderSurface"
+                            VerticalOptions="Fill" />
+
+                        <Border
+                            BackgroundColor="Transparent"
+                            HeightRequest="{OnIdiom Phone=262,
+                                                    Default=278}"
+                            HorizontalOptions="Center"
+                            Stroke="{AppThemeBinding Light=#1A7C3AED,
+                                                     Dark=#1A9F6FF0}"
+                            StrokeThickness="1"
+                            VerticalOptions="Center"
+                            WidthRequest="{OnIdiom Phone=262,
+                                                   Default=278}">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="131" />
+                            </Border.StrokeShape>
+
+                            <Border
+                                BackgroundColor="Transparent"
+                                HeightRequest="{OnIdiom Phone=232,
+                                                        Default=240}"
+                                HorizontalOptions="Center"
+                                Stroke="{AppThemeBinding Light=#267C3AED,
+                                                         Dark=#269F6FF0}"
+                                StrokeThickness="1"
+                                VerticalOptions="Center"
+                                WidthRequest="{OnIdiom Phone=232,
+                                                       Default=240}">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="116" />
+                                </Border.StrokeShape>
+
+                                <Border
+                                    x:Name="ConnectButtonCore"
+                                    BackgroundColor="{AppThemeBinding Light={StaticResource BgElevatedLight},
+                                                                      Dark={StaticResource BgElevated}}"
+                                    HeightRequest="{OnIdiom Phone=198,
+                                                            Default=196}"
+                                    HorizontalOptions="Center"
+                                    Stroke="{AppThemeBinding Light={StaticResource BorderMediumLight},
+                                                             Dark={StaticResource BorderMedium}}"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center"
+                                    WidthRequest="{OnIdiom Phone=198,
+                                                           Default=196}">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="99" />
+                                    </Border.StrokeShape>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnConnectClickedAsync" />
+                                    </Border.GestureRecognizers>
+                                    <Grid>
+                                        <VerticalStackLayout
+                                            HorizontalOptions="Center"
+                                            Spacing="7"
+                                            VerticalOptions="Center">
+                                            <mi:MauiIcon
+                                                x:Name="ConnectIcon"
+                                                HorizontalOptions="Center"
+                                                Icon="{mi:Fluent Icon=Power24}"
+                                                IconColor="{AppThemeBinding Light=#7C3AED,
+                                                                            Dark=#9F6FF0}"
+                                                IconSize="{OnIdiom Phone=40,
+                                                                   Default=48}" />
+                                            <Label
+                                                x:Name="ConnectButtonText"
+                                                FontFamily="RobotoBold"
+                                                FontSize="{OnIdiom Phone=14,
+                                                                   Default=16}"
+                                                HorizontalOptions="Center"
+                                                Text="СТАРТ"
+                                                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                                            Dark={StaticResource TextPrimary}}" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </Border>
+                        </Border>
+                    </Grid>
+
+                    <Label
+                        x:Name="StatusLabel"
+                        Grid.Row="1"
+                        Margin="0,14,0,0"
+                        FontSize="{OnIdiom Phone=13,
+                                           Default=15}"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelAccent}"
+                        Text="Не в сети" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</ContentView>
+

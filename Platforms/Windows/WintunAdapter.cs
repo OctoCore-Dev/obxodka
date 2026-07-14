@@ -1,5 +1,3 @@
-using System.Buffers;
-using System.Runtime.InteropServices;
 namespace obxodka.Platforms.Windows;
 
 [SupportedOSPlatform("windows10.0.19041.0")]
@@ -79,6 +77,10 @@ internal sealed partial class WintunAdapter : IDisposable
                 Marshal.Copy(ptr, buf, 0, (int)size);
                 WintunReleaseReceivePacket(_session, ptr);
                 outBatch.Add(buf, (int)size);
+                if (outBatch.Count >= 256)
+                {
+                    break;
+                }
             }
             if (outBatch.Count > 0)
             {

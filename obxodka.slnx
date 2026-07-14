@@ -1,5 +1,9 @@
 <Solution>
   <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="Debug_EXE" />
+    <BuildType Name="Release_EXE" />
     <Platform Name="Any CPU" />
     <Platform Name="x64" />
   </Configurations>
@@ -7,6 +11,8 @@
     <Platform Solution="*|x64" Project="x64" />
     <Deploy Solution="*|x64" />
     <Deploy Solution="Debug|Any CPU" />
+    <Deploy Solution="Debug_EXE|Any CPU" />
   </Project>
-  <Project Path="C:\Users\irovb\Documents\code\VpnServer\obxodka.Shared\obxodka.Shared.csproj" />
+  <Project Path="obxodka.Shared\obxodka.Shared.csproj" />
+  <Project Path="obxodka.Core\obxodka.Core.csproj" />
 </Solution>

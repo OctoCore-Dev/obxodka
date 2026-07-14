@@ -1,5 +1,4 @@
 using System.Net.NetworkInformation;
-
 namespace obxodka.Platforms.Windows;
 
 [SupportedOSPlatform("windows10.0.19041.0")]
@@ -12,22 +11,41 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     public event Action<AppVpnState>? OnStateChanged;
     public event Action<string>? OnLogUpdated;
     public event Action<string>? OnErrorOccurred;
-    public event Action<AppTrafficStats>? OnTrafficUpdated = delegate { };
+    public event Action<AppTrafficStats>? OnTrafficUpdated;
+    public event Action<string>? OnForceLogoutRequested;
     public WindowsVpnService()
     {
         AppDomain.CurrentDomain.ProcessExit += (s, e) => StopVpnAsync().GetAwaiter().GetResult();
+        OctopusEngine.OnCertificateRevoked += (msg) => OnForceLogoutRequested?.Invoke(msg);
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
         OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
+        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
+        OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
         _ = CleanupStaleRoutesAsync();
     }
     private static async Task CleanupStaleRoutesAsync()
     {
+        _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'ObxVPN*' -or $_.Name -like 'Obxodka*' } | Remove-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue\"");
         _ = await RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
     }
     private string _currentServerIp = "";
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
+
+    private void HandleDeadConnection()
+    {
+        if (IsRunning && !_isExplicitlyStopped)
+        {
+            _ = Task.Run(async () =>
+            {
+                await StopVpnAsync();
+                UpdateState(AppVpnState.Error);
+                OnErrorOccurred?.Invoke("Сервер отключил соединение.");
+            });
+        }
+    }
+
     private void HandleEngineDrop()
     {
         if (IsRunning && !_isExplicitlyStopped)
@@ -42,20 +60,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     {
                         return;
                     }
-
                     try
                     {
                         var gw = await GetDefaultGatewayAsync();
                         if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(_currentServerIp))
                         {
                             _ = await RunCmdAsync("route", $"delete {_currentServerIp} mask 255.255.255.255");
-                            _ = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {gw} metric 1");
-                            Debug.WriteLine($"[RECONNECT] Re-added server bypass route via {gw}");
+                            var (exitCode, output) = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {gw} metric 1");
+                            await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
+                            UpdateState(AppVpnState.Connected);
+                            return;
                         }
-                        await OctopusEngine.Current.DisposeAsync();
-                        await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
-                        UpdateState(AppVpnState.Connected);
-                        return;
                     }
                     catch (Exception ex)
                     {
@@ -69,29 +84,101 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     }
     public async Task StartVpnAsync(string serverIp, int serverPort)
     {
-        _currentServerIp = serverIp;
+        var targetIp = serverIp;
+        if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
+        {
+            try
+            {
+                var ips = await Dns.GetHostAddressesAsync(serverIp);
+                if (ips.Length > 0)
+                {
+                    targetIp = ips.First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork).ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
+            }
+        }
+
+        var ip = OctopusEngine.Current.AssignedIp;
+        var ipv6 = OctopusEngine.Current.AssignedIpV6;
+
+        if (!IPAddress.TryParse(targetIp, out _) ||
+            !IPAddress.TryParse(ip, out _) ||
+            !IPAddress.TryParse(ipv6, out _))
+        {
+            throw new InvalidOperationException("Получены некорректные IP-адреса от сервера. Возможное вмешательство MITM.");
+        }
+
+        var originalHost = serverIp;
+        if (Uri.CheckHostName(serverIp) != UriHostNameType.Dns)
+        {
+            try
+            {
+                originalHost = new Uri(AppConfig.ApiBaseUrl).Host;
+            }
+            catch { }
+        }
+        _currentServerIp = targetIp;
         _currentServerPort = serverPort;
         _isExplicitlyStopped = false;
         try
         {
             UpdateState(AppVpnState.Connecting);
-            OnLogUpdated?.Invoke($"[ENGINE] Start ConnectAsync to {serverIp}:{serverPort}...");
-            await OctopusEngine.Current.ConnectAsync(serverIp, serverPort);
+            OnLogUpdated?.Invoke($"Построение маршрута через {originalHost}...");
+
+            var connected = false;
+            Exception? lastException = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    if (attempt > 1)
+                    {
+                        OnLogUpdated?.Invoke($"Переподключение ({attempt}/3)...");
+                    }
+                    OnLogUpdated?.Invoke($"Подключение к {targetIp}:{serverPort}...");
+
+                    await OctopusEngine.Current.ConnectAsync(targetIp, serverPort);
+                    connected = true;
+                    break;
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    lastException = ex;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    if (attempt < 3)
+                    {
+                        await Task.Delay(2000);
+                    }
+                }
+            }
+
+            if (!connected && lastException != null)
+            {
+                throw lastException;
+            }
+
             _cts = new CancellationTokenSource();
-            var ip = OctopusEngine.Current.AssignedIp;
-            var ipv6 = OctopusEngine.Current.AssignedIpV6;
-            OnLogUpdated?.Invoke($"[ENGINE] Got IP={ip}, IP6={ipv6}");
-            OnLogUpdated?.Invoke("[DRIVER] Initializing Wintun adapter in background...");
-            var uniqueName = $"ObxVPN{new Random().Next(100, 999)}";
+            ip = OctopusEngine.Current.AssignedIp;
+            ipv6 = OctopusEngine.Current.AssignedIpV6;
+            OnLogUpdated?.Invoke($"Получен IP: {ip}");
+            OnLogUpdated?.Invoke("Инициализация виртуального адаптера Wintun...");
+            var uniqueName = "ObxodkaVpn";
             var adapter = await Task.Run(() => new WintunAdapter(uniqueName, "Wintun", Guid.NewGuid()));
             _adapter = adapter;
-            OnLogUpdated?.Invoke($"[DRIVER] Starting Wintun Session ({adapter.Name})...");
+            OnLogUpdated?.Invoke($"Запуск адаптера ({adapter.Name})...");
             adapter.StartSession();
-            OnLogUpdated?.Invoke("[NET CONFIG] Applying adapter IPv4/IPv6 config...");
-            await SetAdapterConfigAsync(adapter.Name, ip, ipv6, "255.192.0.0");
-            OnLogUpdated?.Invoke("[ROUTE] Intercepting routes and redirecting to Wintun...");
-            await SetWindowsRoutesAsync(adapter.Pool, serverIp, true);
-            OnLogUpdated?.Invoke("[ENGINE] Process traffic loop started.");
+            OnLogUpdated?.Invoke("Применение настроек сети...");
+            await SetAdapterConfigAsync(adapter.Name, ip, ipv6, "255.255.255.0");
+            OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
+            await SetWindowsRoutesAsync(adapter.Name, targetIp, ip, true);
+            OnLogUpdated?.Invoke("Защищенное соединение установлено!");
             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
             UpdateState(AppVpnState.Connected);
         }
@@ -185,8 +272,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var pfx = mask == "255.192.0.0" ? 10 : 24;
             var psScript = $@"
                 $ErrorActionPreference = 'Stop';
-                $adapter = Get-NetAdapter -InterfaceDescription '{adapterName} Tunnel' -ErrorAction SilentlyContinue;
-                if (-not $adapter) {{ Write-Output 'Adapter not found'; exit 1; }}
+                $adapter = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like '*{adapterName}*' -or $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*Wintun*' }} | Select-Object -First 1;
+                if (-not $adapter) {{ Write-Output (Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name, InterfaceDescription | Out-String); exit 1; }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -AddressFamily IPv6 -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -NlMtuBytes 1420 -ErrorAction Stop | Out-Null }} catch {{ }}
@@ -261,20 +348,20 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             return "";
         }
     }
-    private static async Task SetWindowsRoutesAsync(string adapterPool, string serverIp, bool enable)
+    private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
     {
         var gw = await GetDefaultGatewayAsync();
-        Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, Pool: {adapterPool}, ServerIP: {serverIp}, Enable: {enable}");
-        if (enable && !string.IsNullOrEmpty(adapterPool))
+        Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
+        if (enable && !string.IsNullOrEmpty(adapterName))
         {
             var idxResult = await RunCmdAsync("powershell",
-                $"-NoProfile -Command \"(Get-NetAdapter -Name '{adapterPool}' -ErrorAction SilentlyContinue).ifIndex\"");
+                $"-NoProfile -Command \"(Get-NetAdapter -Name '{adapterName}' -ErrorAction SilentlyContinue).ifIndex\"");
             var ifIndex = idxResult.output.Trim();
             Debug.WriteLine($"[ROUTE] Wintun ifIndex: '{ifIndex}'");
             if (string.IsNullOrEmpty(ifIndex))
             {
                 idxResult = await RunCmdAsync("powershell",
-                    $"-NoProfile -Command \"(Get-NetAdapter | Where-Object {{ $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*{adapterPool}*' }} | Select-Object -First 1).ifIndex\"");
+                    $"-NoProfile -Command \"(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like '*{adapterName}*' -or $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*Wintun*' }} | Select-Object -First 1).ifIndex\"");
                 ifIndex = idxResult.output.Trim();
                 Debug.WriteLine($"[ROUTE] Wintun ifIndex (fallback): '{ifIndex}'");
             }
@@ -287,8 +374,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (!string.IsNullOrEmpty(ifIndex))
             {
                 await Task.Delay(200);
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 100.64.0.1 metric 1 if {ifIndex}");
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 100.64.0.1 metric 1 if {ifIndex}");
+                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
+                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
                 var psV6 = $@"
                     $idx = {ifIndex};
@@ -317,11 +404,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
             }
-
-            if (!string.IsNullOrEmpty(adapterPool))
+            if (!string.IsNullOrEmpty(adapterName))
             {
                 var psDelV6 = $@"
-                    $idx = (Get-NetAdapter | Where-Object {{ $_.InterfaceDescription -like '*{adapterPool}*' }} | Select-Object -First 1).ifIndex;
+                    $idx = (Get-NetAdapter -Name '{adapterName}' -ErrorAction SilentlyContinue | Select-Object -First 1).ifIndex;
                     if ($idx) {{
                         try {{ Remove-NetRoute -InterfaceIndex $idx -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                         try {{ Remove-NetRoute -InterfaceIndex $idx -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
@@ -336,13 +422,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     public async Task StopVpnAsync()
     {
         _isExplicitlyStopped = true;
+        UpdateState(AppVpnState.Disconnecting);
         _cts?.Cancel();
-        UpdateState(AppVpnState.Disconnected);
         OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");
+
         var adapterToDispose = _adapter;
-        var poolName = _adapter?.Pool ?? "";
+        var adapterName = _adapter?.Name ?? "";
         var serverIp = _currentServerIp;
         _adapter = null;
+
         try
         {
             if (adapterToDispose != null)
@@ -352,7 +440,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 catch { }
                 Debug.WriteLine("[DRIVER] Wintun adapter disposed.");
             }
-            await SetWindowsRoutesAsync(poolName, serverIp, false);
+            await SetWindowsRoutesAsync(adapterName, serverIp, "", false);
             await OctopusEngine.Current.DisposeAsync();
             Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
         }
@@ -360,10 +448,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             Debug.WriteLine($"[STOP ERROR] {ex.Message}");
         }
+
+        UpdateState(AppVpnState.Disconnected);
     }
     public void Dispose()
     {
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
+        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         _ = StopVpnAsync();
         _cts?.Dispose();
     }

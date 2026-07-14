@@ -3,14 +3,12 @@ namespace obxodka.Helpers;
 internal static class DeviceHelper
 {
     private static string? t_cachedHwid;
-
     public static string GetHwid()
     {
         if (!string.IsNullOrEmpty(t_cachedHwid))
         {
             return t_cachedHwid;
         }
-
 #if WINDOWS
         try
         {
@@ -20,7 +18,6 @@ internal static class DeviceHelper
         }
         catch
         {
-            // Ignore registry read errors
         }
 #elif ANDROID
         try
@@ -52,7 +49,6 @@ internal static class DeviceHelper
             Debug.WriteLine($"[HWID IOS ERROR]: {ex.Message}");
         }
 #endif
-
         if (string.IsNullOrEmpty(t_cachedHwid))
         {
             t_cachedHwid = Preferences.Default.Get("hwid_cache", string.Empty);
@@ -62,10 +58,8 @@ internal static class DeviceHelper
                 Preferences.Default.Set("hwid_cache", t_cachedHwid);
             }
         }
-
         return t_cachedHwid;
     }
-
     public static string GetDeviceName() =>
         $"{DeviceInfo.Current.Platform} | {DeviceInfo.Current.Name}";
 }

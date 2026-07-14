@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
@@ -7,68 +7,70 @@
   xmlns:uap18="http://schemas.microsoft.com/appx/manifest/uap/windows10/18"
   IgnorableNamespaces="uap rescap desktop uap18">
 
-	<Identity
-	  Name="OctoCore.Obxodka"
-	  Publisher="CN=irovb"
-	  Version="2.5.4.0" />
+    <Identity
+      Name="OctoCore.obxodka"
+      Publisher="CN=0769046D-E2A3-4C56-B798-8DA94D38B534"
+      Version="3.5.8.0" />
 
-	<Properties>
-		<DisplayName>Obxodka</DisplayName>
-		<PublisherDisplayName>OctoCore</PublisherDisplayName>
-		<Logo>Assets\StoreLogo.png</Logo>
-	</Properties>
+    <Properties>
+        <DisplayName>obxodka</DisplayName>
+        <PublisherDisplayName>OctoCore</PublisherDisplayName>
+        <Logo>$placeholder$.png</Logo>
+    </Properties>
 
-	<Dependencies>
-		<TargetDeviceFamily
+    <Dependencies>
+        <TargetDeviceFamily
 		  Name="Windows.Desktop"
 		  MinVersion="10.0.17763.0"
 		  MaxVersionTested="10.0.22621.0" />
-	</Dependencies>
+    </Dependencies>
 
-	<Resources>
-		<Resource Language="x-generate" />
-	</Resources>
+    <Resources>
+        <Resource Language="x-generate" />
+    </Resources>
 
-	<Applications>
-		<Application
+    <Applications>
+        <Application
 		  Id="App"
 		  Executable="$targetnametoken$.exe"
 		  EntryPoint="$targetentrypoint$"
 		  uap18:RuntimeBehavior="windowsApp">
 
-			<uap:VisualElements
-			  DisplayName="Obxodka"
+            <uap:VisualElements
+			  DisplayName="obxodka"
 			  Description="Fast and Secure VPN"
-			  Square150x150Logo="Assets\Square150x150Logo.png"
-			  Square44x44Logo="Assets\Square44x44Logo.png"
+			  Square150x150Logo="$placeholder$.png"
+			  Square44x44Logo="$placeholder$.png"
 			  BackgroundColor="#08080C">
 
-				<uap:DefaultTile
-				  Wide310x150Logo="Assets\Wide310x150Logo.png"
+                <uap:DefaultTile
+				  Square71x71Logo="$placeholder$.png"
+				  Wide310x150Logo="$placeholder$.png"
+				  Square310x310Logo="$placeholder$.png"
 				  ShortName="Obxodka" />
 
-				<uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#08080C" />
+                <uap:SplashScreen Image="splash_logo.png" BackgroundColor="#08080C" />
 
-			</uap:VisualElements>
+            </uap:VisualElements>
 
-			<Extensions>
-				<uap:Extension Category="windows.protocol">
-					<uap:Protocol Name="obxodka">
-						<uap:DisplayName>Obxodka Protocol</uap:DisplayName>
-					</uap:Protocol>
-				</uap:Extension>
-			</Extensions>
+            <Extensions>
+                <uap:Extension Category="windows.protocol">
+                    <uap:Protocol Name="obxodka">
+                        <uap:DisplayName>Obxodka Protocol</uap:DisplayName>
+                    </uap:Protocol>
+                </uap:Extension>
+            </Extensions>
 
-		</Application>
-	</Applications>
+        </Application>
+    </Applications>
 
-	<Capabilities>
-		<rescap:Capability Name="runFullTrust" />
-		<rescap:Capability Name="allowElevation" />
-		<rescap:Capability Name="packageQuery" />
-		<Capability Name="internetClient" />
-		<Capability Name="internetClientServer" />
-		<Capability Name="privateNetworkClientServer" />
-	</Capabilities>
+    <Capabilities>
+        <Capability Name="internetClient" />
+        <Capability Name="internetClientServer" />
+        <Capability Name="privateNetworkClientServer" />
+        <rescap:Capability Name="runFullTrust" />
+        <rescap:Capability Name="allowElevation" />
+
+    </Capabilities>
 
 </Package>

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option csharp_namespace = "obxodka.Core.Protos";
+
+service SecurityService {
+  rpc NotifyCertificateIssued (CertRequest) returns (CertResponse);
+  
+  rpc RevokeCertificate (CertRequest) returns (CertResponse);
+}
+
+message CertRequest {
+  string thumbprint = 1;
+  string userId = 2;
+  int64 timestamp = 3; 
+}
+
+message CertResponse {
+  bool success = 1;
+  string error_message = 2; 
+}
+
+service TunnelService {
+  rpc ConnectStream (stream TunnelPacket) returns (stream TunnelPacket);
+}
+
+message TunnelPacket {
+  bytes data = 1;
+}

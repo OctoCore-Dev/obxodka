@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <Shell
     x:Class="obxodka.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -8,9 +8,21 @@
     Shell.NavBarIsVisible="False">
 
     <Shell.FlyoutHeader>
-        <Grid HeightRequest="150" BackgroundColor="{DynamicResource AppBackground}">
-            <Image Source="user_icon.png" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="64" HeightRequest="64" Opacity="0.8"/>
-            <Label Text="obxodka" TextColor="{DynamicResource StatusBlue}" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,15" />
+        <Grid BackgroundColor="{DynamicResource AppBackground}" HeightRequest="150">
+            <Image
+                HeightRequest="64"
+                HorizontalOptions="Center"
+                Opacity="0.8"
+                Source="user_icon.png"
+                VerticalOptions="Center"
+                WidthRequest="64" />
+            <Label
+                Margin="0,0,0,15"
+                FontAttributes="Bold"
+                HorizontalOptions="Center"
+                Text="obxodka"
+                TextColor="{DynamicResource StatusBlue}"
+                VerticalOptions="End" />
         </Grid>
     </Shell.FlyoutHeader>
 

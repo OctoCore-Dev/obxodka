@@ -1,11 +1,14 @@
-using System;
-using System.IO;
 using Microsoft.UI.Xaml;
 namespace obxodka.WinUI;
 
 public sealed partial class App : MauiWinUIApplication
 {
-    public App() => UnhandledException += App_UnhandledException;
+    public App()
+    {
+        InitializeComponent();
+        _ = WinUIEx.WebAuthenticator.CheckOAuthRedirectionActivation();
+        UnhandledException += App_UnhandledException;
+    }
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
     protected override void OnLaunched(LaunchActivatedEventArgs args) => base.OnLaunched(args);
     private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

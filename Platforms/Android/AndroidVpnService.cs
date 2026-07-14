@@ -1,8 +1,6 @@
-using Android.Content;
-
 namespace obxodka.Platforms.Android;
 
-[SupportedOSPlatform("android30.0")]
+[SupportedOSPlatform("android29.0")]
 internal sealed class AndroidVpnService : IVpnService
 {
     public static AndroidVpnService Instance { get; } = new();
@@ -14,9 +12,30 @@ internal sealed class AndroidVpnService : IVpnService
 #pragma warning restore CS0067
     public event Action<string>? OnErrorOccurred;
     public event Action<AppTrafficStats>? OnTrafficUpdated = delegate { };
+    public event Action<string>? OnForceLogoutRequested;
     private string _currentServerIp = "";
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
+
+    private AndroidVpnService()
+    {
+        OctopusEngine.OnCertificateRevoked += (msg) => OnForceLogoutRequested?.Invoke(msg);
+        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
+        OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
+    }
+
+    private void HandleDeadConnection()
+    {
+        if (IsRunning && !_isExplicitlyStopped)
+        {
+            _ = Task.Run(async () =>
+            {
+                await StopVpnAsync();
+                SetError("Сервер отключил соединение.");
+            });
+        }
+    }
+
     public void HandleEngineDrop()
     {
         if (IsRunning && !_isExplicitlyStopped)
@@ -47,11 +66,34 @@ internal sealed class AndroidVpnService : IVpnService
     }
     public async Task StartVpnAsync(string serverIp, int serverPort)
     {
-        _currentServerIp = serverIp;
+        var targetIp = serverIp;
+        if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
+        {
+            try
+            {
+                var addrs = await Dns.GetHostAddressesAsync(serverIp);
+                targetIp = addrs.First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork).ToString();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
+            }
+        }
+        var originalHost = serverIp;
+        if (Uri.CheckHostName(serverIp) != UriHostNameType.Dns)
+        {
+            try
+            {
+                originalHost = new Uri(AppConfig.ApiBaseUrl).Host;
+            }
+            catch { }
+        }
+        _currentServerIp = targetIp;
         _currentServerPort = serverPort;
         _isExplicitlyStopped = false;
         var intent = global::Android.Net.VpnService.Prepare(Platform.AppContext);
         if (intent != null)
+#pragma warning disable CA1416
         {
             var granted = await MainActivity.RequestVpnPermissionAsync(intent);
             if (!granted)
@@ -60,18 +102,35 @@ internal sealed class AndroidVpnService : IVpnService
                 return;
             }
         }
+        OnLogUpdated?.Invoke($"[DOMAINS] Traffic will route via domain: {originalHost}");
         ChangeState(AppVpnState.Connecting);
-        await OctopusEngine.Current.ConnectAsync(serverIp, serverPort);
-        MainActivity.StartVpnService();
+        try
+        {
+            await OctopusEngine.Current.ConnectAsync(targetIp, serverPort);
+            MainActivity.StartVpnService();
+        }
+        catch (Exception ex)
+        {
+            SetError($"Ошибка подключения: {ex.Message}");
+        }
+#pragma warning restore CA1416
     }
     public async Task StopVpnAsync()
     {
         _isExplicitlyStopped = true;
-        var context = Platform.AppContext;
-        var intent = new Intent(context, typeof(OctopusVpnService))
-            .SetAction("STOP");
-        _ = context.StartService(intent);
-        await OctopusEngine.Current.DisposeAsync();
+        ChangeState(AppVpnState.Disconnecting);
+        OctopusVpnService.Instance?.StopNativeVpn();
+
+        await Task.Run(async () =>
+        {
+            try
+            {
+                var disposeTask = OctopusEngine.Current.DisposeAsync().AsTask();
+                _ = await Task.WhenAny(disposeTask, Task.Delay(800));
+            }
+            catch { }
+        }).ConfigureAwait(false);
+
         ChangeState(AppVpnState.Disconnected);
     }
     public void ChangeState(AppVpnState newState)

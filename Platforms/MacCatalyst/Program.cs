@@ -1,3 +1,4 @@
+#pragma warning disable CA1416
 using UIKit;
 namespace obxodka;
 

@@ -1,6 +1,6 @@
 namespace obxodka.Services;
 
-internal interface IVpnService
+public interface IVpnService
 {
     public AppVpnState CurrentState { get; }
     public bool IsRunning { get; }
@@ -8,6 +8,7 @@ internal interface IVpnService
     public event Action<string>? OnLogUpdated;
     public event Action<string>? OnErrorOccurred;
     public event Action<AppTrafficStats>? OnTrafficUpdated;
+    public event Action<string>? OnForceLogoutRequested;
     public Task StartVpnAsync(string serverIp, int serverPort);
     public Task StopVpnAsync();
 }

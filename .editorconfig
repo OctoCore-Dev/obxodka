@@ -1,0 +1,274 @@
+root = true
+[*]
+indent_style                  = space
+indent_size = 4
+tab_width                     = 4
+end_of_line                   = crlf
+charset = utf-8
+trim_trailing_whitespace      = true
+insert_final_newline          = true
+max_line_length               = 120
+
+[*.{razor,html,htm,css,scss,js,ts,jsx,tsx}]
+indent_size = 4
+indent_style = space
+tab_width = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+max_line_length = 140
+
+[*.{razor,html,htm}]
+html_attribute_quotes = double
+html_tag_case = lower
+html_attribute_case = lower
+html_space_before_self_closing_slash = true
+
+[*.razor]
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_indent_case_contents = true
+csharp_indent_case_contents_when_block = true
+csharp_indent_switch_labels = true
+csharp_indent_labels = flush_left
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+[wwwroot/monaco/**.{js,css,html}]
+generated_code = true
+
+[**/*Win32*.cs]
+dotnet_diagnostic.IDE1006.severity = none
+dotnet_diagnostic.CA1707.severity  = none
+dotnet_diagnostic.CA1712.severity  = none
+dotnet_diagnostic.SYSLIB1092.severity = none
+dotnet_diagnostic.SYSLIB1095.severity = none
+
+[*.{md, txt}]
+trim_trailing_whitespace      = false
+
+[*.{json, yml, yaml}]
+indent_size = 2
+
+[*.{ xml,csproj,props,targets,resx}]
+indent_size = 2
+dotnet_diagnostic.NU1605.severity = error
+dotnet_diagnostic.NU1507.severity = error
+
+[**Pages/**.cs]
+dotnet_diagnostic.IDE0040.severity = error
+dotnet_diagnostic.IDE0044.severity = error
+
+[**Tests/**.cs]
+dotnet_diagnostic.CA1822.severity  = suggestion
+dotnet_diagnostic.IDE0060.severity = suggestion
+
+[*.xaml.cs]
+dotnet_naming_rule.ban_public_pages.symbols = public_classes_sym
+dotnet_naming_rule.ban_public_pages.style = banned_public_style
+dotnet_naming_rule.ban_public_pages.severity = error
+dotnet_naming_symbols.public_classes_sym.applicable_kinds = class
+dotnet_naming_symbols.public_classes_sym.applicable_accessibilities = public
+dotnet_naming_style.banned_public_style.capitalization = pascal_case
+
+[*.{xaml,axaml}]
+indent_size = 4
+indent_style = space
+tab_width = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+xaml_attribute_multi_line_threshold = 2
+xaml_attribute_formatting_rule = always_on_new_line_if_more_than_threshold
+xaml_put_ending_bracket_on_new_line = false
+xaml_sort_attributes = true
+xaml_collapse_empty_tags = true
+xaml_space_inside_markup_extension = false
+xaml_space_before_self_closing_slash = true
+
+[**/Migrations/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+dotnet_diagnostic.CA1861.severity = none
+
+[*.cs]
+csharp_style_var_when_type_is_apparent = true:error
+csharp_style_var_for_built_in_types = true:error
+csharp_style_var_elsewhere = true:error
+csharp_style_namespace_declarations = file_scoped:error
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups     = false
+csharp_prefer_braces                        = true:error
+csharp_prefer_simple_using_statement = true:error
+csharp_style_prefer_primary_constructors = true:error
+csharp_style_prefer_collection_expression = true:error
+csharp_style_expression_bodied_methods = when_on_single_line:error
+csharp_style_expression_bodied_constructors = when_on_single_line:error
+csharp_style_expression_bodied_operators = when_on_single_line:error
+csharp_style_expression_bodied_properties = true:error
+csharp_style_expression_bodied_accessors = true:error
+csharp_style_expression_bodied_indexers = true:error
+csharp_style_expression_bodied_lambdas = true:error
+csharp_style_expression_bodied_local_functions = when_on_single_line:error
+csharp_style_prefer_pattern_matching = true:error
+csharp_style_prefer_not_pattern = true:error
+csharp_style_prefer_switch_expression = true:error
+csharp_style_prefer_extended_property_pattern = true:error
+csharp_style_prefer_null_check_over_type_check = true:error
+dotnet_style_null_propagation = true:error
+dotnet_style_coalesce_expression = true:error
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:error
+csharp_style_throw_expression = true:error
+csharp_style_prefer_tuple_swap = true:error
+dotnet_style_prefer_auto_properties = true:error
+csharp_style_prefer_local_over_anonymous_function = true:error
+csharp_style_prefer_index_operator = true:error
+csharp_style_prefer_range_operator = true:error
+dotnet_style_qualification_for_field = false:error
+dotnet_style_qualification_for_property = false:error
+dotnet_style_qualification_for_method = false:error
+dotnet_style_qualification_for_event = false:error
+dotnet_style_predefined_type_for_locals_parameters_members = true:error
+dotnet_style_predefined_type_for_member_access = true:error
+dotnet_style_object_initializer = true:error
+dotnet_style_collection_initializer = true:error
+dotnet_style_explicit_tuple_names = true:error
+dotnet_style_readonly_field = true:error
+dotnet_style_require_accessibility_modifiers = always:error
+csharp_preferred_modifier_order = public, private, protected, internal, file, static, extern, new, virtual, abstract, sealed, override, readonly, unsafe, required, volatile, async:error
+csharp_style_prefer_method_group_conversion = true:error
+csharp_space_after_cast = false
+csharp_space_after_comma                                 = true
+csharp_space_after_dot                                   = false
+csharp_space_after_keywords_in_control_flow_statements   = true
+csharp_space_after_semicolon_in_for_statement            = true
+csharp_space_around_binary_operators                     = before_and_after
+csharp_space_around_declaration_statements               = false
+csharp_space_before_colon_in_inheritance_clause          = true
+csharp_space_after_colon_in_inheritance_clause           = true
+csharp_space_before_comma                                = false
+csharp_space_before_dot                                  = false
+csharp_space_before_open_square_brackets                 = false
+csharp_space_before_semicolon_in_for_statement           = false
+csharp_space_between_empty_square_brackets               = false
+csharp_space_between_method_call_empty_parameter_list_parentheses = false
+csharp_space_between_method_call_name_and_opening_parenthesis     = false
+csharp_space_between_method_call_parameter_list_parentheses       = false
+csharp_space_between_method_declaration_empty_parameter_list_parentheses = false
+csharp_space_between_method_declaration_name_and_open_parenthesis = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_parentheses                         = false
+csharp_space_between_square_brackets                     = false
+csharp_new_line_before_open_brace                        = all
+csharp_new_line_before_else                              = true
+csharp_new_line_before_catch                             = true
+csharp_new_line_before_finally                           = true
+csharp_new_line_before_members_in_object_initializers   = true
+csharp_new_line_before_members_in_anonymous_types       = true
+csharp_new_line_between_query_expression_clauses        = true
+csharp_indent_case_contents                = true
+csharp_indent_switch_labels                = true
+csharp_indent_labels                       = flush_left
+csharp_indent_block_contents              = true
+csharp_indent_braces                       = false
+csharp_indent_case_contents_when_block    = true
+csharp_preserve_single_line_statements     = false
+csharp_preserve_single_line_blocks         = true
+
+dotnet_naming_rule.private_fields_underscore.symbols  = private_fields_sym
+dotnet_naming_rule.private_fields_underscore.style    = underscore_camel_style
+dotnet_naming_rule.private_fields_underscore.severity = error
+dotnet_naming_symbols.private_fields_sym.applicable_kinds          = field
+dotnet_naming_symbols.private_fields_sym.applicable_accessibilities = private, private_protected
+dotnet_naming_style.underscore_camel_style.required_prefix = _
+dotnet_naming_style.underscore_camel_style.capitalization = camel_case
+
+dotnet_naming_rule.static_private_fields.symbols = static_private_sym
+dotnet_naming_rule.static_private_fields.style = static_private_style
+dotnet_naming_rule.static_private_fields.severity = error
+dotnet_naming_symbols.static_private_sym.applicable_kinds = field
+dotnet_naming_symbols.static_private_sym.applicable_accessibilities = private, private_protected
+dotnet_naming_symbols.static_private_sym.required_modifiers = static
+dotnet_naming_style.static_private_style.required_prefix           = s_
+dotnet_naming_style.static_private_style.capitalization = camel_case
+
+dotnet_naming_rule.thread_static_fields.symbols = thread_static_sym
+dotnet_naming_rule.thread_static_fields.style = thread_static_style
+dotnet_naming_rule.thread_static_fields.severity = error
+dotnet_naming_symbols.thread_static_sym.applicable_kinds = field
+dotnet_naming_symbols.thread_static_sym.required_modifiers = static
+dotnet_naming_symbols.thread_static_sym.applicable_accessibilities = private
+dotnet_naming_style.thread_static_style.required_prefix            = t_
+dotnet_naming_style.thread_static_style.capitalization = camel_case
+
+dotnet_naming_rule.interfaces_prefix_i.symbols = interface_sym
+dotnet_naming_rule.interfaces_prefix_i.style = interface_style
+dotnet_naming_rule.interfaces_prefix_i.severity = error
+dotnet_naming_symbols.interface_sym.applicable_kinds = interface
+dotnet_naming_style.interface_style.required_prefix = I
+dotnet_naming_style.interface_style.capitalization = pascal_case
+
+dotnet_naming_rule.type_parameters.symbols = type_params_sym
+dotnet_naming_rule.type_parameters.style = type_param_style
+dotnet_naming_rule.type_parameters.severity = error
+dotnet_naming_symbols.type_params_sym.applicable_kinds = type_parameter
+dotnet_naming_style.type_param_style.required_prefix = T
+dotnet_naming_style.type_param_style.capitalization = pascal_case
+
+dotnet_naming_rule.constants_pascal.symbols = constants_sym
+dotnet_naming_rule.constants_pascal.style = pascal_case_style
+dotnet_naming_rule.constants_pascal.severity = error
+dotnet_naming_symbols.constants_sym.applicable_kinds = field
+dotnet_naming_symbols.constants_sym.required_modifiers = const
+dotnet_naming_style.pascal_case_style.capitalization      = pascal_case
+
+dotnet_naming_rule.public_members_pascal.symbols  = public_members_sym
+dotnet_naming_rule.public_members_pascal.style    = pascal_case_style
+dotnet_naming_rule.public_members_pascal.severity = error
+dotnet_naming_symbols.public_members_sym.applicable_kinds          = class, struct, record, enum, property, method, event, delegate, field
+dotnet_naming_symbols.public_members_sym.applicable_accessibilities = public, internal, protected, protected_internal
+
+dotnet_naming_rule.async_methods_suffix.symbols = async_methods_sym
+dotnet_naming_rule.async_methods_suffix.style = async_style
+dotnet_naming_rule.async_methods_suffix.severity = error
+dotnet_naming_symbols.async_methods_sym.applicable_kinds = method
+dotnet_naming_symbols.async_methods_sym.required_modifiers = async
+dotnet_naming_style.async_style.required_suffix = Async
+dotnet_naming_style.async_style.capitalization = pascal_case
+
+dotnet_naming_rule.locals_camel.symbols = locals_sym
+dotnet_naming_rule.locals_camel.style = camel_case_style
+dotnet_naming_rule.locals_camel.severity = error
+dotnet_naming_symbols.locals_sym.applicable_kinds = parameter, local
+dotnet_naming_style.camel_case_style.capitalization = camel_case
+
+dotnet_analyzer_diagnostic.severity = warning
+dotnet_analyzer_diagnostic.category-Performance.severity = error
+dotnet_analyzer_diagnostic.category-Reliability.severity = error
+dotnet_analyzer_diagnostic.category-Security.severity = error
+
+dotnet_diagnostic.CA1822.severity = error   # Метод не использует this — сделай static
+dotnet_diagnostic.CA1062.severity = none    # Validate parameter (слишком шумно с nullable)
+dotnet_diagnostic.CA1805.severity = error   # Не инициализируй до default value
+dotnet_diagnostic.CA1854.severity = error   # Prefer TryGetValue over ContainsKey+indexer
+dotnet_diagnostic.CA1860.severity = error   # Prefer Count > 0 over Any()
+dotnet_diagnostic.CA1861.severity = error   # Не создавай массивы в аргументах (alloc)
+dotnet_diagnostic.CA1862.severity = error   # Используй StringComparison override
+dotnet_diagnostic.CA1863.severity = error   # Используй CompositeFormat
+dotnet_diagnostic.CA1864.severity = error   # Предпочти GetOrAdd/TryAdd для Dictionary
+dotnet_diagnostic.CA1869.severity = error   # Кэшируй JsonSerializerOptions
+dotnet_diagnostic.CA2201.severity = error   # Не бросай Exception/SystemException
+dotnet_diagnostic.CA2208.severity = error   # ArgumentException с именем параметра
+dotnet_diagnostic.CA2213.severity = error   # Disposable поля должны быть Disposed
+dotnet_diagnostic.CA2215.severity = error   # Dispose должен вызывать base.Dispose
+dotnet_diagnostic.IDE0005.severity = none   # Unused using (Roslyn сам убирает)
+dotnet_diagnostic.IDE0059.severity = error  # Unused assignment
+dotnet_diagnostic.IDE0060.severity = error  # Unused parameter
+dotnet_diagnostic.IDE0130.severity = none   # Namespace не совпадает с папкой
+dotnet_diagnostic.IDE0290.severity = error  # Использовать primary constructor
+dotnet_diagnostic.IDE0300.severity = error  # Использовать collection expression
+dotnet_diagnostic.IDE0301.severity = error  # Использовать [] вместо new List<T>()
+dotnet_diagnostic.IDE0305.severity = error  # Использовать collection expression для fluent
+dotnet_diagnostic.IL2026.severity = error
+dotnet_diagnostic.IL3050.severity = error
+dotnet_diagnostic.CS1591.severity = none

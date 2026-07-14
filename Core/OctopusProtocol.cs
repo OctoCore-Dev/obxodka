@@ -6,7 +6,6 @@ internal static class OctopusProtocol
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
-
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
         try
         {

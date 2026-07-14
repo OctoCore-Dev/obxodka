@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace obxodka.Services;
 
 public sealed class AuthManager
@@ -7,18 +5,15 @@ public sealed class AuthManager
     private static readonly SemaphoreSlim t_fileLock = new(1, 1);
     private static UserSession? t_cachedSession;
     private static AuthenticationHeaderValue? t_cachedAuthHeader;
-
     public static async ValueTask<AuthenticationHeaderValue?> GetAuthHeaderAsync()
     {
         if (t_cachedAuthHeader != null)
         {
             return t_cachedAuthHeader;
         }
-
         _ = await LoadSessionAsync().ConfigureAwait(false);
         return t_cachedAuthHeader;
     }
-
     public static async Task SaveSessionAsync(UserSession session)
     {
         await t_fileLock.WaitAsync().ConfigureAwait(false);
@@ -28,11 +23,9 @@ public sealed class AuthManager
             t_cachedAuthHeader = string.IsNullOrEmpty(session.JwtToken)
                 ? null
                 : new AuthenticationHeaderValue("Bearer", session.JwtToken);
-
             Preferences.Default.Set("user_email", session.Email ?? string.Empty);
             Preferences.Default.Set("user_is_logged", session.IsLoggedIn);
             Preferences.Default.Set("user_sub_until", session.SubscriptionUntil?.Ticks ?? 0);
-
             if (!string.IsNullOrEmpty(session.Password))
             {
                 await SecureStorage.Default.SetAsync("user_password", session.Password).ConfigureAwait(false);
@@ -50,14 +43,13 @@ public sealed class AuthManager
         catch (Exception ex)
         {
             Debug.WriteLine($"[AUTH SAVE ERROR]: {ex.Message}");
-            throw;
+            // Do not throw so it doesn't crash the login process
         }
         finally
         {
             _ = t_fileLock.Release();
         }
     }
-
     public static async Task<UserSession> LoadSessionAsync()
     {
         if (t_cachedSession != null)
@@ -71,7 +63,6 @@ public sealed class AuthManager
             {
                 return t_cachedSession;
             }
-
             var isLoggedIn = Preferences.Default.Get("user_is_logged", false);
             if (!isLoggedIn)
             {
@@ -79,12 +70,10 @@ public sealed class AuthManager
                 t_cachedAuthHeader = null;
                 return t_cachedSession;
             }
-
             var jwt = await SecureStorage.Default.GetAsync("user_jwt").ConfigureAwait(false) ?? string.Empty;
             var pass = await SecureStorage.Default.GetAsync("user_password").ConfigureAwait(false) ?? string.Empty;
             var vpnConf = await SecureStorage.Default.GetAsync("user_vpn_config").ConfigureAwait(false) ?? string.Empty;
             var subTicks = Preferences.Default.Get("user_sub_until", 0L);
-
             if (string.IsNullOrEmpty(jwt))
             {
                 ClearSessionDataInternal();
@@ -92,7 +81,6 @@ public sealed class AuthManager
                 t_cachedAuthHeader = null;
                 return t_cachedSession;
             }
-
             var session = new UserSession
             {
                 Email = Preferences.Default.Get("user_email", string.Empty),
@@ -119,7 +107,6 @@ public sealed class AuthManager
             _ = t_fileLock.Release();
         }
     }
-
     public static async Task ClearSessionAsync()
     {
         await t_fileLock.WaitAsync().ConfigureAwait(false);
@@ -139,7 +126,6 @@ public sealed class AuthManager
             _ = t_fileLock.Release();
         }
     }
-
     private static void ClearSessionDataInternal()
     {
         Preferences.Default.Remove("user_email");
@@ -149,7 +135,6 @@ public sealed class AuthManager
         _ = SecureStorage.Default.Remove("user_jwt");
         _ = SecureStorage.Default.Remove("user_vpn_config");
     }
-
     public static async Task RemoveCurrentDeviceFromServerAsync()
     {
         try
@@ -160,9 +145,10 @@ public sealed class AuthManager
                 return;
             }
             var hwid = DeviceHelper.GetHwid();
-            using var client = new HttpClient { BaseAddress = new Uri(AppConfig.ApiBaseUrl), Timeout = TimeSpan.FromSeconds(5) };
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.JwtToken);
-            _ = await client.DeleteAsync($"api/Auth/devices/{Uri.EscapeDataString(hwid)}").ConfigureAwait(false);
+            var fullUrl = AppConfig.ApiUrl($"api/Auth/devices/{Uri.EscapeDataString(hwid)}");
+            _ = await client.DeleteAsync(fullUrl).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
