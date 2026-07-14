@@ -1,8 +1,16 @@
+using Android.App;
+using Android.Content;
+using Android.Content.PM;
+using Android.Net;
+using Android.OS;
+using obxodka.Platforms.Android;
 namespace obxodka;
+
 [Activity(
     Theme = "@style/Maui.SplashTheme",
     MainLauncher = true,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+[SupportedOSPlatform("android30.0")]
 public sealed class MainActivity : MauiAppCompatActivity
 {
     private const int VpnRequestCode = 1001;
@@ -10,16 +18,23 @@ public sealed class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
         RequestIgnoreBatteryOptimizations();
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.Lollipop)
+        {
+            AndroidX.Core.View.WindowCompat.SetDecorFitsSystemWindows(Window!, false);
+#pragma warning disable CA1422, CS0618
+            Window!.SetStatusBarColor(Android.Graphics.Color.Transparent);
+            Window!.SetNavigationBarColor(Android.Graphics.Color.Transparent);
+#pragma warning restore CA1422, CS0618
+        }
     }
-    public void RequestIgnoreBatteryOptimizations()
+    private void RequestIgnoreBatteryOptimizations()
     {
         try
         {
-            var pm = (PowerManager?)GetSystemService(PowerService);
-            if (pm != null && !pm.IsIgnoringBatteryOptimizations(PackageName))
+            if (GetSystemService(PowerService) is PowerManager pm && !pm.IsIgnoringBatteryOptimizations(PackageName))
             {
-                var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations);
-                intent.SetData(Android.Net.Uri.Parse("package:" + PackageName));
+                var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations)
+                    .SetData(Android.Net.Uri.Parse("package:" + PackageName));
                 StartActivity(intent);
             }
         }
@@ -30,12 +45,16 @@ public sealed class MainActivity : MauiAppCompatActivity
     }
     public static void StartVpnService()
     {
-        var activity = Platform.CurrentActivity as MainActivity;
-        if (activity == null) return;
+        if (Platform.CurrentActivity is not MainActivity activity)
+        {
+            return;
+        }
         var vpnIntent = VpnService.Prepare(activity);
         if (vpnIntent != null)
         {
+#pragma warning disable CS0618
             activity.StartActivityForResult(vpnIntent, VpnRequestCode);
+#pragma warning restore CS0618
         }
         else
         {
@@ -53,20 +72,28 @@ public sealed class MainActivity : MauiAppCompatActivity
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine("[ANDROID VPN] Юзер нажал отмену в системном окне.");
+                AndroidVpnService.Instance.SetError("Пользователь отклонил запрос на подключение");
             }
         }
+        else if (requestCode == 1337)
+        {
+            _ = (t_vpnPermTcs?.TrySetResult(resultCode == Result.Ok));
+        }
     }
-    private static void StartActualService(Android.Content.Context context)
+    private static void StartActualService(Context context)
     {
-        var intent = new Intent(context, typeof(Platforms.Android.Services.ObxodkaVpnService));
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-        {
-            context.StartForegroundService(intent);
-        }
-        else
-        {
-            context.StartService(intent);
-        }
+        var intent = new Intent(context, typeof(OctopusVpnService))
+            .SetAction("START");
+        _ = Build.VERSION.SdkInt >= BuildVersionCodes.O
+            ? context.StartForegroundService(intent)
+            : context.StartService(intent);
+    }
+    private static TaskCompletionSource<bool>? t_vpnPermTcs;
+    public static async Task<bool> RequestVpnPermissionAsync(Intent intent)
+    {
+        t_vpnPermTcs = new TaskCompletionSource<bool>();
+        var activity = Platform.CurrentActivity;
+        activity?.StartActivityForResult(intent, 1337);
+        return await t_vpnPermTcs.Task;
     }
 }

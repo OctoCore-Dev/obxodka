@@ -1,61 +1,36 @@
-
-global using CommunityToolkit.Maui;
-global using CommunityToolkit.Maui.Core;
-global using Microsoft.Extensions.DependencyInjection;
-global using Microsoft.Extensions.Logging;
-global using Microsoft.Maui.Animations;
-global using Microsoft.Maui.Controls;
-global using Microsoft.Maui.Devices;
-global using Microsoft.Maui.Graphics.Platform;
-global using Microsoft.Maui.LifecycleEvents;
+global using System.Buffers;
+global using System.Collections.ObjectModel;
+global using System.Diagnostics;
+global using System.Net;
+global using System.Net.Http.Headers;
+global using System.Net.Http.Json;
+global using System.Net.Quic;
+global using System.Net.Security;
+global using System.Security.Cryptography;
+global using System.Security.Cryptography.X509Certificates;
+global using System.Text;
+global using System.Text.Json;
+global using System.Text.Json.Serialization.Metadata;
+global using System.Threading.Channels;
+global using MauiIcons.Fluent;
+global using obxodka.Config;
 global using obxodka.Core;
 global using obxodka.Helpers;
 global using obxodka.Models;
-global using obxodka.Pages;
-global using System.Collections.ObjectModel;
-global using System.Diagnostics;
-global using System.Net.Http.Headers;
-global using System.Net.Http.Json;
+global using obxodka.Services;
+global using obxodka.Shared.Stealth;
+global using Grpc.Net.Client;
+global using obxodka.Core.Protos;
 global using System.Runtime.InteropServices;
-global using System.Security.Cryptography;
-global using System.Text;
-global using System.Text.Json;
-global using System.Text.Json.Serialization;
-global using System.Web;
-global using Application = Microsoft.Maui.Controls.Application;
-global using Colors = Microsoft.Maui.Graphics.Colors;
-global using Debug = System.Diagnostics.Debug;
-global using MauiButton = Microsoft.Maui.Controls.Button;
-global using MauiColor = Microsoft.Maui.Graphics.Color;
-global using MauiView = Microsoft.Maui.Controls.View;
-global using ObxodkaTheme = obxodka.Helpers.AppTheme;
-global using Path = System.IO.Path;
-global using Uri = System.Uri;
-#if WINDOWS
-global using Microsoft.Win32;
-global using Microsoft.UI;
-global using Microsoft.UI.Windowing;
-global using WinRT.Interop;
-global using Microsoft.UI.Xaml.Media.Imaging;
-global using Windows.Storage;
-global using Windows.Storage.FileProperties;
-#endif
-#if ANDROID
-global using Android.App;
-global using Android.Content;
-global using Android.Net;
-global using Android.OS;
-global using Android.Content.PM;
-global using Android.Runtime;
-global using Android.Service.QuickSettings;
-global using Android.Graphics.Drawables;
-global using Android.Widget;
-global using Android.Util;
-global using Android.Graphics;
-global using Android.Graphics.Drawables;
-global using obxodka.Platforms.Android;
-global using obxodka.Platforms.Android.Services;
-global using obxodka.Platforms.Android.Singbox;
-global using AndroidPath = Android.Graphics.Path;
-global using AndroidColor = Android.Graphics.Color;
-#endif
+global using System.Runtime.Versioning;
+global using CommunityToolkit.Maui;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Maui.LifecycleEvents;
+global using SkiaSharp.Views.Maui.Controls.Hosting;
+global using SkiaSharp;
+global using SkiaSharp.Views.Maui;
+global using SkiaSharp.Views.Maui.Controls;
+[assembly: SupportedOSPlatform("android30.0")]
+[assembly: SupportedOSPlatform("ios16.1")]
+[assembly: SupportedOSPlatform("maccatalyst16.1")]
+[assembly: SupportedOSPlatform("windows10.0.19041.0")]

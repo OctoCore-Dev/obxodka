@@ -1,4 +1,10 @@
+#if WINDOWS
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
+using WinRT.Interop;
+#endif
 namespace obxodka;
+
 internal static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
@@ -6,73 +12,88 @@ internal static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseFluentMauiIcons()
             .UseMauiCommunityToolkit()
+            .UseSkiaSharp()
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 fonts.AddFont("Commissioner-ExtraBold.ttf", "CommissionerExtraBold");
             });
-        builder.ConfigureLifecycleEvents(events => {
-#if WINDOWS
-    events.AddWindows(windows => windows
-        .OnWindowCreated(window => { 
-            var handle = WindowNative.GetWindowHandle(window);
-            var id = Win32Interop.GetWindowIdFromWindow(handle);
-            var appWindow = AppWindow.GetFromWindowId(id);
-            if (appWindow != null) {
-                appWindow.Title = "obxodka"; 
-                appWindow.Resize(new Windows.Graphics.SizeInt32(500, 700)); 
-                if (appWindow.Presenter is OverlappedPresenter presenter) {
-                    presenter.IsResizable = false; 
-                    presenter.IsMaximizable = false; 
-                }
-            }
-        }));
-#endif
-        });
-        builder.Services.AddSingleton(sp =>
+        builder.ConfigureLifecycleEvents(events =>
         {
-            var handler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = (request, cert, chain, errors) =>
-                {
-                    if (cert == null) return false;
-                    var pk = cert.GetPublicKey();
-                    using var sha256 = System.Security.Cryptography.SHA256.Create();
-                    var hash = sha256.ComputeHash(pk);
-                    var base64Hash = Convert.ToBase64String(hash);
-                    return base64Hash == AppSecrets.SslPublicKeyHash;
-                }
-            };
-            return new HttpClient(handler)
-            {
-                BaseAddress = new Uri(AppConfig.ApiBaseUrl),
-                Timeout = TimeSpan.FromSeconds(20)
-            };
-        });
-        builder.Services.AddSingleton<Core.ApiService>();
-        builder.Services.AddSingleton<Core.AuthManager>();
-        builder.Services.AddSingleton<Core.AuthManager>();
-        builder.Services.AddSingleton<Core.ApiService>();
-        builder.Services.AddSingleton<Core.AuthManager>();
 #if WINDOWS
-        builder.Services.AddSingleton<obxodka.Core.IVpnService, obxodka.Platforms.Windows.WindowsVpnService>();
-#elif ANDROID
-        builder.Services.AddSingleton<obxodka.Core.IVpnService, AndroidVpnService>();
+            events.AddWindows(windows => windows
+                .OnWindowCreated(window =>
+                {
+#pragma warning disable CA1416 
+                    var handle = WindowNative.GetWindowHandle(window);
+                    var id = Win32Interop.GetWindowIdFromWindow(handle);
+                    var appWindow = AppWindow.GetFromWindowId(id);
+                    if (appWindow != null)
+                    {
+                        appWindow.Title = "obxodka";
+                        appWindow.Resize(new Windows.Graphics.SizeInt32(1300, 750));
+                        if (appWindow.Presenter is OverlappedPresenter presenter)
+                        {
+                            presenter.IsResizable = false;
+                            presenter.IsMaximizable = false;
+                            presenter.IsMinimizable = true;
+                        }
+                    }
+#pragma warning restore CA1416
+                }));
 #endif
-        builder.Services.AddSingleton<Pages.SplashPage>();
-        builder.Services.AddSingleton<Pages.MainPage>();
-        builder.Services.AddTransient<Pages.LoginPage>();
-        builder.Services.AddTransient<Pages.RegisterPage>();
-        builder.Services.AddTransient<Pages.UserProfilePage>();
-        builder.Services.AddTransient<Pages.DevicesPage>();
-        builder.Services.AddTransient<Pages.ChangePasswordPage>();
-        builder.Services.AddTransient<Pages.DeleteAccountPage>();
-        builder.Services.AddTransient<Pages.PaymentPage>();
+        });
+        builder.Services.AddHttpClient<ApiService>(client =>
+        {
+            client.BaseAddress = new Uri(AppConfig.ApiBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(20);
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = (request, cert, chain, errors) => true
+        });
+        builder.Services.AddSingleton<AuthManager>();
+#if WINDOWS
+#pragma warning disable CA1416
+        builder.Services.AddSingleton<IVpnService, Platforms.Windows.WindowsVpnService>();
+#pragma warning restore CA1416
+#elif ANDROID
+#pragma warning disable CA1416
+        builder.Services.AddSingleton<IVpnService>(sp => Platforms.Android.AndroidVpnService.Instance);
+#pragma warning restore CA1416
+#endif
+        builder.Services.AddTransient<Pages.MainPage>();
 #if DEBUG
         builder.Logging.AddDebug();
 #endif
-        return builder.Build();
+#if WINDOWS
+        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("Borderless", (handler, view) =>
+        {
+            handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+            handler.PlatformView.Resources["TextControlBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBackgroundFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBorderBrushPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        });
+#endif
+        try
+        {
+            return builder.Build();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                Debug.WriteLine($"[MAUI STARTUP ERROR] {ex}");
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
+            }
+            catch { }
+            throw;
+        }
     }
 }

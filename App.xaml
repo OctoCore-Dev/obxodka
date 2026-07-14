@@ -1,4 +1,4 @@
-﻿<?xml version = "1.0" encoding = "UTF-8" ?>
+<?xml version = "1.0" encoding = "UTF-8" ?>
 <Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:obxodka"
@@ -8,34 +8,8 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-
-                <ResourceDictionary Source="Resources/Styles/Themes/DarkTheme.xaml" />
-
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
                 <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
-
-                <ResourceDictionary>
-                    <Style TargetType="Page">
-                        <Setter Property="BackgroundColor" Value="{DynamicResource AppBackground}" />
-                    </Style>
-
-                    <Style TargetType="Border" x:Key="GlassCardStyle">
-                        <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
-                        <Setter Property="Stroke" Value="{DynamicResource CardBorderBrush}" />
-                        <Setter Property="StrokeThickness" Value="1.5" />
-                        <Setter Property="Shadow">
-                            <Setter.Value>
-                                <Shadow Brush="{DynamicResource ShadowColor}" Radius="25" Opacity="0.5" Offset="0,15" />
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-
-                    <Style TargetType="Label" x:Key="HeaderTitleStyle">
-                        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
-                        <Setter Property="FontAttributes" Value="Bold" />
-                        <Setter Property="FontSize" Value="32" />
-                    </Style>
-                </ResourceDictionary>
-
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

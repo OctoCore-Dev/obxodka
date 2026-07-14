@@ -1,5 +1,6 @@
 using Foundation;
 namespace obxodka;
+
 [Register("AppDelegate")]
 public sealed class AppDelegate : MauiUIApplicationDelegate
 {

@@ -1,40 +1,36 @@
+using obxodka.Pages;
 namespace obxodka;
-internal sealed partial class App : Microsoft.Maui.Controls.Application
+
+internal sealed partial class App : Application
 {
-    private readonly IServiceProvider _services;
     public static bool PendingTileAction { get; set; }
-    public App(IServiceProvider services)
-    {
-        InitializeComponent();
-        ThemeManager.LoadSavedTheme();
-        _services = services;
-    }
+    public App() => InitializeComponent();
     public static void HandleTileClick()
     {
         PendingTileAction = true;
-        MainThread.BeginInvokeOnMainThread(() =>
+        MainThread.BeginInvokeOnMainThread(async () =>
         {
-            var window = Current?.Windows.FirstOrDefault();
-            var mainPage = window?.Page?.Navigation?.NavigationStack?
-                .FirstOrDefault(p => p is MainPage) as MainPage
-                ?? window?.Page as MainPage;
-            if (mainPage != null)
+            if (Shell.Current == null)
+            {
+                return;
+            }
+            await Shell.Current.GoToAsync("//main");
+            if (Shell.Current.CurrentPage is MainPage mainPage)
             {
                 PendingTileAction = false;
-                mainPage.ExecuteConnectClickFromTile();
             }
         });
     }
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        var splashPage = _services.GetRequiredService<SplashPage>();
-        var window = new Window(splashPage);
+        var window = new Window(new AppShell());
 #if WINDOWS
-    window.Destroying += (s, e) => {
-        var vpnService = _services.GetService<IVpnService>();
-        vpnService?.StopVpn(); 
-    };
+        window.Destroying += (s, e) =>
+        {
+            var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+            vpnService?.StopVpnAsync();
+        };
 #endif
-        return window; 
+        return window;
     }
 }

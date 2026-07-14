@@ -1,12 +1,23 @@
+using System;
+using System.IO;
+using Microsoft.UI.Xaml;
 namespace obxodka.WinUI;
-public partial class App : MauiWinUIApplication
+
+public sealed partial class App : MauiWinUIApplication
 {
-    public App()
-    {
-    }
+    public App() => UnhandledException += App_UnhandledException;
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
-    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args) => base.OnLaunched(args);
+    private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        base.OnLaunched(args);
+        try
+        {
+            var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka", "unhandled.log");
+            _ = Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            var logEntry = $"[{DateTime.UtcNow:O}] {e.Exception}{Environment.NewLine}{Environment.NewLine}";
+            File.AppendAllText(logPath, logEntry);
+            e.Handled = true;
+        }
+        catch { }
     }
 }

@@ -1,95 +1,663 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+             xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls"
+             xmlns:sharedModels="clr-namespace:obxodka.Models;assembly=obxodka.Shared"
+             xmlns:localModels="clr-namespace:obxodka.Models"
+             xmlns:pages="clr-namespace:obxodka.Pages"
              x:Class="obxodka.Pages.MainPage"
              x:ClassModifier="internal"
+             x:Name="ThisPage"
              Title="obxodka"
-             BackgroundColor="{DynamicResource AppBackground}">
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{AppThemeBinding Light=#F0F2F5, Dark=#0F172A}">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <Style x:Key="AntigravityCard" TargetType="Border">
+                <Setter Property="Stroke" Value="{AppThemeBinding Light=#40FFFFFF, Dark=#20FFFFFF}"/>
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#80FFFFFF, Dark=#0AFFFFFF}"/>
+                <Setter Property="StrokeThickness" Value="1"/>
+                <Setter Property="StrokeShape">
+                    <Setter.Value>
+                        <RoundRectangle CornerRadius="24"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="Shadow">
+                    <Setter.Value>
+                        <Shadow Brush="{StaticResource Primary}" Radius="20" Opacity="{AppThemeBinding Light=0.05, Dark=0.2}" Offset="0,10"/>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
     <Grid>
-        <Grid x:Name="AmbientGlowContainer" Opacity="0" InputTransparent="True" IgnoreSafeArea="True">
-            <Ellipse x:Name="GlowBlob1" Fill="{DynamicResource StatusBlue}" Opacity="0.15" WidthRequest="600" HeightRequest="600" HorizontalOptions="Start" VerticalOptions="Start" TranslationX="-150" TranslationY="-100" />
-            <Ellipse x:Name="GlowBlob2" Fill="{DynamicResource PrimaryAccent}" Opacity="0.12" WidthRequest="700" HeightRequest="700" HorizontalOptions="End" VerticalOptions="End" TranslationX="200" TranslationY="150" />
-            <Ellipse x:Name="GlowBlob3" Fill="{DynamicResource SecondaryAccent}" Opacity="0.1" WidthRequest="500" HeightRequest="500" HorizontalOptions="Center" VerticalOptions="Center" TranslationY="-200" />
-        </Grid>
+        <!-- ФОН (Матовое стекло / Мягкие градиенты) -->
+        <skia:SKCanvasView x:Name="BackgroundCanvas" PaintSurface="OnPaintSurface" IgnorePixelScaling="True" HorizontalOptions="Fill" VerticalOptions="Fill" />
+        
+        <Grid ColumnDefinitions="Auto, *">
+            
+            <!-- ════════ ЛЕВЫЙ САЙДБАР (ТОЛЬКО ПК) ════════ -->
+            <Border x:Name="DesktopSidebar"
+                    Grid.Column="0"
+                    IsVisible="{OnIdiom Desktop=True, Default=False}"
+                    WidthRequest="85"
+                    BackgroundColor="{AppThemeBinding Light=#E5E7EB, Dark=#1E293B}"
+                    StrokeThickness="0"
+                    ZIndex="10"
+                    Opacity="0"> <!-- Изначально скрыт, пока не авторизован -->
+                <Border.Shadow>
+                    <Shadow Brush="{StaticResource Primary}" Radius="15" Opacity="{AppThemeBinding Light=0.05, Dark=0.2}" Offset="4,0"/>
+                </Border.Shadow>
 
-        <Grid Margin="{OnPlatform Android='20, 60, 20, 25', WinUI='20, 30, 20, 25'}">
+                <Grid RowDefinitions="Auto, *, Auto" Padding="0,30,0,20">
+                    <Image Grid.Row="0" Source="app_logo.png" WidthRequest="45" HeightRequest="45" HorizontalOptions="Center" VerticalOptions="Center" />
 
-            <Grid x:Name="TopCardsGrid" VerticalOptions="Start" HeightRequest="70" ColumnDefinitions="*, 15, *" Opacity="0">
-                <Border x:Name="ProfileCard" Grid.Column="0" Style="{DynamicResource GlassCardStyle}" Padding="10,0">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20" />
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnAccountHeaderTapped" />
-                    </Border.GestureRecognizers>
-                    <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="{OnPlatform Android=5, WinUI=10}">
-                        <Image Source="user_icon.png" WidthRequest="50" HeightRequest="50" Opacity="0.8"/>
-                        <Label Text="ПРОФИЛЬ" TextColor="{DynamicResource TextSecondary}" FontSize="{OnPlatform Android=17, WinUI=25}" FontAttributes="Bold" VerticalOptions="Center"/>
-                    </HorizontalStackLayout>
-                </Border>
+                    <VerticalStackLayout Grid.Row="1" Spacing="15" Padding="0,40,0,0" HorizontalOptions="Center">
+                        <Border x:Name="SideNavVpn" WidthRequest="50" HeightRequest="50" BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#334155}" StrokeThickness="0">
+                            <Border.StrokeShape><RoundRectangle CornerRadius="16"/></Border.StrokeShape>
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavVpnTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="SideNavVpnIcon" Icon="{mi:Fluent Icon=Shield24}" IconSize="24" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
 
-                <Border x:Name="TimeCard" Grid.Column="2" Style="{DynamicResource GlassCardStyle}">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20" />
-                    </Border.StrokeShape>
-                    <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center">
-                        <Label x:Name="TokenAmountLabel" Text="0T / 00:00" TextColor="{DynamicResource StatusBlue}" FontSize="25" FontAttributes="Bold" FontFamily="Consolas" VerticalOptions="Center"/>
-                    </HorizontalStackLayout>
-                </Border>
-            </Grid>
+                        <Border x:Name="SideNavProfile" WidthRequest="50" HeightRequest="50" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.StrokeShape><RoundRectangle CornerRadius="16"/></Border.StrokeShape>
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavProfileTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="SideNavProfileIcon" Icon="{mi:Fluent Icon=Person24}" IconSize="24" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
 
-            <Label x:Name="LogoLabel" Text="obxodka" LineBreakMode="NoWrap" MaxLines="1" HorizontalTextAlignment="Center" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="1" TextColor="{DynamicResource TextPrimary}" HorizontalOptions="Center" VerticalOptions="Start" Margin="0,130,0,0" Opacity="0"/>
+                        <Border x:Name="SideNavDevices" WidthRequest="50" HeightRequest="50" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.StrokeShape><RoundRectangle CornerRadius="16"/></Border.StrokeShape>
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavDevicesTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="SideNavDevicesIcon" Icon="{mi:Fluent Icon=PhoneDesktop24}" IconSize="24" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
 
-            <Grid VerticalOptions="Center" Margin="0,150,0,0">
-                <Border x:Name="PulseRing"
-                        BackgroundColor="Transparent"
-                        Stroke="{DynamicResource StatusBlue}"
-                        StrokeThickness="4"
+                        <Border x:Name="SideNavPassword" WidthRequest="50" HeightRequest="50" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.StrokeShape><RoundRectangle CornerRadius="16"/></Border.StrokeShape>
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavPasswordTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="SideNavPasswordIcon" Icon="{mi:Fluent Icon=LockClosed24}" IconSize="24" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
+
+                        <Border x:Name="SideNavSplit" WidthRequest="50" HeightRequest="50" BackgroundColor="Transparent" StrokeThickness="0" IsVisible="{OnPlatform Android=True, Default=False}">
+                            <Border.StrokeShape><RoundRectangle CornerRadius="16"/></Border.StrokeShape>
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavSplitTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="SideNavSplitIcon" Icon="{mi:Fluent Icon=AppsList24}" IconSize="24" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
+
+            <!-- ════════ КОНТЕНТ ════════ -->
+            <Grid Grid.Column="{OnIdiom Desktop=1, Default=0}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- ── ВКЛАДКА: АВТОРИЗАЦИЯ ── -->
+                <Grid x:Name="TabContentAuth" IsVisible="True">
+                    <Border x:Name="FormContainer" 
+                            BackgroundColor="{AppThemeBinding Light=#D9FFFFFF, Dark=#CC1E293B}"
+                            Stroke="{AppThemeBinding Light=#FFFFFF, Dark=#334155}"
+                            StrokeThickness="1"
+                            VerticalOptions="Center" HorizontalOptions="Center"
+                            WidthRequest="{OnIdiom Phone=340, Default=900}"
+                            HeightRequest="{OnIdiom Phone=Auto, Default=580}"
+                            Opacity="0"
+                            Padding="{OnIdiom Phone=15, Default=40}">
+                        <Border.StrokeShape><RoundRectangle CornerRadius="20" /></Border.StrokeShape>
+                        <Border.Shadow><Shadow Brush="{StaticResource Black}" Radius="30" Opacity="{AppThemeBinding Light=0.05, Dark=0.3}" Offset="0,10"/></Border.Shadow>
+
+                        <Grid ColumnDefinitions="{OnIdiom Phone='*', Default='*, *'}" BackgroundColor="Transparent">
+                            <Grid Grid.Column="0" IsVisible="{OnIdiom Phone=False, Default=True}" VerticalOptions="Center" HorizontalOptions="Center" Margin="20,0">
+                                <Image x:Name="AppIconLeft" Source="app_logo.png" WidthRequest="220" HeightRequest="220" HorizontalOptions="Center" Opacity="0" />
+                            </Grid>
+
+                            <Grid Grid.Column="{OnIdiom Phone=0, Default=1}" Margin="{OnIdiom Phone=10, Default=40}" VerticalOptions="Center" WidthRequest="{OnIdiom Phone=300, Default=380}">
+                                
+                                <!-- ЛОГИН -->
+                                <VerticalStackLayout x:Name="LoginContainer" Spacing="20">
+                                    <Image x:Name="AppIconLogin" Source="app_logo.png" WidthRequest="80" HeightRequest="80" HorizontalOptions="Center" IsVisible="{OnIdiom Phone=True, Default=False}" Margin="0,0,0,5" Opacity="0" />
+                                    <Label x:Name="TitleLabelLogin" Text="Вход в систему" FontSize="26" FontAttributes="Bold" FontFamily="CommissionerExtraBold" TextColor="{AppThemeBinding Light=Black, Dark=White}" HorizontalOptions="Center" Margin="0,0,0,5" Opacity="0" />
+
+                                    <Border BackgroundColor="Transparent" StrokeThickness="1" Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Padding="0,5">
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                        <VerticalStackLayout Spacing="0">
+                                            <Grid ColumnDefinitions="60, *" HeightRequest="60">
+                                                <mi:MauiIcon Icon="{mi:Fluent Icon=Mail24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="LoginEmailEntry" Grid.Column="1" Placeholder="Электронная почта" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" Keyboard="Email" />
+                                            </Grid>
+                                            <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Margin="15,0" />
+                                            <Grid ColumnDefinitions="60, *, 60" HeightRequest="60">
+                                                <mi:MauiIcon Grid.Column="0" Icon="{mi:Fluent Icon=LockClosed24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="LoginPasswordEntry" Grid.Column="1" Placeholder="Пароль" IsPassword="True" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" />
+                                                <mi:MauiIcon x:Name="LoginEyeImg" Grid.Column="2" Icon="{mi:Fluent Icon=EyeOff24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center">
+                                                    <mi:MauiIcon.GestureRecognizers><TapGestureRecognizer Tapped="OnLoginPasswordEyeClicked" /></mi:MauiIcon.GestureRecognizers>
+                                                </mi:MauiIcon>
+                                            </Grid>
+                                        </VerticalStackLayout>
+                                    </Border>
+
+                                    <Label x:Name="LoginErrorLabel" TextColor="#EF4444" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" Opacity="0" Margin="0,-10,0,0" />
+
+                                    <Border x:Name="LoginButtonBorder" StrokeThickness="0" HeightRequest="56" Opacity="0" Margin="0,5,0,0">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="{StaticResource Primary}" Offset="0.0" />
+                                                <GradientStop Color="{StaticResource Tertiary}" Offset="1.0" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                        <Button x:Name="MainLoginButton" Text="Войти" Clicked="OnLoginClickedAsync" BackgroundColor="Transparent" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                                    </Border>
+
+                                    <Label x:Name="SwitchToRegisterLabel" Text="Нет аккаунта? Создать" TextColor="{StaticResource Primary}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" Opacity="0" Margin="0,10,0,0">
+                                        <Label.GestureRecognizers><TapGestureRecognizer Tapped="OnSwitchToRegisterTapped" /></Label.GestureRecognizers>
+                                    </Label>
+                                </VerticalStackLayout>
+
+                                <!-- РЕГИСТРАЦИЯ -->
+                                <VerticalStackLayout x:Name="RegisterContainer" Spacing="15" IsVisible="False" Opacity="0">
+                                    <Image x:Name="AppIconReg" Source="app_logo.png" WidthRequest="70" HeightRequest="70" HorizontalOptions="Center" IsVisible="{OnIdiom Phone=True, Default=False}" Margin="0,0,0,5" />
+                                    <Label Text="Регистрация" FontSize="26" FontAttributes="Bold" FontFamily="CommissionerExtraBold" TextColor="{AppThemeBinding Light=Black, Dark=White}" HorizontalOptions="Center" Margin="0,0,0,5" />
+
+                                    <Border BackgroundColor="Transparent" StrokeThickness="1" Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Padding="0,5">
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                        <VerticalStackLayout Spacing="0">
+                                            <Grid ColumnDefinitions="60, *" HeightRequest="60">
+                                                <mi:MauiIcon Icon="{mi:Fluent Icon=Mail24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="RegEmailEntry" Grid.Column="1" Placeholder="Электронная почта" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" Keyboard="Email" />
+                                            </Grid>
+                                            <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Margin="15,0" />
+                                            <Grid ColumnDefinitions="60, *, 60" HeightRequest="60">
+                                                <mi:MauiIcon Grid.Column="0" Icon="{mi:Fluent Icon=LockClosed24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="RegPasswordEntry" Grid.Column="1" Placeholder="Придумайте пароль" IsPassword="True" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" />
+                                                <mi:MauiIcon x:Name="RegEyeImg1" Grid.Column="2" Icon="{mi:Fluent Icon=EyeOff24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center">
+                                                    <mi:MauiIcon.GestureRecognizers><TapGestureRecognizer Tapped="OnRegPasswordEyeClicked" /></mi:MauiIcon.GestureRecognizers>
+                                                </mi:MauiIcon>
+                                            </Grid>
+                                            <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Margin="15,0" />
+                                            <Grid ColumnDefinitions="60, *, 60" HeightRequest="60">
+                                                <mi:MauiIcon Grid.Column="0" Icon="{mi:Fluent Icon=LockClosed24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="RegPasswordRepeatEntry" Grid.Column="1" Placeholder="Повторите пароль" IsPassword="True" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" />
+                                                <mi:MauiIcon x:Name="RegEyeImg2" Grid.Column="2" Icon="{mi:Fluent Icon=EyeOff24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center">
+                                                    <mi:MauiIcon.GestureRecognizers><TapGestureRecognizer Tapped="OnRegRepeatPasswordEyeClicked" /></mi:MauiIcon.GestureRecognizers>
+                                                </mi:MauiIcon>
+                                            </Grid>
+                                        </VerticalStackLayout>
+                                    </Border>
+
+                                    <HorizontalStackLayout HorizontalOptions="Center" Spacing="5" Margin="0,5,0,0">
+                                        <CheckBox x:Name="PolicyCheckBox" VerticalOptions="Center" Scale="0.9" Color="{StaticResource Primary}"/>
+                                        <Label Text="Я принимаю " TextColor="{StaticResource Gray500}" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" />
+                                        <Label Text="условия использования" TextColor="{StaticResource Primary}" FontSize="12" FontAttributes="Bold" TextDecorations="Underline" VerticalOptions="Center">
+                                            <Label.GestureRecognizers><TapGestureRecognizer Tapped="OnPolicyLinkClickAsync" /></Label.GestureRecognizers>
+                                        </Label>
+                                    </HorizontalStackLayout>
+
+                                    <Label x:Name="RegErrorLabel" TextColor="#EF4444" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" Opacity="0" Margin="0,-10,0,-5" />
+
+                                    <Border x:Name="RegisterButtonBorder" StrokeThickness="0" HeightRequest="56" Margin="0,5,0,0">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="{StaticResource Primary}" Offset="0.0" />
+                                                <GradientStop Color="{StaticResource Tertiary}" Offset="1.0" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                        <Button x:Name="MainRegisterButton" Text="Создать аккаунт" Clicked="OnRegisterClickedAsync" BackgroundColor="Transparent" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                                    </Border>
+
+                                    <Label Text="Уже есть аккаунт? Войти" TextColor="{StaticResource Primary}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" Margin="0,5,0,0">
+                                        <Label.GestureRecognizers><TapGestureRecognizer Tapped="OnSwitchToLoginTapped" /></Label.GestureRecognizers>
+                                    </Label>
+                                </VerticalStackLayout>
+
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+
+                <!-- ── ВКЛАДКА: ГЛАВНЫЙ ЭКРАН VPN ── -->
+                <Grid x:Name="TabContentVpn" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="OBXODKA" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="32" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="6" HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" Padding="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}"
+                          ColumnDefinitions="{OnIdiom Desktop='5*, 4*', Default='*'}"
+                          RowDefinitions="*"
+                          ColumnSpacing="20">
+
+                        <!-- ГЛАВНАЯ КНОПКА ПОДКЛЮЧЕНИЯ (Слева) -->
+                        <Grid x:Name="Card1Wrapper" Grid.Column="0" Opacity="0" TranslationY="30">
+                            <Border x:Name="Card1" 
+                                    Style="{StaticResource AntigravityCard}"
+                                    Padding="40">
+                                <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="40">
+                                    <Label x:Name="StatusLabel" Text="Отключено" FontSize="20" TextColor="{StaticResource Gray500}" FontAttributes="Bold" HorizontalOptions="Center"/>
+
+                                    <Grid WidthRequest="260" HeightRequest="260" HorizontalOptions="Center" VerticalOptions="Center">
+                                        <Border x:Name="OuterAura" WidthRequest="260" HeightRequest="260" BackgroundColor="{StaticResource Secondary}" StrokeThickness="0" Opacity="0" Scale="0.8" HorizontalOptions="Center" VerticalOptions="Center">
+                                            <Border.StrokeShape><RoundRectangle CornerRadius="130"/></Border.StrokeShape>
+                                        </Border>
+                                        
+                                        <!-- Жидкий SkiaSharp лоадер -->
+                                        <skia:SKCanvasView x:Name="LoaderCanvas" PaintSurface="OnPaintLoaderSurface" IgnorePixelScaling="True" WidthRequest="260" HeightRequest="260" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        
+                                        <!-- Центральная кнопка-сердцевина -->
+                                        <Border x:Name="ConnectButtonCore" WidthRequest="180" HeightRequest="180" BackgroundColor="{AppThemeBinding Light=#E0FFFFFF, Dark=#B3050507}" Stroke="{AppThemeBinding Light=#20000000, Dark=#20FFFFFF}" StrokeThickness="1" HorizontalOptions="Center" VerticalOptions="Center" InputTransparent="True">
+                                            <Border.StrokeShape><RoundRectangle CornerRadius="90"/></Border.StrokeShape>
+                                            <Border.Shadow><Shadow Brush="{StaticResource Black}" Radius="15" Opacity="{AppThemeBinding Light=0.05, Dark=0.3}" Offset="0,6"/></Border.Shadow>
+                                            <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="10" InputTransparent="True">
+                                                <mi:MauiIcon x:Name="ConnectIcon" Icon="{mi:Fluent Icon=Power24}" IconSize="54" IconColor="{StaticResource Primary}" HorizontalOptions="Center"/>
+                                                <Label x:Name="ConnectButtonText" Text="СТАРТ" TextColor="{StaticResource Primary}" FontSize="24" FontAttributes="Bold" HorizontalOptions="Center"/>
+                                            </VerticalStackLayout>
+                                        </Border>
+                                        
+                                        <Button BackgroundColor="Transparent" Clicked="OnConnectClickedAsync" WidthRequest="460" HeightRequest="460" HorizontalOptions="Center" VerticalOptions="Center" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+
+                        <!-- СТАТИСТИКА (Справа) -->
+                        <Grid Grid.Column="{OnIdiom Desktop=1, Default=0}" RowDefinitions="Auto, *, Auto, Auto" RowSpacing="20">
+                            
+                            <Grid Grid.Row="0" x:Name="Card2Wrapper" Opacity="0" TranslationY="30">
+                                <Border x:Name="Card2" Style="{StaticResource AntigravityCard}" HeightRequest="120">
+                                    <Grid Padding="25" ColumnDefinitions="Auto, *" RowDefinitions="Auto, *">
+                                        <Border Grid.Row="0" Grid.Column="0" WidthRequest="48" HeightRequest="48" BackgroundColor="{AppThemeBinding Light=#EEF2FF, Dark=#1E1B4B}" StrokeThickness="0" HorizontalOptions="Start" VerticalOptions="Start">
+                                            <Border.StrokeShape><RoundRectangle CornerRadius="14"/></Border.StrokeShape>
+                                            <mi:MauiIcon Icon="{mi:Fluent Icon=DataArea24}" IconSize="24" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                        <VerticalStackLayout Grid.Row="0" Grid.Column="1" VerticalOptions="Center" Margin="15,0,0,0">
+                                            <Label Text="СКАЧАНО ВСЕГО" TextColor="{StaticResource Gray400}" FontSize="11" FontAttributes="Bold" CharacterSpacing="1"/>
+                                            <Label x:Name="TotalTrafficLabelMain" Text="0.00 B" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="24" FontFamily="Consolas" FontAttributes="Bold" Margin="0,2,0,0"/>
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid Grid.Row="1" x:Name="Card3Wrapper" Opacity="0" TranslationY="30">
+                                <Border x:Name="Card3" Style="{StaticResource AntigravityCard}">
+                                    <Grid Padding="25" RowDefinitions="Auto, *">
+                                        <Label Text="СКОРОСТЬ СЕТИ" TextColor="{StaticResource Gray400}" FontSize="11" FontAttributes="Bold" CharacterSpacing="1" HorizontalOptions="Center"/>
+                                        <Grid Grid.Row="1" Margin="0,15,0,0">
+                                            <Grid>
+                                                <Polygon x:Name="TrafficGraphDown" Stroke="{StaticResource Tertiary}" StrokeThickness="2" Fill="{StaticResource Tertiary}" Aspect="Fill" HorizontalOptions="Fill" VerticalOptions="Fill" Opacity="0.2"/>
+                                                <Polygon x:Name="TrafficGraphUp" Stroke="{StaticResource Primary}" StrokeThickness="2" Fill="{StaticResource Primary}" Aspect="Fill" HorizontalOptions="Fill" VerticalOptions="Fill" Opacity="0.2"/>
+                                            </Grid>
+                                            <Grid VerticalOptions="Fill" RowDefinitions="*, *, *">
+                                                <VerticalStackLayout Grid.Row="1" VerticalOptions="Center" Spacing="15">
+                                                    <Grid ColumnDefinitions="Auto, *">
+                                                        <Label Text="▲ ОТДАЧА" TextColor="{StaticResource Primary}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center"/>
+                                                        <Label x:Name="TrafficUpLabel" Grid.Column="1" Text="0.00 KB/s" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="18" FontFamily="Consolas" FontAttributes="Bold" HorizontalOptions="End"/>
+                                                    </Grid>
+                                                    <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" HorizontalOptions="Fill"/>
+                                                    <Grid ColumnDefinitions="Auto, *">
+                                                        <Label Text="▼ ЗАГРУЗКА" TextColor="{StaticResource Tertiary}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center"/>
+                                                        <Label x:Name="TrafficDownLabel" Grid.Column="1" Text="0.00 KB/s" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="18" FontFamily="Consolas" FontAttributes="Bold" HorizontalOptions="End"/>
+                                                    </Grid>
+                                                </VerticalStackLayout>
+                                            </Grid>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid Grid.Row="2" x:Name="Card5Wrapper" Opacity="0" TranslationY="30">
+                                <Border x:Name="Card5" Style="{StaticResource AntigravityCard}" HeightRequest="120">
+                                    <Grid Padding="25" ColumnDefinitions="Auto, *" RowDefinitions="Auto, *">
+                                        <Border Grid.Row="0" Grid.Column="0" WidthRequest="48" HeightRequest="48" BackgroundColor="{AppThemeBinding Light=#F0FDF4, Dark=#064E3B}" StrokeThickness="0" HorizontalOptions="Start" VerticalOptions="Start">
+                                            <Border.StrokeShape><RoundRectangle CornerRadius="14"/></Border.StrokeShape>
+                                            <mi:MauiIcon Icon="{mi:Fluent Icon=Timer24}" IconSize="24" IconColor="{StaticResource Success}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                        <VerticalStackLayout Grid.Row="0" Grid.Column="1" VerticalOptions="Center" Margin="15,0,0,0">
+                                            <Label Text="ОСТАЛОСЬ ВРЕМЕНИ" TextColor="{StaticResource Gray400}" FontSize="11" FontAttributes="Bold" CharacterSpacing="1"/>
+                                            <Label x:Name="TokenAmountLabel" Text="0Ч 00М" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="24" FontFamily="Consolas" FontAttributes="Bold" Margin="0,2,0,0"/>
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Grid>
+
+                <!-- ── ВКЛАДКА: ПРОФИЛЬ И ОПЛАТА ── -->
+                <Grid x:Name="TabContentProfile" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="ПРОФИЛЬ И БАЛАНС" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="28" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="4" HorizontalOptions="Center" />
+                    </Grid>
+                    <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
+                        <Grid Padding="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}"
+                              WidthRequest="{OnIdiom Phone=340, Default=900}"
+                              ColumnDefinitions="{OnIdiom Phone='*', Default='*, *'}"
+                              RowDefinitions="Auto, Auto, Auto, Auto"
+                              ColumnSpacing="20" RowSpacing="20"
+                              VerticalOptions="Start" HorizontalOptions="Center">
+
+                            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="{OnIdiom Phone=1, Default=2}" Style="{StaticResource GlassCard}" Padding="25" BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#1E293B}">
+                                <Grid ColumnDefinitions="{OnIdiom Phone='*', Default='Auto, *'}" RowDefinitions="{OnIdiom Phone='Auto, Auto', Default='*'}" RowSpacing="15">
+                                    <Grid Grid.Column="0" Grid.Row="0" ColumnDefinitions="Auto, *">
+                                        <Border WidthRequest="60" HeightRequest="60" BackgroundColor="{AppThemeBinding Light=#F1F5F9, Dark=#334155}" StrokeThickness="0" VerticalOptions="Center">
+                                            <Border.StrokeShape><RoundRectangle CornerRadius="18" /></Border.StrokeShape>
+                                            <mi:MauiIcon Icon="{mi:Fluent Icon=Person24}" IconSize="30" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="15,0,0,0" Spacing="2">
+                                            <Label Text="СИСТЕМНЫЙ ДОСТУП" FontSize="11" TextColor="{StaticResource Tertiary}" FontAttributes="Bold" CharacterSpacing="1"/>
+                                            <Label x:Name="ProfileEmailLabel" Text="loading..." TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="20" FontAttributes="Bold"/>
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                    <Button Grid.Column="{OnIdiom Phone=0, Default=1}" Grid.Row="{OnIdiom Phone=1, Default=0}"
+                                            Text="ВЫЙТИ" Clicked="OnLogoutClickedAsync"
+                                            BackgroundColor="Transparent" TextColor="#EF4444"
+                                            BorderColor="#EF4444" BorderWidth="1" HeightRequest="42" CornerRadius="12"
+                                            FontAttributes="Bold" HorizontalOptions="{OnIdiom Phone=Start, Default=End}"
+                                            VerticalOptions="Center" Padding="20,0"/>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource GlassCard}" Padding="22">
+                                <Grid ColumnDefinitions="Auto, *">
+                                    <Border WidthRequest="52" HeightRequest="52" BackgroundColor="{AppThemeBinding Light=#E0E7FF, Dark=#3730A3}" StrokeThickness="0">
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="15" /></Border.StrokeShape>
+                                        <mi:MauiIcon Icon="{mi:Fluent Icon=Timer24}" IconSize="26" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="14,0,0,0" Spacing="4">
+                                        <Label Text="ДОСТУП ОПЛАЧЕН" FontSize="11" TextColor="{StaticResource Gray500}" FontAttributes="Bold" />
+                                        <Label x:Name="ProfileTokenLabel" Text="0ч 00м" FontSize="24" FontAttributes="Bold" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontFamily="Consolas"/>
+                                        <Button Text="ПОПОЛНИТЬ" Clicked="OnBuyTokensClickedAsync" BackgroundColor="{StaticResource Primary}" TextColor="White" FontSize="12" FontAttributes="Bold" CornerRadius="10" HeightRequest="34" Margin="0,4,0,0" HorizontalOptions="Start" Padding="14,0"/>
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="{OnIdiom Phone=2, Default=1}" Grid.Column="{OnIdiom Phone=0, Default=1}" Style="{StaticResource GlassCard}" Padding="22">
+                                <Grid ColumnDefinitions="Auto, *, Auto">
+                                    <Border WidthRequest="52" HeightRequest="52" BackgroundColor="{AppThemeBinding Light=#FCE7F3, Dark=#831843}" StrokeThickness="0">
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="15" /></Border.StrokeShape>
+                                        <mi:MauiIcon Icon="{mi:Fluent Icon=ShieldTask24}" IconSize="26" IconColor="{StaticResource Secondary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="14,0,0,0" Spacing="2">
+                                        <Label Text="ЩИТ ОТ ТРЕКЕРОВ" FontSize="11" TextColor="{StaticResource Gray500}" FontAttributes="Bold"/>
+                                        <Label Text="DNS AdGuard" FontSize="14" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontAttributes="Bold"/>
+                                    </VerticalStackLayout>
+                                    <Switch x:Name="ProfileAdBlockSwitch" Grid.Column="2" Toggled="OnAdBlockToggled" OnColor="{StaticResource Primary}" VerticalOptions="Center" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Danger Zone Card -->
+                            <Border Grid.Row="{OnIdiom Phone=3, Default=2}" Grid.Column="0" Grid.ColumnSpan="{OnIdiom Phone=1, Default=2}" Style="{StaticResource GlassCard}" Padding="22" BackgroundColor="{AppThemeBinding Light=#FFF5F5, Dark=#2D1A1A}" Stroke="#EF4444" StrokeThickness="1">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <Label Text="ОПАСНАЯ ЗОНА" FontSize="11" TextColor="#EF4444" FontAttributes="Bold" CharacterSpacing="1" />
+                                        <Label Text="Удаление вашей учетной записи и всех личных данных" FontSize="14" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontAttributes="Bold" />
+                                    </VerticalStackLayout>
+                                    <Button Grid.Column="1" Text="УДАЛИТЬ АККАУНТ" Clicked="OnNavigateToDeleteTabClicked" BackgroundColor="#EF4444" TextColor="White" FontSize="12" FontAttributes="Bold" CornerRadius="10" HeightRequest="36" Padding="14,0" VerticalOptions="Center" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </ScrollView>
+                </Grid>
+
+                <!-- ── ВКЛАДКА: УЗЛЫ ── -->
+                <Grid x:Name="TabContentDevices" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="УЗЛЫ" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="28" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="4" HorizontalOptions="Center" />
+                    </Grid>
+                    <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
+                        <Border Style="{StaticResource GlassCard}" VerticalOptions="Start" HorizontalOptions="Center" WidthRequest="{OnIdiom Phone=340, Default=900}" Margin="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}" Padding="25">
+                            <Grid RowDefinitions="Auto, Auto, Auto" RowSpacing="15" MinimumHeightRequest="350">
+                                <VerticalStackLayout Grid.Row="0" Spacing="4" Margin="0,0,0,5">
+                                    <Label Text="УПРАВЛЕНИЕ УЗЛАМИ" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontFamily="CommissionerExtraBold" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                                    <Label Text="Список активных устройств в сети" TextColor="{StaticResource Gray500}" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center" />
+                                </VerticalStackLayout>
+
+                                <CollectionView x:Name="DevicesList" Grid.Row="1" SelectionMode="None">
+                                    <CollectionView.ItemsLayout>
+                                        <GridItemsLayout Orientation="Vertical" Span="{OnIdiom Phone=1, Default=2}" HorizontalItemSpacing="15" VerticalItemSpacing="12" />
+                                    </CollectionView.ItemsLayout>
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate x:DataType="sharedModels:DeviceItem">
+                                            <Border BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" StrokeThickness="1" Padding="14">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="14" /></Border.StrokeShape>
+                                                <Grid RowDefinitions="Auto, *, Auto" RowSpacing="10">
+                                                    <Border Grid.Row="0" WidthRequest="46" HeightRequest="46" BackgroundColor="{AppThemeBinding Light=#F1F5F9, Dark=#334155}" StrokeThickness="0" HorizontalOptions="Start">
+                                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                                        <mi:MauiIcon Icon="{mi:Fluent Icon=PhoneDesktop24}" IconSize="24" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                    </Border>
+                                                    <VerticalStackLayout Grid.Row="1" Spacing="2">
+                                                        <Label Text="{Binding Name}" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontAttributes="Bold" FontSize="14" LineBreakMode="TailTruncation" />
+                                                        <HorizontalStackLayout Spacing="5">
+                                                            <Ellipse WidthRequest="6" HeightRequest="6" Fill="{StaticResource Tertiary}" VerticalOptions="Center"/>
+                                                            <Label Text="{Binding LastActiveText}" TextColor="{StaticResource Gray500}" FontSize="11" VerticalOptions="Center" />
+                                                        </HorizontalStackLayout>
+                                                    </VerticalStackLayout>
+                                                    <Button Grid.Row="2" Text="ОТКЛЮЧИТЬ" BackgroundColor="{AppThemeBinding Light=#FEE2E2, Dark=#7F1D1D}" TextColor="#EF4444" FontSize="11" FontAttributes="Bold" CornerRadius="8" HeightRequest="33" CommandParameter="{Binding Hwid}" Clicked="OnRemoveDeviceClickedAsync" HorizontalOptions="Fill" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+
+                                <VerticalStackLayout x:Name="DevicesLoadingOverlay" Grid.Row="1" IsVisible="False" VerticalOptions="Center" HorizontalOptions="Center" Spacing="12">
+                                    <ActivityIndicator IsRunning="True" Color="{StaticResource Primary}" WidthRequest="42" HeightRequest="42"/>
+                                    <Label Text="СКАНИРОВАНИЕ..." TextColor="{StaticResource Primary}" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center"/>
+                                </VerticalStackLayout>
+
+                                <Label x:Name="DevicesErrorLabel" Grid.Row="1" TextColor="#EF4444" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="False" />
+                            </Grid>
+                        </Border>
+                    </ScrollView>
+                </Grid>
+
+                <!-- ── ВКЛАДКА: СМЕНА ПАРОЛЯ ── -->
+                <Grid x:Name="TabContentPassword" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="БЕЗОПАСНОСТЬ" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="28" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="4" HorizontalOptions="Center" />
+                    </Grid>
+                    <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
+                        <Border Style="{StaticResource GlassCard}" VerticalOptions="Start" HorizontalOptions="Center" WidthRequest="{OnIdiom Phone=340, Default=900}" Margin="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}" Padding="{OnIdiom Phone=22, Default=40}">
+                            <Grid ColumnDefinitions="{OnIdiom Phone='*', Default='*, *'}">
+                                <Grid Grid.Column="0" IsVisible="{OnIdiom Phone=False, Default=True}" VerticalOptions="Center" HorizontalOptions="Center">
+                                    <mi:MauiIcon Icon="{mi:Fluent Icon=LockClosed24}" IconSize="110" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center" Opacity="0.5"/>
+                                </Grid>
+                                <VerticalStackLayout Grid.Column="{OnIdiom Phone=0, Default=1}" Spacing="18" VerticalOptions="Center" WidthRequest="{OnIdiom Phone=300, Default=380}">
+                                    <Label Text="Смена пароля" FontSize="26" FontAttributes="Bold" FontFamily="CommissionerExtraBold" TextColor="{AppThemeBinding Light=Black, Dark=White}" HorizontalOptions="{OnIdiom Phone=Center, Default=Start}" />
+                                    
+                                    <Border BackgroundColor="Transparent" StrokeThickness="1" Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Padding="0,4">
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                        <VerticalStackLayout Spacing="0">
+                                            <Grid ColumnDefinitions="54, *, 54" HeightRequest="58">
+                                                <mi:MauiIcon Icon="{mi:Fluent Icon=LockShield24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="OldPasswordEntry" Grid.Column="1" Placeholder="Текущий пароль" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" IsPassword="True" />
+                                                <mi:MauiIcon x:Name="OldEyeImg" Grid.Column="2" Icon="{mi:Fluent Icon=EyeOff24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center">
+                                                    <mi:MauiIcon.GestureRecognizers><TapGestureRecognizer Tapped="OnOldPasswordEyeClicked" /></mi:MauiIcon.GestureRecognizers>
+                                                </mi:MauiIcon>
+                                            </Grid>
+                                            <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Margin="15,0" />
+                                            <Grid ColumnDefinitions="54, *, 54" HeightRequest="58">
+                                                <mi:MauiIcon Icon="{mi:Fluent Icon=LockClosed24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                                <Entry x:Name="NewPasswordEntry" Grid.Column="1" Placeholder="Новый пароль" IsPassword="True" TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" VerticalOptions="Center" />
+                                                <mi:MauiIcon x:Name="NewEyeImg" Grid.Column="2" Icon="{mi:Fluent Icon=EyeOff24}" IconSize="22" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center">
+                                                    <mi:MauiIcon.GestureRecognizers><TapGestureRecognizer Tapped="OnNewPasswordEyeClicked" /></mi:MauiIcon.GestureRecognizers>
+                                                </mi:MauiIcon>
+                                            </Grid>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Label x:Name="PasswordErrorLabel" TextColor="#EF4444" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" Opacity="0" Margin="0,-8,0,0" />
+                                    <Border x:Name="SavePasswordBorder" StrokeThickness="0" HeightRequest="56">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="{StaticResource Primary}" Offset="0.0" />
+                                                <GradientStop Color="{StaticResource Tertiary}" Offset="1.0" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                        <Button x:Name="SavePasswordButton" Text="Сохранить" Clicked="OnSavePasswordClickedAsync" BackgroundColor="Transparent" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                                    </Border>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </ScrollView>
+                </Grid>
+
+                <!-- ── ВКЛАДКА: ИСКЛЮЧЕНИЯ (SPLIT) ── -->
+                <Grid x:Name="TabContentSplit" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="РАЗДЕЛЬНОЕ ТУННЕЛИРОВАНИЕ" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="28" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="2" HorizontalOptions="Center" />
+                    </Grid>
+                    <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
+                        <Border Style="{StaticResource GlassCard}" VerticalOptions="Start" HorizontalOptions="Center" WidthRequest="{OnIdiom Phone=340, Default=900}" Margin="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}" Padding="25">
+                            <Grid RowDefinitions="Auto, Auto, Auto, *" RowSpacing="15" MinimumHeightRequest="450">
+                                
+                                <VerticalStackLayout Grid.Row="0" Spacing="4" Margin="0,0,0,5">
+                                    <Label Text="ИСКЛЮЧЕНИЯ VPN" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontFamily="CommissionerExtraBold" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                                    <Label Text="Трафик выбранных приложений пойдет напрямую без VPN" TextColor="{StaticResource Gray500}" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                                </VerticalStackLayout>
+
+                                <!-- Предупреждение о активном VPN -->
+                                <Border x:Name="SplitVpnWarning" Grid.Row="1" BackgroundColor="{AppThemeBinding Light=#FEF2F2, Dark=#451A03}" Stroke="#EF4444" StrokeThickness="1" Padding="15" IsVisible="False">
+                                    <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                    <Grid ColumnDefinitions="Auto, *">
+                                        <mi:MauiIcon Icon="{mi:Fluent Icon=Warning24}" IconSize="22" IconColor="#EF4444" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="Отключите VPN, чтобы изменить настройки исключений." TextColor="#EF4444" FontSize="13" FontAttributes="Bold" Margin="10,0,0,0" VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Row="2" BackgroundColor="Transparent" StrokeThickness="1" Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" Padding="5,0">
+                                    <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <SearchBar x:Name="SplitSearchBar" TextChanged="OnSplitSearchTextChanged" Placeholder="Поиск по названию..." TextColor="{AppThemeBinding Light=Black, Dark=White}" PlaceholderColor="{StaticResource Gray400}" BackgroundColor="Transparent" CancelButtonColor="{StaticResource Primary}" HeightRequest="45" Margin="0" />
+                                        <ActivityIndicator x:Name="SplitLoader" Grid.Column="1" IsRunning="False" IsVisible="False" Color="{StaticResource Primary}" WidthRequest="24" HeightRequest="24" Margin="0,0,10,0" VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+
+                                <CollectionView x:Name="SplitAppsList" Grid.Row="3" SelectionMode="None" Margin="0,10,0,0">
+                                    <CollectionView.ItemsLayout>
+                                        <GridItemsLayout Orientation="Vertical" Span="{OnIdiom Phone=1, Default=2}" HorizontalItemSpacing="15" VerticalItemSpacing="12" />
+                                    </CollectionView.ItemsLayout>
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate x:DataType="localModels:AppInfoItem">
+                                            <Border BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}" StrokeThickness="1" Padding="14">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="14" /></Border.StrokeShape>
+                                                <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="15">
+                                                    
+                                                    <!-- Иконка приложения -->
+                                                    <Border Grid.Column="0" WidthRequest="46" HeightRequest="46" BackgroundColor="{AppThemeBinding Light=#F1F5F9, Dark=#334155}" StrokeThickness="0" VerticalOptions="Center">
+                                                        <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                                        <Image Source="{Binding Icon}" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                    </Border>
+
+                                                    <!-- Название и имя пакета -->
+                                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                                        <Label Text="{Binding Name}" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontAttributes="Bold" FontSize="14" LineBreakMode="TailTruncation" />
+                                                        <Label Text="{Binding PackageName}" TextColor="{StaticResource Gray500}" FontSize="11" LineBreakMode="TailTruncation" />
+                                                    </VerticalStackLayout>
+
+                                                    <!-- Переключатель обхода -->
+                                                    <Switch Grid.Column="2" 
+                                                            IsToggled="{Binding IsBypassed, Mode=TwoWay}"
+                                                            Toggled="OnSplitAppToggled"
+                                                            OnColor="{StaticResource Primary}"
+                                                            VerticalOptions="Center">
+                                                        <Switch.IsEnabled>
+                                                            <Binding Path="IsSplitEditingAllowed" Source="{x:Reference ThisPage}" x:DataType="pages:MainPage" />
+                                                        </Switch.IsEnabled>
+                                                    </Switch>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+
+                            </Grid>
+                        </Border>
+                    </ScrollView>
+                </Grid>
+
+                <!-- ── ВКЛАДКА: УДАЛЕНИЕ АККАУНТА ── -->
+                <Grid x:Name="TabContentDelete" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="УДАЛЕНИЕ АККАУНТА" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="28" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="4" HorizontalOptions="Center" />
+                    </Grid>
+                    <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
+                        <Border x:Name="DeleteAccountBorder" Style="{StaticResource GlassCard}" VerticalOptions="Start" HorizontalOptions="Center" WidthRequest="{OnIdiom Phone=340, Default=600}" Margin="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}" Padding="25">
+                            <VerticalStackLayout Spacing="20">
+                                <mi:MauiIcon Icon="{mi:Fluent Icon=Warning24}" IconSize="64" IconColor="#EF4444" HorizontalOptions="Center" />
+                                <Label Text="ВНИМАНИЕ!" TextColor="#EF4444" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                                <Label Text="Это действие полностью сотрет вашу учетную запись, активные подписки, сохраненные настройки и привязанные устройства с серверов Obxodka VPN. Данная процедура необратима." TextColor="{StaticResource Gray500}" FontSize="14" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                                
+                                <Label x:Name="DeleteErrorLabel" TextColor="#EF4444" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" Opacity="0" />
+                                
+                                <Grid ColumnDefinitions="*, *" ColumnSpacing="15">
+                                    <Button Text="ОТМЕНА" Clicked="OnCancelDeleteClicked" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light=Black, Dark=White}" BorderColor="{StaticResource Gray500}" BorderWidth="1" HeightRequest="45" CornerRadius="12" FontAttributes="Bold" />
+                                    <Button x:Name="DeleteAccountButton" Grid.Column="1" Text="Стереть данные" Clicked="OnConfirmDeleteClickedAsync" BackgroundColor="#EF4444" TextColor="White" HeightRequest="45" CornerRadius="12" FontAttributes="Bold" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+                    </ScrollView>
+                </Grid>
+
+                <!-- ── ВКЛАДКА: ОПЛАТА (НОВАЯ) ── -->
+                <Grid x:Name="TabContentPayment" IsVisible="False" RowDefinitions="Auto, *">
+                    <Grid Grid.Row="0" Padding="{OnPlatform Android='20,50,20,10', WinUI='30,20,30,15'}">
+                        <Label Text="ОПЛАТА" TextColor="{AppThemeBinding Light=Black, Dark=White}" FontSize="28" FontFamily="CommissionerExtraBold" FontAttributes="Bold" CharacterSpacing="4" HorizontalOptions="Center" />
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="{OnPlatform Android='20,5,20,20', WinUI='30,5,30,30'}">
+                        <Border Style="{StaticResource GlassCard}" Padding="0" VerticalOptions="Fill" HorizontalOptions="Fill">
+                            <Grid>
+                                <WebView x:Name="PaymentWebView" Navigating="OnPaymentWebViewNavigatingAsync" HorizontalOptions="Fill" VerticalOptions="Fill" />
+                                <ActivityIndicator x:Name="PaymentLoader" IsRunning="True" Color="{StaticResource Primary}" WidthRequest="50" HeightRequest="50" HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+                
+                <!-- ── НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ (ДЛЯ ТЕЛЕФОНОВ) ── -->
+                <Border x:Name="MobileBottomBar"
+                        Grid.Row="1"
+                        VerticalOptions="End"
                         HorizontalOptions="Fill"
-                        Margin="{OnPlatform Android='20,0', WinUI='40,0'}"
-                        HeightRequest="{OnPlatform Android=120, WinUI=130}"
-                        Opacity="0"
-                        InputTransparent="True">
+                        IsVisible="{OnIdiom Phone=True, Default=False}"
+                        BackgroundColor="{AppThemeBinding Light=#F8FAFC, Dark=#1E293B}"
+                        Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#334155}"
+                        StrokeThickness="1"
+                        HeightRequest="75"
+                        Padding="0,0,0,10"
+                        Margin="0"
+                        Opacity="0"> <!-- Изначально скрыт, пока не авторизован -->
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="65" />
+                        <RoundRectangle CornerRadius="20,20,0,0"/>
                     </Border.StrokeShape>
-                </Border>
-
-                <Border x:Name="ConnectButtonBorder" 
-                        BackgroundColor="{DynamicResource PrimaryAccent}" 
-                        StrokeThickness="0" 
-                        HorizontalOptions="Fill" 
-                        Margin="{OnPlatform Android='20,0', WinUI='40,0'}" 
-                        HeightRequest="{OnPlatform Android=120, WinUI=130}" 
-                        Opacity="0">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="65" />
-                    </Border.StrokeShape>
-                    <Border.Shadow>
-                        <Shadow x:Name="ConnectButtonShadow" Brush="{DynamicResource PrimaryAccent}" Radius="50" Opacity="0.6" Offset="0,0" />
-                    </Border.Shadow>
-
-                    <Grid IsClippedToBounds="True">
-                        <Ellipse x:Name="SideWave" 
-                                 Fill="{DynamicResource StatusBlue}" 
-                                 HorizontalOptions="Start" 
-                                 VerticalOptions="Center" 
-                                 WidthRequest="1000" 
-                                 HeightRequest="1000" 
-                                 TranslationX="-1000" />
-
-                        <Button x:Name="ConnectButton" Text="ПУСК" FontSize="58" FontAttributes="Bold" TextColor="White" BackgroundColor="Transparent" Clicked="OnConnectClicked" />
+                    <Grid ColumnDefinitions="*, *, *, *, *">
+                        <Border x:Name="BottomNavVpn" Grid.Column="0" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavVpnTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="BottomNavVpnIcon" Icon="{mi:Fluent Icon=Shield24}" IconSize="26" IconColor="{StaticResource Primary}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
+                        <Border x:Name="BottomNavProfile" Grid.Column="1" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavProfileTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="BottomNavProfileIcon" Icon="{mi:Fluent Icon=Person24}" IconSize="26" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
+                        <Border x:Name="BottomNavDevices" Grid.Column="2" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavDevicesTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="BottomNavDevicesIcon" Icon="{mi:Fluent Icon=PhoneDesktop24}" IconSize="26" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
+                        <Border x:Name="BottomNavPassword" Grid.Column="3" BackgroundColor="Transparent" StrokeThickness="0">
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavPasswordTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="BottomNavPasswordIcon" Icon="{mi:Fluent Icon=LockClosed24}" IconSize="26" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
+                        <Border x:Name="BottomNavSplit" Grid.Column="4" BackgroundColor="Transparent" StrokeThickness="0" IsVisible="{OnPlatform Android=True, Default=False}">
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnNavSplitTapped"/></Border.GestureRecognizers>
+                            <mi:MauiIcon x:Name="BottomNavSplitIcon" Icon="{mi:Fluent Icon=AppsList24}" IconSize="26" IconColor="{StaticResource Gray500}" HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Border>
                     </Grid>
                 </Border>
+
             </Grid>
-
-            <VerticalStackLayout x:Name="BottomStack" VerticalOptions="End" HorizontalOptions="Center" Spacing="3" Margin="0,0,0,5" Opacity="0">
-                <Label x:Name="StatusLabel" Text="ОТКЛЮЧЕНО" FontSize="25" FontAttributes="Bold" HorizontalOptions="Center" TextColor="{DynamicResource ErrorColor}"/>
-                <Label x:Name="PingLabel" Text="Ping: -- ms" TextColor="{DynamicResource StatusBlue}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" IsVisible="False"/>
-                <Label Text="© obxodka secure network" TextColor="{DynamicResource TextSecondary}" FontSize="11" HorizontalOptions="Center"/>
-            </VerticalStackLayout>
-
         </Grid>
     </Grid>
 </ContentPage>

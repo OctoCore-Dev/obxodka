@@ -8,4 +8,5 @@
     <Deploy Solution="*|x64" />
     <Deploy Solution="Debug|Any CPU" />
   </Project>
+  <Project Path="C:\Users\irovb\Documents\code\VpnServer\obxodka.Shared\obxodka.Shared.csproj" />
 </Solution>
