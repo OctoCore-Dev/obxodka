@@ -203,6 +203,13 @@ public partial class VpnView : ContentView
                 await _parent.DisplayAlertAsync("Ошибка", "Не удалось получить список нod", "OK");
                 return;
             }
+
+            var (successHash, hashData, _) = await _apiService.GetCertHashAsync();
+            if (successHash && hashData != null && !string.IsNullOrEmpty(hashData.Hash))
+            {
+                OctopusEngine.DynamicSslPublicKeyHash = hashData.Hash;
+            }
+
             await Task.Run(async () => await _vpnService.StartVpnAsync(servers[0].Ip, servers[0].Port));
         }
         catch (Exception ex)
@@ -311,15 +318,11 @@ public partial class VpnView : ContentView
         if (LoaderCanvas != null)
         {
             _ = LoaderCanvas.ScaleToAsync(1.0, 300, Easing.SpringOut);
-            _ = LoaderCanvas.FadeToAsync(0, 300, Easing.CubicOut).ContinueWith(t =>
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
+            _ = LoaderCanvas.FadeToAsync(0, 300, Easing.CubicOut).ContinueWith(t => MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    LoaderCanvas.IsVisible = false;
                     _loaderTimer?.Stop();
                     _loaderTimer = null;
-                });
-            });
+                }));
         }
         else
         {

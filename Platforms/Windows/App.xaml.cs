@@ -1,10 +1,21 @@
 using Microsoft.UI.Xaml;
 namespace obxodka.WinUI;
 
+[SupportedOSPlatform("windows")]
+
 public sealed partial class App : MauiWinUIApplication
 {
     public App()
     {
+        var mainInstance = Microsoft.Windows.AppLifecycle.AppInstance.FindOrRegisterForKey("obxodka_main_instance");
+        if (!mainInstance.IsCurrent)
+        {
+            var args = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs();
+            mainInstance.RedirectActivationToAsync(args).AsTask().Wait();
+            Process.GetCurrentProcess().Kill();
+            return;
+        }
+
         InitializeComponent();
         _ = WinUIEx.WebAuthenticator.CheckOAuthRedirectionActivation();
         UnhandledException += App_UnhandledException;

@@ -30,6 +30,7 @@ namespace obxodka.Config;
 [JsonSerializable(typeof(UpdateInfo))]
 #endif
 [JsonSerializable(typeof(HydraConfig))]
+[JsonSerializable(typeof(Models.Responses.CertHashResponse))]
 internal sealed partial class AppJsonContext : JsonSerializerContext
 {
 }

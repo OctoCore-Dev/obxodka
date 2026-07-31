@@ -12,6 +12,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     private X509Certificate2? _clientCert;
     private string? _jwtToken;
     private CancellationTokenSource? _rotationCts;
+    public static string? DynamicSslPublicKeyHash { get; set; }
     private static readonly string[] t_legitimateHosts = [
         "google.com",
         "drive.google.com",
@@ -487,14 +488,18 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             return false;
         }
 
-        if (!string.IsNullOrEmpty(AppSecrets.SslPublicKeyHash))
+        var expectedHash = !string.IsNullOrEmpty(DynamicSslPublicKeyHash)
+            ? DynamicSslPublicKeyHash
+            : AppSecrets.SslPublicKeyHash;
+
+        if (!string.IsNullOrEmpty(expectedHash))
         {
             var hash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(certificate.GetPublicKey()));
-            if (hash == AppSecrets.SslPublicKeyHash)
+            if (hash == expectedHash)
             {
                 return true;
             }
-            Debug.WriteLine($"[SSL] PINNING FAILED! Сервер отдаёт: {hash} Клиент ожидает: {AppSecrets.SslPublicKeyHash}. Блокировка соединения!");
+            Debug.WriteLine($"[SSL] PINNING FAILED! Сервер отдаёт: {hash} Клиент ожидает: {expectedHash}. Блокировка соединения!");
             return false;
         }
 

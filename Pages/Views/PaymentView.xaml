@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.PaymentView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -20,7 +20,12 @@
                         Spacing="16"
                         WidthRequest="{OnIdiom Desktop=500,
                                                Default=360}">
-                        <Border x:Name="Card300" Padding="20" Opacity="0" TranslationY="28" Style="{StaticResource NeoCard}">
+                        <Border
+                            x:Name="Card300"
+                            Padding="20"
+                            Opacity="0"
+                            Style="{StaticResource NeoCard}"
+                            TranslationY="28">
                             <VerticalStackLayout Spacing="8">
                                 <Label
                                     FontSize="12"
@@ -32,7 +37,11 @@
                                     Text="300 ₽"
                                     TextColor="{StaticResource Primary}" />
                                 <Label Style="{StaticResource TitleSmall}" Text="300 часов доступа" />
-                                <Border x:Name="Btn300Border" Margin="0,12,0,0" HeightRequest="44" Style="{StaticResource NeoBtnPrimary}">
+                                <Border
+                                    x:Name="Btn300Border"
+                                    Margin="0,12,0,0"
+                                    HeightRequest="44"
+                                    Style="{StaticResource NeoBtnPrimary}">
                                     <Grid>
                                         <Button
                                             x:Name="Btn300"
@@ -42,13 +51,26 @@
                                             FontSize="14"
                                             Text="Купить за 300 ₽"
                                             TextColor="{StaticResource TextOnPrimary}" />
-                                        <ActivityIndicator x:Name="Loader300" HeightRequest="24" WidthRequest="24" IsVisible="False" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" Color="{StaticResource TextOnPrimary}" />
+                                        <ActivityIndicator
+                                            x:Name="Loader300"
+                                            HeightRequest="24"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="24"
+                                            Color="{StaticResource TextOnPrimary}" />
                                     </Grid>
                                 </Border>
                             </VerticalStackLayout>
                         </Border>
 
-                        <Border x:Name="Card500" Padding="20" Opacity="0" TranslationY="28" Style="{StaticResource NeoCard}">
+                        <Border
+                            x:Name="Card500"
+                            Padding="20"
+                            Opacity="0"
+                            Style="{StaticResource NeoCard}"
+                            TranslationY="28">
                             <VerticalStackLayout Spacing="8">
                                 <Label
                                     FontSize="12"
@@ -60,7 +82,11 @@
                                     Text="500 ₽"
                                     TextColor="#00E5FF" />
                                 <Label Style="{StaticResource TitleSmall}" Text="500 часов (+200 бонус)" />
-                                <Border x:Name="Btn500Border" Margin="0,12,0,0" HeightRequest="44" Style="{StaticResource NeoBtnPrimary}">
+                                <Border
+                                    x:Name="Btn500Border"
+                                    Margin="0,12,0,0"
+                                    HeightRequest="44"
+                                    Style="{StaticResource NeoBtnPrimary}">
                                     <Grid>
                                         <Button
                                             x:Name="Btn500"
@@ -70,13 +96,26 @@
                                             FontSize="14"
                                             Text="Купить за 500 ₽"
                                             TextColor="{StaticResource TextOnPrimary}" />
-                                        <ActivityIndicator x:Name="Loader500" HeightRequest="24" WidthRequest="24" IsVisible="False" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" Color="{StaticResource TextOnPrimary}" />
+                                        <ActivityIndicator
+                                            x:Name="Loader500"
+                                            HeightRequest="24"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="24"
+                                            Color="{StaticResource TextOnPrimary}" />
                                     </Grid>
                                 </Border>
                             </VerticalStackLayout>
                         </Border>
 
-                        <Border x:Name="Card1000" Padding="20" Opacity="0" TranslationY="28" Style="{StaticResource NeoCard}">
+                        <Border
+                            x:Name="Card1000"
+                            Padding="20"
+                            Opacity="0"
+                            Style="{StaticResource NeoCard}"
+                            TranslationY="28">
                             <VerticalStackLayout Spacing="8">
                                 <Label
                                     FontSize="12"
@@ -88,7 +127,11 @@
                                     Text="1000 ₽"
                                     TextColor="#F59E0B" />
                                 <Label Style="{StaticResource TitleSmall}" Text="1000 часов (+1000 бонус)" />
-                                <Border x:Name="Btn1000Border" Margin="0,12,0,0" HeightRequest="44" Style="{StaticResource NeoBtnPrimary}">
+                                <Border
+                                    x:Name="Btn1000Border"
+                                    Margin="0,12,0,0"
+                                    HeightRequest="44"
+                                    Style="{StaticResource NeoBtnPrimary}">
                                     <Grid>
                                         <Button
                                             x:Name="Btn1000"
@@ -98,7 +141,15 @@
                                             FontSize="14"
                                             Text="Купить за 1000 ₽"
                                             TextColor="{StaticResource TextOnPrimary}" />
-                                        <ActivityIndicator x:Name="Loader1000" HeightRequest="24" WidthRequest="24" IsVisible="False" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" Color="{StaticResource TextOnPrimary}" />
+                                        <ActivityIndicator
+                                            x:Name="Loader1000"
+                                            HeightRequest="24"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="24"
+                                            Color="{StaticResource TextOnPrimary}" />
                                     </Grid>
                                 </Border>
                             </VerticalStackLayout>

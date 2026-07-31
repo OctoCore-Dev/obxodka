@@ -64,7 +64,9 @@ public sealed class ApiService(HttpClient client)
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+                    try
+                    { MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke()); }
+                    catch { }
                     return (false, null, "Сессия истекла или устройство было удалено.");
                 }
 
@@ -157,4 +159,7 @@ public sealed class ApiService(HttpClient client)
 
     public async Task<(bool Success, List<VpnServerDto>? Servers, string? Error)> GetServersAsync() =>
         await SendRequestAsync<object, List<VpnServerDto>>(HttpMethod.Get, "api/Vpn/servers", null, null, AppJsonContext.Default.ListVpnServerDto).ConfigureAwait(false);
+
+    public async Task<(bool Success, Models.Responses.CertHashResponse? Data, string? Error)> GetCertHashAsync() =>
+        await SendRequestAsync<object, Models.Responses.CertHashResponse>(HttpMethod.Get, "api/Vpn/cert-hash", null, null, AppJsonContext.Default.CertHashResponse, includeAuth: false).ConfigureAwait(false);
 }

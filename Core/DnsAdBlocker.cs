@@ -45,9 +45,9 @@ public static class DnsAdBlocker
         "applovin.com",
         "vungle.com"
     };
-    public static byte[]? ProcessPacket(byte[] packet, int length)
+    public static byte[]? ProcessPacket(byte[] packet, int length, bool useAdblock)
     {
-        if (!Preferences.Default.Get("use_adblock_dns", false))
+        if (!useAdblock)
         {
             return null;
         }
@@ -477,3 +477,4 @@ public static class DnsAdBlocker
         return resp;
     }
 }
+

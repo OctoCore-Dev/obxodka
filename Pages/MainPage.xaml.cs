@@ -215,6 +215,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
         var session = await AuthManager.LoadSessionAsync();
         _ = TabContentAuth.FadeToAsync(0, 300);
         await Task.Delay(300);
+        
+        TabContentVpn.Initialize(this, VpnService, _apiService);
         _ = SwitchTabAsync("vpn");
 
         _ = DesktopSidebar.PlayEntranceAnimationAsync();

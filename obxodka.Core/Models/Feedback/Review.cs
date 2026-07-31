@@ -4,14 +4,22 @@ public sealed class Review
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid UserId { get; set; }
+    public Guid? UserId { get; set; }
     [ForeignKey(nameof(UserId))]
-    public User User { get; set; } = null!;
+    public User? User { get; set; }
     [Required]
-    [MaxLength(1000)]
+    [MaxLength(2000)]
     public string Text { get; set; } = string.Empty;
     public int? Rating { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // External Store Support
+    public string Source { get; set; } = "Web"; // "Web", "MicrosoftStore", "PlayMarket", "RuStore"
+    public string? ExternalId { get; set; }
+    public string? ExternalAuthorName { get; set; }
+    public string? Region { get; set; }
+    public string? AppVersion { get; set; }
+
     public Guid? ParentId { get; set; }
     [ForeignKey(nameof(ParentId))]
     public Review? Parent { get; set; }

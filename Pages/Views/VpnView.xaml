@@ -288,7 +288,7 @@
                             x:Name="LoaderCanvas"
                             HorizontalOptions="Fill"
                             IgnorePixelScaling="True"
-                            IsVisible="False"
+                            Opacity="0"
                             PaintSurface="OnPaintLoaderSurface"
                             VerticalOptions="Fill" />
 
@@ -324,6 +324,7 @@
 
                                 <Border
                                     x:Name="ConnectButtonCore"
+                                    AutomationId="VpnConnectButton"
                                     BackgroundColor="{AppThemeBinding Light={StaticResource BgElevatedLight},
                                                                       Dark={StaticResource BgElevated}}"
                                     HeightRequest="{OnIdiom Phone=198,
@@ -374,6 +375,7 @@
                         x:Name="StatusLabel"
                         Grid.Row="1"
                         Margin="0,14,0,0"
+                        AutomationId="VpnStatusLabel"
                         FontSize="{OnIdiom Phone=13,
                                            Default=15}"
                         HorizontalOptions="Center"

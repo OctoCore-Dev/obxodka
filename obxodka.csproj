@@ -18,7 +18,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
-        <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Core\**</DefaultItemExcludes>
+        <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Core\**;obxodka.Client.Tests\**;obxodka.UITests\**</DefaultItemExcludes>
     </PropertyGroup>
 
 	<PropertyGroup Condition="$(TargetFramework.Contains('-windows'))">
@@ -34,9 +34,9 @@
     <PropertyGroup>
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
-        <Version>3.5.8</Version>
-        <ApplicationDisplayVersion>3.5.8</ApplicationDisplayVersion>
-        <ApplicationVersion>358</ApplicationVersion>
+        <Version>3.5.9</Version>
+        <ApplicationDisplayVersion>3.5.9</ApplicationDisplayVersion>
+        <ApplicationVersion>359</ApplicationVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
