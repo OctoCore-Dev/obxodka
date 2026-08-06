@@ -266,11 +266,40 @@
                     Padding="{OnIdiom Phone='20,24',
                                       Default='28,32'}"
                     HorizontalOptions="Center"
-                    RowDefinitions="Auto, Auto"
+                    RowDefinitions="Auto, Auto, Auto"
+                    RowSpacing="16"
                     VerticalOptions="Center">
 
-                    <Grid
+                    <Border
+                        x:Name="RayIndicatorBadge"
                         Grid.Row="0"
+                        Padding="12,6"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource BgElevatedLight},
+                                                          Dark={StaticResource BgElevated}}"
+                        HorizontalOptions="Center"
+                        Stroke="{AppThemeBinding Light={StaticResource BorderMediumLight},
+                                                 Dark={StaticResource BorderMedium}}"
+                        StrokeThickness="1">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                            <mi:MauiIcon
+                                x:Name="RayIndicatorIcon"
+                                Icon="{mi:Fluent Icon=Scales24}"
+                                IconColor="#3B82F6"
+                                IconSize="16" />
+                            <Label
+                                x:Name="RayIndicatorLabel"
+                                FontFamily="RobotoMedium"
+                                FontSize="13"
+                                Style="{StaticResource LabelValue}"
+                                Text="Режим: Баланс (2 Луча)" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <Grid
+                        Grid.Row="1"
                         HeightRequest="{OnIdiom Phone=280,
                                                 Default=300}"
                         HorizontalOptions="Center"
@@ -373,7 +402,7 @@
 
                     <Label
                         x:Name="StatusLabel"
-                        Grid.Row="1"
+                        Grid.Row="2"
                         Margin="0,14,0,0"
                         AutomationId="VpnStatusLabel"
                         FontSize="{OnIdiom Phone=13,

@@ -1,4 +1,3 @@
-using System.Net.NetworkInformation;
 namespace obxodka.Platforms.Windows;
 
 [SupportedOSPlatform("windows10.0.19041.0")]
@@ -11,7 +10,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     public event Action<AppVpnState>? OnStateChanged;
     public event Action<string>? OnLogUpdated;
     public event Action<string>? OnErrorOccurred;
+#pragma warning disable CS0067
     public event Action<AppTrafficStats>? OnTrafficUpdated;
+#pragma warning restore CS0067
     public event Action<string>? OnForceLogoutRequested;
     public WindowsVpnService()
     {

@@ -215,7 +215,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         var session = await AuthManager.LoadSessionAsync();
         _ = TabContentAuth.FadeToAsync(0, 300);
         await Task.Delay(300);
-        
+
         TabContentVpn.Initialize(this, VpnService, _apiService);
         _ = SwitchTabAsync("vpn");
 
@@ -279,6 +279,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
             case "vpn":
                 _ = TabContentVpn.PlayEntranceAnimationAsync();
                 break;
+            case "battery":
+                TabContentBattery.OnAppearing();
+                _ = TabContentBattery.PlayEntranceAnimationAsync();
+                break;
             case "profile":
                 var session = await AuthManager.LoadSessionAsync();
                 TabContentProfile.UpdateProfileInfo(session);
@@ -307,6 +311,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
     {
         "auth" => TabContentAuth,
         "vpn" => TabContentVpn,
+        "battery" => TabContentBattery,
         "profile" => TabContentProfile,
         "devices" => TabContentDevices,
         "payment" => TabContentPayment,

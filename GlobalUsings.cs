@@ -2,9 +2,11 @@ global using System.Buffers;
 global using System.Buffers.Binary;
 global using System.Collections.ObjectModel;
 global using System.Diagnostics;
+global using System.Globalization;
 global using System.Net;
 global using System.Net.Http.Headers;
 global using System.Net.Http.Json;
+global using System.Net.NetworkInformation;
 global using System.Net.Security;
 global using System.Runtime.InteropServices;
 global using System.Runtime.Versioning;
@@ -15,6 +17,7 @@ global using System.Text.Json.Serialization;
 global using System.Text.Json.Serialization.Metadata;
 global using System.Threading.Channels;
 global using CommunityToolkit.Maui;
+global using CommunityToolkit.Mvvm.ComponentModel;
 global using Grpc.Core;
 global using Grpc.Net.Client;
 global using MauiIcons.Core;
@@ -33,8 +36,6 @@ global using SkiaSharp;
 global using SkiaSharp.Views.Maui;
 global using SkiaSharp.Views.Maui.Controls;
 global using SkiaSharp.Views.Maui.Controls.Hosting;
-global using CommunityToolkit.Mvvm.ComponentModel;
-global using System.Globalization;
 [assembly: SupportedOSPlatform("android29.0")]
 [assembly: SupportedOSPlatform("ios16.1")]
 [assembly: SupportedOSPlatform("maccatalyst16.1")]

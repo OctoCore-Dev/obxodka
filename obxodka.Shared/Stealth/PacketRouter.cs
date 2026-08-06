@@ -4,9 +4,9 @@ namespace obxodka.Shared.Stealth;
 public static class PacketRouter
 {
     public const int MaxRays = 8;
-    public static int GetRayIndex(byte[] packetBuffer, int length)
+    public static int GetRayIndex(byte[] packetBuffer, int length, int activeRays)
     {
-        if (length < 20)
+        if (activeRays <= 1 || length < 20)
         {
             return 0;
         }
@@ -61,6 +61,6 @@ public static class PacketRouter
                 }
             }
         }
-        return isGamingOrIcmp ? 0 : (Math.Abs(hash) % (MaxRays - 1)) + 1;
+        return isGamingOrIcmp ? 0 : (Math.Abs(hash) % (activeRays - 1)) + 1;
     }
 }

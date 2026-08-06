@@ -26,6 +26,12 @@ public partial class MobileSidebarView : ContentView
                 _ = PillVpn.FadeToAsync(1, 150);
                 _ = PillVpn.ScaleToAsync(1, 150, Easing.SpringOut);
                 break;
+            case "battery":
+                BottomNavBatteryIcon.IconColor = activeColor;
+                PillBattery.IsVisible = true;
+                _ = PillBattery.FadeToAsync(1, 150);
+                _ = PillBattery.ScaleToAsync(1, 150, Easing.SpringOut);
+                break;
             case "profile":
                 BottomNavProfileIcon.IconColor = activeColor;
                 PillProfile.IsVisible = true;
@@ -54,6 +60,9 @@ public partial class MobileSidebarView : ContentView
         PillVpn.Opacity = 0;
         PillVpn.Scale = 0.5;
         PillVpn.IsVisible = false;
+        PillBattery.Opacity = 0;
+        PillBattery.Scale = 0.5;
+        PillBattery.IsVisible = false;
         PillProfile.Opacity = 0;
         PillProfile.Scale = 0.5;
         PillProfile.IsVisible = false;
@@ -69,12 +78,14 @@ public partial class MobileSidebarView : ContentView
             : Color.FromArgb("#6A5A8A");
 
         BottomNavVpnIcon.IconColor = inactiveColor;
+        BottomNavBatteryIcon.IconColor = inactiveColor;
         BottomNavProfileIcon.IconColor = inactiveColor;
         BottomNavDevicesIcon.IconColor = inactiveColor;
         BottomNavSplitIcon.IconColor = inactiveColor;
     }
 
     private void OnNavVpnTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "vpn");
+    private void OnNavBatteryTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "battery");
     private void OnNavProfileTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "profile");
     private void OnNavDevicesTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "devices");
     private void OnNavPasswordTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "password");

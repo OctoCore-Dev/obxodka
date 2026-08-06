@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.MobileSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -29,7 +29,7 @@
                 Offset="0,4" />
         </Border.Shadow>
 
-        <Grid ColumnDefinitions="*, *, *, *">
+        <Grid ColumnDefinitions="*, *, *, *, *">
 
             <Border
                 x:Name="BottomNavVpn"
@@ -153,6 +153,38 @@
                         x:Name="BottomNavSplitIcon"
                         HorizontalOptions="Center"
                         Icon="{mi:Fluent Icon=AppsList24}"
+                        IconColor="{AppThemeBinding Light=#9080B0,
+                                                    Dark=#6A5A8A}"
+                        IconSize="26" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border
+                x:Name="BottomNavBattery"
+                Grid.Column="4"
+                Style="{StaticResource BottomNavItem}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnNavBatteryTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout
+                    HorizontalOptions="Center"
+                    Spacing="4"
+                    VerticalOptions="Center">
+                    <BoxView
+                        x:Name="PillBattery"
+                        CornerRadius="2"
+                        HeightRequest="4"
+                        HorizontalOptions="Center"
+                        IsVisible="False"
+                        Opacity="0"
+                        Scale="0.5"
+                        WidthRequest="20"
+                        Color="{AppThemeBinding Light=#7C3AED,
+                                                Dark=#9F6FF0}" />
+                    <mi:MauiIcon
+                        x:Name="BottomNavBatteryIcon"
+                        HorizontalOptions="Center"
+                        Icon="{mi:Fluent Icon=Battery1024}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
                         IconSize="26" />

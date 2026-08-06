@@ -40,7 +40,9 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     private CancellationTokenSource? _cts;
     private TaskCompletionSource<(string, string)>? _ipTcs;
     private readonly Channel<(byte[] buffer, int length)>?[] _txChannels = new Channel<(byte[], int)>?[PacketRouter.MaxRays];
-    private int _activeRays = 1;
+
+    public int ActiveRays { get; private set; } = 1;
+
     public bool IsConnected => _grpcChannel is not null;
     public string AssignedIp { get; private set; } = "10.8.0.2";
     public string AssignedIpV6 { get; private set; } = "fd00::2";
@@ -58,13 +60,15 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         var client = new TunnelService.TunnelServiceClient(_grpcChannel);
         var headers = new Metadata
         {
-            { "X-Obxodka-Auth", _clientCert!.Thumbprint }
+            { "X-Obxodka-Auth", _clientCert!.Thumbprint },
+            { "X-Active-Rays", ActiveRays.ToString(CultureInfo.InvariantCulture) },
+            { "X-Ray-Index", i.ToString(CultureInfo.InvariantCulture) }
         };
         if (!string.IsNullOrEmpty(_jwtToken))
         {
             headers.Add("X-Obxodka-Token", _jwtToken);
         }
-        var call = client.ConnectStream(headers);
+        var call = client.ConnectStream(headers, cancellationToken: _cts!.Token);
         var dummy = new byte[16];
         dummy[0] = 16;
         dummy[1] = (byte)i;
@@ -101,7 +105,11 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _currentSni = t_legitimateHosts[Random.Shared.Next(t_legitimateHosts.Length)];
         Debug.WriteLine($"[SNI MASKING] Spoofing SNI as: {_currentSni}");
         Debug.WriteLine($"[GRPC CONNECT] Connecting via gRPC on port {serverPort}...");
-        _activeRays = PacketRouter.MaxRays;
+#if ANDROID || IOS
+        ActiveRays = Preferences.Get("BatteryMode", 2);
+#else
+        ActiveRays = PacketRouter.MaxRays;
+#endif
         var channelOptions = new GrpcChannelOptions
         {
             HttpHandler = new SocketsHttpHandler
@@ -126,7 +134,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _grpcChannel = GrpcChannel.ForAddress($"https://{serverIp}:{serverPort}", channelOptions);
         try
         {
-            for (var i = 0; i < _activeRays; i++)
+            for (var i = 0; i < ActiveRays; i++)
             {
                 _txChannels[i] = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(5000) { FullMode = BoundedChannelFullMode.Wait });
                 await ConnectRayAsync(i, isNewConnection: i == 0);
@@ -146,7 +154,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _ = Task.Run(async () =>
         {
-            var tasks = Enumerable.Range(0, _activeRays).Select(i => ReceiveLoopAsync(i, _cts!.Token)).ToArray();
+            var tasks = Enumerable.Range(0, ActiveRays).Select(i => ReceiveLoopAsync(i, _cts!.Token)).ToArray();
             await Task.WhenAll(tasks);
         }, _cts!.Token);
         _rotationCts = CancellationTokenSource.CreateLinkedTokenSource(_cts!.Token);
@@ -157,6 +165,9 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             AssignedIp = ip;
             AssignedIpV6 = ip6;
             Debug.WriteLine($"[ENGINE] Got IP={AssignedIp}, IP6={AssignedIpV6}");
+
+            // Start battery tracking if applicable
+
         }
         catch (TimeoutException)
         {
@@ -330,7 +341,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             return Task.CompletedTask;
         }
-        var ray = PacketRouter.GetRayIndex(packet, packet.Length) % _activeRays;
+        var ray = PacketRouter.GetRayIndex(packet, packet.Length, ActiveRays) % ActiveRays;
         var channel = _txChannels[ray];
         if (channel == null)
         {
@@ -350,7 +361,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             ArrayPool<byte>.Shared.Return(inputBuf);
             return Task.CompletedTask;
         }
-        var ray = PacketRouter.GetRayIndex(inputBuf, length) % _activeRays;
+        var ray = PacketRouter.GetRayIndex(inputBuf, length, ActiveRays) % ActiveRays;
         var channel = _txChannels[ray];
         if (channel == null)
         {
@@ -449,6 +460,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
+
         _cts?.Cancel();
         _rotationCts?.Cancel();
         _clientCert?.Dispose();

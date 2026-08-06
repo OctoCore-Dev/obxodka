@@ -23,6 +23,7 @@ public partial class VpnView : ContentView
 
     public void Initialize(MainPage parent, IVpnService vpnService, ApiService apiService)
     {
+        UpdateRayIndicator();
         _parent = parent;
         _vpnService = vpnService;
         _apiService = apiService;
@@ -50,6 +51,7 @@ public partial class VpnView : ContentView
 
     public async Task PlayEntranceAnimationAsync()
     {
+        UpdateRayIndicator();
         await UIAnimations.PlayEntranceCascadeAsync(80, 450,
             CardIpWrapper, Card2Wrapper, Card5Wrapper, Card1Wrapper);
     }
@@ -63,6 +65,37 @@ public partial class VpnView : ContentView
         }
     }
 
+    private void UpdateRayIndicator()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var rays = Preferences.Get("BatteryMode", 2);
+            if (OctopusEngine.Current != null && OctopusEngine.Current.IsConnected)
+            {
+                rays = OctopusEngine.Current.ActiveRays;
+            }
+
+            if (rays == 1)
+            {
+                RayIndicatorIcon.Icon = FluentIcons.LeafOne24;
+                RayIndicatorIcon.IconColor = Color.FromArgb("#10B981");
+                RayIndicatorLabel.Text = "Режим: Eco (1 Луч)";
+            }
+            else if (rays == 8)
+            {
+                RayIndicatorIcon.Icon = FluentIcons.Flash24;
+                RayIndicatorIcon.IconColor = Color.FromArgb("#EF4444");
+                RayIndicatorLabel.Text = "Режим: Турбо (8 Лучей)";
+            }
+            else
+            {
+                RayIndicatorIcon.Icon = FluentIcons.Scales24;
+                RayIndicatorIcon.IconColor = Color.FromArgb("#3B82F6");
+                RayIndicatorLabel.Text = "Режим: Баланс (2 Луча)";
+            }
+        });
+    }
+
     private void HandleVpnLog(string logMsg) =>
         MainThread.BeginInvokeOnMainThread(() => StatusLabel.Text = logMsg);
     private void HandleVpnError(string err) =>
@@ -71,6 +104,7 @@ public partial class VpnView : ContentView
 
     private void HandleAppVpnStateChanged(AppVpnState state)
     {
+        UpdateRayIndicator();
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             switch (state)

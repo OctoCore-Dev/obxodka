@@ -38,7 +38,52 @@ public partial class ProfileView : ContentView
 
     public void UpdateProfileInfo(UserSession session)
     {
-        ProfileEmailLabel.Text = session.Email;
+        ProfileEmailLabel.Text = session.Email ?? "Unknown Email";
+
+        var domain = session.Email?.Split('@').LastOrDefault()?.ToLowerInvariant();
+        var providerName = "EMAIL";
+        var iconSource = "email_logo.png";
+
+        switch (domain)
+        {
+            case "gmail.com":
+                providerName = "GOOGLE";
+                iconSource = "google_logo.png";
+                break;
+            case "yandex.ru":
+            case "yandex.com":
+            case "yandex.kz":
+            case "yandex.by":
+            case "ya.ru":
+                providerName = "YANDEX";
+                iconSource = "yandex_logo.png";
+                break;
+            case "mail.ru":
+            case "inbox.ru":
+            case "list.ru":
+            case "bk.ru":
+            case "internet.ru":
+                providerName = "MAIL.RU";
+                iconSource = "mailru_logo.png";
+                break;
+            case "outlook.com":
+            case "hotmail.com":
+            case "live.com":
+                providerName = "MICROSOFT";
+                iconSource = "microsoft_logo.png";
+                break;
+            case "icloud.com":
+            case "me.com":
+            case "mac.com":
+                providerName = "APPLE";
+                iconSource = "apple_logo.png";
+                break;
+            default:
+                break;
+        }
+
+        ProfileProviderLabel.Text = $"{providerName} АККАУНТ";
+        ProfileProviderIcon.Source = iconSource;
 
         if (session.SubscriptionUntil.HasValue)
         {

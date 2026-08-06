@@ -1,0 +1,213 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.BatteryView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
+    <Grid>
+        <Grid Padding="{OnIdiom Desktop='32,28', Phone='16,16,16,100', Default='24,24'}">
+            <Grid RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto, Auto" RowSpacing="24">
+                <Label
+                    Grid.Row="0"
+                    FontFamily="CommissionerExtraBold"
+                    FontSize="24"
+                    Text="Энергопотребление"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}" />
+
+                <Label
+                    Grid.Row="1"
+                    FontSize="14"
+                    LineBreakMode="WordWrap"
+                    Style="{StaticResource LabelMuted}">
+                    <Label.Text>
+                        <OnIdiom
+                            x:TypeArguments="x:String"
+                            Desktop="Выберите режим работы. Экономит заряд на ноутбуках и снижает нагрузку на слабых ПК."
+                            Phone="Выберите режим работы для контроля расхода батареи смартфона." />
+                    </Label.Text>
+                </Label>
+
+                <Label
+                    Grid.Row="2"
+                    Margin="0,16,0,0"
+                    FontFamily="RobotoBold"
+                    FontSize="18"
+                    Text="Режим лучей"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}" />
+
+                <Label
+                    x:Name="LockWarningLabel"
+                    Grid.Row="3"
+                    FontFamily="RobotoMedium"
+                    FontSize="12"
+                    IsVisible="False"
+                    Text="⚠️ Отключите VPN, чтобы изменить режим"
+                    TextColor="#EF4444" />
+
+                <Border
+                    x:Name="EcoButton"
+                    Grid.Row="4"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnEcoTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=LeafOne24}"
+                            IconColor="#10B981"
+                            IconSize="28"
+                            VerticalOptions="Center" />
+                        <Grid
+                            Grid.Column="1"
+                            Margin="16,0,0,0"
+                            RowDefinitions="Auto, Auto"
+                            RowSpacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                Grid.Row="0"
+                                FontFamily="RobotoBold"
+                                FontSize="16"
+                                Style="{StaticResource LabelValue}"
+                                Text="Eco (1 Луч)" />
+                            <Label
+                                Grid.Row="1"
+                                FontSize="12"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Максимальная экономия батареи." />
+                        </Grid>
+                        <RadioButton
+                            x:Name="EcoRadio"
+                            Grid.Column="2"
+                            GroupName="BatteryMode"
+                            HorizontalOptions="End"
+                            InputTransparent="True"
+                            IsChecked="False"
+                            VerticalOptions="Center"
+                            WidthRequest="32" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="BalancedButton"
+                    Grid.Row="5"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBalancedTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Scales24}"
+                            IconColor="#3B82F6"
+                            IconSize="28"
+                            VerticalOptions="Center" />
+                        <Grid
+                            Grid.Column="1"
+                            Margin="16,0,0,0"
+                            RowDefinitions="Auto, Auto"
+                            RowSpacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                Grid.Row="0"
+                                FontFamily="RobotoBold"
+                                FontSize="16"
+                                Style="{StaticResource LabelValue}"
+                                Text="Баланс (2 Луча)" />
+                            <Label
+                                Grid.Row="1"
+                                FontSize="12"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Хорошая скорость, умеренный расход." />
+                        </Grid>
+                        <RadioButton
+                            x:Name="BalancedRadio"
+                            Grid.Column="2"
+                            GroupName="BatteryMode"
+                            HorizontalOptions="End"
+                            InputTransparent="True"
+                            IsChecked="True"
+                            VerticalOptions="Center"
+                            WidthRequest="32" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="TurboButton"
+                    Grid.Row="6"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTurboTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Flash24}"
+                            IconColor="#EF4444"
+                            IconSize="28"
+                            VerticalOptions="Center" />
+                        <Grid
+                            Grid.Column="1"
+                            Margin="16,0,0,0"
+                            RowDefinitions="Auto, Auto"
+                            RowSpacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                Grid.Row="0"
+                                FontFamily="RobotoBold"
+                                FontSize="16"
+                                Style="{StaticResource LabelValue}"
+                                Text="Турбо (8 Лучей)" />
+                            <Label
+                                Grid.Row="1"
+                                FontSize="12"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Макс. скорость. Внимание: нагрев!" />
+                        </Grid>
+                        <RadioButton
+                            x:Name="TurboRadio"
+                            Grid.Column="2"
+                            GroupName="BatteryMode"
+                            HorizontalOptions="End"
+                            InputTransparent="True"
+                            IsChecked="False"
+                            VerticalOptions="Center"
+                            WidthRequest="32" />
+                    </Grid>
+                </Border>
+
+                <VerticalStackLayout
+                    x:Name="VersionSection"
+                    Grid.Row="7"
+                    Margin="0,32,0,0"
+                    HorizontalOptions="Center"
+                    IsVisible="{OnIdiom Desktop=False,
+                                        Phone=True}"
+                    Spacing="8">
+                    <Label
+                        x:Name="VersionLabel"
+                        FontFamily="RobotoMedium"
+                        FontSize="14"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMuted}"
+                        Text="Версия: 1.0.0" />
+                    <Label
+                        FontSize="12"
+                        HorizontalTextAlignment="Center"
+                        Style="{StaticResource LabelMuted}"
+                        Text="Проверяйте актуальную версию на сайте. Если у вас старая версия — ОБНОВИТЕСЬ!" />
+                </VerticalStackLayout>
+
+            </Grid>
+        </Grid>
+    </Grid>
+</ContentView>

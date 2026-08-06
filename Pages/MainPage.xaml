@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
     x:Class="obxodka.Pages.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -26,6 +26,7 @@
 
                 <views:AuthView x:Name="TabContentAuth" IsVisible="False" />
                 <views:VpnView x:Name="TabContentVpn" IsVisible="False" />
+                <views:BatteryView x:Name="TabContentBattery" IsVisible="False" />
                 <views:ProfileView x:Name="TabContentProfile" IsVisible="False" />
                 <views:DevicesView x:Name="TabContentDevices" IsVisible="False" />
                 <views:SplitView x:Name="TabContentSplit" IsVisible="False" />
@@ -66,6 +67,35 @@
                     VerticalOptions="Center"
                     Color="{StaticResource Primary}" />
             </VerticalStackLayout>
+
+            <VerticalStackLayout
+                Margin="0,0,0,40"
+                HorizontalOptions="Center"
+                Spacing="4"
+                VerticalOptions="End">
+                <Label
+                    FontSize="12"
+                    HorizontalOptions="Center"
+                    Text="from"
+                    TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight},
+                                                Dark={StaticResource TextSecondary}}" />
+                <HorizontalStackLayout HorizontalOptions="Center" Spacing="6">
+                    <Image
+                        HeightRequest="20"
+                        Source="logo_abstract_layers.png"
+                        VerticalOptions="Center"
+                        WidthRequest="20" />
+                    <Label
+                        CharacterSpacing="1"
+                        FontFamily="CommissionerExtraBold"
+                        FontSize="16"
+                        Text="OCTOCORE"
+                        TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                    Dark={StaticResource TextPrimary}}"
+                        VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+
         </Grid>
     </Grid>
 </ContentPage>

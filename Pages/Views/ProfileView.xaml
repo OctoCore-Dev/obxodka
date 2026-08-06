@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.ProfileView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -61,11 +61,13 @@
                         VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
                             <Image
+                                x:Name="ProfileProviderIcon"
                                 HeightRequest="14"
                                 Source="google_logo.png"
                                 VerticalOptions="Center"
                                 WidthRequest="14" />
                             <Label
+                                x:Name="ProfileProviderLabel"
                                 CharacterSpacing="1"
                                 FontSize="10"
                                 Style="{StaticResource LabelMuted}"

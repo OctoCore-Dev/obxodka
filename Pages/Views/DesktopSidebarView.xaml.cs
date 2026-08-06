@@ -17,7 +17,7 @@ public partial class DesktopSidebarView : ContentView
         DesktopSidebar.IsVisible = true;
         await UIAnimations.PlaySidebarEntranceAsync(
             DesktopSidebar,
-            SideNavVpn, SideNavProfile, SideNavDevices, NavBug, NavReviews);
+            SideNavVpn, SideNavProfile, SideNavBattery, SideNavDevices, NavBug, NavReviews);
     }
 
     public void HideSidebar() => DesktopSidebar.IsVisible = false;
@@ -54,6 +54,7 @@ public partial class DesktopSidebarView : ContentView
             _ = AppLogoText.FadeToAsync(0, 150);
             _ = LabelVpn.FadeToAsync(0, 150);
             _ = LabelProfile.FadeToAsync(0, 150);
+            _ = LabelBattery.FadeToAsync(0, 150);
             _ = LabelDevices.FadeToAsync(0, 150);
             _ = LabelBug.FadeToAsync(0, 150);
             _ = LabelReviews.FadeToAsync(0, 150);
@@ -72,6 +73,7 @@ public partial class DesktopSidebarView : ContentView
                     _ = AppLogoText.FadeToAsync(1, 150);
                     _ = LabelVpn.FadeToAsync(1, 150);
                     _ = LabelProfile.FadeToAsync(1, 150);
+                    _ = LabelBattery.FadeToAsync(1, 150);
                     _ = LabelDevices.FadeToAsync(1, 150);
                     _ = LabelBug.FadeToAsync(1, 150);
                     _ = LabelReviews.FadeToAsync(1, 150);
@@ -97,6 +99,10 @@ public partial class DesktopSidebarView : ContentView
                 SideNavProfile.BackgroundColor = Color.FromArgb("#1A7C3AED");
                 NavProfileIcon.IconColor = activeColor;
                 break;
+            case "battery":
+                SideNavBattery.BackgroundColor = Color.FromArgb("#1A7C3AED");
+                NavBatteryIcon.IconColor = activeColor;
+                break;
             case "devices":
                 SideNavDevices.BackgroundColor = Color.FromArgb("#1A7C3AED");
                 NavDevicesIcon.IconColor = activeColor;
@@ -110,6 +116,7 @@ public partial class DesktopSidebarView : ContentView
     {
         SideNavVpn.BackgroundColor = Colors.Transparent;
         SideNavProfile.BackgroundColor = Colors.Transparent;
+        SideNavBattery.BackgroundColor = Colors.Transparent;
         SideNavDevices.BackgroundColor = Colors.Transparent;
 
         var inactiveColor = Application.Current?.RequestedTheme == AppTheme.Light
@@ -118,11 +125,13 @@ public partial class DesktopSidebarView : ContentView
 
         NavVpnIcon.IconColor = inactiveColor;
         NavProfileIcon.IconColor = inactiveColor;
+        NavBatteryIcon.IconColor = inactiveColor;
         NavDevicesIcon.IconColor = inactiveColor;
     }
 
     private void OnNavVpnTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "vpn");
     private void OnNavProfileTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "profile");
+    private void OnNavBatteryTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "battery");
     private void OnNavDevicesTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "devices");
 
     private void OnNavBugTapped(object sender, TappedEventArgs e)
