@@ -52,7 +52,7 @@ public partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPacket, Tun
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        var packet = new TunnelPacket { Data = Google.Protobuf.ByteString.CopyFrom(buffer.Span) };
+        var packet = new TunnelPacket { Data = Google.Protobuf.UnsafeByteOperations.UnsafeWrap(buffer) };
         await _call.RequestStream.WriteAsync(packet, cancellationToken);
     }
 

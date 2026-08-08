@@ -36,12 +36,20 @@ public static class PacketRouter
                     {
                         isGamingOrIcmp = true;
                     }
+                    if (protocol == 6 && length >= ihl + 20)
+                    {
+                        var tcpHeaderLen = (packetBuffer[ihl + 12] >> 4) * 4;
+                        if (length <= ihl + tcpHeaderLen)
+                        {
+                            isGamingOrIcmp = true;
+                        }
+                    }
                 }
             }
             else if (version == 6 && length >= 40)
             {
-                hash = (hash * 31) + BinaryPrimitives.ReadInt32LittleEndian(packetBuffer.AsSpan(8));
-                hash = (hash * 31) + BinaryPrimitives.ReadInt32LittleEndian(packetBuffer.AsSpan(24));
+                hash = (hash * 31) + BinaryPrimitives.ReadInt32LittleEndian(packetBuffer.AsSpan(20));
+                hash = (hash * 31) + BinaryPrimitives.ReadInt32LittleEndian(packetBuffer.AsSpan(36));
                 var nextHeader = packetBuffer[6];
                 hash = (hash * 31) + nextHeader;
                 if (nextHeader == 58)
@@ -57,6 +65,14 @@ public static class PacketRouter
                     if (nextHeader == 17 && dstPort != 53 && dstPort != 443 && srcPort != 53 && srcPort != 443)
                     {
                         isGamingOrIcmp = true;
+                    }
+                    if (nextHeader == 6 && length >= 60)
+                    {
+                        var tcpHeaderLen = (packetBuffer[40 + 12] >> 4) * 4;
+                        if (length <= 40 + tcpHeaderLen)
+                        {
+                            isGamingOrIcmp = true;
+                        }
                     }
                 }
             }

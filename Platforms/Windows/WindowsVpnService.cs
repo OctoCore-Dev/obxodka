@@ -22,11 +22,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
-        _ = CleanupStaleRoutesAsync();
     }
     private static async Task CleanupStaleRoutesAsync()
     {
-        _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'ObxVPN*' -or $_.Name -like 'Obxodka*' } | Remove-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue\"");
+        var psDel = "Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'ObxVPN*' -or $_.Name -like 'Obxodka*' } | Remove-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue; " +
+                    "Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'ObxodkaVPN' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue";
+        _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"{psDel}\"");
         _ = await RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
     }
@@ -85,6 +86,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     }
     public async Task StartVpnAsync(string serverIp, int serverPort)
     {
+        UpdateState(AppVpnState.Connecting);
+        OnLogUpdated?.Invoke("Очистка старых сетевых настроек...");
+        await CleanupStaleRoutesAsync();
+
         var targetIp = serverIp;
         if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
         {
@@ -126,7 +131,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _isExplicitlyStopped = false;
         try
         {
-            UpdateState(AppVpnState.Connecting);
             OnLogUpdated?.Invoke($"Построение маршрута через {originalHost}...");
 
             var connected = false;
@@ -232,15 +236,16 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         thread.Start();
         await tcs.Task;
     }
-    private void HandlePacketFromVpn(byte[] data)
+    private void HandlePacketFromVpn(byte[] data, int length)
     {
         _rxCount++;
         var info = ParseIpPacket(data);
         if (_rxCount % 10000 == 0)
         {
-            Debug.WriteLine($"[TRAFFIC IN] {_rxCount}: {info} ({data.Length} bytes)");
+            Debug.WriteLine($"[TRAFFIC IN] {_rxCount}: {info} ({length} bytes)");
         }
-        _adapter?.SendPacket(data);
+        _adapter?.SendPacket(data, length);
+        ArrayPool<byte>.Shared.Return(data);
     }
     private long _rxCount;
     private static string ParseIpPacket(byte[] data)
@@ -277,8 +282,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ Write-Output (Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name, InterfaceDescription | Out-String); exit 1; }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -AddressFamily IPv6 -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -NlMtuBytes 1420 -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '8.8.8.8','8.8.4.4' -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes 1420 -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','1.0.0.1' -Comment 'ObxodkaVPN' -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
             ";
             var (exitCode, output) = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\n", " ").Replace("\r", "")}\"");
@@ -417,7 +423,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 ";
                 deleteTasks.Add(RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psDelV6.Replace("\n", " ").Replace("\r", "")}\""));
             }
-            await Task.WhenAll(deleteTasks).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(deleteTasks).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ROUTE DELETE TIMEOUT/ERROR] {ex.Message}");
+            }
         }
     }
     public async Task StopVpnAsync()
@@ -442,6 +455,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 Debug.WriteLine("[DRIVER] Wintun adapter disposed.");
             }
             await SetWindowsRoutesAsync(adapterName, serverIp, "", false);
+            await CleanupStaleRoutesAsync();
             await OctopusEngine.Current.DisposeAsync();
             Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
         }

@@ -46,7 +46,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public bool IsConnected => _grpcChannel is not null;
     public string AssignedIp { get; private set; } = "10.8.0.2";
     public string AssignedIpV6 { get; private set; } = "fd00::2";
-    public event Action<byte[]>? OnPacketReceived;
+    public event Action<byte[], int>? OnPacketReceived;
     public event Action? OnConnectionDropped;
     public event Action? OnDeadConnectionDetected;
     public event Action<long, long>? OnTrafficUpdated;
@@ -270,10 +270,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     }
                     else
                     {
-                        var exactPacket = new byte[realLen];
-                        Buffer.BlockCopy(packet, 0, exactPacket, 0, realLen);
-                        ArrayPool<byte>.Shared.Return(packet);
-                        OnPacketReceived?.Invoke(exactPacket);
+                        OnPacketReceived?.Invoke(packet, realLen);
                     }
                 }
                 else

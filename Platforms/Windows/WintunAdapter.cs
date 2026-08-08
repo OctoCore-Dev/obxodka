@@ -86,7 +86,7 @@ internal sealed partial class WintunAdapter : IDisposable
             {
                 return outBatch.Count;
             }
-            _ = WaitForSingleObject(waitEvent, 10);
+            _ = WaitForSingleObject(waitEvent, 1000);
         }
         return 0;
     }
@@ -110,7 +110,7 @@ internal sealed partial class WintunAdapter : IDisposable
                 WintunReleaseReceivePacket(_session, ptr);
                 return (data, (int)size);
             }
-            _ = WaitForSingleObject(waitEvent, 10);
+            _ = WaitForSingleObject(waitEvent, 1000);
         }
         return (null, 0);
     }

@@ -89,7 +89,7 @@ public class OctopusVpnService : VpnService, IDisposable
             .Build()!;
 #pragma warning restore CS8602
     }
-    private void InjectPacketToAndroid(byte[] packet)
+    private void InjectPacketToAndroid(byte[] packet, int length)
     {
         if (_tunOutputStream == null)
         {
@@ -97,7 +97,7 @@ public class OctopusVpnService : VpnService, IDisposable
         }
         try
         {
-            _tunOutputStream.Write(packet);
+            _tunOutputStream.Write(packet, 0, length);
         }
         catch (ObjectDisposedException ex)
         {
@@ -113,6 +113,10 @@ public class OctopusVpnService : VpnService, IDisposable
         {
             System.Diagnostics.Debug.WriteLine($"[VPN ERROR] Unexpected error: {ex.GetType().Name} - {ex.Message}");
             AndroidVpnService.Instance.SetError($"VPN error: {ex.GetType().Name}");
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(packet);
         }
     }
     private void StartNativeVpn()
