@@ -43,7 +43,6 @@ public sealed class AuthManager
         catch (Exception ex)
         {
             Debug.WriteLine($"[AUTH SAVE ERROR]: {ex.Message}");
-            // Do not throw so it doesn't crash the login process
         }
         finally
         {

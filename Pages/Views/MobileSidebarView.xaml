@@ -160,11 +160,11 @@
             </Border>
 
             <Border
-                x:Name="BottomNavBattery"
+                x:Name="BottomNavConfiguration"
                 Grid.Column="4"
                 Style="{StaticResource BottomNavItem}">
                 <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnNavBatteryTapped" />
+                    <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout
                     HorizontalOptions="Center"
@@ -182,9 +182,9 @@
                         Color="{AppThemeBinding Light=#7C3AED,
                                                 Dark=#9F6FF0}" />
                     <mi:MauiIcon
-                        x:Name="BottomNavBatteryIcon"
+                        x:Name="BottomNavConfigurationIcon"
                         HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=Battery1024}"
+                        Icon="{mi:Fluent Icon=Globe24}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
                         IconSize="26" />
@@ -194,4 +194,5 @@
         </Grid>
     </Border>
 </ContentView>
+
 

@@ -1,0 +1,311 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.ConfigurationView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
+    <Grid Padding="{OnIdiom Desktop='32,28', Phone='16,16,16,100', Default='24,24'}">
+        <Grid RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto" RowSpacing="24">
+            <Grid Grid.Row="0" ColumnDefinitions="Auto, *">
+                <Label
+                    Grid.Column="0"
+                    FontFamily="CommissionerExtraBold"
+                    FontSize="24"
+                    Text="Конфигурация"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}" />
+                <Label
+                    x:Name="CurrentSelectionLabel"
+                    Grid.Column="1"
+                    Margin="16,0,0,0"
+                    FontFamily="RobotoBold"
+                    FontSize="14"
+                    Text="[ 2 Луча / HTTP/2 ]"
+                    TextColor="#0078D4"
+                    VerticalOptions="Center" />
+            </Grid>
+
+            <Label
+                Grid.Row="1"
+                FontSize="14"
+                LineBreakMode="WordWrap"
+                Style="{StaticResource LabelMuted}">
+                <Label.Text>
+                    Управляйте количеством одновременных подключений и выбирайте защищенные протоколы обхода блокировок.
+                </Label.Text>
+            </Label>
+
+            <Grid
+                Grid.Row="2"
+                Margin="0,16,0,0"
+                ColumnDefinitions="*, Auto">
+                <Label
+                    Grid.Column="0"
+                    FontFamily="RobotoBold"
+                    FontSize="18"
+                    Text="Режим лучей (Потоки)"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}" />
+                <Label
+                    x:Name="LockWarningLabel"
+                    Grid.Column="1"
+                    FontFamily="RobotoMedium"
+                    FontSize="12"
+                    IsVisible="False"
+                    Text="⚠️ Отключите VPN, чтобы изменить"
+                    TextColor="#EF4444"
+                    VerticalOptions="Center" />
+            </Grid>
+
+            <Grid Grid.Row="3" ColumnDefinitions="{OnIdiom Desktop='*, *, *', Phone='*'}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="EcoButton"
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Margin="{OnIdiom Desktop='0,0,12,0',
+                                     Phone='0,0,0,12'}"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnEcoTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid>
+                        <Grid Margin="0,0,32,0" ColumnDefinitions="Auto, *">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=LeafOne24}"
+                                IconColor="#10B981"
+                                IconSize="28"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="RobotoBold"
+                                    FontSize="16"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="Eco (1 Луч)" />
+                                <Label
+                                    FontSize="12"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Макс. экономия." />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="BalancedButton"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=1}"
+                    Grid.Column="{OnIdiom Desktop=1,
+                                          Phone=0}"
+                    Margin="{OnIdiom Desktop='6,0,6,0',
+                                     Phone='0,0,0,12'}"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBalancedTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid>
+                        <Grid Margin="0,0,32,0" ColumnDefinitions="Auto, *">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Scales24}"
+                                IconColor="#3B82F6"
+                                IconSize="28"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="RobotoBold"
+                                    FontSize="16"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="Баланс (2 Луча)" />
+                                <Label
+                                    FontSize="12"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Для видео и соцсетей." />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="TurboButton"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=2}"
+                    Grid.Column="{OnIdiom Desktop=2,
+                                          Phone=0}"
+                    Margin="{OnIdiom Desktop='12,0,0,0',
+                                     Phone='0'}"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTurboTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid>
+                        <Grid Margin="0,0,32,0" ColumnDefinitions="Auto, *">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Flash24}"
+                                IconColor="#EF4444"
+                                IconSize="28"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="RobotoBold"
+                                    FontSize="16"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="Турбо (8 Лучей)" />
+                                <Label
+                                    FontSize="12"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Максимальная скорость." />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Label
+                Grid.Row="4"
+                Margin="0,16,0,0"
+                FontFamily="RobotoBold"
+                FontSize="18"
+                Text="Протокол связи (Анти-DPI)"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+
+            <Grid Grid.Row="5" ColumnDefinitions="{OnIdiom Desktop='*, *', Phone='*'}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="Http2Button"
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Margin="{OnIdiom Desktop='0,0,12,0',
+                                     Phone='0,0,0,12'}"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnHttp2Tapped" />
+                    </Border.GestureRecognizers>
+                    <Grid>
+                        <Grid Margin="0,0,32,0" ColumnDefinitions="Auto, *">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Globe24}"
+                                IconColor="#8B5CF6"
+                                IconSize="28"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="RobotoBold"
+                                    FontSize="16"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="HTTP/2 (Стандарт)" />
+                                <Label
+                                    FontSize="12"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Классический протокол на базе TCP." />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="Http3Button"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=1}"
+                    Grid.Column="{OnIdiom Desktop=1,
+                                          Phone=0}"
+                    Margin="{OnIdiom Desktop='12,0,0,0',
+                                     Phone='0'}"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnHttp3Tapped" />
+                    </Border.GestureRecognizers>
+                    <Grid>
+                        <Grid Margin="0,0,32,0" ColumnDefinitions="Auto, *">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=ShieldLock24}"
+                                IconColor="#00E5FF"
+                                IconSize="28"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="RobotoBold"
+                                    FontSize="16"
+                                    Style="{StaticResource LabelValue}"
+                                    Text="HTTP/3 QUIC" />
+                                <Label
+                                    FontSize="12"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Скрывает трафик под видом Chrome (UDP)." />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <VerticalStackLayout
+                x:Name="VersionSection"
+                Grid.Row="6"
+                Margin="0,32,0,0"
+                HorizontalOptions="Center"
+                IsVisible="{OnIdiom Desktop=False,
+                                    Phone=True}"
+                Spacing="8">
+                <Label
+                    x:Name="VersionLabel"
+                    FontFamily="RobotoMedium"
+                    FontSize="14"
+                    HorizontalOptions="Center"
+                    Style="{StaticResource LabelMuted}"
+                    Text="Версия: 3.6.0.0" />
+                <Label
+                    FontSize="12"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource LabelMuted}"
+                    Text="Проверяйте актуальную версию на сайте. Если у вас старая версия — ОБНОВИТЕСЬ!" />
+            </VerticalStackLayout>
+
+        </Grid>
+    </Grid>
+</ContentView>
+

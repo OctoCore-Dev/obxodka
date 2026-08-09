@@ -12,6 +12,11 @@
         Style="{StaticResource NeoPanel}"
         TranslationX="-36"
         WidthRequest="70">
+        <Border.BackgroundColor>
+            <OnPlatform x:TypeArguments="Color">
+                <On Platform="WinUI" Value="Transparent" />
+            </OnPlatform>
+        </Border.BackgroundColor>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnSidebarTapped" />
         </Border.GestureRecognizers>
@@ -96,27 +101,27 @@
                     </Grid>
                 </Border>
 
-                <Border x:Name="SideNavBattery" Style="{StaticResource SideNavItem}">
+                <Border x:Name="SideNavConfiguration" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnNavBatteryTapped" />
+                        <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
                     </Border.GestureRecognizers>
                     <Grid Padding="12,12" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
-                            x:Name="NavBatteryIcon"
+                            x:Name="NavConfigurationIcon"
                             Grid.Column="0"
-                            Icon="{mi:Fluent Icon=Battery1024}"
+                            Icon="{mi:Fluent Icon=Globe24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
                                                         Dark=#6A5A8A}"
                             IconSize="20" />
                         <Label
-                            x:Name="LabelBattery"
+                            x:Name="LabelConfiguration"
                             Grid.Column="1"
                             Margin="14,0,0,0"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Style="{StaticResource TitleSmall}"
-                            Text="Энергия"
+                            Text="Конфигурация"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
@@ -283,3 +288,4 @@
         </Grid>
     </Border>
 </ContentView>
+

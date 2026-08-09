@@ -37,8 +37,9 @@
             x:Name="FloatingHeader"
             Padding="{OnIdiom Desktop='32,28,32,16',
                               Default='16,20,16,16'}"
-            BackgroundColor="{AppThemeBinding Light={StaticResource BgBaseLight},
-                                              Dark={StaticResource BgBase}}"
+            BackgroundColor="{OnPlatform WinUI=Transparent,
+                                         Default={AppThemeBinding Light={StaticResource BgBaseLight},
+                                                                  Dark={StaticResource BgBase}}}"
             StrokeThickness="0"
             VerticalOptions="Start">
             <Label

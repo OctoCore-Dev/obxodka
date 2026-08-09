@@ -75,23 +75,26 @@ public partial class VpnView : ContentView
                 rays = OctopusEngine.Current.ActiveRays;
             }
 
+            var useHttp3 = Preferences.Get("UseHttp3", false);
+            var protoText = useHttp3 ? "HTTP/3" : "HTTP/2";
+
             if (rays == 1)
             {
                 RayIndicatorIcon.Icon = FluentIcons.LeafOne24;
                 RayIndicatorIcon.IconColor = Color.FromArgb("#10B981");
-                RayIndicatorLabel.Text = "Режим: Eco (1 Луч)";
+                RayIndicatorLabel.Text = $"Режим: Eco (1 Луч / {protoText})";
             }
             else if (rays == 8)
             {
                 RayIndicatorIcon.Icon = FluentIcons.Flash24;
                 RayIndicatorIcon.IconColor = Color.FromArgb("#EF4444");
-                RayIndicatorLabel.Text = "Режим: Турбо (8 Лучей)";
+                RayIndicatorLabel.Text = $"Режим: Турбо (8 Лучей / {protoText})";
             }
             else
             {
                 RayIndicatorIcon.Icon = FluentIcons.Scales24;
                 RayIndicatorIcon.IconColor = Color.FromArgb("#3B82F6");
-                RayIndicatorLabel.Text = "Режим: Баланс (2 Луча)";
+                RayIndicatorLabel.Text = $"Режим: Баланс (2 Луча / {protoText})";
             }
         });
     }
@@ -125,7 +128,7 @@ public partial class VpnView : ContentView
                     _isErrorState = false;
                     StartLoaderAnimation();
                     OuterAura.IsVisible = true;
-                    IpAddressLabel.Text = $"IP: {OctopusEngine.Current.AssignedIp}";
+                    IpAddressLabel.Text = $"IP: {OctopusEngine.Current?.AssignedIp}";
                     ConnectButtonCore.IsEnabled = true;
                     await SetNeonStateAsync("Защищено", "СТОП", true);
                     _parent.NotifyVpnConnected();
@@ -134,7 +137,7 @@ public partial class VpnView : ContentView
                 case AppVpnState.Error:
                     _isBusy = false;
                     _isErrorState = true;
-                    StartLoaderAnimation();
+                    StopLoaderAnimation();
                     OuterAura.IsVisible = true;
                     IpAddressLabel.Text = "IP: не назначен";
                     ConnectButtonCore.IsEnabled = true;
@@ -356,6 +359,7 @@ public partial class VpnView : ContentView
                 {
                     _loaderTimer?.Stop();
                     _loaderTimer = null;
+                    LoaderCanvas.IsVisible = false;
                 }));
         }
         else
@@ -416,14 +420,6 @@ public partial class VpnView : ContentView
             canvas.Restore();
         }
 
-        using var ringPaint = new SKPaint
-        {
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1f,
-            Color = colorCyan.WithAlpha(55)
-        };
-        canvas.DrawCircle(cx, cy, r - 1f, ringPaint);
     }
 
 #pragma warning disable CS0618

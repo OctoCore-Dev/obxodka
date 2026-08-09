@@ -26,6 +26,17 @@ internal sealed partial class App : Application
         var window = new Window(new AppShell());
         window.Resumed += (s, e) => AppResumed?.Invoke();
 #if WINDOWS
+        window.HandlerChanged += (s, e) =>
+        {
+            if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window winUIWindow)
+            {
+                winUIWindow.SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop()
+                {
+                    Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt
+                };
+            }
+        };
+
         window.Destroying += (s, e) =>
         {
             var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();

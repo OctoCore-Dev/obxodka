@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.SplitView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -90,15 +90,19 @@
             x:Name="FloatingHeader"
             Padding="{OnIdiom Desktop='32,28,32,16',
                               Default='16,40,16,16'}"
-            BackgroundColor="Transparent"
             StrokeThickness="0"
             VerticalOptions="Start">
             <Border.Background>
-                <LinearGradientBrush EndPoint="0,1">
-                    <GradientStop Offset="0.0" Color="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
-                    <GradientStop Offset="0.75" Color="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
-                    <GradientStop Offset="1.0" Color="Transparent" />
-                </LinearGradientBrush>
+                <OnPlatform x:TypeArguments="Brush">
+                    <On Platform="WinUI" Value="Transparent" />
+                    <On Platform="Default">
+                        <LinearGradientBrush EndPoint="0,1">
+                            <GradientStop Offset="0.0" Color="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
+                            <GradientStop Offset="0.75" Color="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
+                            <GradientStop Offset="1.0" Color="Transparent" />
+                        </LinearGradientBrush>
+                    </On>
+                </OnPlatform>
             </Border.Background>
             <VerticalStackLayout Spacing="12">
                 <Label

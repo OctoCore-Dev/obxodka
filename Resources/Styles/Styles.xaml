@@ -1,13 +1,13 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
     <Style ApplyToDerivedTypes="True" TargetType="Page">
         <Setter Property="Padding" Value="0" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
+        <Setter Property="BackgroundColor" Value="{OnPlatform WinUI=Transparent, Default={AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}}" />
     </Style>
 
     <Style ApplyToDerivedTypes="True" TargetType="Shell">
-        <Setter Property="Shell.BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}" />
+        <Setter Property="Shell.BackgroundColor" Value="{OnPlatform WinUI=Transparent, Default={AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}}" />
         <Setter Property="Shell.ForegroundColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
         <Setter Property="Shell.TitleColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
         <Setter Property="Shell.DisabledColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
@@ -43,7 +43,7 @@
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
         <Setter Property="FontFamily" Value="RobotoMedium" />
         <Setter Property="FontSize" Value="14" />
-        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
         <Setter Property="BorderWidth" Value="0" />
         <Setter Property="Padding" Value="16,12" />
         <Setter Property="MinimumHeightRequest" Value="44" />
@@ -230,65 +230,77 @@
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 18" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="0" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style x:Key="NeoCardInset" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgInputLight}, Dark={StaticResource BgInput}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoPanel" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 24" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoBottomBar" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 24" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoBtnPrimary" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
         <Setter Property="Stroke" Value="#50A78BFA" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoBtnSecondary" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderMediumLight}, Dark={StaticResource BorderMedium}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoBtnDanger" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource ErrorDim}" />
         <Setter Property="Stroke" Value="#50EF4444" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoBtnIcon" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoInput" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgInputLight}, Dark={StaticResource BgInput}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
         <Setter Property="Padding" Value="4,0" />
     </Style>
 
@@ -296,15 +308,27 @@
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="Stroke" Value="Transparent" />
         <Setter Property="StrokeThickness" Value="0" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
         <Setter Property="Padding" Value="0" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#1A000000, Dark=#1AFFFFFF}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style x:Key="SideNavItemActive" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource PrimaryDim}}" />
         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderMediumLight}, Dark={StaticResource BorderMedium}}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
         <Setter Property="Padding" Value="0" />
     </Style>
 
@@ -339,15 +363,16 @@
         <Setter Property="BackgroundColor" Value="{StaticResource ErrorDim}" />
         <Setter Property="Stroke" Value="#40EF4444" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 18" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
     <Style x:Key="NeoSuccessCard" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource SuccessDim}" />
         <Setter Property="Stroke" Value="#4010B981" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 18" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
     </Style>
 
 </ResourceDictionary>
+
 

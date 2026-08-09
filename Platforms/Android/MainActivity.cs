@@ -51,6 +51,12 @@ public sealed class MainActivity : MauiAppCompatActivity
         {
             if (GetSystemService(PowerService) is PowerManager pm && !pm.IsIgnoringBatteryOptimizations(PackageName))
             {
+                if (Preferences.Default.Get("HasRequestedBatteryOpt", false))
+                {
+                    return;
+                }
+                Preferences.Default.Set("HasRequestedBatteryOpt", true);
+
 #pragma warning disable CS8602
                 _ = new AlertDialog.Builder(this)
                     .SetTitle("Внимание: Батарея")

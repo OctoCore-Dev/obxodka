@@ -279,9 +279,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
             case "vpn":
                 _ = TabContentVpn.PlayEntranceAnimationAsync();
                 break;
-            case "battery":
-                TabContentBattery.OnAppearing();
-                _ = TabContentBattery.PlayEntranceAnimationAsync();
+            case "configuration":
+                TabContentConfiguration.OnAppearing();
+                _ = TabContentConfiguration.PlayEntranceAnimationAsync();
                 break;
             case "profile":
                 var session = await AuthManager.LoadSessionAsync();
@@ -311,7 +311,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
     {
         "auth" => TabContentAuth,
         "vpn" => TabContentVpn,
-        "battery" => TabContentBattery,
+        "configuration" => TabContentConfiguration,
         "profile" => TabContentProfile,
         "devices" => TabContentDevices,
         "payment" => TabContentPayment,
@@ -383,8 +383,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
         else
         {
-            // Do nothing on generic network error.
-            // Actual 401 Unauthorized errors are handled by ApiService.OnUnauthorized.
             Debug.WriteLine($"[SYNC] Failed to fetch profile: {error}");
         }
     }

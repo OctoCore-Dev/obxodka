@@ -1,4 +1,4 @@
-namespace obxodka.Views;
+﻿namespace obxodka.Views;
 
 public partial class MobileSidebarView : ContentView
 {
@@ -26,8 +26,8 @@ public partial class MobileSidebarView : ContentView
                 _ = PillVpn.FadeToAsync(1, 150);
                 _ = PillVpn.ScaleToAsync(1, 150, Easing.SpringOut);
                 break;
-            case "battery":
-                BottomNavBatteryIcon.IconColor = activeColor;
+            case "configuration":
+                BottomNavConfigurationIcon.IconColor = activeColor;
                 PillBattery.IsVisible = true;
                 _ = PillBattery.FadeToAsync(1, 150);
                 _ = PillBattery.ScaleToAsync(1, 150, Easing.SpringOut);
@@ -78,16 +78,17 @@ public partial class MobileSidebarView : ContentView
             : Color.FromArgb("#6A5A8A");
 
         BottomNavVpnIcon.IconColor = inactiveColor;
-        BottomNavBatteryIcon.IconColor = inactiveColor;
+        BottomNavConfigurationIcon.IconColor = inactiveColor;
         BottomNavProfileIcon.IconColor = inactiveColor;
         BottomNavDevicesIcon.IconColor = inactiveColor;
         BottomNavSplitIcon.IconColor = inactiveColor;
     }
 
     private void OnNavVpnTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "vpn");
-    private void OnNavBatteryTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "battery");
+    private void OnNavConfigurationTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "configuration");
     private void OnNavProfileTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "profile");
     private void OnNavDevicesTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "devices");
     private void OnNavPasswordTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "password");
     private void OnNavSplitTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "split");
 }
+

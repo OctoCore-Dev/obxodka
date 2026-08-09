@@ -110,23 +110,37 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 #else
         ActiveRays = PacketRouter.MaxRays;
 #endif
+        var handler = new SocketsHttpHandler
+        {
+            EnableMultipleHttp2Connections = true,
+            PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+            KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+            KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                TargetHost = _currentSni,
+                ClientCertificates = [_clientCert],
+                RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
+                    ValidateServerCertificate(certificate as X509Certificate2, chain, errors)
+            },
+            InitialHttp2StreamWindowSize = 10485760
+        };
+
+        var httpClient = new HttpClient(handler)
+        {
+            Timeout = Timeout.InfiniteTimeSpan
+        };
+
+        var useHttp3 = Preferences.Get("UseHttp3", false);
+        if (useHttp3)
+        {
+            httpClient.DefaultRequestVersion = HttpVersion.Version30;
+            httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+        }
+
         var channelOptions = new GrpcChannelOptions
         {
-            HttpHandler = new SocketsHttpHandler
-            {
-                EnableMultipleHttp2Connections = true,
-                PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-                KeepAlivePingDelay = TimeSpan.FromSeconds(30),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
-                SslOptions = new SslClientAuthenticationOptions
-                {
-                    TargetHost = _currentSni,
-                    ClientCertificates = [_clientCert],
-                    RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                        ValidateServerCertificate(certificate as X509Certificate2, chain, errors)
-                },
-                InitialHttp2StreamWindowSize = 10485760
-            },
+            HttpClient = httpClient,
             MaxReceiveMessageSize = null,
             MaxSendMessageSize = null,
             DisposeHttpClient = true
@@ -165,9 +179,6 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             AssignedIp = ip;
             AssignedIpV6 = ip6;
             Debug.WriteLine($"[ENGINE] Got IP={AssignedIp}, IP6={AssignedIpV6}");
-
-            // Start battery tracking if applicable
-
         }
         catch (TimeoutException)
         {

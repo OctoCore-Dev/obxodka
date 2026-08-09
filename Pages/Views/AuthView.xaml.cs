@@ -60,8 +60,14 @@ public partial class AuthView : ContentView
 
     private async void OnVerifyCodeClickedAsync(object? sender, EventArgs? e)
     {
-        EmailEntry.Unfocus();
+        CodeEntry.IsEnabled = false;
+        EmailEntry.IsEnabled = false;
+
         CodeEntry.Unfocus();
+        EmailEntry.Unfocus();
+
+        CodeEntry.IsEnabled = true;
+        EmailEntry.IsEnabled = true;
 
         var code = CodeEntry.Text?.Trim();
         var email = EmailEntry.Text?.Trim();
