@@ -12,9 +12,7 @@ public sealed class Review
     public string Text { get; set; } = string.Empty;
     public int? Rating { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    
-    // External Store Support
-    public string Source { get; set; } = "Web"; // "Web", "MicrosoftStore", "PlayMarket", "RuStore"
+    public string Source { get; set; } = "Web";
     public string? ExternalId { get; set; }
     public string? ExternalAuthorName { get; set; }
     public string? Region { get; set; }

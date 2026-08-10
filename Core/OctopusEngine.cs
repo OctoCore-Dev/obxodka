@@ -50,6 +50,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public event Action? OnConnectionDropped;
     public event Action? OnDeadConnectionDetected;
     public event Action<long, long>? OnTrafficUpdated;
+    public event Action<long>? OnPingUpdated;
     public static event Action<string>? OnCertificateRevoked;
     private long _totalBytesSent;
     private long _totalBytesReceived;
@@ -110,6 +111,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 #else
         ActiveRays = PacketRouter.MaxRays;
 #endif
+        var useHttp3 = Preferences.Get("UseHttp3", false);
         var handler = new SocketsHttpHandler
         {
             EnableMultipleHttp2Connections = true,
@@ -123,15 +125,29 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
                     ValidateServerCertificate(certificate as X509Certificate2, chain, errors)
             },
-            InitialHttp2StreamWindowSize = 10485760
+            InitialHttp2StreamWindowSize = 16777216
         };
+
+        if (!useHttp3)
+        {
+            handler.ConnectCallback = async (context, ct) =>
+            {
+                var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp)
+                {
+                    NoDelay = true,
+                    SendBufferSize = 8388608,
+                    ReceiveBufferSize = 8388608
+                };
+                await socket.ConnectAsync(context.DnsEndPoint, ct);
+                return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+            };
+        }
 
         var httpClient = new HttpClient(handler)
         {
             Timeout = Timeout.InfiniteTimeSpan
         };
 
-        var useHttp3 = Preferences.Get("UseHttp3", false);
         if (useHttp3)
         {
             httpClient.DefaultRequestVersion = HttpVersion.Version30;
@@ -150,7 +166,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             for (var i = 0; i < ActiveRays; i++)
             {
-                _txChannels[i] = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(5000) { FullMode = BoundedChannelFullMode.Wait });
+                _txChannels[i] = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(2000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
                 await ConnectRayAsync(i, isNewConnection: i == 0);
                 _ = TxLoopAsync(i, _txChannels[i]!, _cts!.Token);
             }
@@ -173,6 +189,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }, _cts!.Token);
         _rotationCts = CancellationTokenSource.CreateLinkedTokenSource(_cts!.Token);
         _ = DecoyLoopAsync(_rotationCts.Token);
+        _ = PingLoopAsync(_cts!.Token);
         try
         {
             var (ip, ip6) = await _ipTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -278,6 +295,13 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                             }
                         }
                         _ = (_ipTcs?.TrySetResult((ip, ip6)));
+                    }
+                    else if (packet[0] == 0x99 && realLen == 9)
+                    {
+                        var sentTicks = BitConverter.ToInt64(packet, 1);
+                        var rtt = (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond;
+                        OnPingUpdated?.Invoke(rtt);
+                        ArrayPool<byte>.Shared.Return(packet);
                     }
                     else
                     {
@@ -388,7 +412,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     {
         try
         {
-            var batchBuffer = new byte[524288];
+            var batchBuffer = new byte[65536];
             while (!ct.IsCancellationRequested)
             {
                 var (buffer, length) = await channel.Reader.ReadAsync(ct);
@@ -396,10 +420,13 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 Buffer.BlockCopy(buffer, 0, batchBuffer, offset, length);
                 offset += length;
                 ArrayPool<byte>.Shared.Return(buffer);
-                while (offset < 16384 && channel.Reader.TryRead(out var nextPkt))
+                while (offset < 32768 && channel.Reader.TryRead(out var nextPkt))
                 {
-                    Buffer.BlockCopy(nextPkt.buffer, 0, batchBuffer, offset, nextPkt.length);
-                    offset += nextPkt.length;
+                    if (offset + nextPkt.length <= batchBuffer.Length)
+                    {
+                        Buffer.BlockCopy(nextPkt.buffer, 0, batchBuffer, offset, nextPkt.length);
+                        offset += nextPkt.length;
+                    }
                     ArrayPool<byte>.Shared.Return(nextPkt.buffer);
                 }
                 var stream = Volatile.Read(ref _tunnelStreams[rayIndex]);
@@ -419,53 +446,51 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             Debug.WriteLine($"[TX ERROR] {ex.Message}");
         }
     }
-    private async Task DecoyLoopAsync(CancellationToken ct)
+    private static async Task DecoyLoopAsync(CancellationToken ct)
     {
-        try
-        { await Task.Delay(2000, ct); }
-        catch { return; }
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                if (!string.IsNullOrEmpty(_currentSni))
-                {
-                    var path = t_decoyPaths[Random.Shared.Next(t_decoyPaths.Length)];
-                    var userAgent = t_userAgents[Random.Shared.Next(t_userAgents.Length)];
-                    var uri = $"https://{_currentSni}{path}";
-                    Debug.WriteLine($"[DECOY] Sending background traffic to {uri}");
-                    using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                    request.Headers.Add("User-Agent", userAgent);
-                    request.Headers.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
-                    request.Headers.Add("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7");
-                    using var response = await t_decoyClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-                    if (response.Content.Headers.ContentLength > 5 * 1024 * 1024)
-                    {
-                        Debug.WriteLine($"[DECOY WARNING] Response too large, skipping.");
-                        continue;
-                    }
-                    var content = await response.Content.ReadAsByteArrayAsync(ct);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        Debug.WriteLine($"[DECOY SUCCESS] Successfully downloaded {content.Length} bytes from {uri} (Status: {(int)response.StatusCode})");
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[DECOY WARNING] Downloaded {content.Length} bytes from {uri}, but server returned status: {(int)response.StatusCode} {response.ReasonPhrase}");
-                    }
-                }
+                var host = t_legitimateHosts[Random.Shared.Next(t_legitimateHosts.Length)];
+                var path = t_decoyPaths[Random.Shared.Next(t_decoyPaths.Length)];
+                var ua = t_userAgents[Random.Shared.Next(t_userAgents.Length)];
+
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"https://{host}{path}");
+                request.Headers.UserAgent.ParseAdd(ua);
+                using var response = await t_decoyClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             }
-            catch (OperationCanceledException) { break; }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[DECOY ERROR] Failed to send traffic: {ex.Message}");
-            }
-            var delayMinutes = Random.Shared.Next(1, 4);
+            catch { }
+
             try
-            { await Task.Delay(TimeSpan.FromMinutes(delayMinutes), ct); }
+            {
+                await Task.Delay(Random.Shared.Next(15000, 45000), ct);
+            }
+            catch
+            {
+                break;
+            }
+        }
+    }
+    private async Task PingLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var packet = new byte[9];
+                packet[0] = 0x99;
+                var ticks = BitConverter.GetBytes(DateTime.UtcNow.Ticks);
+                Buffer.BlockCopy(ticks, 0, packet, 1, 8);
+                await SendPacketAsync(packet);
+            }
+            catch { }
+            try
+            { await Task.Delay(1000, ct); }
             catch { break; }
         }
     }
+
     public async ValueTask DisposeAsync()
     {
 

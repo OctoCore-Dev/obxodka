@@ -31,9 +31,12 @@ public partial class VpnView : ContentView
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
         _vpnService.OnLogUpdated -= HandleVpnLog;
+        OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
+
         _vpnService.OnStateChanged += HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred += HandleVpnError;
         _vpnService.OnLogUpdated += HandleVpnLog;
+        OctopusEngine.Current.OnPingUpdated += HandlePingUpdated;
 
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         OctopusEngine.Current.OnTrafficUpdated += OnTrafficUpdated;
@@ -104,6 +107,16 @@ public partial class VpnView : ContentView
     private void HandleVpnError(string err) =>
         MainThread.BeginInvokeOnMainThread(async () =>
             await _parent.DisplayAlertAsync("Сбой сети", err, "OK"));
+    private void HandlePingUpdated(long rtt)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (OctopusEngine.Current.IsConnected)
+            {
+                IpAddressLabel.Text = $"IP: {OctopusEngine.Current.AssignedIp} (Ping: {rtt}ms)";
+            }
+        });
+    }
 
     private void HandleAppVpnStateChanged(AppVpnState state)
     {

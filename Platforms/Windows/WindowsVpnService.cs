@@ -32,7 +32,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
     }
     private string _currentServerIp = "";
-    private int _currentServerPort = 443;
+    private int _currentServerPort = 5443;
     private bool _isExplicitlyStopped;
 
     private void HandleDeadConnection()
