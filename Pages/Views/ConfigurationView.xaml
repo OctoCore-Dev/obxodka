@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.ConfigurationView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -6,7 +6,7 @@
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
 
     <Grid Padding="{OnIdiom Desktop='32,28', Phone='16,16,16,100', Default='24,24'}">
-        <Grid RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto" RowSpacing="24">
+        <Grid RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto, Auto" RowSpacing="24">
             <Grid Grid.Row="0" ColumnDefinitions="Auto, *">
                 <Label
                     Grid.Column="0"
@@ -285,7 +285,7 @@
 
             <VerticalStackLayout
                 x:Name="VersionSection"
-                Grid.Row="6"
+                Grid.Row="7"
                 Margin="0,32,0,0"
                 HorizontalOptions="Center"
                 IsVisible="{OnIdiom Desktop=False,

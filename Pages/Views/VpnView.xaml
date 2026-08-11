@@ -23,12 +23,10 @@
                                    Default=0}"
                 Grid.Column="{OnIdiom Desktop=1,
                                       Default=0}"
-                Margin="{OnIdiom Desktop='0,0,0,14',
-                                 Default='0'}"
                 RowDefinitions="{OnIdiom Desktop='Auto, 2*, *',
                                          Phone='*, 2*, *',
                                          Default='Auto, Auto, Auto'}"
-                RowSpacing="14"
+                RowSpacing="16"
                 VerticalOptions="Fill">
 
                 <Grid
@@ -39,7 +37,7 @@
                     VerticalOptions="Fill">
                     <Border
                         x:Name="CardIp"
-                        Padding="18,14"
+                        Padding="16"
                         Style="{StaticResource NeoCard}"
                         VerticalOptions="Fill">
                         <Grid ColumnDefinitions="*, Auto">
@@ -79,7 +77,7 @@
                     VerticalOptions="Fill">
                     <Border
                         x:Name="Card2"
-                        Padding="18,14"
+                        Padding="16"
                         Style="{StaticResource NeoCard}"
                         VerticalOptions="Fill">
                         <Grid RowDefinitions="Auto, *">
@@ -159,14 +157,14 @@
                     x:Name="Card5Wrapper"
                     Grid.Row="2"
                     ColumnDefinitions="*, *"
-                    ColumnSpacing="14"
+                    ColumnSpacing="16"
                     Opacity="0"
                     TranslationY="28"
                     VerticalOptions="Fill">
                     <Border
                         x:Name="Card5"
                         Grid.Column="0"
-                        Padding="18,14"
+                        Padding="16"
                         HeightRequest="{OnIdiom Phone=82,
                                                 Default=-1}"
                         Style="{StaticResource NeoCard}"
@@ -209,7 +207,7 @@
                     <Border
                         x:Name="Card6"
                         Grid.Column="1"
-                        Padding="18,14"
+                        Padding="16"
                         HeightRequest="{OnIdiom Phone=82,
                                                 Default=-1}"
                         Style="{StaticResource NeoCard}"

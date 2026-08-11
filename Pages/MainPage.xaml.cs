@@ -302,6 +302,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
             case "payment":
                 _ = TabContentPayment.PlayEntranceAnimationAsync();
                 break;
+            case "appearance":
+                _ = TabContentAppearance.PlayEntranceAnimationAsync();
+                break;
             default:
                 break;
         }
@@ -317,6 +320,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         "payment" => TabContentPayment,
         "split" => TabContentSplit,
         "delete" => TabContentDelete,
+        "appearance" => TabContentAppearance,
         _ => null
     };
 

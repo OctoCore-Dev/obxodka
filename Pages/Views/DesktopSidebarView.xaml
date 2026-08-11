@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.DesktopSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -7,11 +7,11 @@
     <Border
         x:Name="DesktopSidebar"
         Margin="16,16,0,16"
-        Padding="14,20"
+        Padding="16,24"
         Opacity="0"
         Style="{StaticResource NeoPanel}"
         TranslationX="-36"
-        WidthRequest="70">
+        WidthRequest="84">
         <Border.BackgroundColor>
             <OnPlatform x:TypeArguments="Color">
                 <On Platform="WinUI" Value="Transparent" />
@@ -23,7 +23,7 @@
         <Grid RowDefinitions="Auto, *, Auto" RowSpacing="0">
             <Grid
                 Grid.Row="0"
-                Margin="4,0,4,28"
+                Margin="10,0,10,32"
                 ColumnDefinitions="Auto, *"
                 VerticalOptions="Center">
                 <Grid.GestureRecognizers>
@@ -41,7 +41,7 @@
                 <Label
                     x:Name="AppLogoText"
                     Grid.Column="1"
-                    Margin="12,0,0,0"
+                    Margin="8,0,0,0"
                     LineBreakMode="NoWrap"
                     Opacity="0"
                     Style="{StaticResource AppLogoText}"
@@ -49,13 +49,14 @@
                     VerticalOptions="Center" />
             </Grid>
 
-            <VerticalStackLayout Grid.Row="1" Spacing="4">
+            <VerticalStackLayout Grid.Row="1" Spacing="8">
 
                 <Border x:Name="SideNavVpn" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavVpnTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,12" ColumnDefinitions="Auto, *">
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
                             x:Name="NavVpnIcon"
                             Grid.Column="0"
@@ -79,8 +80,9 @@
                 <Border x:Name="SideNavProfile" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavProfileTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,12" ColumnDefinitions="Auto, *">
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
                             x:Name="NavProfileIcon"
                             Grid.Column="0"
@@ -104,8 +106,9 @@
                 <Border x:Name="SideNavConfiguration" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,12" ColumnDefinitions="Auto, *">
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
                             x:Name="NavConfigurationIcon"
                             Grid.Column="0"
@@ -126,11 +129,42 @@
                     </Grid>
                 </Border>
 
+                <Border
+                    x:Name="SideNavAppearance"
+                    IsVisible="{OnPlatform WinUI=True,
+                                           Default=False}"
+                    Style="{StaticResource SideNavItem}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNavAppearanceTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                        <mi:MauiIcon
+                            x:Name="NavAppearanceIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=ColorBackground24}"
+                            IconColor="{AppThemeBinding Light=#9080B0,
+                                                        Dark=#6A5A8A}"
+                            IconSize="20" />
+                        <Label
+                            x:Name="LabelAppearance"
+                            Grid.Column="1"
+                            Margin="14,0,0,0"
+                            FontSize="14"
+                            LineBreakMode="NoWrap"
+                            Opacity="0"
+                            Style="{StaticResource TitleSmall}"
+                            Text="Кастомизация"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
                 <Border x:Name="SideNavDevices" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavDevicesTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,12" ColumnDefinitions="Auto, *">
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
                             x:Name="NavDevicesIcon"
                             Grid.Column="0"
@@ -160,8 +194,9 @@
                 <Border x:Name="NavBug" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavBugTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,12" ColumnDefinitions="Auto, *">
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Bug24}"
@@ -184,8 +219,9 @@
                 <Border x:Name="NavReviews" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavReviewsTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,12" ColumnDefinitions="Auto, *">
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Star24}"
@@ -214,7 +250,7 @@
 
                 <Border
                     x:Name="VpnStatusCard"
-                    Padding="10"
+                    Padding="16,8"
                     BackgroundColor="Transparent"
                     Stroke="Transparent"
                     Style="{StaticResource NeoCard}">
@@ -222,7 +258,7 @@
                         <BoxView
                             x:Name="VpnStatusDot"
                             Grid.Column="0"
-                            Margin="6,0,0,0"
+                            Margin="5,0,5,0"
                             CornerRadius="5"
                             HeightRequest="10"
                             VerticalOptions="Center"
@@ -247,13 +283,13 @@
                     Style="{StaticResource NeoBtnDanger}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnLogoutClickedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid ColumnDefinitions="Auto, *">
+                    <Grid Padding="12,10" ColumnDefinitions="Auto, *">
 
                         <mi:MauiIcon
                             x:Name="LogoutIcon"
                             Grid.Column="0"
-                            Margin="12,0,0,0"
                             Icon="{mi:Fluent Icon=ArrowExit20}"
                             IconColor="{StaticResource Error}"
                             IconSize="20"
@@ -262,11 +298,11 @@
 
                         <Label
                             x:Name="LogoutText"
-                            Grid.Column="0"
-                            Grid.ColumnSpan="2"
+                            Grid.Column="1"
+                            Margin="14,0,0,0"
                             FontFamily="RobotoBold"
                             FontSize="13"
-                            HorizontalOptions="Center"
+                            HorizontalOptions="Start"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="ВЫХОД"

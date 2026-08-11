@@ -17,7 +17,7 @@ public partial class DesktopSidebarView : ContentView
         DesktopSidebar.IsVisible = true;
         await UIAnimations.PlaySidebarEntranceAsync(
             DesktopSidebar,
-            SideNavVpn, SideNavProfile, SideNavConfiguration, SideNavDevices, NavBug, NavReviews);
+            SideNavVpn, SideNavProfile, SideNavConfiguration, SideNavAppearance, SideNavDevices, NavBug, NavReviews);
     }
 
     public void HideSidebar() => DesktopSidebar.IsVisible = false;
@@ -48,13 +48,14 @@ public partial class DesktopSidebarView : ContentView
     private void ToggleSidebar()
     {
         _isExpanded = !_isExpanded;
-        var targetWidth = _isExpanded ? 260 : 70;
+        var targetWidth = _isExpanded ? 260 : 84;
         if (!_isExpanded)
         {
             _ = AppLogoText.FadeToAsync(0, 150);
             _ = LabelVpn.FadeToAsync(0, 150);
             _ = LabelProfile.FadeToAsync(0, 150);
             _ = LabelConfiguration.FadeToAsync(0, 150);
+            _ = LabelAppearance.FadeToAsync(0, 150);
             _ = LabelDevices.FadeToAsync(0, 150);
             _ = LabelBug.FadeToAsync(0, 150);
             _ = LabelReviews.FadeToAsync(0, 150);
@@ -74,6 +75,7 @@ public partial class DesktopSidebarView : ContentView
                     _ = LabelVpn.FadeToAsync(1, 150);
                     _ = LabelProfile.FadeToAsync(1, 150);
                     _ = LabelConfiguration.FadeToAsync(1, 150);
+                    _ = LabelAppearance.FadeToAsync(1, 150);
                     _ = LabelDevices.FadeToAsync(1, 150);
                     _ = LabelBug.FadeToAsync(1, 150);
                     _ = LabelReviews.FadeToAsync(1, 150);
@@ -103,6 +105,10 @@ public partial class DesktopSidebarView : ContentView
                 SideNavConfiguration.BackgroundColor = Color.FromArgb("#1A7C3AED");
                 NavConfigurationIcon.IconColor = activeColor;
                 break;
+            case "appearance":
+                SideNavAppearance.BackgroundColor = Color.FromArgb("#1A7C3AED");
+                NavAppearanceIcon.IconColor = activeColor;
+                break;
             case "devices":
                 SideNavDevices.BackgroundColor = Color.FromArgb("#1A7C3AED");
                 NavDevicesIcon.IconColor = activeColor;
@@ -117,6 +123,7 @@ public partial class DesktopSidebarView : ContentView
         SideNavVpn.BackgroundColor = Colors.Transparent;
         SideNavProfile.BackgroundColor = Colors.Transparent;
         SideNavConfiguration.BackgroundColor = Colors.Transparent;
+        SideNavAppearance.BackgroundColor = Colors.Transparent;
         SideNavDevices.BackgroundColor = Colors.Transparent;
 
         var inactiveColor = Application.Current?.RequestedTheme == AppTheme.Light
@@ -126,12 +133,14 @@ public partial class DesktopSidebarView : ContentView
         NavVpnIcon.IconColor = inactiveColor;
         NavProfileIcon.IconColor = inactiveColor;
         NavConfigurationIcon.IconColor = inactiveColor;
+        NavAppearanceIcon.IconColor = inactiveColor;
         NavDevicesIcon.IconColor = inactiveColor;
     }
 
     private void OnNavVpnTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "vpn");
     private void OnNavProfileTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "profile");
     private void OnNavConfigurationTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "configuration");
+    private void OnNavAppearanceTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "appearance");
     private void OnNavDevicesTapped(object sender, TappedEventArgs e) => NavTapped?.Invoke(this, "devices");
 
     private void OnNavBugTapped(object sender, TappedEventArgs e)
@@ -149,5 +158,20 @@ public partial class DesktopSidebarView : ContentView
     }
 
     private void OnLogoutClickedAsync(object sender, TappedEventArgs e) => LogoutTapped?.Invoke(this, EventArgs.Empty);
-}
 
+    private async void OnPointerEnteredAsync(object sender, PointerEventArgs e)
+    {
+        if (sender is View view)
+        {
+            _ = await view.ScaleToAsync(1.05, 150, Easing.CubicOut);
+        }
+    }
+
+    private async void OnPointerExitedAsync(object sender, PointerEventArgs e)
+    {
+        if (sender is View view)
+        {
+            _ = await view.ScaleToAsync(1.0, 150, Easing.CubicIn);
+        }
+    }
+}

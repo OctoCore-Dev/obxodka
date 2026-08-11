@@ -34,7 +34,7 @@
     <PropertyGroup>
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
-        <Version>3.6.2.0</Version>
+        <Version>3.6.3.0</Version>
         <ApplicationDisplayVersion>3.6.3.0</ApplicationDisplayVersion>
         <ApplicationVersion>3603</ApplicationVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

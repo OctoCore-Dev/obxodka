@@ -142,9 +142,7 @@ public partial class ConfigurationView : ContentView
         Http2Button.Stroke = inactiveStroke;
         Http3Button.Stroke = inactiveStroke;
 
-
         var raysText = "";
-
         if (mode == 1)
         {
             EcoButton.Stroke = activeStroke;

@@ -1,0 +1,376 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.AppearanceView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
+    <Grid
+        Padding="{OnIdiom Desktop='32,32',
+                          Phone='16,16,16,100',
+                          Default='24,24'}"
+        RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto"
+        RowSpacing="24">
+
+        <Grid
+            x:Name="HeaderSection"
+            Grid.Row="0"
+            ColumnDefinitions="Auto, *">
+            <Label
+                Grid.Column="0"
+                FontFamily="CommissionerExtraBold"
+                FontSize="24"
+                Text="Кастомизация"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+        </Grid>
+
+        <Label
+            x:Name="DescriptionSection"
+            Grid.Row="1"
+            FontSize="14"
+            LineBreakMode="WordWrap"
+            Style="{StaticResource LabelMuted}">
+            <Label.Text>
+                Настройте внешний вид приложения, выберите эффекты окон, акцентные цвета и прозрачность (только для Windows).
+            </Label.Text>
+        </Label>
+
+        <VerticalStackLayout
+            x:Name="WindowsBackdropSection"
+            Grid.Row="2"
+            Margin="0,8,0,0"
+            IsVisible="{OnIdiom Desktop=True,
+                                Phone=False}"
+            Spacing="16">
+            <Label
+                FontFamily="RobotoBold"
+                FontSize="18"
+                Text="Эффект окна (Fluent Backdrop)"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+
+            <Grid ColumnDefinitions="*, *, *" ColumnSpacing="16">
+                <Border
+                    x:Name="AcrylicButton"
+                    Grid.Column="0"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAcrylicTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=ColorBackground24}"
+                            IconColor="#00E5FF"
+                            IconSize="26"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Margin="10,0,0,0"
+                            Spacing="2">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="15"
+                                Style="{StaticResource LabelValue}"
+                                Text="Acrylic" />
+                            <Label
+                                FontSize="11"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Размытие обоев" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="MicaButton"
+                    Grid.Column="1"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnMicaTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=PaintBrush24}"
+                            IconColor="#A855F7"
+                            IconSize="26"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Margin="10,0,0,0"
+                            Spacing="2">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="15"
+                                Style="{StaticResource LabelValue}"
+                                Text="Mica" />
+                            <Label
+                                FontSize="11"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Стиль Windows 11" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="OffBackdropButton"
+                    Grid.Column="2"
+                    Padding="16"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnOffBackdropTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Dismiss24}"
+                            IconColor="#6B7280"
+                            IconSize="26"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Margin="10,0,0,0"
+                            Spacing="2">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="15"
+                                Style="{StaticResource LabelValue}"
+                                Text="Без эффекта" />
+                            <Label
+                                FontSize="11"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Тёмный монохром" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+            </Grid>
+        </VerticalStackLayout>
+
+        <VerticalStackLayout
+            x:Name="AcrylicSettingsSection"
+            Grid.Row="3"
+            Margin="0,8,0,0"
+            IsVisible="False"
+            Spacing="16">
+            <Label
+                FontFamily="RobotoBold"
+                FontSize="18"
+                Text="Настройки Акрила"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+
+            <Border Padding="16" Style="{StaticResource NeoCard}">
+                <VerticalStackLayout Spacing="16">
+
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label
+                                Grid.Column="0"
+                                FontFamily="RobotoMedium"
+                                FontSize="14"
+                                Text="Плотность тонировки (Tint Opacity)"
+                                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                            Dark={StaticResource TextPrimary}}" />
+                            <Label
+                                x:Name="TintValueLabel"
+                                Grid.Column="1"
+                                FontFamily="RobotoMedium"
+                                FontSize="14"
+                                Text="0%"
+                                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                            Dark={StaticResource TextPrimary}}" />
+                        </Grid>
+                        <Slider
+                            x:Name="TintSlider"
+                            Maximum="1"
+                            Minimum="0"
+                            ValueChanged="OnTintSliderValueChanged"
+                            Value="0" />
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label
+                                Grid.Column="0"
+                                FontFamily="RobotoMedium"
+                                FontSize="14"
+                                Text="Яркость (Luminosity Opacity)"
+                                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                            Dark={StaticResource TextPrimary}}" />
+                            <Label
+                                x:Name="LuminosityValueLabel"
+                                Grid.Column="1"
+                                FontFamily="RobotoMedium"
+                                FontSize="14"
+                                Text="100%"
+                                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                            Dark={StaticResource TextPrimary}}" />
+                        </Grid>
+                        <Slider
+                            x:Name="LuminositySlider"
+                            Maximum="1"
+                            Minimum="0"
+                            ValueChanged="OnLuminositySliderValueChanged"
+                            Value="1" />
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+
+        <VerticalStackLayout
+            x:Name="ColorsSection"
+            Grid.Row="4"
+            Margin="0,8,0,0"
+            IsVisible="False"
+            Spacing="16">
+            <Label
+                FontFamily="RobotoBold"
+                FontSize="18"
+                Text="Цветовой акцент"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+
+            <Grid ColumnDefinitions="*, *, *, *, *">
+                <Border
+                    x:Name="ColorBlue"
+                    Grid.Column="0"
+                    BackgroundColor="#0078D4"
+                    HeightRequest="40"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 20"
+                    WidthRequest="40">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="#0078D4" Tapped="OnColorTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                </Border>
+                <Border
+                    x:Name="ColorPurple"
+                    Grid.Column="1"
+                    BackgroundColor="#8B5CF6"
+                    HeightRequest="40"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 20"
+                    WidthRequest="40">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="#8B5CF6" Tapped="OnColorTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                </Border>
+                <Border
+                    x:Name="ColorCyan"
+                    Grid.Column="2"
+                    BackgroundColor="#00E5FF"
+                    HeightRequest="40"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 20"
+                    WidthRequest="40">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="#00E5FF" Tapped="OnColorTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                </Border>
+                <Border
+                    x:Name="ColorRed"
+                    Grid.Column="3"
+                    BackgroundColor="#EF4444"
+                    HeightRequest="40"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 20"
+                    WidthRequest="40">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="#EF4444" Tapped="OnColorTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                </Border>
+                <Border
+                    x:Name="ColorGreen"
+                    Grid.Column="4"
+                    BackgroundColor="#10B981"
+                    HeightRequest="40"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 20"
+                    WidthRequest="40">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="#10B981" Tapped="OnColorTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                </Border>
+            </Grid>
+        </VerticalStackLayout>
+
+        <VerticalStackLayout
+            x:Name="ThemeSection"
+            Grid.Row="5"
+            Margin="0,8,0,32"
+            Spacing="16">
+            <Label
+                FontFamily="RobotoBold"
+                FontSize="18"
+                Text="Тема"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+
+            <Grid ColumnDefinitions="*, *, *" ColumnSpacing="16">
+                <Border
+                    x:Name="ThemeSystemButton"
+                    Grid.Column="0"
+                    Padding="12"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="System" Tapped="OnThemeTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Label
+                        FontFamily="RobotoBold"
+                        FontSize="14"
+                        HorizontalOptions="Center"
+                        Text="Системная" />
+                </Border>
+
+                <Border
+                    x:Name="ThemeDarkButton"
+                    Grid.Column="1"
+                    Padding="12"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="Dark" Tapped="OnThemeTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Label
+                        FontFamily="RobotoBold"
+                        FontSize="14"
+                        HorizontalOptions="Center"
+                        Text="Тёмная" />
+                </Border>
+
+                <Border
+                    x:Name="ThemeLightButton"
+                    Grid.Column="2"
+                    Padding="12"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer CommandParameter="Light" Tapped="OnThemeTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Label
+                        FontFamily="RobotoBold"
+                        FontSize="14"
+                        HorizontalOptions="Center"
+                        Text="Светлая" />
+                </Border>
+            </Grid>
+        </VerticalStackLayout>
+
+    </Grid>
+</ContentView>

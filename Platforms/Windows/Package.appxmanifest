@@ -10,7 +10,7 @@
     <Identity
       Name="OctoCore.obxodka"
       Publisher="CN=0769046D-E2A3-4C56-B798-8DA94D38B534"
-      Version="3.6.1.0" />
+      Version="3.6.5.0" />
 
     <Properties>
         <DisplayName>obxodka</DisplayName>

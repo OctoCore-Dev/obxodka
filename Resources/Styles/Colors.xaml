@@ -2,8 +2,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
     <Color x:Key="BgBase">#111111</Color>
-    <Color x:Key="BgSurface">#801F1F1F</Color>
-    <Color x:Key="BgElevated">#B3262626</Color>
+    <Color x:Key="BgSurface">#80141414</Color>
+    <Color x:Key="BgElevated">#B31C1C1C</Color>
     <Color x:Key="BgInput">#80141414</Color>
     <Color x:Key="BgOverlay">#99000000</Color>
 
