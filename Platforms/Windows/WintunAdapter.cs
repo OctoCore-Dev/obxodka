@@ -69,7 +69,7 @@ internal sealed partial class WintunAdapter : IDisposable
                 }
                 if (size > maxPacketSize)
                 {
-                    Debug.WriteLine($"[WINTUN SECURITY] Oversized packet rejected: {size} bytes");
+
                     WintunReleaseReceivePacket(_session, ptr);
                     continue;
                 }
@@ -101,7 +101,7 @@ internal sealed partial class WintunAdapter : IDisposable
             {
                 if (size > maxPacketSize)
                 {
-                    Debug.WriteLine($"[WINTUN SECURITY] Oversized packet rejected: {size} bytes");
+
                     WintunReleaseReceivePacket(_session, ptr);
                     continue;
                 }
@@ -160,3 +160,4 @@ internal sealed class PacketBatch
     public (byte[] buffer, int length) this[int i] => _items[i];
     public void Clear() => Count = 0;
 }
+

@@ -34,9 +34,9 @@
     <PropertyGroup>
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
-        <Version>3.6.3.0</Version>
-        <ApplicationDisplayVersion>3.6.3.0</ApplicationDisplayVersion>
-        <ApplicationVersion>3603</ApplicationVersion>
+        <Version>3.6.6.0</Version>
+        <ApplicationDisplayVersion>3.6.6.0</ApplicationDisplayVersion>
+        <ApplicationVersion>3606</ApplicationVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>

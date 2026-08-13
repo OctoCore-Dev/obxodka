@@ -7,7 +7,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         LazyThreadSafetyMode.ExecutionAndPublication
     );
     public static OctopusEngine Current => t_instance.Value;
-    private GrpcChannel? _grpcChannel;
+    private readonly GrpcChannel?[] _grpcChannels = new GrpcChannel?[PacketRouter.MaxRays];
     private string _currentSni = "";
     private X509Certificate2? _clientCert;
     private string? _jwtToken;
@@ -43,7 +43,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public int ActiveRays { get; private set; } = 1;
 
-    public bool IsConnected => _grpcChannel is not null;
+    public bool IsConnected => _grpcChannels.Any(c => c is not null);
     public string AssignedIp { get; private set; } = "10.8.0.2";
     public string AssignedIpV6 { get; private set; } = "fd00::2";
     public event Action<byte[], int>? OnPacketReceived;
@@ -58,7 +58,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public long TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
     public async Task ConnectRayAsync(int i, bool isNewConnection = false)
     {
-        var client = new TunnelService.TunnelServiceClient(_grpcChannel);
+        var client = new TunnelService.TunnelServiceClient(_grpcChannels[i]);
         var headers = new Metadata
         {
             { "X-Obxodka-Auth", _clientCert!.Thumbprint },
@@ -112,60 +112,61 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         ActiveRays = PacketRouter.MaxRays;
 #endif
         var useHttp3 = Preferences.Get("UseHttp3", false);
-        var handler = new SocketsHttpHandler
-        {
-            EnableMultipleHttp2Connections = true,
-            PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-            KeepAlivePingDelay = TimeSpan.FromSeconds(30),
-            KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                TargetHost = _currentSni,
-                ClientCertificates = [_clientCert],
-                RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                    ValidateServerCertificate(certificate as X509Certificate2, chain, errors)
-            },
-            InitialHttp2StreamWindowSize = 16777216
-        };
-
-        if (!useHttp3)
-        {
-            handler.ConnectCallback = async (context, ct) =>
-            {
-                var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp)
-                {
-                    NoDelay = true,
-                    SendBufferSize = 8388608,
-                    ReceiveBufferSize = 8388608
-                };
-                await socket.ConnectAsync(context.DnsEndPoint, ct);
-                return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
-            };
-        }
-
-        var httpClient = new HttpClient(handler)
-        {
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-
-        if (useHttp3)
-        {
-            httpClient.DefaultRequestVersion = HttpVersion.Version30;
-            httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        }
-
-        var channelOptions = new GrpcChannelOptions
-        {
-            HttpClient = httpClient,
-            MaxReceiveMessageSize = null,
-            MaxSendMessageSize = null,
-            DisposeHttpClient = true
-        };
-        _grpcChannel = GrpcChannel.ForAddress($"https://{serverIp}:{serverPort}", channelOptions);
         try
         {
             for (var i = 0; i < ActiveRays; i++)
             {
+                var handler = new SocketsHttpHandler
+                {
+                    EnableMultipleHttp2Connections = true,
+                    PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+                    KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                    KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+                    SslOptions = new SslClientAuthenticationOptions
+                    {
+                        TargetHost = _currentSni,
+                        ClientCertificates = [_clientCert],
+                        RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
+                            ValidateServerCertificate(certificate as X509Certificate2, chain, errors)
+                    },
+                    InitialHttp2StreamWindowSize = 16777216
+                };
+
+                if (!useHttp3)
+                {
+                    handler.ConnectCallback = async (context, ct) =>
+                    {
+                        var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp)
+                        {
+                            NoDelay = true,
+                            SendBufferSize = 8388608,
+                            ReceiveBufferSize = 8388608
+                        };
+                        await socket.ConnectAsync(context.DnsEndPoint, ct);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    };
+                }
+
+                var httpClient = new HttpClient(handler)
+                {
+                    Timeout = Timeout.InfiniteTimeSpan
+                };
+
+                if (useHttp3)
+                {
+                    httpClient.DefaultRequestVersion = HttpVersion.Version30;
+                    httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+                }
+
+                var channelOptions = new GrpcChannelOptions
+                {
+                    HttpClient = httpClient,
+                    MaxReceiveMessageSize = null,
+                    MaxSendMessageSize = null,
+                    DisposeHttpClient = true
+                };
+
+                _grpcChannels[i] = GrpcChannel.ForAddress($"https://{serverIp}:{serverPort}", channelOptions);
                 _txChannels[i] = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(2000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
                 await ConnectRayAsync(i, isNewConnection: i == 0);
                 _ = TxLoopAsync(i, _txChannels[i]!, _cts!.Token);
@@ -174,10 +175,13 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[GRPC FAIL] {ex.Message}");
-            try
-            { _grpcChannel?.Dispose(); }
-            catch { }
-            _grpcChannel = null;
+            for (var i = 0; i < PacketRouter.MaxRays; i++)
+            {
+                try
+                { _grpcChannels[i]?.Dispose(); }
+                catch { }
+                _grpcChannels[i] = null;
+            }
             _cts?.Cancel();
             throw new InvalidOperationException($"Failed to connect via gRPC tunnel: {ex.Message} {ex.InnerException?.Message}", ex);
         }
@@ -199,10 +203,13 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
         catch (TimeoutException)
         {
-            try
-            { _grpcChannel?.Dispose(); }
-            catch { }
-            _grpcChannel = null;
+            for (var i = 0; i < PacketRouter.MaxRays; i++)
+            {
+                try
+                { _grpcChannels[i]?.Dispose(); }
+                catch { }
+                _grpcChannels[i] = null;
+            }
             _cts?.Cancel();
             throw new InvalidOperationException("Timed out waiting for IP assignment from server.");
         }
@@ -497,17 +504,20 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _cts?.Cancel();
         _rotationCts?.Cancel();
         _clientCert?.Dispose();
-        if (_grpcChannel != null)
+        for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            try
+            if (_grpcChannels[i] != null)
             {
-                _ = await Task.WhenAny(_grpcChannel.ShutdownAsync(), Task.Delay(500));
+                try
+                {
+                    _ = await Task.WhenAny(_grpcChannels[i]!.ShutdownAsync(), Task.Delay(500));
+                }
+                catch { }
+                try
+                { _grpcChannels[i]!.Dispose(); }
+                catch { }
+                _grpcChannels[i] = null;
             }
-            catch { }
-            try
-            { _grpcChannel.Dispose(); }
-            catch { }
-            _grpcChannel = null;
         }
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
@@ -598,19 +608,23 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _rotationCts?.Cancel();
         _rotationCts?.Dispose();
         _clientCert?.Dispose();
-        try
+        for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            if (_grpcChannel != null)
+            try
             {
-                _ = _grpcChannel.ShutdownAsync();
+                if (_grpcChannels[i] != null)
+                {
+                    _ = _grpcChannels[i]!.ShutdownAsync();
+                }
             }
+            catch { }
+            try
+            {
+                _grpcChannels[i]?.Dispose();
+                _grpcChannels[i] = null;
+            }
+            catch { }
         }
-        catch { }
-        try
-        {
-            _grpcChannel?.Dispose();
-        }
-        catch { }
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
             _tunnelStreams[i]?.Dispose();

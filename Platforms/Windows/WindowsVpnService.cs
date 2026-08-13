@@ -239,10 +239,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private void HandlePacketFromVpn(byte[] data, int length)
     {
         _rxCount++;
-        var info = ParseIpPacket(data);
+
+        _ = ParseIpPacket(data);
         if (_rxCount % 10000 == 0)
         {
-            Debug.WriteLine($"[TRAFFIC IN] {_rxCount}: {info} ({length} bytes)");
+
         }
         _adapter?.SendPacket(data, length);
         ArrayPool<byte>.Shared.Return(data);
@@ -474,3 +475,4 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _cts?.Dispose();
     }
 }
+
