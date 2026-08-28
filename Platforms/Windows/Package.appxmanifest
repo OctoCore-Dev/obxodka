@@ -59,7 +59,7 @@
                         <uap:DisplayName>Obxodka Protocol</uap:DisplayName>
                     </uap:Protocol>
                 </uap:Extension>
-                <desktop:Extension Category="windows.startupTask" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+                <desktop:Extension Category="windows.startupTask">
                     <desktop:StartupTask TaskId="ObxodkaStartup" Enabled="false" DisplayName="Obxodka VPN" />
                 </desktop:Extension>
             </Extensions>
