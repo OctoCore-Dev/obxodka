@@ -1,110 +1,162 @@
+using Android.Content;
 using Android.Content.PM;
 using Application = Android.App.Application;
 
 namespace obxodka.Platforms.Android;
 
-public class AppManager : IAppManager
+[SupportedOSPlatform("android29.0")]
+public sealed class AppManager : IAppManager
 {
     private const string BypassedAppsKey = "obxodka_bypassed_apps";
     private static List<AppInfoItem>? t_cachedApps;
-    private static int t_lastPackageCount;
 
-    public Task<List<AppInfoItem>> GetInstalledAppsAsync()
-    {
-        return Task.Run(() =>
+    public Task<List<AppInfoItem>> GetInstalledAppsAsync() =>
+        Task.Run(() =>
         {
             var apps = new List<AppInfoItem>();
-            var pm = Application.Context.PackageManager;
-            if (pm == null)
-            {
-                return apps;
-            }
-
-#pragma warning disable CA1416
-            var flags = PackageInfoFlags.MatchUninstalledPackages;
-            var packages = pm.GetInstalledPackages(flags);
-#pragma warning restore CA1416
-            if (packages == null)
+            var context = Application.Context;
+            var pm = context.PackageManager;
+            if (pm is null)
             {
                 return apps;
             }
 
             var bypassed = GetBypassedPackages().ToHashSet();
 
-            if (t_cachedApps != null && packages.Count == t_lastPackageCount)
+            if (t_cachedApps is not null && t_cachedApps.Count > 0)
             {
                 foreach (var app in t_cachedApps)
                 {
                     app.IsBypassed = bypassed.Contains(app.PackageName);
                 }
+
                 return [.. t_cachedApps];
             }
 
-            foreach (var packageInfo in packages)
+            var cacheDir = FileSystem.Current.CacheDirectory;
+            var iconsDir = Path.Combine(cacheDir, "AppIcons");
+            _ = Directory.CreateDirectory(iconsDir);
+
+            var mainIntent = new Intent(Intent.ActionMain, null);
+            _ = mainIntent.AddCategory(Intent.CategoryLauncher);
+
+            var resolveInfos = pm.QueryIntentActivities(mainIntent, 0);
+            var seenPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var pendingIcons = new List<(ApplicationInfo appInfo, string pkgName, string iconPath)>();
+
+            if (resolveInfos is not null)
             {
-                if ((packageInfo.ApplicationInfo!.Flags & ApplicationInfoFlags.System) != 0)
+                foreach (var ri in resolveInfos)
                 {
-                    var launchIntent = pm.GetLaunchIntentForPackage(packageInfo.PackageName!);
-                    if (launchIntent == null)
+                    if (ri.ActivityInfo?.ApplicationInfo is not { } appInfo)
                     {
                         continue;
                     }
-                }
 
-                if (packageInfo.PackageName == Application.Context.PackageName)
-                {
-                    continue;
-                }
+                    var pkgName = appInfo.PackageName ?? string.Empty;
+                    if (string.IsNullOrEmpty(pkgName) || pkgName == context.PackageName || !seenPackages.Add(pkgName))
+                    {
+                        continue;
+                    }
 
-                var appName = packageInfo.ApplicationInfo.LoadLabel(pm)?.ToString() ?? packageInfo.PackageName!;
-
-                string? iconPath = null;
-                try
-                {
-                    var cacheDir = FileSystem.Current.CacheDirectory;
-                    var iconsDir = Path.Combine(cacheDir, "AppIcons");
-                    _ = Directory.CreateDirectory(iconsDir);
-                    iconPath = Path.Combine(iconsDir, $"{packageInfo.PackageName}.png");
+                    var appName = ri.LoadLabel(pm)?.ToString() ?? appInfo.LoadLabel(pm)?.ToString() ?? pkgName;
+                    var iconPath = Path.Combine(iconsDir, $"{pkgName}.png");
 
                     if (!File.Exists(iconPath))
                     {
-                        var drawable = packageInfo.ApplicationInfo.LoadIcon(pm);
-                        if (drawable != null)
-                        {
-                            var bmp = global::Android.Graphics.Bitmap.CreateBitmap(
-                                drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48,
-                                drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48,
-                                global::Android.Graphics.Bitmap.Config.Argb8888!);
-                            var canvas = new global::Android.Graphics.Canvas(bmp);
-                            drawable.SetBounds(0, 0, canvas.Width, canvas.Height);
-                            drawable.Draw(canvas);
-                            using var fs = new FileStream(iconPath, FileMode.Create, FileAccess.Write);
-                            _ = bmp.Compress(global::Android.Graphics.Bitmap.CompressFormat.Png!, 100, fs);
-                            bmp.Recycle();
-                            bmp.Dispose();
-                        }
-                        else
-                        {
-                            iconPath = null;
-                        }
+                        pendingIcons.Add((appInfo, pkgName, iconPath));
                     }
-                }
-                catch { iconPath = null; }
 
-                apps.Add(new AppInfoItem
+                    apps.Add(new AppInfoItem
+                    {
+                        Name = appName,
+                        PackageName = pkgName,
+                        IsBypassed = bypassed.Contains(pkgName),
+                        IconPath = File.Exists(iconPath) ? iconPath : null
+                    });
+                }
+            }
+
+            foreach (var bypassedPkg in bypassed)
+            {
+                if (seenPackages.Add(bypassedPkg))
                 {
-                    Name = appName,
-                    PackageName = packageInfo.PackageName!,
-                    IsBypassed = bypassed.Contains(packageInfo.PackageName!),
-                    IconPath = iconPath
-                });
+                    try
+                    {
+                        var appInfo = pm.GetApplicationInfo(bypassedPkg, 0);
+                        var appName = appInfo.LoadLabel(pm)?.ToString() ?? bypassedPkg;
+                        var iconPath = Path.Combine(iconsDir, $"{bypassedPkg}.png");
+
+                        if (!File.Exists(iconPath))
+                        {
+                            pendingIcons.Add((appInfo, bypassedPkg, iconPath));
+                        }
+
+                        apps.Add(new AppInfoItem
+                        {
+                            Name = appName,
+                            PackageName = bypassedPkg,
+                            IsBypassed = true,
+                            IconPath = File.Exists(iconPath) ? iconPath : null
+                        });
+                    }
+                    catch { }
+                }
             }
 
             t_cachedApps = [.. apps.OrderBy(a => a.Name)];
-            t_lastPackageCount = packages.Count;
+
+            if (pendingIcons.Count > 0)
+            {
+                var appsByPkg = apps.ToDictionary(a => a.PackageName, a => a, StringComparer.OrdinalIgnoreCase);
+                _ = Task.Run(() =>
+                {
+                    foreach (var (appInfo, pkgName, iconPath) in pendingIcons)
+                    {
+                        try
+                        {
+                            if (File.Exists(iconPath))
+                            {
+                                if (appsByPkg.TryGetValue(pkgName, out var targetApp))
+                                {
+                                    MainThread.BeginInvokeOnMainThread(() => targetApp.IconPath = iconPath);
+                                }
+                                continue;
+                            }
+
+                            if (appInfo.LoadIcon(pm) is { } drawable)
+                            {
+                                var width = Math.Clamp(drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48, 32, 64);
+                                var height = Math.Clamp(drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48, 32, 64);
+                                using var bmp = global::Android.Graphics.Bitmap.CreateBitmap(
+                                    width,
+                                    height,
+                                    global::Android.Graphics.Bitmap.Config.Argb8888!);
+
+                                if (bmp is not null)
+                                {
+                                    var canvas = new global::Android.Graphics.Canvas(bmp);
+                                    drawable.SetBounds(0, 0, canvas.Width, canvas.Height);
+                                    drawable.Draw(canvas);
+
+                                    using var fs = new FileStream(iconPath, FileMode.Create, FileAccess.Write);
+                                    _ = bmp.Compress(global::Android.Graphics.Bitmap.CompressFormat.Png!, 80, fs);
+                                    bmp.Recycle();
+
+                                    if (appsByPkg.TryGetValue(pkgName, out var targetApp))
+                                    {
+                                        MainThread.BeginInvokeOnMainThread(() => targetApp.IconPath = iconPath);
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                });
+            }
+
             return [.. t_cachedApps];
         });
-    }
 
     public List<string> GetBypassedPackages()
     {
@@ -112,5 +164,6 @@ public class AppManager : IAppManager
         return string.IsNullOrWhiteSpace(saved) ? [] : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)];
     }
 
-    public void SaveBypassedPackages(List<string> packages) => Preferences.Set(BypassedAppsKey, string.Join(",", packages));
+    public void SaveBypassedPackages(List<string> packages) =>
+        Preferences.Set(BypassedAppsKey, string.Join(",", packages));
 }

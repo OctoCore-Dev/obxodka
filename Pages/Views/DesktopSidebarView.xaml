@@ -1,9 +1,10 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.DesktopSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:views="clr-namespace:obxodka.Views">
     <Border
         x:Name="DesktopSidebar"
         Margin="16,16,0,16"
@@ -63,7 +64,8 @@
                             Icon="{mi:Fluent Icon=Shield24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
                                                         Dark=#6A5A8A}"
-                            IconSize="20" />
+                            IconSize="22"
+                            VerticalOptions="Center" />
                         <Label
                             x:Name="LabelVpn"
                             Grid.Column="1"
@@ -89,7 +91,8 @@
                             Icon="{mi:Fluent Icon=Person24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
                                                         Dark=#6A5A8A}"
-                            IconSize="20" />
+                            IconSize="22"
+                            VerticalOptions="Center" />
                         <Label
                             x:Name="LabelProfile"
                             Grid.Column="1"
@@ -112,10 +115,11 @@
                         <mi:MauiIcon
                             x:Name="NavConfigurationIcon"
                             Grid.Column="0"
-                            Icon="{mi:Fluent Icon=Globe24}"
+                            Icon="{mi:Fluent Icon=Settings24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
                                                         Dark=#6A5A8A}"
-                            IconSize="20" />
+                            IconSize="22"
+                            VerticalOptions="Center" />
                         <Label
                             x:Name="LabelConfiguration"
                             Grid.Column="1"
@@ -129,35 +133,33 @@
                     </Grid>
                 </Border>
 
-                <Border
-                    x:Name="SideNavAppearance"
-                    IsVisible="{OnPlatform WinUI=True,
-                                           Default=False}"
-                    Style="{StaticResource SideNavItem}">
+                <Border x:Name="SideNavMesh" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnNavAppearanceTapped" />
+                        <TapGestureRecognizer Tapped="OnNavMeshTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
                     <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
-                            x:Name="NavAppearanceIcon"
+                            x:Name="NavMeshIcon"
                             Grid.Column="0"
-                            Icon="{mi:Fluent Icon=ColorBackground24}"
+                            Icon="{mi:Fluent Icon=Globe24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
                                                         Dark=#6A5A8A}"
-                            IconSize="20" />
+                            IconSize="22"
+                            VerticalOptions="Center" />
                         <Label
-                            x:Name="LabelAppearance"
+                            x:Name="LabelMesh"
                             Grid.Column="1"
                             Margin="14,0,0,0"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Style="{StaticResource TitleSmall}"
-                            Text="Кастомизация"
+                            Text="Mesh Сеть"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
+
 
                 <Border x:Name="SideNavDevices" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
@@ -171,7 +173,8 @@
                             Icon="{mi:Fluent Icon=PhoneDesktop24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
                                                         Dark=#6A5A8A}"
-                            IconSize="20" />
+                            IconSize="22"
+                            VerticalOptions="Center" />
                         <Label
                             x:Name="LabelDevices"
                             Grid.Column="1"
@@ -198,6 +201,7 @@
                     </Border.GestureRecognizers>
                     <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
+                            x:Name="NavBugIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Bug24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
@@ -223,6 +227,7 @@
                     </Border.GestureRecognizers>
                     <Grid Padding="16,8" ColumnDefinitions="Auto, *">
                         <mi:MauiIcon
+                            x:Name="NavReviewsIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Star24}"
                             IconColor="{AppThemeBinding Light=#9080B0,
@@ -268,7 +273,8 @@
                             x:Name="VpnStatusLabel"
                             Grid.Column="1"
                             Margin="14,0,0,0"
-                            FontSize="12"
+                            FontSize="13"
+                            HorizontalOptions="Start"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Style="{StaticResource LabelMuted}"
@@ -282,14 +288,13 @@
                     HeightRequest="44"
                     Style="{StaticResource NeoBtnDanger}">
                     <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnLogoutClickedAsync" />
+                        <TapGestureRecognizer Tapped="OnLogoutClicked" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,10" ColumnDefinitions="Auto, *">
-
+                    <Grid Padding="12,10">
                         <mi:MauiIcon
                             x:Name="LogoutIcon"
-                            Grid.Column="0"
+                            HorizontalOptions="Start"
                             Icon="{mi:Fluent Icon=ArrowExit20}"
                             IconColor="{StaticResource Error}"
                             IconSize="20"
@@ -298,11 +303,10 @@
 
                         <Label
                             x:Name="LogoutText"
-                            Grid.Column="1"
-                            Margin="14,0,0,0"
                             FontFamily="RobotoBold"
                             FontSize="13"
-                            HorizontalOptions="Start"
+                            HorizontalOptions="Center"
+                            HorizontalTextAlignment="Center"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="ВЫХОД"
@@ -318,7 +322,7 @@
                     LineBreakMode="NoWrap"
                     Opacity="0"
                     Style="{StaticResource LabelMuted}"
-                    Text="v2.6.0" />
+                    Text="v4.8.0" />
             </VerticalStackLayout>
 
         </Grid>

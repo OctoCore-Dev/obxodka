@@ -4,11 +4,25 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:views="clr-namespace:obxodka.Views"
-    SafeAreaEdges="None">
+    BackgroundColor="{OnPlatform WinUI=Transparent,
+                                 Default={AppThemeBinding Light={StaticResource BgBaseLight},
+                                                          Dark={StaticResource BgBase}}}"
+    NavigationPage.HasNavigationBar="False"
+    SafeAreaEdges="None"
+    Shell.NavBarIsVisible="False">
 
-    <Grid x:Name="ThisPage">
+    <Grid x:Name="ThisPage" BackgroundColor="{OnPlatform WinUI=Transparent, Default={AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}}">
 
-        <Grid ColumnDefinitions="Auto, *" RowDefinitions="*, Auto">
+        <views:PaperNoiseOverlay
+            HorizontalOptions="Fill"
+            InputTransparent="True"
+            VerticalOptions="Fill"
+            ZIndex="0" />
+
+        <Grid
+            ColumnDefinitions="Auto, *"
+            RowDefinitions="*, Auto"
+            ZIndex="1">
             <views:DesktopSidebarView
                 x:Name="DesktopSidebar"
                 Grid.Row="0"
@@ -27,8 +41,9 @@
                 <views:AuthView x:Name="TabContentAuth" IsVisible="False" />
                 <views:VpnView x:Name="TabContentVpn" IsVisible="False" />
                 <views:ConfigurationView x:Name="TabContentConfiguration" IsVisible="False" />
-                <views:AppearanceView x:Name="TabContentAppearance" IsVisible="False" />
                 <views:ProfileView x:Name="TabContentProfile" IsVisible="False" />
+                <views:FriendsView x:Name="TabContentFriends" IsVisible="False" />
+                <views:MeshView x:Name="TabContentMesh" IsVisible="False" />
                 <views:DevicesView x:Name="TabContentDevices" IsVisible="False" />
                 <views:SplitView x:Name="TabContentSplit" IsVisible="False" />
                 <views:DeleteAccountView x:Name="TabContentDelete" IsVisible="False" />

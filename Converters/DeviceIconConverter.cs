@@ -1,21 +1,35 @@
 namespace obxodka.Converters;
 
-public class DeviceIconConverter : IValueConverter
+public sealed class DeviceIconConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        var name = (value as string)?.ToLowerInvariant() ?? "";
+        if (value is not string name || string.IsNullOrWhiteSpace(name))
+        {
+            return FluentIcons.PhoneDesktop24;
+        }
 
-        return name.Contains("windows") || name.Contains("desktop") || name.Contains("laptop") || name.Contains("pc")
+        var span = name.AsSpan();
+
+        return ContainsAny(span, ["windows", "desktop", "laptop", "pc", "mac", "imac", "macbook"])
             ? FluentIcons.Desktop24
-            : name.Contains("mac") || name.Contains("imac") || name.Contains("macbook")
-            ? FluentIcons.Desktop24
-            : name.Contains("iphone") || name.Contains("ipad") || name.Contains("ios")
-            ? FluentIcons.Phone24
-            : name.Contains("android") || name.Contains("samsung") || name.Contains("pixel")
+            : ContainsAny(span, ["iphone", "ipad", "ios", "android", "samsung", "pixel", "phone"])
             ? FluentIcons.Phone24
             : FluentIcons.PhoneDesktop24;
     }
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotImplementedException();
+    private static bool ContainsAny(ReadOnlySpan<char> source, params ReadOnlySpan<string> keywords)
+    {
+        foreach (var keyword in keywords)
+        {
+            if (source.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => null;
 }

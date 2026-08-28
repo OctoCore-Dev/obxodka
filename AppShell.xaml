@@ -5,25 +5,4 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:pages="clr-namespace:obxodka.Pages"
     FlyoutBehavior="Disabled"
-    Shell.NavBarIsVisible="False">
-
-    <Shell.FlyoutHeader>
-        <Grid BackgroundColor="{DynamicResource AppBackground}" HeightRequest="150">
-            <Image
-                HeightRequest="64"
-                HorizontalOptions="Center"
-                Opacity="0.8"
-                Source="user_icon.png"
-                VerticalOptions="Center"
-                WidthRequest="64" />
-            <Label
-                Margin="0,0,0,15"
-                FontAttributes="Bold"
-                HorizontalOptions="Center"
-                Text="obxodka"
-                TextColor="{DynamicResource StatusBlue}"
-                VerticalOptions="End" />
-        </Grid>
-    </Shell.FlyoutHeader>
-
-</Shell>
+    Shell.NavBarIsVisible="False" />

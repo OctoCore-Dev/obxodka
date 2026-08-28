@@ -8,7 +8,7 @@ public enum BugStatus
     Rejected
 }
 
-public class BugReport
+public sealed class BugReport
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();

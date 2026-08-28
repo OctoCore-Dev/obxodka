@@ -1,18 +1,21 @@
+using Uri = System.Uri;
+
 namespace obxodka.Platforms.Android;
 
 [SupportedOSPlatform("android29.0")]
 internal sealed class AndroidVpnService : IVpnService
 {
     public static AndroidVpnService Instance { get; } = new();
+
     public AppVpnState CurrentState { get; private set; } = AppVpnState.Disconnected;
     public bool IsRunning => CurrentState == AppVpnState.Connected;
+
     public event Action<AppVpnState>? OnStateChanged;
-#pragma warning disable CS0067
     public event Action<string>? OnLogUpdated;
-#pragma warning restore CS0067
     public event Action<string>? OnErrorOccurred;
     public event Action<AppTrafficStats>? OnTrafficUpdated = delegate { };
     public event Action<string>? OnForceLogoutRequested;
+
     private string _currentServerIp = "";
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
@@ -38,32 +41,80 @@ internal sealed class AndroidVpnService : IVpnService
 
     public void HandleEngineDrop()
     {
+        var autoReconnect = Preferences.Get("AutoReconnect", true);
+        var killSwitch = Preferences.Get("KillSwitch", false);
+
         if (IsRunning && !_isExplicitlyStopped)
         {
+            if (!autoReconnect)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await StopVpnAsync();
+                    SetError("Связь с сервером потеряна.");
+                });
+                return;
+            }
+
             ChangeState(AppVpnState.Reconnecting);
             _ = Task.Run(async () =>
             {
-                for (var i = 0; i < 5; i++)
+                for (var i = 0; i < 10; i++)
                 {
-                    await Task.Delay(2000);
+                    if (i > 0)
+                    {
+                        await Task.Delay(1000);
+                    }
+
                     if (_isExplicitlyStopped)
                     {
                         return;
                     }
+
                     try
                     {
-                        await OctopusEngine.Current.DisposeAsync();
-                        await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
+                        await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
                         ChangeState(AppVpnState.Connected);
                         return;
                     }
                     catch { }
                 }
-                await StopVpnAsync();
-                SetError("Связь с сервером потеряна. Не удалось восстановить подключение.");
+
+                if (killSwitch)
+                {
+                    SetError("Не удалось восстановить связь. Kill Switch блокирует утечку IP. Нажмите «Стоп» для отключения.");
+                }
+                else
+                {
+                    await StopVpnAsync();
+                    SetError("Связь с сервером потеряна. Не удалось восстановить подключение.");
+                }
             });
         }
     }
+
+    public void TriggerImmediateReconnect()
+    {
+        if (_isExplicitlyStopped || string.IsNullOrEmpty(_currentServerIp))
+        {
+            return;
+        }
+
+        ChangeState(AppVpnState.Reconnecting);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                ChangeState(AppVpnState.Connected);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[NETWORK ROAMING RECONNECT] {ex.Message}");
+            }
+        });
+    }
+
     public async Task StartVpnAsync(string serverIp, int serverPort)
     {
         var targetIp = serverIp;
@@ -72,13 +123,17 @@ internal sealed class AndroidVpnService : IVpnService
             try
             {
                 var addrs = await Dns.GetHostAddressesAsync(serverIp);
-                targetIp = addrs.First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork).ToString();
+                if (addrs.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) is { } ipv4)
+                {
+                    targetIp = ipv4.ToString();
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
             }
         }
+
         var originalHost = serverIp;
         if (Uri.CheckHostName(serverIp) != UriHostNameType.Dns)
         {
@@ -88,12 +143,13 @@ internal sealed class AndroidVpnService : IVpnService
             }
             catch { }
         }
+
         _currentServerIp = targetIp;
         _currentServerPort = serverPort;
         _isExplicitlyStopped = false;
+
         var intent = global::Android.Net.VpnService.Prepare(Platform.AppContext);
-        if (intent != null)
-#pragma warning disable CA1416
+        if (intent is not null)
         {
             var granted = await MainActivity.RequestVpnPermissionAsync(intent);
             if (!granted)
@@ -102,19 +158,38 @@ internal sealed class AndroidVpnService : IVpnService
                 return;
             }
         }
+
         OnLogUpdated?.Invoke($"[DOMAINS] Traffic will route via domain: {originalHost}");
         ChangeState(AppVpnState.Connecting);
+
         try
         {
-            await OctopusEngine.Current.ConnectAsync(targetIp, serverPort);
             MainActivity.StartVpnService();
+            for (var i = 0; i < 30 && OctopusVpnService.Instance is null; i++)
+            {
+                await Task.Delay(50);
+            }
+
+            await OctopusEngine.Current.ConnectAsync(targetIp, serverPort);
+            OctopusVpnService.Instance?.EstablishTun();
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException ||
+                ex.InnerException is OperationCanceledException ||
+                ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
+                _isExplicitlyStopped)
+            {
+                Debug.WriteLine($"[VPN DISCONNECT] Normal stop/cancellation: {ex.Message}");
+                ChangeState(AppVpnState.Disconnected);
+                return;
+            }
+
             SetError($"Ошибка подключения: {ex.Message}");
         }
-#pragma warning restore CA1416
     }
+
     public async Task StopVpnAsync()
     {
         _isExplicitlyStopped = true;
@@ -133,15 +208,18 @@ internal sealed class AndroidVpnService : IVpnService
 
         ChangeState(AppVpnState.Disconnected);
     }
+
     public void ChangeState(AppVpnState newState)
     {
         if (CurrentState == newState)
         {
             return;
         }
+
         CurrentState = newState;
         MainThread.BeginInvokeOnMainThread(() => OnStateChanged?.Invoke(CurrentState));
     }
+
     public void SetError(string message)
     {
         ChangeState(AppVpnState.Error);

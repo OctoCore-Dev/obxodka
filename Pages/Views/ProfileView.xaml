@@ -6,241 +6,101 @@
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
     xmlns:views="clr-namespace:obxodka.Views"
     x:Name="ThisProfileView">
-    <Grid>
-        <Grid
-            x:Name="ContentGrid"
-            Padding="{OnIdiom Desktop='32,28',
-                              Default='16,20'}"
-            ColumnDefinitions="{OnIdiom Desktop='*, *',
-                                        Default='*'}"
-            ColumnSpacing="28"
-            RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto"
-            RowSpacing="20"
-            VerticalOptions="Start">
+    <Grid
+        x:Name="ContentGrid"
+        Padding="{OnIdiom Desktop='32,28',
+                          Phone='16,20,16,120',
+                          Default='16,20'}"
+        ColumnDefinitions="{OnIdiom Desktop='*, *',
+                                    Default='*'}"
+        ColumnSpacing="28"
+        RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto, Auto, Auto"
+        RowSpacing="20"
+        VerticalOptions="Start">
 
-            <Label
-                Grid.Row="0"
-                Grid.Column="0"
-                Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                          Default='1'}"
-                Margin="0,0,0,4"
-                HorizontalOptions="Center"
-                Style="{StaticResource TitleMedium}"
-                Text="Профиль" />
+        <Label
+            Grid.Row="0"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Margin="0,0,0,4"
+            HorizontalOptions="Center"
+            Style="{StaticResource TitleMedium}"
+            Text="Профиль" />
 
-            <Border
-                x:Name="CardProfile"
-                Grid.Row="1"
-                Grid.Column="0"
-                Padding="20"
-                Opacity="0"
-                Style="{StaticResource NeoCard}"
-                TranslationY="28"
-                VerticalOptions="Fill">
-                <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="16">
-                    <Border
-                        Grid.Column="0"
-                        BackgroundColor="{AppThemeBinding Light=#E0D4F5,
-                                                          Dark=#2A1B3D}"
-                        HeightRequest="56"
-                        StrokeShape="RoundRectangle 28"
-                        StrokeThickness="0"
-                        VerticalOptions="Center"
-                        WidthRequest="56">
-                        <mi:MauiIcon
-                            HorizontalOptions="Center"
-                            Icon="{mi:Fluent Icon=Person24}"
-                            IconColor="{AppThemeBinding Light=#7C3AED,
-                                                        Dark=#9F6FF0}"
-                            IconSize="28"
-                            VerticalOptions="Center" />
-                    </Border>
-                    <VerticalStackLayout
-                        Grid.Column="1"
-                        Spacing="4"
-                        VerticalOptions="Center">
-                        <HorizontalStackLayout Spacing="6">
-                            <Image
-                                x:Name="ProfileProviderIcon"
-                                HeightRequest="14"
-                                Source="google_logo.png"
-                                VerticalOptions="Center"
-                                WidthRequest="14" />
-                            <Label
-                                x:Name="ProfileProviderLabel"
-                                CharacterSpacing="1"
-                                FontSize="10"
-                                Style="{StaticResource LabelMuted}"
-                                Text="GOOGLE АККАУНТ"
-                                TextTransform="Uppercase"
-                                VerticalOptions="Center" />
-                        </HorizontalStackLayout>
+        <Border
+            x:Name="CardProfile"
+            Grid.Row="1"
+            Grid.Column="0"
+            Padding="20"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Fill">
+            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="16">
+                <Border
+                    Grid.Column="0"
+                    BackgroundColor="{AppThemeBinding Light=#E0D4F5,
+                                                      Dark=#2A1B3D}"
+                    HeightRequest="56"
+                    StrokeShape="RoundRectangle 28"
+                    StrokeThickness="0"
+                    VerticalOptions="Center"
+                    WidthRequest="56">
+                    <mi:MauiIcon
+                        HorizontalOptions="Center"
+                        Icon="{mi:Fluent Icon=Person24}"
+                        IconColor="{AppThemeBinding Light=#7C3AED,
+                                                    Dark=#9F6FF0}"
+                        IconSize="28"
+                        VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout
+                    Grid.Column="1"
+                    Spacing="4"
+                    VerticalOptions="Center">
+                    <HorizontalStackLayout Spacing="6">
+                        <Image
+                            x:Name="ProfileProviderIcon"
+                            HeightRequest="14"
+                            Source="google_logo.png"
+                            VerticalOptions="Center"
+                            WidthRequest="14" />
                         <Label
-                            x:Name="ProfileEmailLabel"
-                            FontSize="16"
-                            LineBreakMode="TailTruncation"
-                            Style="{StaticResource TitleMedium}"
-                            Text="email@example.com" />
-                    </VerticalStackLayout>
-                </Grid>
-            </Border>
-
-            <Border
-                x:Name="CardAdBlock"
-                Grid.Row="{OnIdiom Desktop='2',
-                                   Default='3'}"
-                Grid.Column="0"
-                Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                          Default='1'}"
-                Padding="16"
-                Opacity="0"
-                Style="{StaticResource NeoCard}"
-                TranslationY="28">
-                <VerticalStackLayout Spacing="8">
-                    <Grid ColumnDefinitions="Auto, *, Auto">
-                        <mi:MauiIcon
-                            Grid.Column="0"
-                            Icon="{mi:Fluent Icon=Shield24}"
-                            IconColor="{AppThemeBinding Light={StaticResource AccentLight},
-                                                        Dark={StaticResource Accent}}"
-                            IconSize="24"
+                            x:Name="ProfileProviderLabel"
+                            CharacterSpacing="1"
+                            FontSize="10"
+                            Style="{StaticResource LabelMuted}"
+                            Text="GOOGLE АККАУНТ"
+                            TextTransform="Uppercase"
                             VerticalOptions="Center" />
-                        <Grid
-                            Grid.Column="1"
-                            Margin="12,0"
-                            RowDefinitions="Auto, Auto"
-                            RowSpacing="4"
-                            VerticalOptions="Center">
-                            <Label
-                                Grid.Row="0"
-                                Style="{StaticResource TitleSmall}"
-                                Text="Блокировка рекламы" />
-                            <Label
-                                Grid.Row="1"
-                                LineBreakMode="WordWrap"
-                                Style="{StaticResource LabelAccent}"
-                                Text="Использовать DNS AdGuard для блокировки рекламы и трекеров" />
-                        </Grid>
-                        <Switch
-                            x:Name="AdBlockSwitch"
-                            Grid.Column="2"
-                            Toggled="OnAdBlockToggled"
-                            VerticalOptions="Center">
-                            <Switch.IsEnabled>
-                                <Binding
-                                    x:DataType="views:ProfileView"
-                                    Path="IsEditingAllowed"
-                                    Source="{x:Reference ThisProfileView}" />
-                            </Switch.IsEnabled>
-                        </Switch>
-                    </Grid>
-
-                    <Border
-                        Margin="0,8,0,0"
-                        Padding="12,12"
-                        BackgroundColor="#2D1A1A"
-                        Stroke="#EF4444"
-                        StrokeThickness="1">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="8" />
-                        </Border.StrokeShape>
-                        <Label
-                            FontSize="12"
-                            HorizontalTextAlignment="Center"
-                            LineBreakMode="WordWrap"
-                            Text="Изменение настройки возможно только при выключенном VPN."
-                            TextColor="#FCA5A5"
-                            VerticalTextAlignment="Center" />
-                        <Border.Triggers>
-                            <DataTrigger
-                                Binding="{Binding IsEditingAllowed, Source={x:Reference ThisProfileView}, x:DataType=views:ProfileView}"
-                                TargetType="Border"
-                                Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                        </Border.Triggers>
-                    </Border>
+                    </HorizontalStackLayout>
+                    <Label
+                        x:Name="ProfileEmailLabel"
+                        FontSize="16"
+                        LineBreakMode="TailTruncation"
+                        Style="{StaticResource TitleMedium}"
+                        Text="email@example.com" />
                 </VerticalStackLayout>
-            </Border>
-            <Border
-                x:Name="CardBalance"
-                Grid.Row="{OnIdiom Desktop='1',
-                                   Default='2'}"
-                Grid.Column="{OnIdiom Desktop='1',
-                                      Default='0'}"
-                Padding="20"
-                Opacity="0"
-                Style="{StaticResource NeoCard}"
-                TranslationY="28"
-                VerticalOptions="Fill">
-                <Grid ColumnDefinitions="*, Auto" ColumnSpacing="12">
-                    <Grid
-                        Grid.Column="0"
-                        ColumnDefinitions="Auto, Auto"
-                        ColumnSpacing="24"
-                        VerticalOptions="Center">
-                        <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label
-                                FontSize="10"
-                                Style="{StaticResource LabelMuted}"
-                                Text="БАЛАНС" />
-                            <Label
-                                x:Name="ProfileTokenLabel"
-                                FontAttributes="Bold"
-                                FontSize="18"
-                                Style="{StaticResource LabelCyan}"
-                                Text="0ч 00м" />
-                        </VerticalStackLayout>
-                        <VerticalStackLayout
-                            x:Name="SubscriptionContainer"
-                            Grid.Column="1"
-                            Spacing="2">
-                            <Label
-                                FontSize="10"
-                                Style="{StaticResource LabelMuted}"
-                                Text="ПОДПИСКА" />
-                            <Label
-                                x:Name="ProfileSubLabel"
-                                FontAttributes="Bold"
-                                FontSize="14"
-                                Text="до 01.01.2026"
-                                TextColor="{AppThemeBinding Light=#4A3B6A,
-                                                            Dark=#E5E5E5}" />
-                        </VerticalStackLayout>
-                    </Grid>
-                    <Border
-                        Grid.Column="1"
-                        HeightRequest="40"
-                        Style="{StaticResource NeoBtnPrimary}"
-                        VerticalOptions="Center"
-                        WidthRequest="110">
-                        <Button
-                            BackgroundColor="Transparent"
-                            Clicked="OnBuyTokensClickedAsync"
-                            FontFamily="RobotoMedium"
-                            FontSize="13"
-                            Text="Пополнить"
-                            TextColor="{StaticResource TextOnPrimary}" />
-                    </Border>
-                </Grid>
-            </Border>
+            </Grid>
+        </Border>
 
-            <Border
-                x:Name="CardTelemetry"
-                Grid.Row="{OnIdiom Desktop='3',
-                                   Default='4'}"
-                Grid.Column="0"
-                Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                          Default='1'}"
-                Padding="16"
-                Opacity="0"
-                Style="{StaticResource NeoCard}"
-                TranslationY="28"
-                VerticalOptions="Start">
+        <Border
+            x:Name="CardAdBlock"
+            Grid.Row="{OnIdiom Desktop='2',
+                               Default='3'}"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Padding="16"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28">
+            <VerticalStackLayout Spacing="8">
                 <Grid ColumnDefinitions="Auto, *, Auto">
                     <mi:MauiIcon
                         Grid.Column="0"
-                        Icon="{mi:Fluent Icon=DataUsage24}"
+                        Icon="{mi:Fluent Icon=Shield24}"
                         IconColor="{AppThemeBinding Light={StaticResource AccentLight},
                                                     Dark={StaticResource Accent}}"
                         IconSize="24"
@@ -254,104 +114,343 @@
                         <Label
                             Grid.Row="0"
                             Style="{StaticResource TitleSmall}"
-                            Text="Телеметрия" />
+                            Text="Блокировка рекламы" />
                         <Label
                             Grid.Row="1"
                             LineBreakMode="WordWrap"
                             Style="{StaticResource LabelAccent}"
-                            Text="Отправлять анонимную статистику ошибок" />
+                            Text="Использовать DNS AdGuard для блокировки рекламы и трекеров" />
                     </Grid>
                     <Switch
-                        x:Name="TelemetrySwitch"
+                        x:Name="AdBlockSwitch"
                         Grid.Column="2"
-                        Toggled="OnTelemetryToggled"
-                        VerticalOptions="Center" />
+                        Toggled="OnAdBlockToggled"
+                        VerticalOptions="Center">
+                        <Switch.IsEnabled>
+                            <Binding
+                                x:DataType="views:ProfileView"
+                                Path="IsEditingAllowed"
+                                Source="{x:Reference ThisProfileView}" />
+                        </Switch.IsEnabled>
+                    </Switch>
                 </Grid>
-            </Border>
 
-            <Border
-                x:Name="CardLogout"
-                Grid.Row="5"
-                Grid.Column="0"
-                Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                          Default='1'}"
-                Padding="16"
-                IsVisible="{OnIdiom Phone=True,
-                                    Default=False}"
-                Opacity="0"
-                Style="{StaticResource NeoCard}"
-                TranslationY="28"
-                VerticalOptions="Start">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnLogoutClicked" />
-                </Border.GestureRecognizers>
+                <Border
+                    Margin="0,8,0,0"
+                    Padding="12,12"
+                    BackgroundColor="#2D1A1A"
+                    Stroke="#EF4444"
+                    StrokeThickness="1">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="8" />
+                    </Border.StrokeShape>
+                    <Label
+                        FontSize="12"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="WordWrap"
+                        Text="Изменение настройки возможно только при выключенном VPN."
+                        TextColor="#FCA5A5"
+                        VerticalTextAlignment="Center" />
+                    <Border.Triggers>
+                        <DataTrigger
+                            Binding="{Binding IsEditingAllowed, Source={x:Reference ThisProfileView}, x:DataType=views:ProfileView}"
+                            TargetType="Border"
+                            Value="True">
+                            <Setter Property="IsVisible" Value="False" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                </Border>
+            </VerticalStackLayout>
+        </Border>
+        <Border
+            x:Name="CardBalance"
+            Grid.Row="{OnIdiom Desktop='1',
+                               Default='2'}"
+            Grid.Column="{OnIdiom Desktop='1',
+                                  Default='0'}"
+            Padding="20"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Fill">
+            <Grid ColumnDefinitions="*, Auto" ColumnSpacing="12">
+                <Grid
+                    Grid.Column="0"
+                    ColumnDefinitions="Auto, Auto"
+                    ColumnSpacing="24"
+                    VerticalOptions="Center">
+                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                        <Label
+                            FontSize="10"
+                            Style="{StaticResource LabelMuted}"
+                            Text="БАЛАНС" />
+                        <Label
+                            x:Name="ProfileTokenLabel"
+                            FontAttributes="Bold"
+                            FontSize="18"
+                            Style="{StaticResource LabelCyan}"
+                            Text="0ч 00м" />
+                    </VerticalStackLayout>
+                    <VerticalStackLayout
+                        x:Name="SubscriptionContainer"
+                        Grid.Column="1"
+                        Spacing="2">
+                        <Label
+                            FontSize="10"
+                            Style="{StaticResource LabelMuted}"
+                            Text="ПОДПИСКА" />
+                        <Label
+                            x:Name="ProfileSubLabel"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            Text="до 01.01.2026"
+                            TextColor="{AppThemeBinding Light=#4A3B6A,
+                                                        Dark=#E5E5E5}" />
+                    </VerticalStackLayout>
+                </Grid>
+                <Border
+                    Grid.Column="1"
+                    HeightRequest="40"
+                    Style="{StaticResource NeoBtnPrimary}"
+                    VerticalOptions="Center"
+                    WidthRequest="110">
+                    <Button
+                        BackgroundColor="Transparent"
+                        Clicked="OnBuyTokensClicked"
+                        FontFamily="RobotoMedium"
+                        FontSize="13"
+                        Text="Пополнить"
+                        TextColor="{StaticResource TextOnPrimary}" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border
+            x:Name="CardTelemetry"
+            Grid.Row="{OnIdiom Desktop='3',
+                               Default='4'}"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Padding="16"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Start">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <mi:MauiIcon
+                    Grid.Column="0"
+                    Icon="{mi:Fluent Icon=DataUsage24}"
+                    IconColor="{AppThemeBinding Light={StaticResource AccentLight},
+                                                Dark={StaticResource Accent}}"
+                    IconSize="24"
+                    VerticalOptions="Center" />
+                <Grid
+                    Grid.Column="1"
+                    Margin="12,0"
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="4"
+                    VerticalOptions="Center">
+                    <Label
+                        Grid.Row="0"
+                        Style="{StaticResource TitleSmall}"
+                        Text="Телеметрия" />
+                    <Label
+                        Grid.Row="1"
+                        LineBreakMode="WordWrap"
+                        Style="{StaticResource LabelAccent}"
+                        Text="Отправлять анонимную статистику ошибок" />
+                </Grid>
+                <Switch
+                    x:Name="TelemetrySwitch"
+                    Grid.Column="2"
+                    Toggled="OnTelemetryToggled"
+                    VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <Border
+            x:Name="CardMesh"
+            Grid.Row="{OnIdiom Desktop='4',
+                               Default='5'}"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Padding="16"
+            IsVisible="{OnIdiom Phone=True,
+                                Default=False}"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Start">
+            <VerticalStackLayout Spacing="8">
                 <Grid ColumnDefinitions="Auto, *, Auto">
                     <mi:MauiIcon
                         Grid.Column="0"
-                        Icon="{mi:Fluent Icon=SignOut24}"
-                        IconColor="#EF4444"
+                        Icon="{mi:Fluent Icon=Globe24}"
+                        IconColor="{AppThemeBinding Light={StaticResource AccentLight},
+                                                    Dark={StaticResource Accent}}"
                         IconSize="24"
                         VerticalOptions="Center" />
                     <Grid
                         Grid.Column="1"
                         Margin="12,0"
+                        RowDefinitions="Auto, Auto"
+                        RowSpacing="4"
                         VerticalOptions="Center">
                         <Label
+                            Grid.Row="0"
                             Style="{StaticResource TitleSmall}"
-                            Text="Выйти из аккаунта"
-                            TextColor="#EF4444" />
-                    </Grid>
-                    <mi:MauiIcon
-                        Grid.Column="2"
-                        Icon="{mi:Fluent Icon=ChevronRight24}"
-                        IconColor="{AppThemeBinding Light=#9CA3AF,
-                                                    Dark=#4B5563}"
-                        IconSize="20"
-                        VerticalOptions="Center" />
-                </Grid>
-            </Border>
-
-            <Border
-                x:Name="CardDeleteAccount"
-                Grid.Row="{OnIdiom Desktop=5,
-                                   Default=6}"
-                Grid.Column="0"
-                Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                          Default='1'}"
-                Padding="16"
-                Opacity="0"
-                Style="{StaticResource NeoCard}"
-                TranslationY="28"
-                VerticalOptions="Start">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnDeleteAccountClicked" />
-                </Border.GestureRecognizers>
-                <Grid ColumnDefinitions="Auto, *, Auto">
-                    <mi:MauiIcon
-                        Grid.Column="0"
-                        Icon="{mi:Fluent Icon=Delete24}"
-                        IconColor="#EF4444"
-                        IconSize="24"
-                        VerticalOptions="Center" />
-                    <Grid
-                        Grid.Column="1"
-                        Margin="12,0"
-                        VerticalOptions="Center">
+                            Text="Mesh-режим (Сеть ПК)" />
                         <Label
-                            Style="{StaticResource TitleSmall}"
-                            Text="Удалить аккаунт"
-                            TextColor="#EF4444" />
+                            Grid.Row="1"
+                            LineBreakMode="WordWrap"
+                            Style="{StaticResource LabelAccent}"
+                            Text="Передавать трафик через компьютеры других пользователей для обхода строгих блокировок" />
                     </Grid>
-                    <mi:MauiIcon
+                    <Switch
+                        x:Name="MeshSwitch"
                         Grid.Column="2"
-                        Icon="{mi:Fluent Icon=ChevronRight24}"
-                        IconColor="{AppThemeBinding Light=#9CA3AF,
-                                                    Dark=#4B5563}"
-                        IconSize="20"
+                        Toggled="OnMeshToggled"
                         VerticalOptions="Center" />
                 </Grid>
-            </Border>
+            </VerticalStackLayout>
+        </Border>
 
-        </Grid>
+        <Border
+            x:Name="CardFriends"
+            Grid.Row="{OnIdiom Desktop='5',
+                               Default='6'}"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Padding="16"
+            IsVisible="{OnIdiom Phone=True,
+                                Default=False}"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Start">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnFriendsTapped" />
+            </Border.GestureRecognizers>
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <mi:MauiIcon
+                    Grid.Column="0"
+                    Icon="{mi:Fluent Icon=PeopleCommunity24}"
+                    IconColor="{AppThemeBinding Light=#7C3AED,
+                                                Dark=#9F6FF0}"
+                    IconSize="24"
+                    VerticalOptions="Center" />
+                <Grid
+                    Grid.Column="1"
+                    Margin="12,0"
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="4"
+                    VerticalOptions="Center">
+                    <Label
+                        Grid.Row="0"
+                        Style="{StaticResource TitleSmall}"
+                        Text="Друзья и Бонусные часы" />
+                    <Label
+                        Grid.Row="1"
+                        LineBreakMode="WordWrap"
+                        Style="{StaticResource LabelAccent}"
+                        Text="Делитесь кодом с друзьями и получайте +5 часов за каждые 5 ГБ" />
+                </Grid>
+                <mi:MauiIcon
+                    Grid.Column="2"
+                    Icon="{mi:Fluent Icon=ChevronRight24}"
+                    IconColor="{AppThemeBinding Light=#9080B0,
+                                                Dark=#6A5A8A}"
+                    IconSize="20"
+                    VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <Border
+            x:Name="CardLogout"
+            Grid.Row="{OnIdiom Desktop='6',
+                               Default='7'}"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Padding="16"
+            IsVisible="{OnIdiom Phone=True,
+                                Default=False}"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Start">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnLogoutClicked" />
+            </Border.GestureRecognizers>
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <mi:MauiIcon
+                    Grid.Column="0"
+                    Icon="{mi:Fluent Icon=SignOut24}"
+                    IconColor="#EF4444"
+                    IconSize="24"
+                    VerticalOptions="Center" />
+                <Grid
+                    Grid.Column="1"
+                    Margin="12,0"
+                    VerticalOptions="Center">
+                    <Label
+                        Style="{StaticResource TitleSmall}"
+                        Text="Выйти из аккаунта"
+                        TextColor="#EF4444" />
+                </Grid>
+                <mi:MauiIcon
+                    Grid.Column="2"
+                    Icon="{mi:Fluent Icon=ChevronRight24}"
+                    IconColor="{AppThemeBinding Light=#9CA3AF,
+                                                Dark=#4B5563}"
+                    IconSize="20"
+                    VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <Border
+            x:Name="CardDeleteAccount"
+            Grid.Row="{OnIdiom Desktop='4',
+                               Default='8'}"
+            Grid.Column="0"
+            Grid.ColumnSpan="{OnIdiom Desktop='2',
+                                      Default='1'}"
+            Padding="16"
+            Opacity="0"
+            Style="{StaticResource NeoCard}"
+            TranslationY="28"
+            VerticalOptions="Start">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnDeleteAccountClicked" />
+            </Border.GestureRecognizers>
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <mi:MauiIcon
+                    Grid.Column="0"
+                    Icon="{mi:Fluent Icon=Delete24}"
+                    IconColor="#EF4444"
+                    IconSize="24"
+                    VerticalOptions="Center" />
+                <Grid
+                    Grid.Column="1"
+                    Margin="12,0"
+                    VerticalOptions="Center">
+                    <Label
+                        Style="{StaticResource TitleSmall}"
+                        Text="Удалить аккаунт"
+                        TextColor="#EF4444" />
+                </Grid>
+                <mi:MauiIcon
+                    Grid.Column="2"
+                    Icon="{mi:Fluent Icon=ChevronRight24}"
+                    IconColor="{AppThemeBinding Light=#9CA3AF,
+                                                Dark=#4B5563}"
+                    IconSize="20"
+                    VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
     </Grid>
 </ContentView>

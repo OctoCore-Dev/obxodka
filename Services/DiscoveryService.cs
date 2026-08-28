@@ -1,12 +1,6 @@
 namespace obxodka.Services;
 
-public class HydraConfig
-{
-    public string ActiveBridge { get; set; } = "https://obxodka.one";
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class DiscoveryService
+public sealed class DiscoveryService
 {
     private const string GistUrl = "https://gist.githubusercontent.com/irovbyte/4f1063b597cba0a716f29431424c9d4e/raw/hydra.json";
 
@@ -20,25 +14,17 @@ public class DiscoveryService
 
     public static async Task<string> GetActiveBridgeUrlAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
-        var gistUrl = GistUrl;
-        if (gistUrl == "INSERT_GIST_RAW_URL_HERE")
+        if (!forceRefresh && t_cachedConfig is not null)
         {
-            return "obxodka.one";
-        }
-
-        if (!forceRefresh && t_cachedConfig != null)
-        {
-            var host = new Uri(t_cachedConfig.ActiveBridge).Host;
-            return host;
+            return new Uri(t_cachedConfig.ActiveBridge).Host;
         }
 
         await t_fetchLock.WaitAsync(ct);
         try
         {
-            if (!forceRefresh && t_cachedConfig != null)
+            if (!forceRefresh && t_cachedConfig is not null)
             {
-                var host = new Uri(t_cachedConfig.ActiveBridge).Host;
-                return host;
+                return new Uri(t_cachedConfig.ActiveBridge).Host;
             }
 
             Debug.WriteLine("[DISCOVERY] Fetching latest Hydra config from Gist...");
@@ -48,11 +34,10 @@ public class DiscoveryService
             {
                 var json = await response.Content.ReadAsStringAsync(ct);
                 t_cachedConfig = JsonSerializer.Deserialize(json, AppJsonContext.Default.HydraConfig);
-                if (t_cachedConfig != null && !string.IsNullOrEmpty(t_cachedConfig.ActiveBridge))
+                if (t_cachedConfig is { ActiveBridge: { Length: > 0 } bridge })
                 {
-                    Debug.WriteLine($"[DISCOVERY] Successfully resolved active bridge: {t_cachedConfig.ActiveBridge}");
-                    var host = new Uri(t_cachedConfig.ActiveBridge).Host;
-                    return host;
+                    Debug.WriteLine($"[DISCOVERY] Successfully resolved active bridge: {bridge}");
+                    return new Uri(bridge).Host;
                 }
             }
 
@@ -66,6 +51,7 @@ public class DiscoveryService
         {
             _ = t_fetchLock.Release();
         }
-        return t_cachedConfig != null ? new Uri(t_cachedConfig.ActiveBridge).Host : "obxodka.one";
+
+        return t_cachedConfig is not null ? new Uri(t_cachedConfig.ActiveBridge).Host : "obxodka.one";
     }
 }

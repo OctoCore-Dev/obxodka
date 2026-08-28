@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.DeviceCardView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -20,6 +20,7 @@
         Style="{StaticResource NeoCard}">
         <Grid>
             <Border
+                x:Name="DeleteBtn"
                 BackgroundColor="{StaticResource ErrorDim}"
                 HeightRequest="40"
                 HorizontalOptions="End"
@@ -29,6 +30,7 @@
                 WidthRequest="40"
                 ZIndex="2">
                 <mi:MauiIcon
+                    x:Name="DeleteIcon"
                     HorizontalOptions="Center"
                     Icon="{mi:Fluent Icon=Delete24}"
                     IconColor="#EF4444"
@@ -45,6 +47,7 @@
                 VerticalOptions="Center">
 
                 <Border
+                    x:Name="DeviceIconWrapper"
                     BackgroundColor="{AppThemeBinding Light=#E0D4F5,
                                                       Dark=#2A1B3D}"
                     HeightRequest="72"
@@ -53,6 +56,7 @@
                     StrokeThickness="0"
                     WidthRequest="72">
                     <mi:MauiIcon
+                        x:Name="DeviceIcon"
                         HorizontalOptions="Center"
                         Icon="{Binding Name, Converter={StaticResource DeviceIconConverter}}"
                         IconColor="{AppThemeBinding Light=#7C3AED,

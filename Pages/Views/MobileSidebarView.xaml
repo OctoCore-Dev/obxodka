@@ -4,53 +4,53 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
     <Border
         x:Name="MobileBottomBar"
-        Margin="{OnIdiom Phone='16,0,16,24',
+        Margin="{OnIdiom Phone='16,0,16,20',
                          Default='16,0,16,16'}"
-        Padding="4,0"
-        BackgroundColor="{AppThemeBinding Light=#E6FFFFFF,
-                                          Dark=#E6121212}"
-        HeightRequest="72"
+        Padding="6,6"
+        BackgroundColor="{AppThemeBinding Light={StaticResource SolidCardLight},
+                                          Dark={StaticResource SolidCardDark}}"
+        HeightRequest="68"
         Opacity="0"
-        Stroke="{AppThemeBinding Light={StaticResource BorderSubtleLight},
-                                 Dark={StaticResource BorderSubtle}}"
+        Stroke="{AppThemeBinding Light={StaticResource SolidBorderLight},
+                                 Dark={StaticResource SolidBorderDark}}"
         StrokeThickness="1"
         TranslationY="80">
         <Border.StrokeShape>
             <RoundRectangle CornerRadius="24" />
         </Border.StrokeShape>
-        <Border.Shadow>
-            <Shadow
-                Brush="Black"
-                Opacity="{AppThemeBinding Light=0.1,
-                                          Dark=0.4}"
-                Radius="16"
-                Offset="0,4" />
-        </Border.Shadow>
 
         <Grid ColumnDefinitions="*, *, *, *, *">
 
             <Border
                 x:Name="BottomNavVpn"
                 Grid.Column="0"
-                Style="{StaticResource BottomNavItem}">
+                BackgroundColor="Transparent"
+                HeightRequest="56"
+                HorizontalOptions="Fill"
+                StrokeThickness="0"
+                VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavVpnTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout
                     HorizontalOptions="Center"
-                    Spacing="4"
+                    Spacing="3"
                     VerticalOptions="Center">
                     <BoxView
                         x:Name="PillVpn"
                         CornerRadius="2"
-                        HeightRequest="4"
+                        HeightRequest="3"
                         HorizontalOptions="Center"
                         IsVisible="False"
                         Opacity="0"
                         Scale="0.5"
-                        WidthRequest="20"
+                        WidthRequest="16"
                         Color="{AppThemeBinding Light=#7C3AED,
                                                 Dark=#9F6FF0}" />
                     <mi:MauiIcon
@@ -59,30 +59,37 @@
                         Icon="{mi:Fluent Icon=Shield24}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
-                        IconSize="26" />
+                        IconSize="24" />
                 </VerticalStackLayout>
             </Border>
 
             <Border
                 x:Name="BottomNavProfile"
                 Grid.Column="1"
-                Style="{StaticResource BottomNavItem}">
+                BackgroundColor="Transparent"
+                HeightRequest="56"
+                HorizontalOptions="Fill"
+                StrokeThickness="0"
+                VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavProfileTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout
                     HorizontalOptions="Center"
-                    Spacing="4"
+                    Spacing="3"
                     VerticalOptions="Center">
                     <BoxView
                         x:Name="PillProfile"
                         CornerRadius="2"
-                        HeightRequest="4"
+                        HeightRequest="3"
                         HorizontalOptions="Center"
                         IsVisible="False"
                         Opacity="0"
                         Scale="0.5"
-                        WidthRequest="20"
+                        WidthRequest="16"
                         Color="{AppThemeBinding Light=#7C3AED,
                                                 Dark=#9F6FF0}" />
                     <mi:MauiIcon
@@ -91,30 +98,37 @@
                         Icon="{mi:Fluent Icon=Person24}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
-                        IconSize="26" />
+                        IconSize="24" />
                 </VerticalStackLayout>
             </Border>
 
             <Border
                 x:Name="BottomNavDevices"
                 Grid.Column="2"
-                Style="{StaticResource BottomNavItem}">
+                BackgroundColor="Transparent"
+                HeightRequest="56"
+                HorizontalOptions="Fill"
+                StrokeThickness="0"
+                VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavDevicesTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout
                     HorizontalOptions="Center"
-                    Spacing="4"
+                    Spacing="3"
                     VerticalOptions="Center">
                     <BoxView
                         x:Name="PillDevices"
                         CornerRadius="2"
-                        HeightRequest="4"
+                        HeightRequest="3"
                         HorizontalOptions="Center"
                         IsVisible="False"
                         Opacity="0"
                         Scale="0.5"
-                        WidthRequest="20"
+                        WidthRequest="16"
                         Color="{AppThemeBinding Light=#7C3AED,
                                                 Dark=#9F6FF0}" />
                     <mi:MauiIcon
@@ -123,30 +137,37 @@
                         Icon="{mi:Fluent Icon=PhoneDesktop24}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
-                        IconSize="26" />
+                        IconSize="24" />
                 </VerticalStackLayout>
             </Border>
 
             <Border
                 x:Name="BottomNavSplit"
                 Grid.Column="3"
-                Style="{StaticResource BottomNavItem}">
+                BackgroundColor="Transparent"
+                HeightRequest="56"
+                HorizontalOptions="Fill"
+                StrokeThickness="0"
+                VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavSplitTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout
                     HorizontalOptions="Center"
-                    Spacing="4"
+                    Spacing="3"
                     VerticalOptions="Center">
                     <BoxView
                         x:Name="PillSplit"
                         CornerRadius="2"
-                        HeightRequest="4"
+                        HeightRequest="3"
                         HorizontalOptions="Center"
                         IsVisible="False"
                         Opacity="0"
                         Scale="0.5"
-                        WidthRequest="20"
+                        WidthRequest="16"
                         Color="{AppThemeBinding Light=#7C3AED,
                                                 Dark=#9F6FF0}" />
                     <mi:MauiIcon
@@ -155,44 +176,50 @@
                         Icon="{mi:Fluent Icon=AppsList24}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
-                        IconSize="26" />
+                        IconSize="24" />
                 </VerticalStackLayout>
             </Border>
 
             <Border
                 x:Name="BottomNavConfiguration"
                 Grid.Column="4"
-                Style="{StaticResource BottomNavItem}">
+                BackgroundColor="Transparent"
+                HeightRequest="56"
+                HorizontalOptions="Fill"
+                StrokeThickness="0"
+                VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout
                     HorizontalOptions="Center"
-                    Spacing="4"
+                    Spacing="3"
                     VerticalOptions="Center">
                     <BoxView
                         x:Name="PillBattery"
                         CornerRadius="2"
-                        HeightRequest="4"
+                        HeightRequest="3"
                         HorizontalOptions="Center"
                         IsVisible="False"
                         Opacity="0"
                         Scale="0.5"
-                        WidthRequest="20"
+                        WidthRequest="16"
                         Color="{AppThemeBinding Light=#7C3AED,
                                                 Dark=#9F6FF0}" />
                     <mi:MauiIcon
                         x:Name="BottomNavConfigurationIcon"
                         HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=Globe24}"
+                        Icon="{mi:Fluent Icon=Settings24}"
                         IconColor="{AppThemeBinding Light=#9080B0,
                                                     Dark=#6A5A8A}"
-                        IconSize="26" />
+                        IconSize="24" />
                 </VerticalStackLayout>
             </Border>
 
         </Grid>
     </Border>
 </ContentView>
-
 

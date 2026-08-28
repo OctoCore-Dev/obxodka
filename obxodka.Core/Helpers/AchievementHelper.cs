@@ -1,40 +1,33 @@
 namespace obxodka.Core.Helpers;
 
-public class AchievementDef
-{
-    public required string Id { get; set; }
-    public required string Name { get; set; }
-    public required string Description { get; set; }
-    public required string Icon { get; set; }
-    public required string Color { get; set; }
-}
-
 public static class AchievementHelper
 {
-    public static readonly List<AchievementDef> AllAchievements =
+    public static readonly IReadOnlyList<AchievementDef> AllAchievements =
     [
-        new AchievementDef { Id = "ach_first_blood", Name = "Теневой серфер", Description = "Потратил > 100 ГБ трафика", Icon = "surfing", Color = "text-[#00e5ff]" },
-        new AchievementDef { Id = "ach_whale", Name = "Кибер-кит", Description = "Потратил > 1 ТБ трафика", Icon = "water_ec", Color = "text-[#8B5CF6]" },
-        new AchievementDef { Id = "ach_ambassador", Name = "Амбассадор", Description = "Ваш промокод ввели 3+ раз", Icon = "campaign", Color = "text-[#a855f7]" },
-        new AchievementDef { Id = "ach_influencer", Name = "Инфлюенсер", Description = "Ваш промокод ввели 10/10 раз", Icon = "stars", Color = "text-[#ffaa00]" },
-        new AchievementDef { Id = "ach_veteran", Name = "Кибер-ветеран", Description = "Провел в сети > 5,000 часов", Icon = "military_tech", Color = "text-gray-400" },
-        new AchievementDef { Id = "ach_legend", Name = "Легенда", Description = "Провел в сети > 10,000 часов", Icon = "diamond", Color = "text-[#ff0055]" },
-        new AchievementDef { Id = "ach_reviewer", Name = "Голос народа", Description = "Оставил популярный отзыв (10+ лайков)", Icon = "record_voice_over", Color = "text-[#10b981]" },
-        new AchievementDef { Id = "ach_sponsor", Name = "Спонсор", Description = "Пополнил баланс 5+ раз", Icon = "volunteer_activism", Color = "text-[#f43f5e]" },
-        new AchievementDef { Id = "ach_hacker", Name = "Хакерок", Description = "Активировал секретную пасхалку", Icon = "terminal", Color = "text-[#22c55e]" },
-        new AchievementDef { Id = "ach_multiplexer", Name = "Мультиплексор", Description = "Подключил 4/4 устройств", Icon = "devices_other", Color = "text-[#3b82f6]" }
+        new("ach_first_blood", "Теневой серфер", "Потратил > 100 ГБ трафика", "surfing", "text-[#00e5ff]"),
+        new("ach_whale", "Кибер-кит", "Потратил > 1 ТБ трафика", "water_ec", "text-[#8B5CF6]"),
+        new("ach_ambassador", "Амбассадор", "Ваш промокод ввели 3+ раз", "campaign", "text-[#a855f7]"),
+        new("ach_influencer", "Инфлюенсер", "Ваш промокод ввели 10/10 раз", "stars", "text-[#ffaa00]"),
+        new("ach_veteran", "Кибер-ветеран", "Провел в сети > 5,000 часов", "military_tech", "text-gray-400"),
+        new("ach_legend", "Легенда", "Провел в сети > 10,000 часов", "diamond", "text-[#ff0055]"),
+        new("ach_reviewer", "Голос народа", "Оставил популярный отзыв (10+ лайков)", "record_voice_over", "text-[#10b981]"),
+        new("ach_sponsor", "Спонсор", "Пополнил баланс 5+ раз", "volunteer_activism", "text-[#f43f5e]"),
+        new("ach_hacker", "Хакерок", "Активировал секретную пасхалку", "terminal", "text-[#22c55e]"),
+        new("ach_multiplexer", "Мультиплексор", "Подключил 4/4 устройств", "devices_other", "text-[#3b82f6]")
     ];
+
+    public static readonly FrozenDictionary<string, AchievementDef> AchievementsById =
+        AllAchievements.ToFrozenDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
 
     public static bool CheckAndGrantAchievements(User user, int orderCount = 0, int maxLikesOnReviews = 0)
     {
-        var existingAchs = user.Achievements?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList() ?? [];
+        var existingAchs = user.Achievements?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
         var changed = false;
 
         void Grant(string id)
         {
-            if (!existingAchs.Contains(id))
+            if (existingAchs.Add(id))
             {
-                existingAchs.Add(id);
                 changed = true;
             }
         }
@@ -81,7 +74,7 @@ public static class AchievementHelper
             Grant("ach_sponsor");
         }
 
-        if (user.Devices != null && user.Devices.Count >= 4)
+        if (user.Devices is { Count: >= 4 })
         {
             Grant("ach_multiplexer");
         }

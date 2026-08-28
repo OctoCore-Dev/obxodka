@@ -7,9 +7,15 @@ public sealed partial class AppShell : Shell
         InitializeComponent();
         BuildNavigation();
     }
+
     private void BuildNavigation()
     {
         FlyoutBehavior = FlyoutBehavior.Disabled;
-        Items.Add(new ShellContent { Route = "main", FlyoutItemIsVisible = false, ContentTemplate = new DataTemplate(typeof(MainPage)) });
+        Items.Add(new ShellContent
+        {
+            Route = "main",
+            FlyoutItemIsVisible = false,
+            ContentTemplate = new DataTemplate(typeof(MainPage))
+        });
     }
 }

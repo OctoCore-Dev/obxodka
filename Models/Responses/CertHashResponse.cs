@@ -1,6 +1,6 @@
 namespace obxodka.Models.Responses;
 
-public class CertHashResponse
+public sealed class CertHashResponse
 {
     public string? Hash { get; set; }
 }

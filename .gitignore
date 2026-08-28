@@ -364,3 +364,11 @@ MigrationBackup/
 FodyWeavers.xsd
 
 RunSystemE2E.ps1
+run_all_tests.ps1
+run_suite.ps1
+deploy_android.ps1
+*.pfx
+*.key
+*.keystore
+*.env
+

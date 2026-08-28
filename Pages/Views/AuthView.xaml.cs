@@ -1,6 +1,6 @@
 namespace obxodka.Views;
 
-public partial class AuthView : ContentView
+public sealed partial class AuthView : ContentView
 {
     private MainPage _parent = null!;
     private ApiService _apiService = null!;
@@ -13,15 +13,14 @@ public partial class AuthView : ContentView
         _apiService = apiService;
     }
 
-
-#pragma warning disable CA1822
-    public Task PlayEntranceAnimationAsync() => Task.CompletedTask;
-#pragma warning restore CA1822
+    public Task PlayEntranceAnimationAsync() =>
+        UIAnimations.PlayEntranceFadeScaleAsync(FormContainer);
 
     private async void OnGetCodeClickedAsync(object? sender, EventArgs? e)
     {
         EmailEntry.Unfocus();
         var email = EmailEntry.Text?.Trim();
+
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
         {
             await ShowLoginErrorAsync("Пожалуйста, введите корректный Email.");
@@ -29,28 +28,25 @@ public partial class AuthView : ContentView
         }
 
         SetGetCodeLoadingState(true);
-        AuthErrorLabel.IsVisible = false;
+        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
 
         try
         {
             var (success, error) = await _apiService.RequestCodeAsync(new EmailAuthRequest(email));
             if (success)
             {
-                EmailInputView.IsVisible = false;
-                CodeInputView.IsVisible = true;
-                CodeInputView.Opacity = 0;
-                _ = CodeInputView.FadeToAsync(1, 300, Easing.CubicOut);
+                await UIAnimations.CrossFadeFormAsync(EmailInputView, CodeInputView);
                 _ = CodeEntry.Focus();
             }
             else
             {
-                await ShowLoginErrorAsync(error ?? "Ошибка при отправке кода.");
+                await ShowLoginErrorAsync(ApiErrorHandler.ParseLoginError(error));
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[EMAIL AUTH ERROR] {ex.Message}");
-            await ShowLoginErrorAsync("Ошибка соединения с сервером.");
+            await ShowLoginErrorAsync(ApiErrorHandler.ParseGeneralError(ex.Message, "Ошибка соединения с сервером."));
         }
         finally
         {
@@ -60,14 +56,7 @@ public partial class AuthView : ContentView
 
     private async void OnVerifyCodeClickedAsync(object? sender, EventArgs? e)
     {
-        CodeEntry.IsEnabled = false;
-        EmailEntry.IsEnabled = false;
-
         CodeEntry.Unfocus();
-        EmailEntry.Unfocus();
-
-        CodeEntry.IsEnabled = true;
-        EmailEntry.IsEnabled = true;
 
         var code = CodeEntry.Text?.Trim();
         var email = EmailEntry.Text?.Trim();
@@ -78,25 +67,33 @@ public partial class AuthView : ContentView
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            await ShowLoginErrorAsync("Email не указан. Вернитесь назад.");
+            return;
+        }
+
         SetVerifyCodeLoadingState(true);
-        AuthErrorLabel.IsVisible = false;
+        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
 
         try
         {
-            var (success, data, error) = await _apiService.VerifyCodeAsync(new EmailVerifyRequest(email!, code, DeviceHelper.GetHwid(), DeviceHelper.GetDeviceName()));
-            if (success && data != null)
+            var request = new EmailVerifyRequest(email, code, DeviceHelper.Hwid, DeviceHelper.DeviceName);
+            var (success, data, error) = await _apiService.VerifyCodeAsync(request);
+
+            if (success && data is not null)
             {
                 await CompleteLoginAsync(data);
             }
             else
             {
-                await ShowLoginErrorAsync(error ?? "Неверный код.");
+                await ShowLoginErrorAsync(ApiErrorHandler.ParseLoginError(error));
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[VERIFY CODE ERROR] {ex.Message}");
-            await ShowLoginErrorAsync($"Ошибка: {ex.Message}");
+            await ShowLoginErrorAsync(ApiErrorHandler.ParseGeneralError(ex.Message, "Не удалось проверить код."));
         }
         finally
         {
@@ -104,14 +101,11 @@ public partial class AuthView : ContentView
         }
     }
 
-    private void OnBackToEmailClicked(object? sender, EventArgs? e)
+    private async void OnBackToEmailClickedAsync(object? sender, EventArgs? e)
     {
-        AuthErrorLabel.IsVisible = false;
+        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
         CodeEntry.Text = string.Empty;
-        CodeInputView.IsVisible = false;
-        EmailInputView.IsVisible = true;
-        EmailInputView.Opacity = 0;
-        _ = EmailInputView.FadeToAsync(1, 300, Easing.CubicOut);
+        await UIAnimations.CrossFadeFormAsync(CodeInputView, EmailInputView);
         _ = EmailEntry.Focus();
     }
 
@@ -119,13 +113,14 @@ public partial class AuthView : ContentView
     {
         await AuthManager.SaveSessionAsync(new UserSession
         {
-            Email = string.IsNullOrEmpty(data.Email) ? EmailEntry.Text.Trim() : data.Email,
+            Email = string.IsNullOrEmpty(data.Email) ? EmailEntry.Text?.Trim() : data.Email,
             Password = "email_otp",
             JwtToken = data.Token,
             VpnConfig = data.VpnConfig,
             SubscriptionUntil = data.SubscriptionUntil,
             IsLoggedIn = true
         });
+
         await _parent.SwitchToAppAfterAuthAsync();
     }
 
@@ -134,9 +129,10 @@ public partial class AuthView : ContentView
         if (GetCodeButton is not null)
         {
             GetCodeButton.IsEnabled = !isLoading;
-            GetCodeButton.Text = isLoading ? "" : "Получить код";
+            GetCodeButton.Text = isLoading ? string.Empty : "Получить код";
         }
-        _ = (GetCodeLoader?.IsVisible = isLoading);
+
+        GetCodeLoader?.IsVisible = isLoading;
     }
 
     private void SetVerifyCodeLoadingState(bool isLoading)
@@ -144,20 +140,16 @@ public partial class AuthView : ContentView
         if (VerifyCodeButton is not null)
         {
             VerifyCodeButton.IsEnabled = !isLoading;
-            VerifyCodeButton.Text = isLoading ? "" : "Войти";
+            VerifyCodeButton.Text = isLoading ? string.Empty : "Войти";
         }
-        _ = (VerifyCodeLoader?.IsVisible = isLoading);
+
+        VerifyCodeLoader?.IsVisible = isLoading;
     }
 
     private async Task ShowLoginErrorAsync(string msg)
     {
         AuthErrorLabel.Text = msg;
-        AuthErrorLabel.IsVisible = true;
-        AuthErrorLabel.TranslationY = -8;
-        AuthErrorLabel.Opacity = 0;
-        _ = await Task.WhenAll(
-            AuthErrorLabel.FadeToAsync(1, 200, Easing.CubicOut),
-            AuthErrorLabel.TranslateToAsync(0, 0, 200, Easing.CubicOut)
-        );
+        await UIAnimations.ShowErrorLabelAsync(AuthErrorLabel);
+        await AuthErrorLabel.ShakeErrorAsync();
     }
 }

@@ -1,10 +1,7 @@
-using System.Collections.Concurrent;
-
 namespace obxodka.Shared.Stealth;
 
-#pragma warning disable CA1711
+[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "Specialized network priority packet queue")]
 public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
-#pragma warning restore CA1711
 {
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _high = new();
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _low = new();
@@ -49,7 +46,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             return lowItem;
         }
 
-        return (Array.Empty<byte>(), 0);
+        return ([], 0);
     }
 
     public bool TryDequeue(out (byte[] buffer, int length) item)

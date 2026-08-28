@@ -8,4 +8,5 @@ public sealed class UserSession
     public bool IsLoggedIn { get; set; }
     public string? VpnConfig { get; set; }
     public DateTime? SubscriptionUntil { get; set; }
+    public long BalanceSeconds { get; set; }
 }

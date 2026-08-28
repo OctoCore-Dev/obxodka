@@ -1,0 +1,14 @@
+global using System.Buffers;
+global using System.Buffers.Binary;
+global using System.Collections.Frozen;
+global using System.Diagnostics;
+global using System.Net.Sockets;
+global using System.Security.Cryptography;
+global using System.Text;
+global using System.Text.Json;
+global using System.Text.Json.Serialization;
+global using BenchmarkDotNet.Attributes;
+global using BenchmarkDotNet.Running;
+global using obxodka.Core;
+global using obxodka.Models;
+global using obxodka.Shared.Stealth;

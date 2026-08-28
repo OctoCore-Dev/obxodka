@@ -1,50 +1,80 @@
+using System.Runtime.InteropServices;
+
 namespace obxodka.Platforms.Windows;
 
 [SupportedOSPlatform("windows10.0.19041.0")]
 internal sealed partial class WintunAdapter : IDisposable
 {
     private const string DllName = "wintun.dll";
-    [LibraryImport("kernel32.dll", EntryPoint = "LoadLibraryW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial IntPtr LoadLibrary(string lpFileName);
+    private static readonly Guid t_defaultGuid = Guid.Parse("A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D");
+
     static WintunAdapter()
     {
-        var dllPath = Path.Combine(AppContext.BaseDirectory, "Engine", "wintun.dll");
-        _ = LoadLibrary(dllPath);
+        NativeLibrary.SetDllImportResolver(typeof(WintunAdapter).Assembly, (libraryName, _, _) =>
+        {
+            if (libraryName == DllName)
+            {
+                var dllPath = Path.Combine(AppContext.BaseDirectory, "Engine", "wintun.dll");
+                if (File.Exists(dllPath) && NativeLibrary.TryLoad(dllPath, out var handle))
+                {
+                    return handle;
+                }
+            }
+
+            return IntPtr.Zero;
+        });
     }
+
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial IntPtr WintunCreateAdapter(string pool, string name, ref Guid requestedGuid, [MarshalAs(UnmanagedType.Bool)] out bool rebootRequired);
+
     [LibraryImport(DllName)]
     private static partial void WintunCloseAdapter(IntPtr adapter);
+
     [LibraryImport(DllName)]
     private static partial IntPtr WintunStartSession(IntPtr adapter, uint capacity);
+
     [LibraryImport(DllName)]
     private static partial void WintunEndSession(IntPtr session);
+
     [LibraryImport(DllName)]
     private static partial IntPtr WintunGetReadWaitEvent(IntPtr session);
+
     [LibraryImport(DllName)]
     private static partial IntPtr WintunReceivePacket(IntPtr session, out uint packetSize);
+
     [LibraryImport(DllName)]
     private static partial void WintunReleaseReceivePacket(IntPtr session, IntPtr packet);
+
     [LibraryImport(DllName)]
     private static partial IntPtr WintunAllocateSendPacket(IntPtr session, uint packetSize);
+
     [LibraryImport(DllName)]
     private static partial void WintunSendPacket(IntPtr session, IntPtr packet);
+
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
     private IntPtr _adapter;
     private IntPtr _session;
+
     public string Name { get; }
     public string Pool { get; }
-    public WintunAdapter(string name, string pool, Guid guid)
+
+    public WintunAdapter(string name = "Obxodka", string pool = "Obxodka")
     {
         Name = name;
         Pool = pool;
+
+        var guid = t_defaultGuid;
         _adapter = WintunCreateAdapter(pool, name, ref guid, out _);
+
         if (_adapter == IntPtr.Zero)
         {
             throw new InvalidOperationException("Не удалось создать адаптер Wintun. ЗАПУСТИТЕ ПРОГРАММУ ОТ ИМЕНИ АДМИНИСТРАТОРА!");
         }
     }
+
     public void StartSession(uint capacity = 0x4000000)
     {
         _session = WintunStartSession(_adapter, capacity);
@@ -53,11 +83,13 @@ internal sealed partial class WintunAdapter : IDisposable
             throw new InvalidOperationException("Не удалось запустить Wintun сессию.");
         }
     }
+
     public int ReceiveBatch(PacketBatch outBatch, CancellationToken ct)
     {
         var waitEvent = WintunGetReadWaitEvent(_session);
         outBatch.Clear();
         const int maxPacketSize = 65535;
+
         while (!ct.IsCancellationRequested)
         {
             while (true)
@@ -67,33 +99,40 @@ internal sealed partial class WintunAdapter : IDisposable
                 {
                     break;
                 }
+
                 if (size > maxPacketSize)
                 {
-
                     WintunReleaseReceivePacket(_session, ptr);
                     continue;
                 }
+
                 var buf = ArrayPool<byte>.Shared.Rent((int)size);
                 Marshal.Copy(ptr, buf, 0, (int)size);
                 WintunReleaseReceivePacket(_session, ptr);
                 outBatch.Add(buf, (int)size);
+
                 if (outBatch.Count >= 256)
                 {
                     break;
                 }
             }
+
             if (outBatch.Count > 0)
             {
                 return outBatch.Count;
             }
-            _ = WaitForSingleObject(waitEvent, 1000);
+
+            _ = WaitForSingleObject(waitEvent, 200);
         }
+
         return 0;
     }
+
     public (byte[]? buffer, int length) ReceivePacket(CancellationToken ct)
     {
         var waitEvent = WintunGetReadWaitEvent(_session);
         const int maxPacketSize = 65535;
+
         while (!ct.IsCancellationRequested)
         {
             var ptr = WintunReceivePacket(_session, out var size);
@@ -101,26 +140,31 @@ internal sealed partial class WintunAdapter : IDisposable
             {
                 if (size > maxPacketSize)
                 {
-
                     WintunReleaseReceivePacket(_session, ptr);
                     continue;
                 }
+
                 var data = ArrayPool<byte>.Shared.Rent((int)size);
                 Marshal.Copy(ptr, data, 0, (int)size);
                 WintunReleaseReceivePacket(_session, ptr);
                 return (data, (int)size);
             }
-            _ = WaitForSingleObject(waitEvent, 1000);
+
+            _ = WaitForSingleObject(waitEvent, 200);
         }
+
         return (null, 0);
     }
+
     public void SendPacket(byte[] data) => SendPacket(data, data.Length);
+
     public void SendPacket(byte[] data, int length)
     {
         if (_session == IntPtr.Zero)
         {
             return;
         }
+
         var ptr = WintunAllocateSendPacket(_session, (uint)length);
         if (ptr != IntPtr.Zero)
         {
@@ -128,6 +172,7 @@ internal sealed partial class WintunAdapter : IDisposable
             WintunSendPacket(_session, ptr);
         }
     }
+
     public void Dispose()
     {
         if (_session != IntPtr.Zero)
@@ -135,6 +180,7 @@ internal sealed partial class WintunAdapter : IDisposable
             WintunEndSession(_session);
             _session = IntPtr.Zero;
         }
+
         if (_adapter != IntPtr.Zero)
         {
             WintunCloseAdapter(_adapter);
@@ -142,10 +188,12 @@ internal sealed partial class WintunAdapter : IDisposable
         }
     }
 }
+
 internal sealed class PacketBatch
 {
     private readonly (byte[] buffer, int length)[] _items = new (byte[], int)[256];
     public int Count { get; private set; }
+
     public void Add(byte[] buf, int len)
     {
         if (Count < _items.Length)
@@ -157,7 +205,12 @@ internal sealed class PacketBatch
             ArrayPool<byte>.Shared.Return(buf);
         }
     }
-    public (byte[] buffer, int length) this[int i] => _items[i];
-    public void Clear() => Count = 0;
-}
 
+    public (byte[] buffer, int length) this[int i] => _items[i];
+
+    public void Clear()
+    {
+        Array.Clear(_items, 0, Count);
+        Count = 0;
+    }
+}

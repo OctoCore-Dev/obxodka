@@ -30,5 +30,6 @@ public sealed class User
     public string? PinnedAchievements { get; set; } = "";
 
     public long TotalSecondsUsed { get; set; }
+    public long TotalMeshBytesRelayed { get; set; }
     public Guid? ReferredById { get; set; }
 }

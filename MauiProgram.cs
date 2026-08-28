@@ -4,15 +4,14 @@ using Microsoft.UI.Windowing;
 using WinRT.Interop;
 using obxodka.Platforms.Windows;
 #endif
+
 namespace obxodka;
 
-internal static class MauiProgram
+internal static partial class MauiProgram
 {
 #if WINDOWS
-#pragma warning disable SYSLIB1054
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
-#pragma warning restore SYSLIB1054
+    [LibraryImport("user32.dll")]
+    private static partial uint GetDpiForWindow(IntPtr hwnd);
 #endif
 
     public static MauiApp CreateMauiApp()
@@ -32,65 +31,22 @@ internal static class MauiProgram
                 fonts.AddFont("Roboto-Medium.ttf", "RobotoMedium");
                 fonts.AddFont("Roboto-Bold.ttf", "RobotoBold");
             });
-        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("NoUnderline", (handler, view) =>
-{
-#if ANDROID
-    handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
-#endif
-});
+
+        ConfigurePlatformHandlers();
+
         builder.ConfigureLifecycleEvents(events =>
         {
 #if WINDOWS
-            events.AddWindows(windows => windows
-                .OnWindowCreated(window =>
+            events.AddWindows(windows => windows.OnWindowCreated(window =>
+            {
+                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
                 {
-#pragma warning disable CA1416 
-                    var handle = WindowNative.GetWindowHandle(window);
-                    var id = Win32Interop.GetWindowIdFromWindow(handle);
-                    var appWindow = AppWindow.GetFromWindowId(id);
-                    if (appWindow != null)
-                    {
-                        appWindow.Title = "obxodka";
-
-                        var dpi = GetDpiForWindow(handle);
-                        var scale = dpi / 96.0;
-
-                        var physWidth = (int)(1150 * scale);
-                        var physHeight = (int)(750 * scale);
-
-                        var displayArea = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary);
-                        physWidth = Math.Min(physWidth, displayArea.WorkArea.Width);
-                        physHeight = Math.Min(physHeight, displayArea.WorkArea.Height);
-
-                        appWindow.Resize(new Windows.Graphics.SizeInt32(physWidth, physHeight));
-                        if (appWindow.Presenter is OverlappedPresenter presenter)
-                        {
-                            presenter.IsResizable = false;
-                            presenter.IsMaximizable = false;
-                            presenter.IsMinimizable = true;
-                        }
-
-                        appWindow.Changed += (sender, args) =>
-                        {
-                            var currentDpi = GetDpiForWindow(handle);
-                            var currentScale = currentDpi / 96.0;
-                            var expectedWidth = (int)(1150 * currentScale);
-                            var expectedHeight = (int)(750 * currentScale);
-
-                            var currentDisplay = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary);
-                            expectedWidth = Math.Min(expectedWidth, currentDisplay.WorkArea.Width);
-                            expectedHeight = Math.Min(expectedHeight, currentDisplay.WorkArea.Height);
-
-                            if (sender.Size.Width != expectedWidth || sender.Size.Height != expectedHeight)
-                            {
-                                sender.Resize(new Windows.Graphics.SizeInt32(expectedWidth, expectedHeight));
-                            }
-                        };
-                    }
-#pragma warning restore CA1416
-                }));
+                    ConfigureWindowsWindow(window);
+                }
+            }));
 #endif
         });
+
         builder.Services.AddHttpClient<ApiService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
@@ -105,38 +61,25 @@ internal static class MauiProgram
             },
             UseProxy = false
         });
+
         builder.Services.AddSingleton<AuthManager>();
+
 #if WINDOWS
-#pragma warning disable CA1416
-        builder.Services.AddSingleton<IVpnService, WindowsVpnService>();
-        builder.Services.AddSingleton<IAppManager, AppManager>();
-#pragma warning restore CA1416
-#elif ANDROID
-#pragma warning disable CA1416
-        builder.Services.AddSingleton<IVpnService>(sp => Platforms.Android.AndroidVpnService.Instance);
-        builder.Services.AddSingleton<IAppManager, Platforms.Android.AppManager>();
-        builder.Services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();
-#pragma warning restore CA1416
-#endif
-        builder.Services.AddTransient<MainPage>();
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
-#if WINDOWS || ANDROID
-        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("Borderless", (handler, view) =>
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
-#if WINDOWS
-            handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
-            handler.PlatformView.Resources["TextControlBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBackgroundFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBorderBrushPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            builder.Services.AddSingleton<IVpnService, WindowsVpnService>();
+            builder.Services.AddSingleton<IAppManager, AppManager>();
+            builder.Services.AddSingleton<IAppUpdaterService, WindowsAppUpdaterService>();
+        }
 #elif ANDROID
-            handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
+        if (OperatingSystem.IsAndroidVersionAtLeast(29))
+        {
+            RegisterAndroidServices(builder.Services);
+        }
 #endif
-        });
-#endif
+
+        builder.Services.AddTransient<MainPage>();
+
         try
         {
             return builder.Build();
@@ -151,7 +94,110 @@ internal static class MauiProgram
                 File.AppendAllText(Path.Combine(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
             }
             catch { }
+
             throw;
         }
     }
+
+    private static void ConfigurePlatformHandlers()
+    {
+        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("Borderless", (handler, _) =>
+        {
+#if WINDOWS
+            handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+            handler.PlatformView.Resources["TextControlBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBackgroundFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBorderBrushPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+#elif ANDROID
+            handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
+            handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+#endif
+        });
+
+#if WINDOWS
+        Microsoft.Maui.Handlers.ScrollViewHandler.Mapper.AppendToMapping("FixHorizontalOverflow", (handler, view) =>
+        {
+            if (view.Orientation == ScrollOrientation.Vertical)
+            {
+                handler.PlatformView.HorizontalScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode.Disabled;
+                handler.PlatformView.HorizontalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Disabled;
+            }
+        });
+#endif
+    }
+
+#if ANDROID
+    [SupportedOSPlatform("android29.0")]
+    private static void RegisterAndroidServices(IServiceCollection services)
+    {
+        _ = services.AddSingleton<IVpnService>(_ => Platforms.Android.AndroidVpnService.Instance);
+        _ = services.AddSingleton<IAppManager, Platforms.Android.AppManager>();
+        _ = services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();
+    }
+#endif
+
+#if WINDOWS
+    [SupportedOSPlatform("windows10.0.19041.0")]
+    private static void ConfigureWindowsWindow(Microsoft.UI.Xaml.Window window)
+    {
+        window.ExtendsContentIntoTitleBar = true;
+
+        var handle = WindowNative.GetWindowHandle(window);
+        var id = Win32Interop.GetWindowIdFromWindow(handle);
+        var appWindow = AppWindow.GetFromWindowId(id);
+        if (appWindow is null)
+        {
+            return;
+        }
+
+        appWindow.Title = "obxodka";
+
+        if (AppWindowTitleBar.IsCustomizationSupported())
+        {
+            var titleBar = appWindow.TitleBar;
+            titleBar.ExtendsContentIntoTitleBar = true;
+            titleBar.BackgroundColor = Microsoft.UI.Colors.Transparent;
+            titleBar.InactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+            titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+            titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        }
+
+        var dpi = GetDpiForWindow(handle);
+        var scale = dpi / 96.0;
+
+        var physWidth = (int)(1150 * scale);
+        var physHeight = (int)(750 * scale);
+
+        var displayArea = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary);
+        physWidth = Math.Min(physWidth, displayArea.WorkArea.Width);
+        physHeight = Math.Min(physHeight, displayArea.WorkArea.Height);
+
+        appWindow.Resize(new Windows.Graphics.SizeInt32(physWidth, physHeight));
+        if (appWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.IsResizable = false;
+            presenter.IsMaximizable = false;
+            presenter.IsMinimizable = true;
+        }
+
+        appWindow.Changed += (sender, _) =>
+        {
+            var currentDpi = GetDpiForWindow(handle);
+            var currentScale = currentDpi / 96.0;
+            var expectedWidth = (int)(1150 * currentScale);
+            var expectedHeight = (int)(750 * currentScale);
+
+            var currentDisplay = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary);
+            expectedWidth = Math.Min(expectedWidth, currentDisplay.WorkArea.Width);
+            expectedHeight = Math.Min(expectedHeight, currentDisplay.WorkArea.Height);
+
+            if (sender.Size.Width != expectedWidth || sender.Size.Height != expectedHeight)
+            {
+                sender.Resize(new Windows.Graphics.SizeInt32(expectedWidth, expectedHeight));
+            }
+        };
+    }
+#endif
 }

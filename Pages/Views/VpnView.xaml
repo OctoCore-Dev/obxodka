@@ -40,7 +40,7 @@
                         Padding="16"
                         Style="{StaticResource NeoCard}"
                         VerticalOptions="Fill">
-                        <Grid ColumnDefinitions="*, Auto">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
                             <HorizontalStackLayout
                                 Grid.Column="0"
                                 Spacing="8"
@@ -62,9 +62,41 @@
                                 Grid.Column="1"
                                 FontFamily="RobotoMedium"
                                 FontSize="12"
+                                HorizontalOptions="End"
+                                LineBreakMode="TailTruncation"
+                                MaxLines="1"
                                 Style="{StaticResource LabelMuted}"
-                                Text="IP: не назначен"
+                                Text="не назначен"
                                 VerticalOptions="Center" />
+
+                            <Border
+                                x:Name="PingBadge"
+                                Grid.Column="2"
+                                Padding="7,2"
+                                BackgroundColor="{AppThemeBinding Light=#1510B981,
+                                                                  Dark=#2010B981}"
+                                Stroke="#10B981"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1"
+                                VerticalOptions="Center">
+                                <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                    <BoxView
+                                        x:Name="PingDot"
+                                        CornerRadius="3"
+                                        HeightRequest="6"
+                                        VerticalOptions="Center"
+                                        WidthRequest="6"
+                                        Color="#10B981" />
+                                    <Label
+                                        x:Name="PingValueLabel"
+                                        FontFamily="RobotoBold"
+                                        FontSize="11"
+                                        Text="-- ms"
+                                        TextColor="{AppThemeBinding Light=#065F46,
+                                                                    Dark=#34D399}"
+                                        VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Border>
                         </Grid>
                     </Border>
                 </Grid>
@@ -132,22 +164,13 @@
                             <Grid
                                 x:Name="GraphContainer"
                                 Grid.Row="1"
-                                SizeChanged="OnGraphContainerSizeChanged"
+                                Margin="0,4,0,0"
                                 VerticalOptions="Fill">
-                                <Polyline
-                                    x:Name="TrafficGraphUp"
-                                    Fill="{AppThemeBinding Light=#1A7C3AED,
-                                                           Dark=#1A9F6FF0}"
-                                    Stroke="{AppThemeBinding Light=#7C3AED,
-                                                             Dark=#9F6FF0}"
-                                    StrokeThickness="2" />
-                                <Polyline
-                                    x:Name="TrafficGraphDown"
-                                    Fill="{AppThemeBinding Light=#1A0284C7,
-                                                           Dark=#1A00E5FF}"
-                                    Stroke="{AppThemeBinding Light=#0284C7,
-                                                             Dark=#00E5FF}"
-                                    StrokeThickness="2" />
+                                <skia:SKCanvasView
+                                    x:Name="TrafficGraphCanvas"
+                                    HorizontalOptions="Fill"
+                                    PaintSurface="OnPaintGraphSurface"
+                                    VerticalOptions="Fill" />
                             </Grid>
                         </Grid>
                     </Border>
@@ -157,14 +180,16 @@
                     x:Name="Card5Wrapper"
                     Grid.Row="2"
                     ColumnDefinitions="*, *"
-                    ColumnSpacing="16"
+                    ColumnSpacing="{OnIdiom Phone=10,
+                                            Default=16}"
                     Opacity="0"
                     TranslationY="28"
                     VerticalOptions="Fill">
                     <Border
                         x:Name="Card5"
                         Grid.Column="0"
-                        Padding="16"
+                        Padding="{OnIdiom Phone='12,10',
+                                          Default='16'}"
                         HeightRequest="{OnIdiom Phone=82,
                                                 Default=-1}"
                         Style="{StaticResource NeoCard}"
@@ -172,42 +197,52 @@
                         <Grid RowDefinitions="Auto, *">
                             <HorizontalStackLayout
                                 Grid.Row="0"
-                                Margin="0,0,0,8"
-                                Spacing="8">
+                                Margin="0,0,0,4"
+                                Spacing="6">
                                 <mi:MauiIcon
                                     Icon="{mi:Fluent Icon=Clock24}"
                                     IconColor="{AppThemeBinding Light=#7C3AED,
                                                                 Dark=#9F6FF0}"
-                                    IconSize="15" />
+                                    IconSize="14" />
                                 <Label
                                     FontFamily="RobotoMedium"
-                                    FontSize="12"
+                                    FontSize="11"
                                     Style="{StaticResource LabelMuted}"
                                     Text="Время" />
                             </HorizontalStackLayout>
-                            <HorizontalStackLayout
+                            <Grid
                                 Grid.Row="1"
-                                Spacing="10"
+                                ColumnDefinitions="Auto, *"
+                                ColumnSpacing="6"
                                 VerticalOptions="Center">
                                 <mi:MauiIcon
+                                    Grid.Column="0"
                                     Icon="{mi:Fluent Icon=Timer24}"
                                     IconColor="{AppThemeBinding Light=#0284C7,
                                                                 Dark=#00E5FF}"
-                                    IconSize="24" />
+                                    IconSize="{OnIdiom Phone=18,
+                                                       Default=22}"
+                                    VerticalOptions="Center" />
                                 <Label
                                     x:Name="TokenAmountLabel"
-                                    FontSize="18"
+                                    Grid.Column="1"
+                                    FontFamily="RobotoBold"
+                                    FontSize="{OnIdiom Phone=15,
+                                                       Default=18}"
+                                    LineBreakMode="TailTruncation"
+                                    MaxLines="1"
                                     Style="{StaticResource LabelValue}"
                                     Text="Считаем..."
                                     VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+                            </Grid>
                         </Grid>
                     </Border>
 
                     <Border
                         x:Name="Card6"
                         Grid.Column="1"
-                        Padding="16"
+                        Padding="{OnIdiom Phone='12,10',
+                                          Default='16'}"
                         HeightRequest="{OnIdiom Phone=82,
                                                 Default=-1}"
                         Style="{StaticResource NeoCard}"
@@ -215,35 +250,44 @@
                         <Grid RowDefinitions="Auto, *">
                             <HorizontalStackLayout
                                 Grid.Row="0"
-                                Margin="0,0,0,8"
-                                Spacing="8">
+                                Margin="0,0,0,4"
+                                Spacing="6">
                                 <mi:MauiIcon
                                     Icon="{mi:Fluent Icon=DataArea24}"
                                     IconColor="{AppThemeBinding Light=#7C3AED,
                                                                 Dark=#9F6FF0}"
-                                    IconSize="15" />
+                                    IconSize="14" />
                                 <Label
                                     FontFamily="RobotoMedium"
-                                    FontSize="12"
+                                    FontSize="11"
                                     Style="{StaticResource LabelMuted}"
                                     Text="Трафик" />
                             </HorizontalStackLayout>
-                            <HorizontalStackLayout
+                            <Grid
                                 Grid.Row="1"
-                                Spacing="10"
+                                ColumnDefinitions="Auto, *"
+                                ColumnSpacing="6"
                                 VerticalOptions="Center">
                                 <mi:MauiIcon
+                                    Grid.Column="0"
                                     Icon="{mi:Fluent Icon=ArrowDown24}"
                                     IconColor="{AppThemeBinding Light=#0284C7,
                                                                 Dark=#00E5FF}"
-                                    IconSize="24" />
+                                    IconSize="{OnIdiom Phone=18,
+                                                       Default=22}"
+                                    VerticalOptions="Center" />
                                 <Label
                                     x:Name="TotalTrafficLabelMain"
-                                    FontSize="18"
+                                    Grid.Column="1"
+                                    FontFamily="RobotoBold"
+                                    FontSize="{OnIdiom Phone=15,
+                                                       Default=18}"
+                                    LineBreakMode="TailTruncation"
+                                    MaxLines="1"
                                     Style="{StaticResource LabelValue}"
                                     Text="0 B"
                                     VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>
@@ -271,7 +315,7 @@
                     <Border
                         x:Name="RayIndicatorBadge"
                         Grid.Row="0"
-                        Padding="12,6"
+                        Padding="14,7"
                         BackgroundColor="{AppThemeBinding Light={StaticResource BgElevatedLight},
                                                           Dark={StaticResource BgElevated}}"
                         HorizontalOptions="Center"
@@ -281,6 +325,10 @@
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16" />
                         </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnRayIndicatorBadgeTappedAsync" />
+                            <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        </Border.GestureRecognizers>
                         <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
                             <mi:MauiIcon
                                 x:Name="RayIndicatorIcon"
@@ -293,6 +341,12 @@
                                 FontSize="13"
                                 Style="{StaticResource LabelValue}"
                                 Text="Режим: Баланс (2 Луча)" />
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=ChevronRight16}"
+                                IconColor="{AppThemeBinding Light={StaticResource TextMutedLight},
+                                                            Dark={StaticResource TextMuted}}"
+                                IconSize="12"
+                                VerticalOptions="Center" />
                         </HorizontalStackLayout>
                     </Border>
 
@@ -409,6 +463,269 @@
                         Style="{StaticResource LabelAccent}"
                         Text="Не в сети" />
                 </Grid>
+            </Border>
+        </Grid>
+
+        <Grid
+            x:Name="QuickProtocolOverlay"
+            BackgroundColor="#B0000000"
+            HorizontalOptions="Fill"
+            InputTransparent="False"
+            IsVisible="False"
+            Opacity="0"
+            VerticalOptions="Fill"
+            ZIndex="500">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnCloseProtocolModalTappedAsync" />
+            </Grid.GestureRecognizers>
+
+            <Border
+                x:Name="QuickProtocolModalCard"
+                Padding="24,22"
+                BackgroundColor="{AppThemeBinding Light=#FFFFFF,
+                                                  Dark=#14141E}"
+                HorizontalOptions="Center"
+                MaximumWidthRequest="500"
+                Stroke="{AppThemeBinding Light=#CBD5E1,
+                                         Dark=#2A2A38}"
+                StrokeShape="RoundRectangle 16"
+                StrokeThickness="1.5"
+                VerticalOptions="Center"
+                WidthRequest="{OnIdiom Desktop=460,
+                                       Phone=340}">
+                <Border.Shadow>
+                    <Shadow
+                        Brush="#000000"
+                        Opacity="0.6"
+                        Radius="24"
+                        Offset="0,8" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+
+                <VerticalStackLayout Spacing="16">
+                    <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <VerticalStackLayout Spacing="2">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="17"
+                                Style="{StaticResource LabelValue}"
+                                Text="Протокол связи" />
+                            <Label
+                                FontSize="12"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Быстрое переключение режима соединения" />
+                        </VerticalStackLayout>
+
+                        <Border
+                            Grid.Column="1"
+                            Padding="8"
+                            BackgroundColor="{AppThemeBinding Light=#F1F5F9,
+                                                              Dark=#1E1E2C}"
+                            Stroke="{AppThemeBinding Light={StaticResource BorderMediumLight},
+                                                     Dark={StaticResource BorderMedium}}"
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCloseProtocolModalTappedAsync" />
+                                <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                            </Border.GestureRecognizers>
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=Dismiss24}"
+                                IconColor="{AppThemeBinding Light={StaticResource TextMutedLight},
+                                                            Dark={StaticResource TextMuted}}"
+                                IconSize="18" />
+                        </Border>
+                    </Grid>
+
+                    <VerticalStackLayout Spacing="10">
+                        <Border
+                            x:Name="ModalAutoCard"
+                            Padding="14,12"
+                            BackgroundColor="{AppThemeBinding Light=#F8FAFC,
+                                                              Dark=#1C1C26}"
+                            Stroke="{AppThemeBinding Light=#E2E8F0,
+                                                     Dark=#2D2D3D}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnModalSelectAutoTapped" />
+                                <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    x:Name="ModalAutoIcon"
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Sparkle24}"
+                                    IconColor="#00E5FF"
+                                    IconSize="24"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="RobotoBold"
+                                        FontSize="14"
+                                        Style="{StaticResource LabelValue}"
+                                        Text="AUTO" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Умный подбор и автоматический Fallback" />
+                                </VerticalStackLayout>
+                                <mi:MauiIcon
+                                    x:Name="ModalAutoCheck"
+                                    Grid.Column="2"
+                                    Icon="{mi:Fluent Icon=CheckmarkCircle24}"
+                                    IconColor="#00E5FF"
+                                    IconSize="20"
+                                    IsVisible="False"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="ModalFechsueCard"
+                            Padding="14,12"
+                            BackgroundColor="{AppThemeBinding Light=#F8FAFC,
+                                                              Dark=#1C1C26}"
+                            Stroke="{AppThemeBinding Light=#E2E8F0,
+                                                     Dark=#2D2D3D}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnModalSelectFechsueTapped" />
+                                <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    x:Name="ModalFechsueIcon"
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Rocket24}"
+                                    IconColor="#A855F7"
+                                    IconSize="24"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="RobotoBold"
+                                        FontSize="14"
+                                        Style="{StaticResource LabelValue}"
+                                        Text="FECHSUE" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="ГигаТуннель UDP (0% потерь пакетов)" />
+                                </VerticalStackLayout>
+                                <mi:MauiIcon
+                                    x:Name="ModalFechsueCheck"
+                                    Grid.Column="2"
+                                    Icon="{mi:Fluent Icon=CheckmarkCircle24}"
+                                    IconColor="#A855F7"
+                                    IconSize="20"
+                                    IsVisible="False"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="ModalHttp3Card"
+                            Padding="14,12"
+                            BackgroundColor="{AppThemeBinding Light=#F8FAFC,
+                                                              Dark=#1C1C26}"
+                            Stroke="{AppThemeBinding Light=#E2E8F0,
+                                                     Dark=#2D2D3D}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnModalSelectHttp3Tapped" />
+                                <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    x:Name="ModalHttp3Icon"
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=ShieldLock24}"
+                                    IconColor="#00E5FF"
+                                    IconSize="24"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="RobotoBold"
+                                        FontSize="14"
+                                        Style="{StaticResource LabelValue}"
+                                        Text="HTTP/3" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="QUIC (Маскировка под Chrome)" />
+                                </VerticalStackLayout>
+                                <mi:MauiIcon
+                                    x:Name="ModalHttp3Check"
+                                    Grid.Column="2"
+                                    Icon="{mi:Fluent Icon=CheckmarkCircle24}"
+                                    IconColor="#00E5FF"
+                                    IconSize="20"
+                                    IsVisible="False"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="ModalHttp2Card"
+                            Padding="14,12"
+                            BackgroundColor="{AppThemeBinding Light=#F8FAFC,
+                                                              Dark=#1C1C26}"
+                            Stroke="{AppThemeBinding Light=#E2E8F0,
+                                                     Dark=#2D2D3D}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnModalSelectHttp2Tapped" />
+                                <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    x:Name="ModalHttp2Icon"
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Flash24}"
+                                    IconColor="#0078D4"
+                                    IconSize="24"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="RobotoBold"
+                                        FontSize="14"
+                                        Style="{StaticResource LabelValue}"
+                                        Text="HTTP/2" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Стандартный TLS (Стабильный TCP)" />
+                                </VerticalStackLayout>
+                                <mi:MauiIcon
+                                    x:Name="ModalHttp2Check"
+                                    Grid.Column="2"
+                                    Icon="{mi:Fluent Icon=CheckmarkCircle24}"
+                                    IconColor="#0078D4"
+                                    IconSize="20"
+                                    IsVisible="False"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
             </Border>
         </Grid>
     </Grid>

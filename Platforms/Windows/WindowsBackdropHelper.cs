@@ -1,181 +1,182 @@
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using WinRT;
+using WinRT.Interop;
+using SolidColorBrush = Microsoft.UI.Xaml.Media.SolidColorBrush;
 
 namespace obxodka.Platforms.Windows;
 
-public static class WindowsBackdropHelper
+[SupportedOSPlatform("windows")]
+public static partial class WindowsBackdropHelper
 {
+    private static readonly SolidColorBrush t_transparentBrush = new(Microsoft.UI.Colors.Transparent);
+
     private static DesktopAcrylicController? t_acrylicController;
-    private static MicaController? t_micaController;
     private static SystemBackdropConfiguration? t_configurationSource;
-    private static Microsoft.UI.Xaml.Window? t_currentWindow;
 
-    public static void ApplyBackdrop(Microsoft.UI.Xaml.Window window, string mode)
+    [LibraryImport("dwmapi.dll")]
+    private static partial int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+    public static void ApplyBackdrop(Microsoft.UI.Xaml.Window? window)
     {
-        if (window == null)
+        if (window is null)
         {
             return;
         }
 
-        window.SystemBackdrop = null;
-
-        CleanupControllers();
-
-        if (t_currentWindow != window)
+        try
         {
-            if (t_currentWindow != null)
+            window.SystemBackdrop = null;
+
+            var isLight = Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
+            var hwnd = WindowNative.GetWindowHandle(window);
+
+            if (hwnd != IntPtr.Zero)
             {
-                t_currentWindow.Activated -= Window_Activated;
-                t_currentWindow.Closed -= Window_Closed;
-                if (t_currentWindow.Content is FrameworkElement oldFe)
+                var darkMode = isLight ? 0 : 1;
+                _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+            }
+
+            if (window.Content is FrameworkElement root)
+            {
+                root.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
+
+                CleanTree(root);
+
+                root.Loaded += (_, _) =>
                 {
-                    oldFe.ActualThemeChanged -= Window_ThemeChanged;
-                }
-            }
+                    CleanTree(root);
 
-            t_currentWindow = window;
-
-            t_currentWindow.Activated += Window_Activated;
-            t_currentWindow.Closed += Window_Closed;
-            if (t_currentWindow.Content is FrameworkElement fe)
-            {
-                fe.ActualThemeChanged += Window_ThemeChanged;
-            }
-        }
-
-        if (mode == "None" || string.IsNullOrEmpty(mode) || mode == "Без эффекта")
-        {
-            return;
-        }
-
-        if (t_configurationSource == null)
-        {
-            t_configurationSource = new SystemBackdropConfiguration
-            {
-                IsInputActive = true
-            };
-            SetConfigurationSourceTheme();
-        }
-
-        var supportsBackdrop = t_currentWindow.As<ICompositionSupportsSystemBackdrop>();
-
-        if (mode == "Acrylic")
-        {
-            if (DesktopAcrylicController.IsSupported())
-            {
-                t_acrylicController = new DesktopAcrylicController();
-
-                var tintOpacity = Preferences.Get("AcrylicTintOpacity", 0.0f);
-                var luminosityOpacity = Preferences.Get("AcrylicLuminosityOpacity", 0.8f);
-
-                t_acrylicController.TintColor = Microsoft.UI.Colors.Transparent;
-                t_acrylicController.TintOpacity = tintOpacity;
-                t_acrylicController.LuminosityOpacity = luminosityOpacity;
-
-                t_acrylicController.FallbackColor = global::Windows.UI.Color.FromArgb(255, 20, 20, 20);
-
-                _ = t_acrylicController.AddSystemBackdropTarget(supportsBackdrop);
-                t_acrylicController.SetSystemBackdropConfiguration(t_configurationSource);
-            }
-        }
-        else if (mode == "Mica")
-        {
-            if (MicaController.IsSupported())
-            {
-                t_micaController = new MicaController
-                {
-                    Kind = MicaKind.BaseAlt,
-                    FallbackColor = global::Windows.UI.Color.FromArgb(255, 20, 20, 20)
+                    if (root.DispatcherQueue is { } dq)
+                    {
+                        _ = dq.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                            () => CleanTree(root));
+                    }
                 };
 
-                _ = t_micaController.AddSystemBackdropTarget(supportsBackdrop);
-                t_micaController.SetSystemBackdropConfiguration(t_configurationSource);
-            }
-        }
-    }
-
-    private static void CleanupControllers()
-    {
-        if (t_acrylicController != null)
-        {
-            t_acrylicController.RemoveAllSystemBackdropTargets();
-            t_acrylicController.Dispose();
-            t_acrylicController = null;
-        }
-        if (t_micaController != null)
-        {
-            t_micaController.RemoveAllSystemBackdropTargets();
-            t_micaController.Dispose();
-            t_micaController = null;
-        }
-    }
-
-    private static void Window_Activated(object sender, WindowActivatedEventArgs args) => t_configurationSource?.IsInputActive = args.WindowActivationState != WindowActivationState.Deactivated;
-
-    private static void Window_Closed(object sender, WindowEventArgs args)
-    {
-        CleanupControllers();
-        if (t_currentWindow != null)
-        {
-            t_currentWindow.Activated -= Window_Activated;
-            t_currentWindow.Closed -= Window_Closed;
-            if (t_currentWindow.Content is FrameworkElement fe)
-            {
-                fe.ActualThemeChanged -= Window_ThemeChanged;
+                root.ActualThemeChanged += (sender, _) =>
+                {
+                    if (t_configurationSource is { } config)
+                    {
+                        config.Theme = sender.ActualTheme switch
+                        {
+                            ElementTheme.Dark => SystemBackdropTheme.Dark,
+                            ElementTheme.Light => SystemBackdropTheme.Light,
+                            ElementTheme.Default => throw new NotImplementedException(),
+                            _ => SystemBackdropTheme.Default
+                        };
+                    }
+                };
             }
 
-            t_currentWindow = null;
-        }
-        t_configurationSource = null;
-    }
-
-    private static void Window_ThemeChanged(FrameworkElement sender, object args)
-    {
-        if (t_configurationSource != null)
-        {
-            SetConfigurationSourceTheme();
-        }
-    }
-
-    private static void SetConfigurationSourceTheme()
-    {
-        if (t_configurationSource != null)
-        {
-            var appTheme = Microsoft.Maui.Controls.Application.Current?.RequestedTheme;
-            if (appTheme == AppTheme.Dark)
+            if (DesktopAcrylicController.IsSupported())
             {
-                t_configurationSource.Theme = SystemBackdropTheme.Dark;
-            }
-            else if (appTheme == AppTheme.Light)
-            {
-                t_configurationSource.Theme = SystemBackdropTheme.Light;
+                t_acrylicController?.Dispose();
+                t_configurationSource = new SystemBackdropConfiguration
+                {
+                    IsInputActive = true,
+                    Theme = isLight ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark
+                };
+
+                t_acrylicController = new DesktopAcrylicController
+                {
+                    Kind = DesktopAcrylicKind.Base
+                };
+
+                window.Activated += (_, e) =>
+                {
+                    if (t_configurationSource is { } config)
+                    {
+                        config.IsInputActive = e.WindowActivationState != WindowActivationState.Deactivated;
+                    }
+                };
+
+                _ = t_acrylicController.AddSystemBackdropTarget(window.As<ICompositionSupportsSystemBackdrop>());
+                t_acrylicController.SetSystemBackdropConfiguration(t_configurationSource);
             }
             else
             {
-                if (t_currentWindow?.Content is FrameworkElement fe)
+                window.SystemBackdrop = new DesktopAcrylicBackdrop();
+            }
+        }
+        catch
+        {
+            try
+            {
+                window.SystemBackdrop = new DesktopAcrylicBackdrop();
+            }
+            catch { }
+        }
+    }
+
+    private static void CleanTree(DependencyObject element)
+    {
+        if (element is FrameworkElement fe)
+        {
+            if (fe.Name is "AppTitleBar" or "TitleBar" or "CustomTitleBar" or "HeaderArea" or "HeaderContent" or "TitleBarArea" or "NavHeader" or "NavigationBarArea" or "Header")
+            {
+                fe.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+                fe.Height = 0;
+                fe.MinHeight = 0;
+                fe.MaxHeight = 0;
+            }
+
+            if (fe is NavigationView nv)
+            {
+                nv.Header = null;
+                nv.AlwaysShowHeader = false;
+                nv.IsPaneVisible = false;
+                nv.IsPaneToggleButtonVisible = false;
+                nv.IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed;
+                nv.PaneDisplayMode = NavigationViewPaneDisplayMode.LeftMinimal;
+            }
+
+            if (fe is Microsoft.UI.Xaml.Controls.Grid g && g.RowDefinitions.Count > 1)
+            {
+                if (g.RowDefinitions[0].Height.GridUnitType == Microsoft.UI.Xaml.GridUnitType.Pixel &&
+                    g.RowDefinitions[0].Height.Value is > 0 and <= 64)
                 {
-                    switch (fe.ActualTheme)
-                    {
-                        case ElementTheme.Dark:
-                            t_configurationSource.Theme = SystemBackdropTheme.Dark;
-                            break;
-                        case ElementTheme.Light:
-                            t_configurationSource.Theme = SystemBackdropTheme.Light;
-                            break;
-                        case ElementTheme.Default:
-                            break;
-                        default:
-                            t_configurationSource.Theme = SystemBackdropTheme.Default;
-                            break;
-                    }
-                }
-                else
-                {
-                    t_configurationSource.Theme = SystemBackdropTheme.Default;
+                    g.RowDefinitions[0].Height = new Microsoft.UI.Xaml.GridLength(0);
                 }
             }
         }
+
+        if (element is Panel p && p.Background != t_transparentBrush)
+        {
+            p.Background = t_transparentBrush;
+        }
+        else if (element is Control c && c.Background != t_transparentBrush)
+        {
+            c.Background = t_transparentBrush;
+        }
+        else if (element is Microsoft.UI.Xaml.Controls.Border b && b.Background != t_transparentBrush)
+        {
+            b.Background = t_transparentBrush;
+        }
+        else if (element is Microsoft.UI.Xaml.Controls.ContentPresenter cp && cp.Background != t_transparentBrush)
+        {
+            cp.Background = t_transparentBrush;
+        }
+        else if (element is ContentControl cc && cc.Background != t_transparentBrush)
+        {
+            cc.Background = t_transparentBrush;
+        }
+        else if (element is UserControl uc && uc.Background != t_transparentBrush)
+        {
+            uc.Background = t_transparentBrush;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(element);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(element, i);
+            CleanTree(child);
+        }
     }
 }
+

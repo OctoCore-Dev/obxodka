@@ -1,21 +1,39 @@
 namespace obxodka.Views;
 
-public partial class DevicesView : ContentView
+public sealed partial class DevicesView : ContentView
 {
+    private static readonly TimeSpan t_cacheTtl = TimeSpan.FromSeconds(30);
+
     private MainPage _parent = null!;
     private ApiService _apiService = null!;
     private DateTime _lastFetchTime = DateTime.MinValue;
-    private static readonly TimeSpan t_сacheTtl = TimeSpan.FromSeconds(30);
 
     public ObservableCollection<DeviceItem> ConnectedDevices { get; set; } = [];
 
-    public DevicesView() => InitializeComponent();
+    public DevicesView()
+    {
+        InitializeComponent();
+
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        {
+            _ = ContentGrid.Children.Remove(DevicesGrid);
+            var scroll = new ScrollView
+            {
+                Orientation = ScrollOrientation.Vertical,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+                Content = DevicesGrid
+            };
+            ContentGrid.Children.Add(scroll);
+        }
+    }
 
     public void Initialize(MainPage parent, ApiService apiService)
     {
         _parent = parent;
         _apiService = apiService;
     }
+
     public async Task PlayEntranceAnimationAsync()
     {
         Opacity = 1;
@@ -24,25 +42,20 @@ public partial class DevicesView : ContentView
         var cards = DevicesGrid.Children.OfType<VisualElement>().ToArray();
         if (cards.Length > 0)
         {
-            foreach (var card in cards)
-            {
-                card.Opacity = 0;
-                card.TranslationY = 28;
-            }
             await UIAnimations.PlayEntranceCascadeAsync(80, 450, cards);
         }
     }
 
     public async Task LoadDevicesAsync()
     {
-        if (ConnectedDevices.Count > 0 && DateTime.UtcNow - _lastFetchTime < t_сacheTtl)
+        if (ConnectedDevices.Count > 0 && DateTime.UtcNow - _lastFetchTime < t_cacheTtl)
         {
             return;
         }
 
         DevicesLoadingOverlay.IsVisible = true;
         DevicesGrid.IsVisible = false;
-        DevicesErrorLabel.Opacity = 0;
+        _ = UIAnimations.HideErrorLabelAsync(DevicesErrorLabel);
 
         try
         {
@@ -56,12 +69,9 @@ public partial class DevicesView : ContentView
                 }
                 _lastFetchTime = DateTime.UtcNow;
             }
-            else if (!string.IsNullOrEmpty(error))
+            else if (!string.IsNullOrEmpty(error) && ConnectedDevices.Count == 0)
             {
-                if (ConnectedDevices.Count == 0)
-                {
-                    await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(error, "Не удалось загрузить список устройств."));
-                }
+                await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(error, "Не удалось загрузить список устройств."));
             }
         }
         catch
@@ -76,12 +86,13 @@ public partial class DevicesView : ContentView
             RebuildDevicesGrid();
             DevicesLoadingOverlay.IsVisible = false;
             DevicesGrid.IsVisible = true;
+
             if (ConnectedDevices.Count > 0)
             {
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(100);
-                    MainThread.BeginInvokeOnMainThread(async () => await PlayEntranceAnimationAsync());
+                    await MainThread.InvokeOnMainThreadAsync(PlayEntranceAnimationAsync);
                 });
             }
         }
@@ -134,7 +145,7 @@ public partial class DevicesView : ContentView
             return;
         }
 
-        if (hwidToRemove == DeviceHelper.GetHwid())
+        if (hwidToRemove == DeviceHelper.Hwid)
         {
             await ShowDevicesErrorAsync("Нельзя удалить текущее устройство.");
             return;
@@ -160,7 +171,7 @@ public partial class DevicesView : ContentView
                 var (success, error) = await _apiService.RemoveDeviceAsync(hwidToRemove);
                 if (!success)
                 {
-                    MainThread.BeginInvokeOnMainThread(async () =>
+                    await MainThread.InvokeOnMainThreadAsync(async () =>
                     {
                         if (item is not null)
                         {
@@ -177,7 +188,7 @@ public partial class DevicesView : ContentView
             }
             catch
             {
-                MainThread.BeginInvokeOnMainThread(async () =>
+                await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
                     if (item is not null)
                     {
@@ -193,7 +204,7 @@ public partial class DevicesView : ContentView
     private async Task ShowDevicesErrorAsync(string msg)
     {
         DevicesErrorLabel.Text = msg;
-        _ = DevicesErrorLabel.FadeToAsync(1, 200);
+        await UIAnimations.ShowErrorLabelAsync(DevicesErrorLabel);
         await this.ShakeErrorAsync();
     }
 }

@@ -1,8 +1,10 @@
 namespace obxodka.Platforms.Windows;
 
-public class AppManager : IAppManager
+[SupportedOSPlatform("windows")]
+public sealed class AppManager : IAppManager
 {
-    public Task<List<AppInfoItem>> GetInstalledAppsAsync() => Task.FromResult(new List<AppInfoItem>());
+    public Task<List<AppInfoItem>> GetInstalledAppsAsync() =>
+        Task.FromResult<List<AppInfoItem>>([]);
 
     public List<string> GetBypassedPackages() => [];
 

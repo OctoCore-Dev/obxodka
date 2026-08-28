@@ -4,54 +4,47 @@ public sealed partial class MainPage : ContentPage, IDisposable
 {
     private readonly ApiService _apiService;
     private readonly IAppManager _appManager;
+    private readonly IAppUpdaterService? _appUpdaterService;
     private CancellationTokenSource? _vpnCts;
     public long RemainingSeconds { get; private set; }
     private string _activeTab = "";
+    private bool _isLoggingOut;
 
     public IVpnService VpnService { get; }
 
-#if ANDROID
-    private readonly IAppUpdaterService _appUpdater;
-
-    public MainPage(IVpnService vpnService, ApiService apiService, IAppManager appManager, IAppUpdaterService appUpdater)
-#else
-    public MainPage(IVpnService vpnService, ApiService apiService, IAppManager appManager)
-#endif
+    public MainPage(
+        IVpnService vpnService,
+        ApiService apiService,
+        IAppManager appManager,
+        IAppUpdaterService? appUpdaterService = null)
     {
         InitializeComponent();
         VpnService = vpnService;
         _apiService = apiService;
         _appManager = appManager;
-#if ANDROID
-        _appUpdater = appUpdater;
-#endif
+        _appUpdaterService = appUpdaterService;
         BindingContext = this;
 
         TabContentAuth.Initialize(this, _apiService);
 
         TabContentDelete.Initialize(this, _apiService);
-        TabContentDelete.CancelRequested += (s, e) => _ = SwitchTabAsync("profile");
-        TabContentDelete.AccountDeleted += async (s, e) => await PerformLogoutAsync();
+        TabContentDelete.CancelRequested += OnDeleteCancelRequested;
+        TabContentDelete.AccountDeleted += OnAccountDeletedAsync;
 
         TabContentDevices.Initialize(this, _apiService);
         TabContentSplit.Initialize(this, _appManager);
         TabContentPayment.Initialize(this, _apiService);
         TabContentProfile.Initialize(this);
-        TabContentProfile.LogoutRequested += async (s, e) => await HandleLogoutClickAsync();
-        TabContentPayment.PaymentCompleted += async (s, e) =>
-        {
-            var session = await AuthManager.LoadSessionAsync();
-            await SyncBalanceFromServerAsync(session);
-            await SwitchTabAsync("profile");
-        };
-        TabContentPayment.PaymentCancelled += (s, e) => _ = SwitchTabAsync("profile");
+        TabContentFriends.Initialize(_apiService);
+        TabContentFriends.BackRequested += (_, _) => _ = SwitchTabAsync("profile");
+        TabContentMesh.Initialize(_apiService);
 
-        TabContentProfile.BuyTokensRequested += async (s, e) =>
-        {
-            var session = await AuthManager.LoadSessionAsync();
-            _ = SwitchTabAsync("payment");
-            TabContentPayment.LoadPaymentPage();
-        };
+        TabContentProfile.LogoutRequested += OnProfileLogoutRequestedAsync;
+        TabContentProfile.BuyTokensRequested += OnBuyTokensRequested;
+        TabContentProfile.FriendsRequested += (_, _) => _ = SwitchTabAsync("friends");
+
+        TabContentPayment.PaymentCompleted += OnPaymentCompletedAsync;
+        TabContentPayment.PaymentCancelled += OnPaymentCancelled;
 
         TabContentVpn.Initialize(this, VpnService, _apiService);
 
@@ -60,13 +53,17 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         ApiService.OnUnauthorized -= HandleApiUnauthorized;
         ApiService.OnUnauthorized += HandleApiUnauthorized;
+
         App.AppResumed -= OnAppResumed;
         App.AppResumed += OnAppResumed;
 
-        DesktopSidebar.NavTapped += (s, tab) => _ = SwitchTabAsync(tab);
-        DesktopSidebar.LogoutTapped += async (s, e) => await HandleLogoutClickAsync();
+        Connectivity.Current.ConnectivityChanged -= OnConnectivityChanged;
+        Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
 
-        MobileBottomBar.NavTapped += (s, tab) => _ = SwitchTabAsync(tab);
+        DesktopSidebar.NavTapped += OnSidebarNavTapped;
+        DesktopSidebar.LogoutTapped += OnSidebarLogoutTappedAsync;
+
+        MobileBottomBar.NavTapped += OnBottomBarNavTapped;
     }
 
     public void Dispose()
@@ -74,13 +71,61 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _vpnCts?.Cancel();
         _vpnCts?.Dispose();
         _vpnCts = null;
+
         TabContentVpn.UnsubscribeEvents();
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
         ApiService.OnUnauthorized -= HandleApiUnauthorized;
+        App.AppResumed -= OnAppResumed;
+        Connectivity.Current.ConnectivityChanged -= OnConnectivityChanged;
+
+        TabContentDelete.CancelRequested -= OnDeleteCancelRequested;
+        TabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
+        TabContentProfile.LogoutRequested -= OnProfileLogoutRequestedAsync;
+        TabContentProfile.BuyTokensRequested -= OnBuyTokensRequested;
+        TabContentProfile.FriendsRequested -= (_, _) => _ = SwitchTabAsync("friends");
+        TabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
+        TabContentPayment.PaymentCancelled -= OnPaymentCancelled;
+        DesktopSidebar.NavTapped -= OnSidebarNavTapped;
+        DesktopSidebar.LogoutTapped -= OnSidebarLogoutTappedAsync;
+        MobileBottomBar.NavTapped -= OnBottomBarNavTapped;
+
         GC.SuppressFinalize(this);
     }
 
-    private bool _isLoggingOut;
+    private void OnDeleteCancelRequested(object? sender, EventArgs e) =>
+        _ = SwitchTabAsync("profile");
+
+    private async void OnAccountDeletedAsync(object? sender, EventArgs e) =>
+        await PerformLogoutAsync();
+
+    private async void OnProfileLogoutRequestedAsync(object? sender, EventArgs e) =>
+        await HandleLogoutClickAsync();
+
+    private void OnBuyTokensRequested(object? sender, EventArgs e)
+    {
+        _ = SwitchTabAsync("payment");
+        TabContentPayment.LoadPaymentPage();
+    }
+
+    private async void OnPaymentCompletedAsync(object? sender, EventArgs e)
+    {
+        var session = await AuthManager.LoadSessionAsync();
+        await SyncBalanceFromServerAsync(session);
+        await SwitchTabAsync("profile");
+    }
+
+    private void OnPaymentCancelled(object? sender, EventArgs e) =>
+        _ = SwitchTabAsync("profile");
+
+    private void OnSidebarNavTapped(object? sender, string tab) =>
+        _ = SwitchTabAsync(tab);
+
+    private async void OnSidebarLogoutTappedAsync(object? sender, EventArgs e) =>
+        await HandleLogoutClickAsync();
+
+    private void OnBottomBarNavTapped(object? sender, string tab) =>
+        _ = SwitchTabAsync(tab);
+
     private void HandleForceLogout(string message)
     {
         if (_isLoggingOut)
@@ -97,22 +142,19 @@ public sealed partial class MainPage : ContentPage, IDisposable
         });
     }
 
-    private void HandleApiUnauthorized() => HandleForceLogout("Сессия истекла. Пожалуйста, войдите снова.");
+    private void HandleApiUnauthorized() =>
+        HandleForceLogout("Сессия истекла. Пожалуйста, войдите снова.");
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        Debug.WriteLine("=== [STARTUP] OnAppearing START ===");
         _ = AnimateSplashIconAsync();
 
         _ = Task.Run(async () =>
         {
-            Debug.WriteLine("=== [STARTUP] Task.Run START ===");
             try
             {
-                Debug.WriteLine("=== [STARTUP] Fetching Bridge URL ===");
                 var activeHost = await DiscoveryService.GetActiveBridgeUrlAsync();
-                Debug.WriteLine($"=== [STARTUP] Bridge URL Fetched: {activeHost} ===");
                 if (!string.IsNullOrEmpty(activeHost))
                 {
                     AppConfig.ApiBaseUrl = $"https://{activeHost}/";
@@ -123,7 +165,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 Debug.WriteLine($"[DISCOVERY ERROR] {ex.Message}");
             }
 
-            Debug.WriteLine("=== [STARTUP] Loading Session ===");
             UserSession? session = null;
             try
             {
@@ -131,46 +172,39 @@ public sealed partial class MainPage : ContentPage, IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"=== [STARTUP] AuthManager ERROR: {ex.Message} ===");
+                Debug.WriteLine($"[AUTH LOAD ERROR] {ex.Message}");
             }
-            Debug.WriteLine($"=== [STARTUP] Session Loaded: IsLoggedIn={session?.IsLoggedIn} ===");
 
-            _ = Task.Run(async () =>
-            {
-#if ANDROID
-                try
-                {
-                    Debug.WriteLine("=== [STARTUP] Checking for updates ===");
-                    await _appUpdater.CheckForUpdatesAsync();
-                }
-                catch { }
-#endif
-                try
-                {
-                    Debug.WriteLine("=== [STARTUP] Getting installed apps ===");
-                    await _appManager.GetInstalledAppsAsync();
-                }
-                catch { }
-            });
 
-            Debug.WriteLine("=== [STARTUP] Calling BeginInvokeOnMainThread ===");
+
             MainThread.BeginInvokeOnMainThread(async () =>
             {
-                Debug.WriteLine("=== [STARTUP] Inside BeginInvokeOnMainThread ===");
-
                 if (SplashOverlay.IsVisible)
                 {
-                    await Task.Delay(3000);
-                    _ = SplashOverlay.FadeToAsync(0, 500, Easing.CubicInOut);
+                    await Task.Delay(2000);
+                    _ = SplashOverlay.FadeToAsync(0, 450, Easing.CubicInOut);
                     await Task.Delay(200);
                     SplashOverlay.IsVisible = false;
                 }
 
-                Debug.WriteLine("=== [STARTUP] Splash hidden ===");
-
-                if (session is { IsLoggedIn: true, JwtToken: not null })
+                _ = Task.Run(async () =>
                 {
-                    Debug.WriteLine("=== [STARTUP] Switching to App (VPN) ===");
+                    try
+                    {
+                        if (_appUpdaterService is not null)
+                        {
+                            await Task.Delay(2500);
+                            await _appUpdaterService.CheckForUpdatesAsync(manualCheck: false);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[AUTO UPDATE CHECK] {ex.Message}");
+                    }
+                });
+
+                if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
+                {
                     await SwitchToAppAfterAuthAsync();
                     if (App.PendingTileAction)
                     {
@@ -179,13 +213,11 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 }
                 else
                 {
-                    Debug.WriteLine("=== [STARTUP] Switching to Auth ===");
                     DesktopSidebar.HideSidebar();
                     MobileBottomBar.HideSidebar();
                     _ = SwitchTabAsync("auth");
                     _ = TabContentAuth.PlayEntranceAnimationAsync();
                 }
-                Debug.WriteLine("=== [STARTUP] BeginInvokeOnMainThread END ===");
             });
         });
     }
@@ -198,14 +230,14 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private async Task AnimateSplashIconAsync()
     {
-        if (SplashIcon == null || !SplashIcon.IsVisible)
+        if (SplashIcon is null || !SplashIcon.IsVisible)
         {
             return;
         }
 
         while (SplashOverlay.IsVisible)
         {
-            _ = await SplashIcon.ScaleToAsync(1.1, 800, Easing.CubicInOut);
+            _ = await SplashIcon.ScaleToAsync(1.08, 800, Easing.CubicInOut);
             _ = await SplashIcon.ScaleToAsync(1.0, 800, Easing.CubicInOut);
         }
     }
@@ -221,6 +253,16 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         _ = DesktopSidebar.PlayEntranceAnimationAsync();
         _ = MobileBottomBar.PlayEntranceAnimationAsync();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(800);
+                _ = await _appManager.GetInstalledAppsAsync();
+            }
+            catch { }
+        });
 
         await SyncBalanceFromServerAsync(session);
     }
@@ -241,7 +283,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _ = Task.Run(async () =>
         {
             try
-            { await VpnService.StopVpnAsync(); }
+            {
+                await VpnService.StopVpnAsync();
+            }
             catch { }
         });
 
@@ -255,7 +299,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
             _ = SwitchTabAsync("auth");
         });
     }
-
 
     public async Task SwitchTabAsync(string tab)
     {
@@ -289,6 +332,14 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 TabContentProfile.UpdateBalance(RemainingSeconds);
                 _ = TabContentProfile.PlayEntranceAnimationAsync();
                 break;
+            case "friends":
+                _ = TabContentFriends.OnAppearingAsync();
+                break;
+            case "mesh":
+                TabContentMesh.Initialize(_apiService);
+                TabContentMesh.ForceLayoutWidth();
+                _ = TabContentMesh.PlayEntranceAnimationAsync();
+                break;
             case "devices":
                 _ = TabContentDevices.PlayEntranceAnimationAsync();
                 _ = TabContentDevices.LoadDevicesAsync();
@@ -299,11 +350,11 @@ public sealed partial class MainPage : ContentPage, IDisposable
             case "auth":
                 _ = TabContentAuth.PlayEntranceAnimationAsync();
                 break;
+            case "delete":
+                _ = TabContentDelete.PlayEntranceAnimationAsync();
+                break;
             case "payment":
                 _ = TabContentPayment.PlayEntranceAnimationAsync();
-                break;
-            case "appearance":
-                _ = TabContentAppearance.PlayEntranceAnimationAsync();
                 break;
             default:
                 break;
@@ -316,18 +367,19 @@ public sealed partial class MainPage : ContentPage, IDisposable
         "vpn" => TabContentVpn,
         "configuration" => TabContentConfiguration,
         "profile" => TabContentProfile,
+        "friends" => TabContentFriends,
+        "mesh" => TabContentMesh,
         "devices" => TabContentDevices,
         "payment" => TabContentPayment,
         "split" => TabContentSplit,
         "delete" => TabContentDelete,
-        "appearance" => TabContentAppearance,
         _ => null
     };
 
     public void NotifyVpnConnected()
     {
         DesktopSidebar.UpdateVpnStatus(true);
-        if (_vpnCts == null && RemainingSeconds > 0)
+        if (_vpnCts is null && RemainingSeconds > 0)
         {
             _vpnCts = new CancellationTokenSource();
             _ = ConsumeTimeLoopAsync(_vpnCts.Token);
@@ -343,15 +395,12 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private void UpdateBalanceUI()
     {
-        var hours = RemainingSeconds / 3600;
-        var minutes = RemainingSeconds % 3600 / 60;
-        var timeText = $"{hours}ч {minutes:D2}м";
+        var timeText = TimeFormatHelper.FormatSeconds(RemainingSeconds, false);
         TabContentVpn.UpdateBalanceUI(timeText);
         TabContentProfile.UpdateBalance(RemainingSeconds);
     }
 
-    private void OnAppResumed()
-    {
+    private void OnAppResumed() =>
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             if (_activeTab != "auth")
@@ -359,56 +408,84 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 await SyncBalanceFromServerAsync();
             }
         });
+
+    private void OnConnectivityChanged(object? sender, ConnectivityChangedEventArgs e)
+    {
+        if (e.NetworkAccess == NetworkAccess.Internet)
+        {
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                if (_activeTab != "auth")
+                {
+                    await SyncBalanceFromServerAsync();
+                }
+            });
+        }
     }
 
     private async Task SyncBalanceFromServerAsync(UserSession? session = null)
     {
         session ??= await AuthManager.LoadSessionAsync();
-        if (session == null)
+        if (session is null || string.IsNullOrEmpty(session.JwtToken))
         {
             return;
         }
 
         var (success, profile, error) = await _apiService.GetProfileAsync();
-        if (success && profile != null)
+        if (success && profile is not null)
         {
             session.SubscriptionUntil = profile.SubscriptionUntil;
+            session.BalanceSeconds = profile.BalanceSeconds;
             await AuthManager.SaveSessionAsync(session);
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 RemainingSeconds = profile.BalanceSeconds > 0
                     ? profile.BalanceSeconds
-                    : (profile.SubscriptionUntil.HasValue
-                        ? Math.Max(0, (long)(profile.SubscriptionUntil.Value.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
+                    : (profile.SubscriptionUntil is { } until
+                        ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
                         : 0);
+
                 UpdateBalanceUI();
-                TabContentVpn.UpdateBalanceUI($"{RemainingSeconds / 3600}ч {RemainingSeconds % 3600 / 60:D2}м", Views.VpnView.FormatBytes(profile.TotalBytesUsed));
+                TabContentVpn.UpdateBalanceUI(
+                    TimeFormatHelper.FormatSeconds(RemainingSeconds, false),
+                    Views.VpnView.FormatBytes(profile.TotalBytesUsed));
             });
         }
         else
         {
-            Debug.WriteLine($"[SYNC] Failed to fetch profile: {error}");
+            Debug.WriteLine($"[SYNC ERROR] {error}");
         }
     }
 
     private async Task ConsumeTimeLoopAsync(CancellationToken ct)
     {
+        var syncCounter = 0;
         while (!ct.IsCancellationRequested && RemainingSeconds > 0)
         {
             try
             {
                 await Task.Delay(1000, ct);
-                RemainingSeconds--;
+                RemainingSeconds = Math.Max(0, RemainingSeconds - 1);
                 MainThread.BeginInvokeOnMainThread(UpdateBalanceUI);
+
+                syncCounter++;
+                if (syncCounter >= 30)
+                {
+                    syncCounter = 0;
+                    _ = SyncBalanceFromServerAsync();
+                }
             }
-            catch { break; }
+            catch
+            {
+                break;
+            }
         }
+
         if (RemainingSeconds <= 0)
         {
             await VpnService.StopVpnAsync();
             await MainThread.InvokeOnMainThreadAsync(() =>
-                DisplayAlertAsync("Лимит", "Пополните баланс", "ОК"));
+                DisplayAlertAsync("Лимит", "Время действия тарифа закончилось. Пополните баланс.", "ОК"));
         }
     }
-
 }
