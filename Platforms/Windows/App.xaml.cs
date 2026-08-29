@@ -1,5 +1,4 @@
 using Microsoft.UI.Xaml;
-using Microsoft.Windows.AppLifecycle;
 
 namespace obxodka.WinUI;
 
@@ -8,6 +7,7 @@ public sealed partial class App : MauiWinUIApplication
 {
     public App()
     {
+#if !DEBUG
         var mainInstance = AppInstance.FindOrRegisterForKey("obxodka_main_instance");
         if (!mainInstance.IsCurrent)
         {
@@ -16,6 +16,7 @@ public sealed partial class App : MauiWinUIApplication
             Process.GetCurrentProcess().Kill();
             return;
         }
+#endif
 
         InitializeComponent();
         UnhandledException += App_UnhandledException;

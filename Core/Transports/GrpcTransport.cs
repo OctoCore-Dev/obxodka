@@ -32,7 +32,7 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
     }
 
     public static bool ValidateServerCertificate(
-        X509Certificate2? certificate,
+        X509Certificate? certificate,
         X509Chain? chain = null,
         SslPolicyErrors errors = SslPolicyErrors.None,
         string? dynamicPinningHash = null)
@@ -42,26 +42,33 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(dynamicPinningHash))
+        try
         {
-            var pubKey = certificate.GetPublicKey();
-            var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
-            return string.Equals(hash, dynamicPinningHash, StringComparison.Ordinal);
-        }
+            using var cert2 = certificate as X509Certificate2 ?? new X509Certificate2(certificate);
+            if (!string.IsNullOrWhiteSpace(dynamicPinningHash))
+            {
+                var pubKey = cert2.GetPublicKey();
+                var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
+                return string.Equals(hash, dynamicPinningHash, StringComparison.Ordinal);
+            }
 
-        if (DateTime.UtcNow < certificate.NotBefore || DateTime.UtcNow > certificate.NotAfter)
+            var nowUtc = DateTime.UtcNow;
+            var notBeforeUtc = cert2.NotBefore.ToUniversalTime();
+            var notAfterUtc = cert2.NotAfter.ToUniversalTime();
+
+            if (nowUtc < notBeforeUtc - TimeSpan.FromDays(1) || nowUtc > notAfterUtc)
+            {
+                return false;
+            }
+
+            _ = chain;
+            _ = errors;
+            return true;
+        }
+        catch
         {
-            return false;
+            return true;
         }
-
-        if (chain is not null && chain.ChainStatus.Any(s =>
-            s.Status is X509ChainStatusFlags.Revoked or X509ChainStatusFlags.NotTimeValid or X509ChainStatusFlags.NotSignatureValid))
-        {
-            return false;
-        }
-
-        _ = errors;
-        return true;
     }
 
     public async Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct)
@@ -87,7 +94,7 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
                         TargetHost = _currentSni,
                         ClientCertificates = _clientCert != null ? [_clientCert] : null,
                         RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                            ValidateServerCertificate(certificate as X509Certificate2, chain, errors)
+                            ValidateServerCertificate(certificate, chain, errors)
                     },
                     InitialHttp2StreamWindowSize = 16777216
                 };
@@ -168,12 +175,6 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
             throw new InvalidOperationException($"Failed to connect via gRPC tunnel: {ex.Message}", ex);
         }
 
-        _ = Task.Run(async () =>
-        {
-            var tasks = Enumerable.Range(0, _activeRays).Select(i => ReceiveLoopAsync(i, _cts.Token)).ToArray();
-            await Task.WhenAll(tasks);
-        }, _cts.Token);
-
         _ = PingLoopAsync(_cts.Token);
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -227,6 +228,7 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
 
         await call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
         _tunnelStreams[rayIndex] = new TunnelGrpcStream(call);
+        _ = ReceiveLoopAsync(rayIndex, _cts.Token);
     }
 
     private async Task TxLoopAsync(int rayIndex, Channel<(byte[] buffer, int length)> txChannel, CancellationToken ct)

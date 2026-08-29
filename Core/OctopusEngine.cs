@@ -10,7 +10,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public static MeshRelayServer? ActiveRelayServer => MeshRelayManager.ActiveRelayServer;
 
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
+    [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
     private IVpnTransport? _transport;
     private X509Certificate2? _clientCert;
     private string? _jwtToken;
@@ -100,7 +100,6 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 :
                 [
                     ("FECHSUE", () => new FechsueTransport()),
-                    ("HTTP3", () => new GrpcTransport(useHttp3: true, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort)),
                     ("HTTP2", () => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort))
                 ];
 
@@ -151,8 +150,7 @@ internal sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             IVpnTransport transport = protocolMode switch
             {
                 "FECHSUE" when meshRelay == null => new FechsueTransport(),
-                "HTTP3" when meshRelay == null => new GrpcTransport(useHttp3: true, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort),
-                "HTTP2" or "GRPC" or _ => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort, meshRelay: meshRelay)
+                "HTTP2" or "HTTP3" or "GRPC" or _ => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort, meshRelay: meshRelay)
             };
 
             _transport = transport;

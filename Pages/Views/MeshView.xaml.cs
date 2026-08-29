@@ -2,6 +2,7 @@ namespace obxodka.Views;
 
 public sealed partial class MeshView : ContentView
 {
+    private readonly bool _isLoaded;
     private IDispatcherTimer? _metricsTimer;
     private ApiService? _apiService;
     private string _currentMyCode = string.Empty;
@@ -11,15 +12,16 @@ public sealed partial class MeshView : ContentView
     {
         InitializeComponent();
 
-        MeshScrollView.SizeChanged += (s, e) =>
-        {
-            if (MeshScrollView.Width > 0)
+        MeshScrollView?.SizeChanged += (s, e) =>
             {
-                ApplyCardWidth(MeshScrollView.Width);
-            }
-        };
+                if (MeshScrollView.Width > 0)
+                {
+                    ApplyCardWidth(MeshScrollView.Width);
+                }
+            };
 
         LoadSettings();
+        _isLoaded = true;
 
         Unloaded += (_, _) => StopMetricsTimer();
     }
@@ -255,18 +257,33 @@ public sealed partial class MeshView : ContentView
         UpdateStatusBadge();
     }
 
-    private void UpdateRewardProgress(long currentBytes)
+    private void UpdateRewardProgress(long totalRelayedBytes)
     {
-        var progress = Math.Clamp((double)currentBytes / RewardThresholdBytes, 0.0, 1.0);
-        var currentGb = currentBytes / (1024.0 * 1024.0 * 1024.0);
+        if (RelayRewardProgressBar == null || RelayRewardProgressLabel == null || TotalLifetimeRelayedLabel == null || ClaimRewardButton == null)
+        {
+            return;
+        }
 
-        RelayRewardProgressLabel.Text = $"Прогресс: {currentGb:F1} / 5.0 ГБ ({progress * 100:F0}%)";
+        var lifetimeGb = totalRelayedBytes / (1024.0 * 1024.0 * 1024.0);
+        TotalLifetimeRelayedLabel.Text = $"Всего: {lifetimeGb:F1} ГБ";
+
+        var currentCycleBytes = totalRelayedBytes % RewardThresholdBytes;
+        var currentCycleGb = currentCycleBytes / (1024.0 * 1024.0 * 1024.0);
+        var targetGb = RewardThresholdBytes / (1024.0 * 1024.0 * 1024.0);
+        var progress = Math.Clamp((double)currentCycleBytes / RewardThresholdBytes, 0.0, 1.0);
+
         RelayRewardProgressBar.Progress = progress;
+        RelayRewardProgressLabel.Text = $"{currentCycleGb:F1} / {targetGb:F1} ГБ ({progress * 100:F0}%)";
         ClaimRewardButton.IsEnabled = progress >= 1.0;
     }
 
     private void UpdateStatusBadge()
     {
+        if (MeshStatusBadge == null || MeshStatusDot == null)
+        {
+            return;
+        }
+
         var isRunning = OperatingSystem.IsWindows() && OctopusEngine.ActiveRelayServer is { IsRunning: true };
         if (isRunning)
         {
@@ -288,6 +305,11 @@ public sealed partial class MeshView : ContentView
 
     private async void OnRelayServerToggledAsync(object? sender, ToggledEventArgs e)
     {
+        if (!_isLoaded)
+        {
+            return;
+        }
+
         MeshSettings.RelayEnabled = e.Value;
         if (e.Value)
         {
@@ -302,9 +324,14 @@ public sealed partial class MeshView : ContentView
 
     private void OnSpeedLimitChanged(object? sender, ValueChangedEventArgs e)
     {
+        if (!_isLoaded)
+        {
+            return;
+        }
+
         var val = (int)e.NewValue;
         MeshSettings.RelaySpeedMbps = val;
-        SpeedLimitValueLabel.Text = $"{val} Мбит/с";
+        SpeedLimitValueLabel?.Text = $"{val} Мбит/с";
         if (OperatingSystem.IsWindows())
         {
             OctopusEngine.ActiveRelayServer?.Limiter.UpdateLimit(val);
@@ -313,7 +340,12 @@ public sealed partial class MeshView : ContentView
 
     private void OnMaxClientsChanged(object? sender, EventArgs e)
     {
-        if (MaxClientsPicker.SelectedItem is string str && int.TryParse(str, out var count))
+        if (!_isLoaded)
+        {
+            return;
+        }
+
+        if (MaxClientsPicker?.SelectedItem is string str && int.TryParse(str, out var count))
         {
             MeshSettings.RelayMaxClients = count;
         }
