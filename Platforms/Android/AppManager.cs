@@ -158,12 +158,44 @@ public sealed class AppManager : IAppManager
             return [.. t_cachedApps];
         });
 
+    private static readonly HashSet<string> t_defaultCloakedPackages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ru.sberbankmobile",           // Сбербанк Онлайн
+        "com.idamob.tinkoff.android",   // Т-Банк (Тинькофф)
+        "ru.vtb24.mobilebanking",       // ВТБ
+        "ru.alfabank.mobile.android",   // Альфа-Банк
+        "ru.raiffeisennews",           // Райффайзен
+        "ru.gosuslugi.online",          // Госуслуги
+        "ru.gosuslugi.pos",             // Госуслуги Решаем вместе
+        "ru.yandex.yandexnavi",         // Яндекс Навигатор
+        "ru.yandex.taxi",               // Яндекс Go / Такси
+        "ru.yandex.searchplugin",       // Яндекс с Алисой
+        "ru.yandex.market",             // Яндекс Маркет
+        "com.vkontakte.android",        // ВКонтакте
+        "com.vk.im",                    // VK Мессенджер
+        "ru.mail.mailapp",              // Почта Mail.ru
+        "com.wildberries.work",         // Wildberries
+        "com.wildberries.wbdeti",
+        "ru.ozon.app.android",          // Ozon
+        "com.avito.android",            // Авито
+        "ru.nspk.mirpay",               // Mir Pay
+        "ru.samokat.app",               // Самокат
+        "ru.magnit.app",                // Магнит
+        "ru.x5.app"                     // Пятёрочка
+    };
+
     public List<string> GetBypassedPackages()
     {
-        var saved = Preferences.Get(BypassedAppsKey, string.Empty);
-        return string.IsNullOrWhiteSpace(saved) ? [] : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)];
+        if (Preferences.ContainsKey(BypassedAppsKey))
+        {
+            var saved = Preferences.Get(BypassedAppsKey, string.Empty);
+            return string.IsNullOrWhiteSpace(saved) ? [] : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)];
+        }
+
+        return [.. t_defaultCloakedPackages];
     }
 
     public void SaveBypassedPackages(List<string> packages) =>
         Preferences.Set(BypassedAppsKey, string.Join(",", packages));
 }
+

@@ -272,6 +272,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     for (var i = 0; i < count; i++)
                     {
                         var (buf, len) = batch[i];
+                        var sinkholeResp = DnsAdBlocker.ProcessPacket(buf, len, useAdblock: true);
+                        if (sinkholeResp is not null)
+                        {
+                            adapter.SendPacket(sinkholeResp);
+                            ArrayPool<byte>.Shared.Return(buf);
+                            continue;
+                        }
+
                         _ = OctopusEngine.Current.SendPacketFromPoolAsync(buf, len);
                     }
                 }

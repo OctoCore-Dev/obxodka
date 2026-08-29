@@ -264,11 +264,12 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 .SetSession("Obxodka")
                 .AddAddress(ip, 10)
                 .AddAddress("fd00::2", 128)
-                .SetMtu(1350)
+                .SetMtu(1420)
+                .SetBlocking(true)
                 .AddRoute("0.0.0.0", 0)
                 .AddRoute("::", 0);
 
-            var useAdBlock = Preferences.Default.Get("use_adblock_dns", false);
+            var useAdBlock = Preferences.Default.Get("use_adblock_dns", true);
             if (useAdBlock)
             {
                 _ = builder.AddDnsServer("94.140.14.14");
@@ -278,6 +279,8 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             }
             else
             {
+                _ = builder.AddDnsServer("1.1.1.1");
+                _ = builder.AddDnsServer("1.0.0.1");
                 _ = builder.AddDnsServer("8.8.8.8");
                 _ = builder.AddDnsServer("8.8.4.4");
                 _ = builder.AddDnsServer("2001:4860:4860::8888");
@@ -350,6 +353,19 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (length > 0)
                 {
+                    // L3 Zero-Latency DNS Sinkhole for telemetry, spyware & trackers
+                    var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length, useAdblock: true);
+                    if (sinkholeResp is not null)
+                    {
+                        try
+                        {
+                            _tunOutputStream?.Write(sinkholeResp, 0, sinkholeResp.Length);
+                        }
+                        catch { }
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        continue;
+                    }
+
                     _ = OctopusEngine.Current.SendPacketFromPoolAsync(buffer, length);
                 }
                 else
