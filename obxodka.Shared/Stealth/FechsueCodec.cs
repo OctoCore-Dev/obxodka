@@ -5,25 +5,18 @@ public static class FechsueCodec
     public const int HeaderSize = 16;
     public const int TagSize = 16;
     public const int Overhead = HeaderSize + TagSize;
-    public static readonly byte[] AuthMagic = [(byte)'F', (byte)'E', (byte)'C', (byte)'H'];
-    public static readonly byte[] DiscMagic = [(byte)'D', (byte)'I', (byte)'S', (byte)'C'];
+    public const uint StealthAuthMask = 0xA55A3C7E;
+    public const uint StealthDiscMask = 0x5AA5C381;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] PackAuth(string thumbprint, byte streamIndex, out int totalLength, ReadOnlySpan<byte> magic = default)
+    public static byte[] PackAuth(string thumbprint, byte streamIndex, out int totalLength)
     {
         var tpBytes = Encoding.UTF8.GetBytes(thumbprint);
         totalLength = 17 + tpBytes.Length;
         var buf = ArrayPool<byte>.Shared.Rent(totalLength);
-        if (magic.IsEmpty)
-        {
-            AuthMagic.CopyTo(buf.AsSpan(0, 4));
-        }
-        else
-        {
-            magic[..4].CopyTo(buf.AsSpan(0, 4));
-        }
         var hash = SHA256.HashData(tpBytes);
         var sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(0, 4));
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(0, 4), sessionId ^ StealthAuthMask);
         BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(4, 4), sessionId);
         BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), DateTime.UtcNow.Ticks);
         buf[16] = streamIndex;
@@ -32,18 +25,23 @@ public static class FechsueCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryUnpackAuth(ReadOnlySpan<byte> buffer, out string thumbprint, out uint sessionId, out byte streamIndex, ReadOnlySpan<byte> expectedMagic = default)
+    public static bool TryUnpackAuth(ReadOnlySpan<byte> buffer, out string thumbprint, out uint sessionId, out byte streamIndex)
     {
         thumbprint = string.Empty;
         sessionId = 0;
         streamIndex = 0;
-        var magic = expectedMagic.IsEmpty ? (ReadOnlySpan<byte>)AuthMagic : expectedMagic;
-        if (buffer.Length < 17 + 8 || !buffer[..4].SequenceEqual(magic))
+        if (buffer.Length < 17 + 8)
         {
             return false;
         }
 
+        var token = BinaryPrimitives.ReadUInt32LittleEndian(buffer[..4]);
         sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(4, 4));
+        if ((token ^ sessionId) != StealthAuthMask)
+        {
+            return false;
+        }
+
         var ticks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(8, 8));
         var diff = Math.Abs(DateTime.UtcNow.Ticks - ticks);
         if (diff > TimeSpan.TicksPerDay)
@@ -52,6 +50,50 @@ public static class FechsueCodec
         }
 
         streamIndex = buffer[16];
+        thumbprint = Encoding.UTF8.GetString(buffer[17..]);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackDisc(string thumbprint, out int totalLength)
+    {
+        var tpBytes = Encoding.UTF8.GetBytes(thumbprint);
+        totalLength = 17 + tpBytes.Length;
+        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
+        var hash = SHA256.HashData(tpBytes);
+        var sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(0, 4));
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(0, 4), sessionId ^ StealthDiscMask);
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(4, 4), sessionId);
+        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), DateTime.UtcNow.Ticks);
+        buf[16] = 0xFF;
+        tpBytes.CopyTo(buf.AsSpan(17, tpBytes.Length));
+        return buf;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryUnpackDisc(ReadOnlySpan<byte> buffer, out string thumbprint, out uint sessionId)
+    {
+        thumbprint = string.Empty;
+        sessionId = 0;
+        if (buffer.Length < 17 + 8)
+        {
+            return false;
+        }
+
+        var token = BinaryPrimitives.ReadUInt32LittleEndian(buffer[..4]);
+        sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(4, 4));
+        if ((token ^ sessionId) != StealthDiscMask)
+        {
+            return false;
+        }
+
+        var ticks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(8, 8));
+        var diff = Math.Abs(DateTime.UtcNow.Ticks - ticks);
+        if (diff > TimeSpan.TicksPerDay)
+        {
+            return false;
+        }
+
         thumbprint = Encoding.UTF8.GetString(buffer[17..]);
         return true;
     }

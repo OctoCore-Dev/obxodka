@@ -363,7 +363,7 @@ public sealed partial class MeshRelayServer(int speedMbps = 10) : IAsyncDisposab
                 var outbound = _udpSessions.GetOrCreate(clientEp, () =>
                 {
                     var sock = new UdpClient(new IPEndPoint(physicalIp, 0));
-                    sock.Connect(apiHost, 51820);
+                    sock.Connect(apiHost, 443);
                     _ = ForwardUdpServerToClientAsync(sock, clientEp, ct);
                     return sock;
                 });

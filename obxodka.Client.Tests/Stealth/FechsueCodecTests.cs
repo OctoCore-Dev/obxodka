@@ -24,12 +24,26 @@ public class FechsueCodecTests
     }
 
     [Fact]
-    public void UnpackAuthInvalidMagicFails()
+    public void UnpackAuthInvalidTokenFails()
     {
         var buffer = new byte[64];
-        buffer[0] = (byte)'X';
+        buffer[0] = 0xAA;
         var success = FechsueCodec.TryUnpackAuth(buffer, out _, out _, out _);
         Assert.False(success);
+    }
+
+    [Fact]
+    public void PackAndUnpackDiscSucceeds()
+    {
+        var thumbprint = "A1B2C3D4E5F678901234567890ABCDEF12345678";
+        var packed = FechsueCodec.PackDisc(thumbprint, out var totalLen);
+        Assert.NotNull(packed);
+        Assert.True(totalLen > 0);
+
+        var success = FechsueCodec.TryUnpackDisc(packed.AsSpan(0, totalLen), out var unpackedThumbprint, out var sessionId);
+        Assert.True(success);
+        Assert.Equal(thumbprint, unpackedThumbprint);
+        Assert.NotEqual(0u, sessionId);
     }
 
     [Fact]
