@@ -2,6 +2,10 @@
   <img src=".github/assets/banner.png" alt="Obxodka VPN Banner" width="100%" style="border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
 </p>
 
+<p align="center">
+  <img src=".github/assets/animated_header.svg" alt="Obxodka Live Engine Status" width="100%" />
+</p>
+
 <div align="center">
 
 # 🐙 Obxodka VPN Client
@@ -28,6 +32,12 @@
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
+
+<br/>
+
+<p align="center">
+  <img src=".github/assets/live_metrics.svg" alt="Live Telemetry Metrics" width="100%" />
+</p>
 
 ---
 
