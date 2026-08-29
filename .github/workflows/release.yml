@@ -223,9 +223,18 @@ jobs:
           path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
           retention-days: 14
 
-      - name: 🏬 Configure Microsoft Store CLI
+      - name: 🏬 Setup Microsoft Store CLI
         if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        shell: pwsh
+        run: |
+          $url = "https://github.com/microsoft/msstore-cli/releases/download/v0.4.1/MSStoreCLI-win-x64.zip"
+          $zip = "$env:TEMP\msstore.zip"
+          $dest = "$env:RUNNER_TOOL_CACHE\msstore-cli"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          echo "$dest" >> $env:GITHUB_PATH
+          Write-Host "✅ Installed Microsoft Store CLI v0.4.1 to $dest"
 
       - name: 🚀 Publish to Microsoft Store
         if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
