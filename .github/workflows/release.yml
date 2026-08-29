@@ -148,10 +148,8 @@ jobs:
           retention-days: 14
 
       - name: 📲 Auto-Deploy to Google Play Store
-        if: ${{ env.PLAY_CONFIG_JSON != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
+        if: ${{ secrets.PLAY_CONFIG_JSON != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         uses: r0adkll/upload-google-play@v1
-        env:
-          PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
           packageName: com.octocore.obxodka
@@ -222,12 +220,7 @@ jobs:
           retention-days: 14
 
       - name: 🏬 Auto-Deploy to Microsoft Store
-        if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
-        env:
-          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
-          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
-          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
-          STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+        if: ${{ secrets.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         uses: microsoft/store-submission@v1
         with:
           tenant-id: ${{ secrets.STORE_TENANT_ID }}
