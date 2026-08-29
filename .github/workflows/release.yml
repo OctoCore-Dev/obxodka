@@ -223,16 +223,21 @@ jobs:
           path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
           retention-days: 14
 
-      - name: 🏬 Auto-Deploy to Microsoft Store
+      - name: 🏬 Configure Microsoft Store CLI
         if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
-        uses: microsoft/store-submission@v1
-        with:
-          tenant-id: ${{ secrets.STORE_TENANT_ID }}
-          client-id: ${{ secrets.STORE_CLIENT_ID }}
-          client-secret: ${{ secrets.STORE_CLIENT_SECRET }}
-          app-id: ${{ secrets.STORE_APP_ID }}
-          package-path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
-          delete-pending-submission: true
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: 🚀 Publish to Microsoft Store
+        if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId "${{ secrets.STORE_TENANT_ID }}" `
+            --sellerId "${{ secrets.SELLER_ID || '94042650' }}" `
+            --clientId "${{ secrets.STORE_CLIENT_ID }}" `
+            --clientSecret "${{ secrets.STORE_CLIENT_SECRET }}"
+          
+          msstore publish "${{ steps.find-windows-pkg.outputs.pkg_path }}" -id "${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}"
 
   # ==========================================
   # 🏷️ ЭТАП 4: АВТОМАТИЧЕСКИЙ РЕЛИЗ НА GITHUB
