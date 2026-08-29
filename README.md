@@ -193,11 +193,13 @@ dotnet test tests/obxodka.Tests/obxodka.Tests.csproj
 ## 🤝 Сообщество и контакты
 
 * 🌐 **Официальный сайт:** [obxodka.one](https://obxodka.one)
+* 📐 **Архитектура и протоколы:** [ARCHITECTURE.md](ARCHITECTURE.md)
+* 🔒 **Политика безопасности и криптография:** [SECURITY.md](SECURITY.md)
 * 💬 **Форум и обсуждения:** [GitHub Discussions](https://github.com/OctoCore-Dev/obxodka/discussions)
 * 🐛 **Сообщить об ошибке:** [GitHub Issues](https://github.com/OctoCore-Dev/obxodka/issues)
 * 📧 **Контакты и поддержка:** [contact@octocore.dev](mailto:contact@octocore.dev)
 * 📜 **Кодекс поведения:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-* 🔒 **Политика безопасности:** [SECURITY.md](SECURITY.md)
+
 
 ---
 
