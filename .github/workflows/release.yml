@@ -227,6 +227,8 @@ jobs:
         if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         shell: pwsh
         env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
           STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
           STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
@@ -235,6 +237,7 @@ jobs:
         run: |
           pip install requests
           python scripts/publish_msstore.py "${{ steps.find-windows-pkg.outputs.pkg_path }}"
+
 
 
   # ==========================================
