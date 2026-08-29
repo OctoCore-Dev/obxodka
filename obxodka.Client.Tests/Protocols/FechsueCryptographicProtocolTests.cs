@@ -7,13 +7,18 @@ public class FechsueCryptographicProtocolTests
     private readonly byte[] _key = SHA256.HashData("FechsueProtocolContractSecretKey2026"u8.ToArray());
 
     [Fact]
-    public void FechsueAuthMagicHeaderProtocolContract()
+    public void FechsueStealthAuthHeaderProtocolContract()
     {
-        Assert.Equal(4, FechsueCodec.AuthMagic.Length);
-        Assert.Equal((byte)'F', FechsueCodec.AuthMagic[0]);
-        Assert.Equal((byte)'E', FechsueCodec.AuthMagic[1]);
-        Assert.Equal((byte)'C', FechsueCodec.AuthMagic[2]);
-        Assert.Equal((byte)'H', FechsueCodec.AuthMagic[3]);
+        var thumbprint = "TEST-THUMBPRINT-STEALTH-AUTH";
+        var packet = FechsueCodec.PackAuth(thumbprint, 0, out var len);
+        Assert.True(len >= 25);
+
+        var unpacked = FechsueCodec.TryUnpackAuth(packet.AsSpan(0, len), out var unpackedThumb, out _, out var streamIndex);
+        Assert.True(unpacked);
+        Assert.Equal(thumbprint, unpackedThumb);
+        Assert.Equal((byte)0, streamIndex);
+
+        ArrayPool<byte>.Shared.Return(packet);
     }
 
     [Fact]

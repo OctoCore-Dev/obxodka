@@ -8,15 +8,11 @@ public class DisconnectProtocolTests
     public void PackAuthWithDiscMagicCreatesValidDisconnectPacket()
     {
         var thumbprint = "TEST-THUMBPRINT-DISCONNECT-123456";
-        var packet = FechsueCodec.PackAuth(thumbprint, 0, out var len, FechsueCodec.DiscMagic);
+        var packet = FechsueCodec.PackDisc(thumbprint, out var len);
 
         Assert.True(len >= 25);
-        Assert.Equal((byte)'D', packet[0]);
-        Assert.Equal((byte)'I', packet[1]);
-        Assert.Equal((byte)'S', packet[2]);
-        Assert.Equal((byte)'C', packet[3]);
 
-        var unpacked = FechsueCodec.TryUnpackAuth(packet.AsSpan(0, len), out var unpackedThumb, out _, out _, FechsueCodec.DiscMagic);
+        var unpacked = FechsueCodec.TryUnpackDisc(packet.AsSpan(0, len), out var unpackedThumb, out _);
         Assert.True(unpacked);
         Assert.Equal(thumbprint, unpackedThumb);
 

@@ -31,17 +31,37 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
     {
     }
 
-    [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "RemoteCertificateValidationCallback signature")]
     public static bool ValidateServerCertificate(
         X509Certificate2? certificate,
         X509Chain? chain = null,
         SslPolicyErrors errors = SslPolicyErrors.None,
         string? dynamicPinningHash = null)
     {
-        _ = chain;
+        if (certificate is null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dynamicPinningHash))
+        {
+            var pubKey = certificate.GetPublicKey();
+            var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
+            return string.Equals(hash, dynamicPinningHash, StringComparison.Ordinal);
+        }
+
+        if (DateTime.UtcNow < certificate.NotBefore || DateTime.UtcNow > certificate.NotAfter)
+        {
+            return false;
+        }
+
+        if (chain is not null && chain.ChainStatus.Any(s =>
+            s.Status is X509ChainStatusFlags.Revoked or X509ChainStatusFlags.NotTimeValid or X509ChainStatusFlags.NotSignatureValid))
+        {
+            return false;
+        }
+
         _ = errors;
-        _ = dynamicPinningHash;
-        return certificate is not null;
+        return true;
     }
 
     public async Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct)
