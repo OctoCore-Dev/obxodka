@@ -51,7 +51,7 @@ def publish(pkg_path, tenant_id, client_id, client_secret, app_id, seller_id=Non
     }
     log("[SUCCESS] Authenticated successfully!")
 
-    # 2. Get Application Info & check for pending submissions
+    # 2. Get Application Info
     app_url = f"https://manage.devcenter.microsoft.com/v1.0/my/applications/{app_id}"
     r_app = requests.get(app_url, headers=headers, timeout=30)
     if r_app.status_code != 200:
@@ -62,23 +62,46 @@ def publish(pkg_path, tenant_id, client_id, client_secret, app_id, seller_id=Non
     log(f"[INFO] App Name: {app_data.get('primaryName')}")
 
     pending = app_data.get("pendingApplicationSubmission")
+    sub_data = None
+    sub_id = None
+
     if pending:
         sub_id = pending.get("id")
-        log(f"[WARN] Found existing pending submission {sub_id}. Reusing/Checking it...")
+        log(f"[INFO] Found existing pending submission {sub_id}. Fetching details...")
         sub_url = f"https://manage.devcenter.microsoft.com/v1.0/my/applications/{app_id}/submissions/{sub_id}"
         r_sub = requests.get(sub_url, headers=headers, timeout=30)
-        sub_data = r_sub.json() if r_sub.status_code == 200 else None
-    else:
-        log("[INFO] Creating new submission in Partner Center...")
+        if r_sub.status_code == 200:
+            sub_data = r_sub.json()
+            log(f"[INFO] Existing submission status: {sub_data.get('status')}")
+
+    if not sub_data or not sub_data.get("fileUploadUrl"):
+        log("[INFO] Preparing fresh submission from last published base...")
+        last_pub = app_data.get("lastPublishedApplicationSubmission")
+        payload = {}
+        if last_pub and "id" in last_pub:
+            last_id = last_pub["id"]
+            r_last = requests.get(f"https://manage.devcenter.microsoft.com/v1.0/my/applications/{app_id}/submissions/{last_id}", headers=headers, timeout=30)
+            if r_last.status_code == 200:
+                last_data = r_last.json()
+                cat = last_data.get("applicationCategory")
+                if not cat or cat == "NotSet":
+                    cat = "UtilitiesAndTools"
+                payload = {
+                    "applicationCategory": cat,
+                    "pricing": last_data.get("pricing", {"trialPeriod": "NoTrial", "marketPricing": {}, "isFree": True}),
+                    "visibility": last_data.get("visibility", "Public"),
+                    "listings": last_data.get("listings", {})
+                }
+
         create_url = f"https://manage.devcenter.microsoft.com/v1.0/my/applications/{app_id}/submissions"
-        r_create = requests.post(create_url, headers=headers, json={}, timeout=60)
+        r_create = requests.post(create_url, headers=headers, json=payload, timeout=60)
         if r_create.status_code not in (200, 201):
             log(f"[ERROR] Failed to create submission: {r_create.status_code} - {r_create.text}")
             sys.exit(1)
         sub_data = r_create.json()
         sub_id = sub_data["id"]
 
-    log(f"[INFO] Submission ID: {sub_id}")
+    log(f"[INFO] Active Submission ID: {sub_id}")
     file_upload_url = sub_data.get("fileUploadUrl")
     if not file_upload_url:
         log(f"[ERROR] Submission returned no fileUploadUrl: {sub_data}")
@@ -96,8 +119,7 @@ def publish(pkg_path, tenant_id, client_id, client_secret, app_id, seller_id=Non
         log(f"[INFO] ZIP bundle ready: {zip_size / (1024*1024):.2f} MB")
 
         # 4. Upload to Azure Blob Storage using BlockBlob REST API
-        # file_upload_url contains SAS token e.g. https://...?sv=...
-        log(f"[UPLOAD] Uploading bundle to Azure Blob Storage...")
+        log("[UPLOAD] Uploading bundle to Azure Blob Storage...")
         clean_url = file_upload_url.replace("+", "%2B")
         
         upload_headers = {
@@ -105,7 +127,6 @@ def publish(pkg_path, tenant_id, client_id, client_secret, app_id, seller_id=Non
             "Content-Type": "application/octet-stream"
         }
         
-        # Stream upload with retries
         success = False
         for attempt in range(1, 4):
             try:
