@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Поддержка и обратная связь
+    url: mailto:contact@octocore.dev
+    about: Связаться с разработчиками по почте contact@octocore.dev
+  - name: 🌐 Официальный сайт
+    url: https://obxodka.one
+    about: Личный кабинет и новости сервиса Obxodka
