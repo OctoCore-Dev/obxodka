@@ -41,7 +41,7 @@
         <ApplicationId>com.octocore.obxodka</ApplicationId>
         <Version>4.8.1</Version>
         <ApplicationDisplayVersion>4.8.1</ApplicationDisplayVersion>
-        <ApplicationVersion>4810</ApplicationVersion>
+        <ApplicationVersion>4811</ApplicationVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>

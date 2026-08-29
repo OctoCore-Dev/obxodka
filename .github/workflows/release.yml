@@ -66,6 +66,8 @@ jobs:
     name: 🤖 Android AAB (Google Play)
     needs: [run-tests]
     runs-on: ubuntu-latest
+    env:
+      PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
 
     steps:
       - name: 📥 Checkout Code
@@ -148,7 +150,7 @@ jobs:
           retention-days: 14
 
       - name: 📲 Auto-Deploy to Google Play Store
-        if: ${{ secrets.PLAY_CONFIG_JSON != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
+        if: ${{ env.PLAY_CONFIG_JSON != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
@@ -165,6 +167,8 @@ jobs:
     name: 🪟 Windows MSIX (Microsoft Store)
     needs: [run-tests]
     runs-on: windows-latest
+    env:
+      STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
 
     steps:
       - name: 📥 Checkout Code
@@ -220,7 +224,7 @@ jobs:
           retention-days: 14
 
       - name: 🏬 Auto-Deploy to Microsoft Store
-        if: ${{ secrets.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
+        if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         uses: microsoft/store-submission@v1
         with:
           tenant-id: ${{ secrets.STORE_TENANT_ID }}
