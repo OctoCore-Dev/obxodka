@@ -223,30 +223,19 @@ jobs:
           path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
           retention-days: 14
 
-      - name: 🏬 Setup Microsoft Store CLI
-        if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
-        shell: pwsh
-        run: |
-          $url = "https://github.com/microsoft/msstore-cli/releases/download/v0.4.1/MSStoreCLI-win-x64.zip"
-          $zip = "$env:TEMP\msstore.zip"
-          $dest = "$env:RUNNER_TOOL_CACHE\msstore-cli"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          Invoke-WebRequest -Uri $url -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $dest -Force
-          echo "$dest" >> $env:GITHUB_PATH
-          Write-Host "✅ Installed Microsoft Store CLI v0.4.1 to $dest"
-
       - name: 🚀 Publish to Microsoft Store
         if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         shell: pwsh
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+          STORE_APP_ID: ${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}
+          SELLER_ID: ${{ secrets.SELLER_ID || '94042650' }}
         run: |
-          msstore reconfigure `
-            --tenantId "${{ secrets.STORE_TENANT_ID }}" `
-            --sellerId "${{ secrets.SELLER_ID || '94042650' }}" `
-            --clientId "${{ secrets.STORE_CLIENT_ID }}" `
-            --clientSecret "${{ secrets.STORE_CLIENT_SECRET }}"
-          
-          msstore publish "${{ steps.find-windows-pkg.outputs.pkg_path }}" -id "${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}"
+          pip install requests
+          python scripts/publish_msstore.py "${{ steps.find-windows-pkg.outputs.pkg_path }}"
+
 
   # ==========================================
   # 🏷️ ЭТАП 4: АВТОМАТИЧЕСКИЙ РЕЛИЗ НА GITHUB
