@@ -1,0 +1,10 @@
+global using System;
+global using System.Buffers;
+global using System.Collections.Frozen;
+global using System.Collections.Generic;
+global using System.ComponentModel.DataAnnotations;
+global using System.ComponentModel.DataAnnotations.Schema;
+global using System.IO;
+global using System.IO.Pipelines;
+global using System.Threading.Tasks;
+global using obxodka.Core.Models;
