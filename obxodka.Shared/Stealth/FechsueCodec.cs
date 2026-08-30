@@ -165,4 +165,306 @@ public static class FechsueCodec
             return false;
         }
     }
+
+    public const byte FrameTypeRaw = 0x00;
+    public const byte FrameTypeFecData = 0x01;
+    public const byte FrameTypeFecParity = 0x02;
+    public const byte DefaultFecGroupSize = 4;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackFecData(
+        byte[] payload,
+        int length,
+        ushort groupId,
+        byte indexInGroup,
+        byte groupSize,
+        uint sessionId,
+        AesGcm crypto,
+        out int totalLength)
+    {
+        var headerOffset = 5;
+        var rawLength = headerOffset + length;
+        var rawBuf = ArrayPool<byte>.Shared.Rent(rawLength);
+        rawBuf[0] = FrameTypeFecData;
+        BinaryPrimitives.WriteUInt16LittleEndian(rawBuf.AsSpan(1, 2), groupId);
+        rawBuf[3] = indexInGroup;
+        rawBuf[4] = groupSize;
+        Buffer.BlockCopy(payload, 0, rawBuf, headerOffset, length);
+
+        var packed = Pack(rawBuf, rawLength, sessionId, crypto, out totalLength);
+        ArrayPool<byte>.Shared.Return(rawBuf);
+        return packed;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackFecParity(
+        byte[] parityPayload,
+        int parityLength,
+        ushort groupId,
+        byte groupSize,
+        uint sessionId,
+        AesGcm crypto,
+        out int totalLength)
+    {
+        var headerOffset = 6;
+        var rawLength = headerOffset + parityLength;
+        var rawBuf = ArrayPool<byte>.Shared.Rent(rawLength);
+        rawBuf[0] = FrameTypeFecParity;
+        BinaryPrimitives.WriteUInt16LittleEndian(rawBuf.AsSpan(1, 2), groupId);
+        rawBuf[3] = groupSize;
+        BinaryPrimitives.WriteUInt16LittleEndian(rawBuf.AsSpan(4, 2), (ushort)parityLength);
+        Buffer.BlockCopy(parityPayload, 0, rawBuf, headerOffset, parityLength);
+
+        var packed = Pack(rawBuf, rawLength, sessionId, crypto, out totalLength);
+        ArrayPool<byte>.Shared.Return(rawBuf);
+        return packed;
+    }
+
+    public sealed class FecEncoder(byte groupSize = DefaultFecGroupSize)
+    {
+        private readonly byte _groupSize = groupSize > 0 ? groupSize : DefaultFecGroupSize;
+        private ushort _currentGroupId;
+        private byte _currentIndex;
+        private readonly byte[] _parityAccumulator = new byte[2048];
+        private int _maxPacketLengthInGroup;
+        private readonly Lock _lock = new();
+
+        public (byte[] packet, int length, byte[]? parityPacket, int parityLength) Encode(
+            byte[] rawPacket,
+            int rawLength,
+            uint sessionId,
+            AesGcm crypto)
+        {
+            lock (_lock)
+            {
+                var groupId = _currentGroupId;
+                var index = _currentIndex;
+                var gSize = _groupSize;
+
+                if (index == 0)
+                {
+                    Array.Clear(_parityAccumulator, 0, _maxPacketLengthInGroup);
+                    _maxPacketLengthInGroup = 0;
+                }
+
+                if (rawLength > _maxPacketLengthInGroup)
+                {
+                    _maxPacketLengthInGroup = rawLength;
+                }
+
+                for (var i = 0; i < rawLength; i++)
+                {
+                    _parityAccumulator[i] ^= rawPacket[i];
+                }
+
+                var dataPacked = PackFecData(rawPacket, rawLength, groupId, index, gSize, sessionId, crypto, out var dataLen);
+
+                byte[]? parityPacked = null;
+                var parityLen = 0;
+
+                _currentIndex++;
+                if (_currentIndex >= _groupSize)
+                {
+                    parityPacked = PackFecParity(_parityAccumulator, _maxPacketLengthInGroup, groupId, gSize, sessionId, crypto, out parityLen);
+                    _currentIndex = 0;
+                    _currentGroupId++;
+                }
+
+                return (dataPacked, dataLen, parityPacked, parityLen);
+            }
+        }
+    }
+
+    public sealed class FecDecoder
+    {
+        private readonly struct FecSlot(byte[]? packet, int length, bool received)
+        {
+            public readonly byte[]? Packet = packet;
+            public readonly int Length = length;
+            public readonly bool Received = received;
+        }
+
+        private sealed class FecGroup(byte groupSize)
+        {
+            public readonly byte GroupSize = groupSize;
+            public readonly FecSlot[] Slots = new FecSlot[groupSize];
+            public byte[]? Parity;
+            public int ParityLength;
+            public int ReceivedCount;
+            public bool ParityReceived;
+            public bool Recovered;
+        }
+
+        private readonly Dictionary<ushort, FecGroup> _groups = [];
+        private readonly Lock _lock = new();
+        private const int MaxTrackedGroups = 64;
+
+        public bool ProcessPayload(
+            byte[] decryptedPayload,
+            int decryptedLength,
+            out byte[]? directPacket,
+            out int directLength,
+            out byte[]? recoveredPacket,
+            out int recoveredLength)
+        {
+            directPacket = null;
+            directLength = 0;
+            recoveredPacket = null;
+            recoveredLength = 0;
+
+            if (decryptedLength < 5)
+            {
+                directPacket = ArrayPool<byte>.Shared.Rent(decryptedLength);
+                Buffer.BlockCopy(decryptedPayload, 0, directPacket, 0, decryptedLength);
+                directLength = decryptedLength;
+                return true;
+            }
+
+            var frameType = decryptedPayload[0];
+            if (frameType == FrameTypeFecData)
+            {
+                var groupId = BinaryPrimitives.ReadUInt16LittleEndian(decryptedPayload.AsSpan(1, 2));
+                var index = decryptedPayload[3];
+                var groupSize = decryptedPayload[4];
+                var dataLen = decryptedLength - 5;
+
+                directPacket = ArrayPool<byte>.Shared.Rent(dataLen);
+                Buffer.BlockCopy(decryptedPayload, 5, directPacket, 0, dataLen);
+                directLength = dataLen;
+
+                lock (_lock)
+                {
+                    CleanupOldGroups(groupId);
+
+                    if (!_groups.TryGetValue(groupId, out var group))
+                    {
+                        group = new FecGroup(groupSize);
+                        _groups[groupId] = group;
+                    }
+
+                    if (index < group.GroupSize && !group.Slots[index].Received)
+                    {
+                        var copy = new byte[dataLen];
+                        Buffer.BlockCopy(decryptedPayload, 5, copy, 0, dataLen);
+                        group.Slots[index] = new FecSlot(copy, dataLen, true);
+                        group.ReceivedCount++;
+
+                        TryRecoverMissing(group, out recoveredPacket, out recoveredLength);
+                    }
+                }
+                return true;
+            }
+            else if (frameType == FrameTypeFecParity)
+            {
+                if (decryptedLength < 6)
+                {
+                    return false;
+                }
+
+                var groupId = BinaryPrimitives.ReadUInt16LittleEndian(decryptedPayload.AsSpan(1, 2));
+                var groupSize = decryptedPayload[3];
+                var parityLen = (int)BinaryPrimitives.ReadUInt16LittleEndian(decryptedPayload.AsSpan(4, 2));
+                var actualParityLen = Math.Min(parityLen, decryptedLength - 6);
+
+                lock (_lock)
+                {
+                    CleanupOldGroups(groupId);
+
+                    if (!_groups.TryGetValue(groupId, out var group))
+                    {
+                        group = new FecGroup(groupSize);
+                        _groups[groupId] = group;
+                    }
+
+                    if (!group.ParityReceived)
+                    {
+                        group.Parity = new byte[actualParityLen];
+                        Buffer.BlockCopy(decryptedPayload, 6, group.Parity, 0, actualParityLen);
+                        group.ParityLength = actualParityLen;
+                        group.ParityReceived = true;
+
+                        TryRecoverMissing(group, out recoveredPacket, out recoveredLength);
+                    }
+                }
+                return true;
+            }
+            else
+            {
+                directPacket = ArrayPool<byte>.Shared.Rent(decryptedLength);
+                Buffer.BlockCopy(decryptedPayload, 0, directPacket, 0, decryptedLength);
+                directLength = decryptedLength;
+                return true;
+            }
+        }
+
+        private static void TryRecoverMissing(
+            FecGroup group,
+            out byte[]? recoveredPacket,
+            out int recoveredLength)
+        {
+            recoveredPacket = null;
+            recoveredLength = 0;
+
+            if (group.Recovered || !group.ParityReceived || group.Parity == null)
+            {
+                return;
+            }
+
+            if (group.ReceivedCount == group.GroupSize - 1)
+            {
+                var missingIndex = -1;
+                for (var i = 0; i < group.GroupSize; i++)
+                {
+                    if (!group.Slots[i].Received)
+                    {
+                        missingIndex = i;
+                        break;
+                    }
+                }
+
+                if (missingIndex >= 0)
+                {
+                    var rec = new byte[group.ParityLength];
+                    Buffer.BlockCopy(group.Parity, 0, rec, 0, group.ParityLength);
+
+                    for (var i = 0; i < group.GroupSize; i++)
+                    {
+                        if (i != missingIndex && group.Slots[i].Received && group.Slots[i].Packet != null)
+                        {
+                            var slotPkt = group.Slots[i].Packet!;
+                            for (var b = 0; b < slotPkt.Length; b++)
+                            {
+                                rec[b] ^= slotPkt[b];
+                            }
+                        }
+                    }
+
+                    group.Recovered = true;
+                    recoveredPacket = ArrayPool<byte>.Shared.Rent(group.ParityLength);
+                    Buffer.BlockCopy(rec, 0, recoveredPacket, 0, group.ParityLength);
+                    recoveredLength = group.ParityLength;
+                }
+            }
+        }
+
+        private void CleanupOldGroups(ushort currentGroupId)
+        {
+            if (_groups.Count > MaxTrackedGroups)
+            {
+                var keysToRemove = new List<ushort>();
+                foreach (var gId in _groups.Keys)
+                {
+                    var diff = (ushort)(currentGroupId - gId);
+                    if (diff > MaxTrackedGroups)
+                    {
+                        keysToRemove.Add(gId);
+                    }
+                }
+                foreach (var k in keysToRemove)
+                {
+                    _ = _groups.Remove(k);
+                }
+            }
+        }
+    }
 }

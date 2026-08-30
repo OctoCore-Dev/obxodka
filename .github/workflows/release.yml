@@ -200,15 +200,16 @@ jobs:
           dotnet publish obxodka.csproj -f net10.0-windows10.0.19041.0 -c Release `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
+            -p:UapAppxPackageBuildMode=StoreUpload `
             $extraArgs
 
       - name: 🔍 Locate Windows Package
         id: find-windows-pkg
         shell: pwsh
         run: |
-          $pkg = Get-ChildItem -Path "bin\Release" -Recurse -File -Include "*.msix", "*.msixupload", "*.appxupload", "*.msixbundle" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $pkg = Get-ChildItem -Path "AppPackages", "bin\Release" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
           if (-not $pkg) {
-              $pkg = Get-ChildItem -Recurse -File -Include "*.msix", "*.msixupload", "*.appxupload", "*.msixbundle" | Where-Object { $_.FullName -notmatch "\\obj\\" } | Select-Object -First 1
+              $pkg = Get-ChildItem -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Where-Object { $_.FullName -notmatch "\\obj\\" } | Select-Object -First 1
           }
           if ($pkg) {
               Write-Host "Found Windows Package: $($pkg.FullName)"
@@ -227,16 +228,13 @@ jobs:
         if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
         shell: pwsh
         env:
-          PYTHONUTF8: "1"
-          PYTHONIOENCODING: "utf-8"
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
           STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
           STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
           STORE_APP_ID: ${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}
           SELLER_ID: ${{ secrets.SELLER_ID || '94042650' }}
         run: |
-          pip install requests
-          python scripts/publish_msstore.py "${{ steps.find-windows-pkg.outputs.pkg_path }}"
+          pwsh scripts/publish_msstore.ps1 -PackagePath "${{ steps.find-windows-pkg.outputs.pkg_path }}"
 
 
 

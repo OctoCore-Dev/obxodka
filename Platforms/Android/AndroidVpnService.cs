@@ -3,7 +3,7 @@ using Uri = System.Uri;
 namespace obxodka.Platforms.Android;
 
 [SupportedOSPlatform("android29.0")]
-internal sealed class AndroidVpnService : IVpnService
+internal sealed class AndroidVpnService : IVpnService, IDisposable
 {
     public static AndroidVpnService Instance { get; } = new();
 
@@ -93,6 +93,10 @@ internal sealed class AndroidVpnService : IVpnService
         }
     }
 
+#pragma warning disable CA1001
+    private CancellationTokenSource? _roamingCts;
+#pragma warning restore CA1001
+
     public void TriggerImmediateReconnect()
     {
         if (_isExplicitlyStopped || string.IsNullOrEmpty(_currentServerIp))
@@ -100,19 +104,50 @@ internal sealed class AndroidVpnService : IVpnService
             return;
         }
 
+        _roamingCts?.Cancel();
+        _roamingCts?.Dispose();
+        _roamingCts = new CancellationTokenSource();
+        var ct = _roamingCts.Token;
+
         ChangeState(AppVpnState.Reconnecting);
         _ = Task.Run(async () =>
         {
             try
             {
-                await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
-                ChangeState(AppVpnState.Connected);
+                await Task.Delay(250, ct);
+                if (ct.IsCancellationRequested || _isExplicitlyStopped)
+                {
+                    return;
+                }
+
+                for (var attempt = 1; attempt <= 5; attempt++)
+                {
+                    if (ct.IsCancellationRequested || _isExplicitlyStopped)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        Debug.WriteLine($"[NETWORK ROAMING] Fast reconnect attempt #{attempt}...");
+                        await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                        ChangeState(AppVpnState.Connected);
+                        Debug.WriteLine("[NETWORK ROAMING] Connected to new network interface seamlessly!");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[NETWORK ROAMING ATTEMPT #{attempt} FAILED] {ex.Message}");
+                        await Task.Delay(500, ct);
+                    }
+                }
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[NETWORK ROAMING RECONNECT] {ex.Message}");
             }
-        });
+        }, ct);
     }
 
     public async Task StartVpnAsync(string serverIp, int serverPort)
@@ -224,5 +259,10 @@ internal sealed class AndroidVpnService : IVpnService
     {
         ChangeState(AppVpnState.Error);
         MainThread.BeginInvokeOnMainThread(() => OnErrorOccurred?.Invoke(message));
+    }
+
+    public void Dispose()
+    {
+        _roamingCts?.Dispose();
     }
 }

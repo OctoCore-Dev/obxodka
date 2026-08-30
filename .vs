@@ -1,1 +1,0 @@
-/mnt/c/BuildCache/.vs/obxodka

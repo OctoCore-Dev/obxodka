@@ -129,6 +129,9 @@ public sealed partial class FechsueTransport : IVpnTransport
         return await ipTcs.Task;
     }
 
+    private readonly FechsueCodec.FecEncoder _fecEncoder = new(FechsueCodec.DefaultFecGroupSize);
+    private readonly FechsueCodec.FecDecoder _fecDecoder = new();
+
     public void SendPacketFromPool(byte[] packet, int length)
     {
         if (_serverEp == null)
@@ -146,29 +149,44 @@ public sealed partial class FechsueTransport : IVpnTransport
             return;
         }
 
-        byte[] packed;
-        int totalLen;
+        byte[] dataPacked;
+        int dataLen;
+
+        byte[]? parityPacked;
+        int parityLen;
         lock (txLock)
         {
-            packed = FechsueCodec.Pack(packet, length, _sessionId, crypto, out totalLen);
+            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoder.Encode(packet, length, _sessionId, crypto);
         }
         ArrayPool<byte>.Shared.Return(packet);
 
         try
         {
-            _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
+            _ = sock.Send(dataPacked.AsSpan(0, dataLen), SocketFlags.None);
+            if (parityPacked != null && parityLen > 0)
+            {
+                _ = sock.Send(parityPacked.AsSpan(0, parityLen), SocketFlags.None);
+            }
         }
         catch
         {
             try
             {
-                _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
+                _ = sock.SendTo(dataPacked.AsSpan(0, dataLen), SocketFlags.None, _serverEp);
+                if (parityPacked != null && parityLen > 0)
+                {
+                    _ = sock.SendTo(parityPacked.AsSpan(0, parityLen), SocketFlags.None, _serverEp);
+                }
             }
             catch { }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(packed);
+            ArrayPool<byte>.Shared.Return(dataPacked);
+            if (parityPacked != null)
+            {
+                ArrayPool<byte>.Shared.Return(parityPacked);
+            }
         }
     }
 
@@ -178,6 +196,48 @@ public sealed partial class FechsueTransport : IVpnTransport
         Buffer.BlockCopy(packet, 0, copy, 0, length);
         SendPacketFromPool(copy, length);
         return Task.CompletedTask;
+    }
+
+    private void HandleDecryptedPacket(byte[] payload, int realLen, TaskCompletionSource<(string, string)> ipTcs)
+    {
+        try
+        {
+            if (realLen >= 3 && payload[0] == 'I' && payload[1] == 'P' && payload[2] == ':')
+            {
+                var msg = Encoding.UTF8.GetString(payload, 0, realLen);
+                string ip = "", ip6 = "";
+                foreach (var part in msg.Split('|'))
+                {
+                    if (part.StartsWith("IP:", StringComparison.Ordinal))
+                    {
+                        ip = part[3..].Trim();
+                    }
+                    else if (part.StartsWith("IP6:", StringComparison.Ordinal))
+                    {
+                        ip6 = part[4..].Trim();
+                    }
+                }
+                if (!string.IsNullOrEmpty(ip))
+                {
+                    _ = ipTcs.TrySetResult((ip, ip6));
+                }
+            }
+            else if (payload[0] == 0x99 && realLen == 9)
+            {
+                var sentTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(1, 8));
+                var rtt = (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond;
+                OnPingUpdated?.Invoke(rtt);
+            }
+            else
+            {
+                OnPacketReceived?.Invoke(payload, realLen);
+                return;
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(payload);
+        }
     }
 
     private void StartReceiveThread(Socket sock, AesGcm rxCrypto, TaskCompletionSource<(string, string)> ipTcs, byte streamId, CancellationToken ct)
@@ -207,37 +267,20 @@ public sealed partial class FechsueTransport : IVpnTransport
                         continue;
                     }
 
-                    if (realLen >= 3 && payload[0] == 'I' && payload[1] == 'P' && payload[2] == ':')
+                    if (!_fecDecoder.ProcessPayload(payload, realLen, out var directPkt, out var directLen, out var recPkt, out var recLen))
                     {
-                        var msg = Encoding.UTF8.GetString(payload, 0, realLen);
-                        string ip = "", ip6 = "";
-                        foreach (var part in msg.Split('|'))
-                        {
-                            if (part.StartsWith("IP:", StringComparison.Ordinal))
-                            {
-                                ip = part[3..].Trim();
-                            }
-                            else if (part.StartsWith("IP6:", StringComparison.Ordinal))
-                            {
-                                ip6 = part[4..].Trim();
-                            }
-                        }
-                        if (!string.IsNullOrEmpty(ip))
-                        {
-                            _ = ipTcs.TrySetResult((ip, ip6));
-                        }
                         ArrayPool<byte>.Shared.Return(payload);
+                        continue;
                     }
-                    else if (payload[0] == 0x99 && realLen == 9)
+                    ArrayPool<byte>.Shared.Return(payload);
+
+                    if (directPkt != null && directLen > 0)
                     {
-                        var sentTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(1, 8));
-                        var rtt = (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond;
-                        OnPingUpdated?.Invoke(rtt);
-                        ArrayPool<byte>.Shared.Return(payload);
+                        HandleDecryptedPacket(directPkt, directLen, ipTcs);
                     }
-                    else
+                    if (recPkt != null && recLen > 0)
                     {
-                        OnPacketReceived?.Invoke(payload, realLen);
+                        HandleDecryptedPacket(recPkt, recLen, ipTcs);
                     }
                 }
                 catch (SocketException)

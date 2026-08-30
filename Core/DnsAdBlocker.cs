@@ -4,7 +4,6 @@ public static class DnsAdBlocker
 {
     private static readonly FrozenSet<string> t_blockedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        // --- 🇷🇺 Russian Telemetry & VPN Detection Trackers ---
         "appmetrica.yandex.net",
         "appmetrica.yandex.ru",
         "metrika.yandex.ru",
@@ -52,8 +51,6 @@ public static class DnsAdBlocker
         "stats.tinkoff.ru",
         "telemetry.tbank.ru",
         "stat.vtb.ru",
-
-        // --- 📱 Mobile Analytics & Device Profiling SDKs ---
         "appsflyer.com",
         "app.appsflyer.com",
         "events.appsflyer.com",
@@ -75,8 +72,6 @@ public static class DnsAdBlocker
         "firebase-settings.crashlytics.com",
         "firebaselogging.googleapis.com",
         "app-measurement.com",
-
-        // --- 🌐 Global Ad & Profiling Networks ---
         "doubleclick.net",
         "ad.doubleclick.net",
         "googleadservices.com",

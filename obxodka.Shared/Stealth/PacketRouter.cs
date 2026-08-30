@@ -84,20 +84,26 @@ public static class PacketRouter
         if (isRealtimeGaming)
         {
             primaryRay = 0;
-            secondaryRay = activeRays >= 2 ? 1 : -1;
+            secondaryRay = activeRays == 8 ? 7 : (activeRays >= 2 ? 1 : -1);
         }
         else
         {
-            if (activeRays >= 3)
+            if (activeRays == 8)
+            {
+                primaryRay = 1 + (Math.Abs(hash) % 6);
+                secondaryRay = -1;
+            }
+            else if (activeRays >= 3)
             {
                 var bulkPool = activeRays - 2;
                 primaryRay = 2 + (Math.Abs(hash) % bulkPool);
+                secondaryRay = -1;
             }
             else
             {
                 primaryRay = Math.Abs(hash) % activeRays;
+                secondaryRay = -1;
             }
-            secondaryRay = -1;
         }
     }
 

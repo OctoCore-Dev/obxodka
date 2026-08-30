@@ -26,6 +26,9 @@
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>true</SelfContained>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+		<AppxPackageSigningNoWarn>true</AppxPackageSigningNoWarn>
+		<NoWarn>$(NoWarn);SigningCertificateNoCertSpecified</NoWarn>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="$(TargetFramework.Contains('-android'))">
@@ -39,9 +42,9 @@
     <PropertyGroup>
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
-        <Version>4.8.1</Version>
-        <ApplicationDisplayVersion>4.8.1</ApplicationDisplayVersion>
-        <ApplicationVersion>4811</ApplicationVersion>
+        <Version>4.8.4</Version>
+        <ApplicationDisplayVersion>4.8.4</ApplicationDisplayVersion>
+        <ApplicationVersion>4814</ApplicationVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -120,7 +123,11 @@
 	  <ProjectReference Include="obxodka.Core\obxodka.Core.csproj" />
 	</ItemGroup>
 
+	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />
+
 </Project>
+
+
 
 
 
