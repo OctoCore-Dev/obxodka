@@ -6,6 +6,8 @@
 		android:icon="@mipmap/appicon"
 		android:supportsRtl="true"
 		android:usesCleartextTraffic="false"
+		android:largeHeap="true"
+		android:hardwareAccelerated="true"
 		android:label="obxodka">
 
 		<service

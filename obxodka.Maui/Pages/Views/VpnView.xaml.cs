@@ -466,6 +466,7 @@ public sealed partial class VpnView : ContentView
                     _isErrorState = false;
                     StartGraphAnimation();
                     OuterAura.IsVisible = true;
+                    IpAddressLabel.Text = OctopusEngine.Current.AssignedIp ?? "Подключен";
                     ConnectButtonCore.IsEnabled = true;
                     UpdateRayIndicator();
                     await SetNeonStateAsync("Защищено", "СТОП", true);
@@ -597,7 +598,6 @@ public sealed partial class VpnView : ContentView
                 return;
             }
 
-            // 🛡️ Проверка на наличие сертификатов перехвата трафика (Russian Root CA / MITM)
             var auditResult = await PlatformServices.CertificateAudit.CheckCertificatesAsync();
             if (auditResult.HasUntrustedRoot)
             {

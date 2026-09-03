@@ -26,17 +26,14 @@ public sealed class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
 
-        try
+        _ = (Window?.DecorView?.Post(() =>
         {
-            RequestNotificationPermission();
-        }
-        catch { }
-
-        try
-        {
-            RequestIgnoreBatteryOptimizations();
-        }
-        catch { }
+            try
+            {
+                RequestNotificationPermission();
+            }
+            catch { }
+        }));
 
         try
         {

@@ -1,12 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('linux'))">
-    <TargetFramework>net10.0</TargetFramework>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux'))">
+  <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework Condition="$([MSBuild]::IsOSPlatform('linux'))">net10.0</TargetFramework>
+    <WindowsPackageType>None</WindowsPackageType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -15,26 +12,26 @@
     <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
   </PropertyGroup>
 
-  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux'))">
+  <ItemGroup>
     <PackageReference Include="Appium.WebDriver" Version="8.3.2" />
-    <PackageReference Include="coverlet.collector" Version="6.0.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-
-    <ProjectReference Include="..\obxodka.Maui\obxodka.Maui.csproj" />
-    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 
-  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux'))">
+  <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="net10.0-windows10.0.19041.0\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\obxodka.Maui\obxodka.Maui.csproj" />
+    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
   </ItemGroup>
 
   <Target Name="Build" Condition="$([MSBuild]::IsOSPlatform('linux'))">

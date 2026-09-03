@@ -1,6 +1,15 @@
+using System.Security.Authentication;
+
 namespace obxodka.Core.Transports;
 
-public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Certificate2? clientCert, string? jwtToken = null, int serverPort = 443, MeshRelayInfo? meshRelay = null) : IVpnTransport
+public sealed partial class GrpcTransport(
+    bool useHttp3,
+    int activeRays,
+    X509Certificate2? clientCert,
+    string? jwtToken = null,
+    int serverPort = 443,
+    MeshRelayInfo? meshRelay = null,
+    string? targetSni = null) : IVpnTransport
 {
     private readonly bool _useHttp3 = useHttp3;
     private readonly int _activeRays = Math.Clamp(activeRays, 1, PacketRouter.MaxRays);
@@ -8,6 +17,7 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
     private readonly string? _jwtToken = jwtToken;
     private readonly int _serverPort = serverPort > 0 ? serverPort : 443;
     private readonly MeshRelayInfo? _meshRelay = meshRelay;
+    private readonly string? _configuredSni = targetSni;
     private string _thumbprint = string.Empty;
 
     private readonly GrpcChannel?[] _grpcChannels = new GrpcChannel?[PacketRouter.MaxRays];
@@ -16,7 +26,6 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
     private readonly PacketDeduplicator _deduplicator = new();
     private CancellationTokenSource? _cts;
     private TaskCompletionSource<(string, string)>? _ipTcs;
-    private readonly string _currentSni = "google.com";
 
     public string ProtocolName => _useHttp3 ? "HTTP3" : "HTTP2";
     public bool IsConnected => Array.Exists(_grpcChannels, c => c is not null);
@@ -58,7 +67,6 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
                     return true;
                 }
 
-                // Also check SPKI from asymmetric key if available
                 var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey();
                 if (key is not null)
                 {
@@ -82,13 +90,25 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
                 return false;
             }
 
-            _ = chain;
-            _ = errors;
+            if (errors != SslPolicyErrors.None)
+            {
+                return false;
+            }
+
+            if (chain is not null)
+            {
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                if (!chain.Build(cert2))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
         catch
         {
-            return true;
+            return false;
         }
     }
 
@@ -98,6 +118,9 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _thumbprint = thumbprint;
         var serverPort = _serverPort;
+        var targetHost = !string.IsNullOrWhiteSpace(_configuredSni)
+            ? _configuredSni
+            : serverIp;
 
         try
         {
@@ -112,7 +135,8 @@ public sealed partial class GrpcTransport(bool useHttp3, int activeRays, X509Cer
                     KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
                     SslOptions = new SslClientAuthenticationOptions
                     {
-                        TargetHost = _currentSni,
+                        TargetHost = targetHost,
+                        EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
                         ClientCertificates = _clientCert != null ? [_clientCert] : null,
                         RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
                             ValidateServerCertificate(certificate, chain, errors)

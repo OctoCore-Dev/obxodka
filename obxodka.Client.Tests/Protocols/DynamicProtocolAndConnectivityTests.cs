@@ -113,7 +113,6 @@ public sealed class DynamicProtocolAndConnectivityTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         var ex = await Record.ExceptionAsync(() => transport.ConnectAsync("45.63.117.29", "TEST_THUMBPRINT", cts.Token));
 
-        // When TLS handshake succeeds with valid cert pinning, it will only time out waiting for auth response for dummy thumbprint
         Assert.True(ex is null or OperationCanceledException or TaskCanceledException, $"Expected cancellation, got: {ex}");
     }
 

@@ -226,6 +226,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         }
         catch (Exception ex)
         {
+            try
+            {
+                OctopusVpnService.Instance?.StopNativeVpn();
+            }
+            catch { }
+
             if (ex is OperationCanceledException ||
                 ex.InnerException is OperationCanceledException ||
                 ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase) ||
@@ -273,6 +279,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
     public void SetError(string message)
     {
+        try
+        {
+            OctopusVpnService.Instance?.StopNativeVpn();
+        }
+        catch { }
+
         ChangeState(AppVpnState.Error);
         MainThread.BeginInvokeOnMainThread(() => OnErrorOccurred?.Invoke(message));
     }

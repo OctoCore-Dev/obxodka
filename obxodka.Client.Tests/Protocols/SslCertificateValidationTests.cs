@@ -49,4 +49,26 @@ public class SslCertificateValidationTests
         var result = GrpcTransport.ValidateServerCertificate(expiredCert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: "");
         Assert.False(result);
     }
+
+    [Fact]
+    public void ValidateServerCertificateReturnsFalseWhenSslPolicyErrorsPresentAndNoPinEnforced()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var validDateCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        var result = GrpcTransport.ValidateServerCertificate(validDateCert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: "");
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ValidateServerCertificateReturnsFalseWhenNameMismatchAndNoPinEnforced()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var validDateCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        var result = GrpcTransport.ValidateServerCertificate(validDateCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: null);
+        Assert.False(result);
+    }
 }

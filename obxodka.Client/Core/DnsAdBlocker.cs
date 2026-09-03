@@ -346,7 +346,6 @@ public static class DnsAdBlocker
     {
         var sb = new StringBuilder();
         var currentOffset = offset;
-        bytesRead = 0;
 
         while (currentOffset < dnsSpan.Length)
         {

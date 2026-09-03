@@ -21,7 +21,8 @@ public sealed partial class FechsueTransport : IVpnTransport
     public event Action<long>? OnPingUpdated;
     public event Action? OnConnectionDropped;
 
-    public bool IsConnected => _sockets[0] is { Connected: true };
+    private volatile bool _isConnected;
+    public bool IsConnected => _isConnected && _sockets[0] is not null;
 
     public static Action<Socket>? OnSocketCreated { get; set; }
 
@@ -67,6 +68,15 @@ public sealed partial class FechsueTransport : IVpnTransport
             };
 
             OnSocketCreated?.Invoke(sock);
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    const int sioUdpConnReset = -1744830452;
+                    _ = sock.IOControl((IOControlCode)sioUdpConnReset, [0, 0, 0, 0], null);
+                }
+                catch { }
+            }
             try
             {
                 sock.Connect(_serverEp);
@@ -126,6 +136,7 @@ public sealed partial class FechsueTransport : IVpnTransport
 
         _ = PingLoopAsync(_cts.Token);
 
+        _isConnected = true;
         return await ipTcs.Task;
     }
 
@@ -242,7 +253,6 @@ public sealed partial class FechsueTransport : IVpnTransport
         }
         else
         {
-            // Data packet: receiver (WindowsVpnService / OctopusVpnService) takes ownership and returns it to ArrayPool!
             OnPacketReceived?.Invoke(payload, realLen);
         }
     }
@@ -290,11 +300,18 @@ public sealed partial class FechsueTransport : IVpnTransport
                         HandleDecryptedPacket(recPkt, recLen, ipTcs);
                     }
                 }
-                catch (SocketException)
+                catch (SocketException sex)
                 {
                     if (ct.IsCancellationRequested)
                     {
                         break;
+                    }
+
+                    if (sex.NativeErrorCode == 10054 ||
+                        sex.SocketErrorCode == SocketError.ConnectionReset ||
+                        sex.SocketErrorCode == SocketError.ConnectionRefused)
+                    {
+                        continue;
                     }
 
                     OnConnectionDropped?.Invoke();
@@ -379,6 +396,7 @@ public sealed partial class FechsueTransport : IVpnTransport
 
     public void Dispose()
     {
+        _isConnected = false;
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;

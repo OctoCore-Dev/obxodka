@@ -8,19 +8,50 @@ public static class FechsueCodec
     public const uint StealthAuthMask = 0xA55A3C7E;
     public const uint StealthDiscMask = 0x5AA5C381;
 
+    public const byte QuicLongHeaderInitial = 0xC0;
+    public const uint QuicVersion1 = 0x00000001;
+    public const byte QuicFrameCrypto = 0x06;
+    public const int QuicMinInitialSize = 1200;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] PackAuth(string thumbprint, byte streamIndex, out int totalLength)
     {
         var tpBytes = Encoding.UTF8.GetBytes(thumbprint);
-        totalLength = 17 + tpBytes.Length;
-        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
         var hash = SHA256.HashData(tpBytes);
         var sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(0, 4));
-        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(0, 4), sessionId ^ StealthAuthMask);
-        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(4, 4), sessionId);
-        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), DateTime.UtcNow.Ticks);
-        buf[16] = streamIndex;
-        tpBytes.CopyTo(buf.AsSpan(17, tpBytes.Length));
+
+        totalLength = Math.Max(QuicMinInitialSize, 27 + 5 + 9 + tpBytes.Length);
+        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
+        Array.Clear(buf, 0, totalLength);
+
+
+        buf[0] = QuicLongHeaderInitial;
+        BinaryPrimitives.WriteUInt32BigEndian(buf.AsSpan(1, 4), QuicVersion1);
+
+
+        buf[5] = 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(6, 4), sessionId);
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(10, 4), sessionId ^ StealthAuthMask);
+
+        buf[14] = 8;
+        Random.Shared.NextBytes(buf.AsSpan(15, 8));
+
+        buf[23] = 0;
+
+        var cryptoDataLen = 1 + 8 + tpBytes.Length;
+        var payloadLen = 1 + 4 + cryptoDataLen;
+        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(24, 2), (ushort)(payloadLen | 0x4000));
+
+        buf[26] = 0x01;
+
+        buf[27] = QuicFrameCrypto;
+        buf[28] = 0x00;
+        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(29, 2), (ushort)(cryptoDataLen | 0x4000));
+
+        buf[31] = streamIndex;
+        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(32, 8), DateTime.UtcNow.Ticks);
+        tpBytes.CopyTo(buf.AsSpan(40, tpBytes.Length));
+
         return buf;
     }
 
@@ -30,21 +61,55 @@ public static class FechsueCodec
         thumbprint = string.Empty;
         sessionId = 0;
         streamIndex = 0;
+
+        if (buffer.Length >= 41 && buffer[0] == QuicLongHeaderInitial && BinaryPrimitives.ReadUInt32BigEndian(buffer.Slice(1, 4)) == QuicVersion1)
+        {
+            var dcidLen = buffer[5];
+            if (dcidLen == 8 && buffer.Length >= 14)
+            {
+                sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(6, 4));
+                var token = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(10, 4));
+                if ((token ^ sessionId) != StealthAuthMask)
+                {
+                    return false;
+                }
+
+                if (buffer.Length >= 40 && buffer[27] == QuicFrameCrypto)
+                {
+                    var cryptoLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.Slice(29, 2)) & 0x3FFF;
+                    if (cryptoLen >= 9 && buffer.Length >= 31 + cryptoLen)
+                    {
+                        streamIndex = buffer[31];
+                        var ticks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(32, 8));
+                        var diff = Math.Abs(DateTime.UtcNow.Ticks - ticks);
+                        if (diff > TimeSpan.TicksPerDay)
+                        {
+                            return false;
+                        }
+
+                        var tpLen = cryptoLen - 9;
+                        thumbprint = Encoding.UTF8.GetString(buffer.Slice(40, tpLen));
+                        return true;
+                    }
+                }
+            }
+        }
+
         if (buffer.Length < 17 + 8)
         {
             return false;
         }
 
-        var token = BinaryPrimitives.ReadUInt32LittleEndian(buffer[..4]);
+        var legacyToken = BinaryPrimitives.ReadUInt32LittleEndian(buffer[..4]);
         sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(4, 4));
-        if ((token ^ sessionId) != StealthAuthMask)
+        if ((legacyToken ^ sessionId) != StealthAuthMask)
         {
             return false;
         }
 
-        var ticks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(8, 8));
-        var diff = Math.Abs(DateTime.UtcNow.Ticks - ticks);
-        if (diff > TimeSpan.TicksPerDay)
+        var legacyTicks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(8, 8));
+        var legacyDiff = Math.Abs(DateTime.UtcNow.Ticks - legacyTicks);
+        if (legacyDiff > TimeSpan.TicksPerDay)
         {
             return false;
         }
@@ -58,15 +123,37 @@ public static class FechsueCodec
     public static byte[] PackDisc(string thumbprint, out int totalLength)
     {
         var tpBytes = Encoding.UTF8.GetBytes(thumbprint);
-        totalLength = 17 + tpBytes.Length;
-        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
         var hash = SHA256.HashData(tpBytes);
         var sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(0, 4));
-        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(0, 4), sessionId ^ StealthDiscMask);
-        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(4, 4), sessionId);
-        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), DateTime.UtcNow.Ticks);
-        buf[16] = 0xFF;
-        tpBytes.CopyTo(buf.AsSpan(17, tpBytes.Length));
+
+        totalLength = Math.Max(QuicMinInitialSize, 27 + 5 + 9 + tpBytes.Length);
+        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
+        Array.Clear(buf, 0, totalLength);
+
+        buf[0] = QuicLongHeaderInitial;
+        BinaryPrimitives.WriteUInt32BigEndian(buf.AsSpan(1, 4), QuicVersion1);
+
+        buf[5] = 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(6, 4), sessionId);
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(10, 4), sessionId ^ StealthDiscMask);
+
+        buf[14] = 8;
+        Random.Shared.NextBytes(buf.AsSpan(15, 8));
+        buf[23] = 0;
+
+        var cryptoDataLen = 1 + 8 + tpBytes.Length;
+        var payloadLen = 1 + 4 + cryptoDataLen;
+        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(24, 2), (ushort)(payloadLen | 0x4000));
+
+        buf[26] = 0x01;
+        buf[27] = QuicFrameCrypto;
+        buf[28] = 0x00;
+        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(29, 2), (ushort)(cryptoDataLen | 0x4000));
+
+        buf[31] = 0xFF;
+        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(32, 8), DateTime.UtcNow.Ticks);
+        tpBytes.CopyTo(buf.AsSpan(40, tpBytes.Length));
+
         return buf;
     }
 
@@ -75,21 +162,60 @@ public static class FechsueCodec
     {
         thumbprint = string.Empty;
         sessionId = 0;
+
+        if (buffer.Length >= 41 && buffer[0] == QuicLongHeaderInitial && BinaryPrimitives.ReadUInt32BigEndian(buffer.Slice(1, 4)) == QuicVersion1)
+        {
+            var dcidLen = buffer[5];
+            if (dcidLen == 8 && buffer.Length >= 14)
+            {
+                sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(6, 4));
+                var token = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(10, 4));
+                if ((token ^ sessionId) != StealthDiscMask)
+                {
+                    return false;
+                }
+
+                if (buffer.Length >= 40 && buffer[27] == QuicFrameCrypto)
+                {
+                    var cryptoLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.Slice(29, 2)) & 0x3FFF;
+                    if (cryptoLen >= 9 && buffer.Length >= 31 + cryptoLen)
+                    {
+                        var marker = buffer[31];
+                        if (marker != 0xFF)
+                        {
+                            return false;
+                        }
+
+                        var ticks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(32, 8));
+                        var diff = Math.Abs(DateTime.UtcNow.Ticks - ticks);
+                        if (diff > TimeSpan.TicksPerDay)
+                        {
+                            return false;
+                        }
+
+                        var tpLen = cryptoLen - 9;
+                        thumbprint = Encoding.UTF8.GetString(buffer.Slice(40, tpLen));
+                        return true;
+                    }
+                }
+            }
+        }
+
         if (buffer.Length < 17 + 8)
         {
             return false;
         }
 
-        var token = BinaryPrimitives.ReadUInt32LittleEndian(buffer[..4]);
+        var legacyToken = BinaryPrimitives.ReadUInt32LittleEndian(buffer[..4]);
         sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(4, 4));
-        if ((token ^ sessionId) != StealthDiscMask)
+        if ((legacyToken ^ sessionId) != StealthDiscMask)
         {
             return false;
         }
 
-        var ticks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(8, 8));
-        var diff = Math.Abs(DateTime.UtcNow.Ticks - ticks);
-        if (diff > TimeSpan.TicksPerDay)
+        var legacyTicks = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(8, 8));
+        var legacyDiff = Math.Abs(DateTime.UtcNow.Ticks - legacyTicks);
+        if (legacyDiff > TimeSpan.TicksPerDay)
         {
             return false;
         }
