@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36" />
+	<application
+		android:allowBackup="false"
+		android:icon="@mipmap/appicon"
+		android:supportsRtl="true"
+		android:usesCleartextTraffic="false"
+		android:label="obxodka">
+
+		<service
+			android:name="obxodka.OctopusVpnService"
+			android:permission="android.permission.BIND_VPN_SERVICE"
+			android:exported="false"
+			android:foregroundServiceType="specialUse">
+			<intent-filter>
+				<action android:name="android.net.VpnService" />
+			</intent-filter>
+			<property
+				android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+				android:value="VPN tunnel maintenance and network traffic encryption" />
+		</service>
+
+	</application>
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+	<uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+	<uses-permission android:name="com.android.vending.BILLING" />
+	<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+</manifest>

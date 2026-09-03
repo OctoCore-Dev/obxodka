@@ -1,0 +1,51 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')" />
+
+  <PropertyGroup>
+    <IsWindows Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindows>
+
+    <CustomCachePath Condition="'$(IsWindows)' == 'true'">C:\BuildCache\$(MSBuildProjectName)</CustomCachePath>
+    <CustomCachePath Condition="'$(IsWindows)' != 'true'">$(HOME)/cache/$(MSBuildProjectName)</CustomCachePath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(CustomCachePath)</ArtifactsPath>
+
+    <BaseOutputPath>$(CustomCachePath)\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(CustomCachePath)\obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(CustomCachePath)\obj\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <IsTrimmable Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</IsTrimmable>
+    <EnableTrimAnalyzer Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</EnableTrimAnalyzer>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <NoWarn>$(NoWarn);SigningCertificateNoCertSpecified;CA1016</NoWarn>
+    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+    <Version Condition="'$(Version)' == ''">4.8.6</Version>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>android29.0</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>windows10.0.19041.0</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>linux</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+
+  <Target Name="SyncSharedConfigFiles" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('C:\Users\irovb\Documents\code\sync_configs.ps1')">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;C:\Users\irovb\Documents\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true" />
+  </Target>
+</Project>

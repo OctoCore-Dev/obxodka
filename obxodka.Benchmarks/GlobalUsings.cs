@@ -11,4 +11,4 @@ global using BenchmarkDotNet.Attributes;
 global using BenchmarkDotNet.Running;
 global using obxodka.Core;
 global using obxodka.Models;
-global using obxodka.Shared.Stealth;
+global using obxodka.Stealth;

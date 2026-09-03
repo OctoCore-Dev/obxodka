@@ -7,7 +7,6 @@
     <IsPackable>false</IsPackable>
     <Platforms>AnyCPU;x64;ARM64</Platforms>
     <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
-    <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\obxodka.csproj" />
+    <ProjectReference Include="..\obxodka.Maui\obxodka.Maui.csproj" />
     <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
   </ItemGroup>
 

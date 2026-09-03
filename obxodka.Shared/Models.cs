@@ -94,7 +94,8 @@ public sealed record VpnServerDto(
     int Port,
     string Location,
     bool IsOnline,
-    int LoadPercent);
+    int LoadPercent,
+    string? CertHash = null);
 
 public sealed record TelemetryDto(
     string Hwid,

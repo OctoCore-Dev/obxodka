@@ -1,6 +1,3 @@
-# ==============================================================================
-#  Official Microsoft Store Submissions API Publisher (Pure PowerShell)
-# ==============================================================================
 param(
     [Parameter(Mandatory = $true)]
     [string]$PackagePath,
@@ -93,28 +90,13 @@ if ($pending -and $pending.id) {
 # 3. Create fresh submission if needed
 if (-not $subData -or -not $subData.fileUploadUrl) {
     Log-Info "Preparing fresh submission from last published baseline..."
-    $lastPub = $appData.lastPublishedApplicationSubmission
-    $payload = @{}
-
-    if ($lastPub -and $lastPub.id) {
-        $lastId = $lastPub.id
-        $lastData = Invoke-RestMethod -Method Get -Uri "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$lastId" -Headers $authHeaders -ContentType "application/json; charset=utf-8"
-        
-        $exclude = @("id", "status", "statusDetails", "applicationPackages", "fileUploadUrl", "resourceLocation")
-        foreach ($prop in $lastData.PSObject.Properties) {
-            if ($exclude -notcontains $prop.Name) {
-                $payload[$prop.Name] = $prop.Value
-            }
-        }
-
-        if (-not $payload["applicationCategory"] -or $payload["applicationCategory"] -eq "NotSet") {
-            $payload["applicationCategory"] = "UtilitiesAndTools"
-        }
-    }
-
     $createUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions"
-    $jsonPayload = $payload | ConvertTo-Json -Depth 10
-    $subData = Invoke-RestMethod -Method Post -Uri $createUri -Headers $authHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($jsonPayload)) -ContentType "application/json; charset=utf-8"
+    try {
+        $subData = Invoke-RestMethod -Method Post -Uri $createUri -Headers $authHeaders
+    }
+    catch {
+        $subData = Invoke-RestMethod -Method Post -Uri $createUri -Headers $authHeaders -Body "{}" -ContentType "application/json; charset=utf-8"
+    }
     $subId = $subData.id
     Log-Success "Created new draft submission: $subId"
 }
@@ -164,16 +146,22 @@ if ($tempZip -ne $PackagePath -and (Test-Path $tempZip)) {
 
 # 5. Update submission package metadata
 Log-Info "Updating submission packages list with $($pkgItem.Name)..."
-$subData.applicationPackages = @(
-    @{
-        fileName   = $pkgItem.Name
-        fileStatus = "PendingUpload"
+$updatedPackages = @()
+if ($subData.applicationPackages) {
+    foreach ($pkg in $subData.applicationPackages) {
+        $pkg.fileStatus = "PendingDelete"
+        $updatedPackages += $pkg
     }
-)
+}
+$updatedPackages += @{
+    fileName   = $pkgItem.Name
+    fileStatus = "PendingUpload"
+}
+$subData.applicationPackages = $updatedPackages
 
 $updateUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$subId"
 $updateJson = $subData | ConvertTo-Json -Depth 10
-$updatedSub = Invoke-RestMethod -Method Put -Uri $updateUri -Headers $authHeaders -Body $updateJson
+$updatedSub = Invoke-RestMethod -Method Put -Uri $updateUri -Headers $authHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($updateJson)) -ContentType "application/json; charset=utf-8"
 Log-Success "Submission metadata updated successfully!"
 
 # 6. Commit submission for certification

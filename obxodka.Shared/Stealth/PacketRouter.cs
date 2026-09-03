@@ -1,4 +1,4 @@
-namespace obxodka.Shared.Stealth;
+namespace obxodka.Stealth;
 
 public static class PacketRouter
 {
@@ -24,7 +24,7 @@ public static class PacketRouter
             var protocol = packetBuffer[9];
             var ihl = (packetBuffer[0] & 0x0F) * 4;
 
-            if (protocol is 1 or 17 && length <= 600)
+            if (protocol is 1 or 17)
             {
                 isRealtimeGaming = true;
             }
@@ -54,7 +54,7 @@ public static class PacketRouter
         {
             var nextHeader = packetBuffer[6];
 
-            if (nextHeader is 58 or 17 && length <= 600)
+            if (nextHeader is 58 or 17)
             {
                 isRealtimeGaming = true;
             }
@@ -84,24 +84,34 @@ public static class PacketRouter
         if (isRealtimeGaming)
         {
             primaryRay = 0;
-            secondaryRay = activeRays == 8 ? 7 : (activeRays >= 2 ? 1 : -1);
+            secondaryRay = activeRays switch
+            {
+                >= 8 => 7,
+                >= 4 => 3,
+                >= 2 => 1,
+                _ => -1
+            };
         }
         else
         {
-            if (activeRays == 8)
+            if (activeRays >= 8)
             {
                 primaryRay = 1 + (Math.Abs(hash) % 6);
                 secondaryRay = -1;
             }
-            else if (activeRays >= 3)
+            else if (activeRays >= 4)
             {
-                var bulkPool = activeRays - 2;
-                primaryRay = 2 + (Math.Abs(hash) % bulkPool);
+                primaryRay = 1 + (Math.Abs(hash) % 2);
+                secondaryRay = -1;
+            }
+            else if (activeRays == 2)
+            {
+                primaryRay = 1;
                 secondaryRay = -1;
             }
             else
             {
-                primaryRay = Math.Abs(hash) % activeRays;
+                primaryRay = 0;
                 secondaryRay = -1;
             }
         }

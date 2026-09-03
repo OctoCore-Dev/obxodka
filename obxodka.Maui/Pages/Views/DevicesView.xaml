@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.DevicesView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:shared="clr-namespace:obxodka.Models;assembly=obxodka.Shared">
+    <Grid>
+        <Grid
+            x:Name="ContentGrid"
+            Padding="{OnIdiom Desktop='32,90,32,28',
+                              Default='16,90,16,20'}"
+            RowDefinitions="*">
+            <ActivityIndicator
+                x:Name="DevicesLoadingOverlay"
+                HorizontalOptions="Center"
+                IsRunning="True"
+                IsVisible="False"
+                VerticalOptions="Center" />
+            <Label
+                x:Name="DevicesErrorLabel"
+                HorizontalOptions="Center"
+                IsVisible="False"
+                Opacity="0"
+                Style="{StaticResource LabelError}"
+                VerticalOptions="Center" />
+            <Grid
+                x:Name="DevicesGrid"
+                ColumnDefinitions="{OnIdiom Desktop='*, *',
+                                            Default='*'}"
+                ColumnSpacing="28"
+                RowSpacing="24"
+                VerticalOptions="Start" />
+        </Grid>
+
+        <Border
+            x:Name="FloatingHeader"
+            Padding="{OnIdiom Desktop='32,28,32,16',
+                              Default='16,20,16,16'}"
+            BackgroundColor="{OnPlatform WinUI=Transparent,
+                                         Default={AppThemeBinding Light={StaticResource BgBaseLight},
+                                                                  Dark={StaticResource BgBase}}}"
+            StrokeThickness="0"
+            VerticalOptions="Start">
+            <Label
+                HorizontalOptions="Center"
+                Style="{StaticResource TitleMedium}"
+                Text="Устройства" />
+        </Border>
+    </Grid>
+</ContentView>

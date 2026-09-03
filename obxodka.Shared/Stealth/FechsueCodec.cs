@@ -1,4 +1,4 @@
-namespace obxodka.Shared.Stealth;
+namespace obxodka.Stealth;
 
 public static class FechsueCodec
 {

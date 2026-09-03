@@ -8,7 +8,7 @@ public sealed class Review
     [ForeignKey(nameof(UserId))]
     public User? User { get; set; }
     [Required]
-    [MaxLength(2000)]
+    [StringLength(2000)]
     public string Text { get; set; } = string.Empty;
     public int? Rating { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.DeviceCardView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:obxodka.Converters"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:models="clr-namespace:obxodka.Models;assembly=obxodka.Shared"
+    x:Name="ThisDeviceCard"
+    x:DataType="models:DeviceItem">
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <converters:DeviceIconConverter x:Key="DeviceIconConverter" />
+        </ResourceDictionary>
+    </ContentView.Resources>
+    <Border
+        Padding="24"
+        HeightRequest="{OnIdiom Desktop='200',
+                                Default='-1'}"
+        Style="{StaticResource NeoCard}">
+        <Grid>
+            <Border
+                x:Name="DeleteBtn"
+                BackgroundColor="{StaticResource ErrorDim}"
+                HeightRequest="40"
+                HorizontalOptions="End"
+                Stroke="#40EF4444"
+                Style="{StaticResource NeoBtnIcon}"
+                VerticalOptions="Start"
+                WidthRequest="40"
+                ZIndex="2">
+                <mi:MauiIcon
+                    x:Name="DeleteIcon"
+                    HorizontalOptions="Center"
+                    Icon="{mi:Fluent Icon=Delete24}"
+                    IconColor="#EF4444"
+                    IconSize="20"
+                    VerticalOptions="Center" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnRemoveDeviceClickedAsync" />
+                </Border.GestureRecognizers>
+            </Border>
+
+            <VerticalStackLayout
+                HorizontalOptions="Center"
+                Spacing="16"
+                VerticalOptions="Center">
+
+                <Border
+                    x:Name="DeviceIconWrapper"
+                    BackgroundColor="{AppThemeBinding Light=#E0D4F5,
+                                                      Dark=#2A1B3D}"
+                    HeightRequest="72"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 36"
+                    StrokeThickness="0"
+                    WidthRequest="72">
+                    <mi:MauiIcon
+                        x:Name="DeviceIcon"
+                        HorizontalOptions="Center"
+                        Icon="{Binding Name, Converter={StaticResource DeviceIconConverter}}"
+                        IconColor="{AppThemeBinding Light=#7C3AED,
+                                                    Dark=#9F6FF0}"
+                        IconSize="36"
+                        VerticalOptions="Center" />
+                </Border>
+
+                <VerticalStackLayout HorizontalOptions="Center" Spacing="6">
+                    <Label
+                        FontSize="18"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        Style="{StaticResource TitleMedium}"
+                        Text="{Binding Name}" />
+                    <Label
+                        FontSize="14"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        Style="{StaticResource LabelMuted}"
+                        Text="{Binding LastActiveText}" />
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </Grid>
+    </Border>
+</ContentView>

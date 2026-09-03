@@ -1,20 +1,9 @@
 <Solution>
-  <Configurations>
-    <BuildType Name="Debug" />
-    <BuildType Name="Release" />
-    <BuildType Name="Debug_EXE" />
-    <BuildType Name="Release_EXE" />
-    <Platform Name="Any CPU" />
-    <Platform Name="x64" />
-  </Configurations>
-  <Project Path="obxodka.Benchmarks\obxodka.Benchmarks.csproj" />
-  <Project Path="obxodka.Client.Tests\obxodka.Client.Tests.csproj" />
+  <Project Path="obxodka.Client\obxodka.Client.csproj" />
+  <Project Path="obxodka.Maui\obxodka.Maui.csproj" />
   <Project Path="obxodka.Core\obxodka.Core.csproj" />
-  <Project Path="obxodka.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-    <Deploy Solution="*|x64" />
-    <Deploy Solution="Debug_EXE|Any CPU" />
-    <Deploy Solution="Debug|Any CPU" />
-  </Project>
   <Project Path="obxodka.Shared\obxodka.Shared.csproj" />
+  <Project Path="obxodka.Client.Tests\obxodka.Client.Tests.csproj" />
+  <Project Path="obxodka.Avalonia\obxodka.Avalonia.csproj" />
+  <Project Path="obxodka.Benchmarks\obxodka.Benchmarks.csproj" />
 </Solution>

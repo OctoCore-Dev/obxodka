@@ -1,0 +1,10 @@
+﻿<maui:MauiWinUIApplication
+    x:Class="obxodka.WinUI.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:obxodka.WinUI"
+    xmlns:maui="using:Microsoft.Maui">
+    <maui:MauiWinUIApplication.Resources>
+        <ResourceDictionary />
+    </maui:MauiWinUIApplication.Resources>
+</maui:MauiWinUIApplication>

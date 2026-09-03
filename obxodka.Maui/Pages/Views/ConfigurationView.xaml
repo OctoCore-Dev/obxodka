@@ -1,0 +1,705 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.ConfigurationView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
+    <Grid x:Name="RootLayoutGrid" Padding="{OnIdiom Desktop='28,16', Phone='16,16,16,120', Default='24,24'}">
+        <Grid
+            x:Name="MainContentGrid"
+            RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto, Auto"
+            RowSpacing="{OnIdiom Desktop=10,
+                                 Phone=18}">
+
+            <Grid Grid.Row="0" ColumnDefinitions="Auto, *">
+                <Label
+                    Grid.Column="0"
+                    FontFamily="CommissionerExtraBold"
+                    FontSize="{OnIdiom Desktop=22,
+                                       Default=24}"
+                    Text="Конфигурация"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}" />
+                <Label
+                    x:Name="CurrentSelectionLabel"
+                    Grid.Column="1"
+                    Margin="16,0,0,0"
+                    FontFamily="RobotoBold"
+                    FontSize="14"
+                    Text="[ 2 Луча / HTTP/2 ]"
+                    TextColor="#0078D4"
+                    VerticalOptions="Center" />
+            </Grid>
+
+            <Label
+                Grid.Row="1"
+                FontSize="13"
+                LineBreakMode="WordWrap"
+                Style="{StaticResource LabelMuted}">
+                <Label.Text>
+                    Управляйте количеством одновременных подключений и выбирайте защищенные протоколы обхода блокировок.
+                </Label.Text>
+            </Label>
+
+            <Grid
+                x:Name="RaysHeaderGrid"
+                Grid.Row="2"
+                Margin="0,4,0,0"
+                ColumnDefinitions="Auto, *"
+                ColumnSpacing="10">
+                <Label
+                    Grid.Column="0"
+                    FontFamily="RobotoBold"
+                    FontSize="15"
+                    Text="Режим лучей (Потоки)"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}"
+                    VerticalOptions="Center" />
+                <Label
+                    x:Name="LockWarningLabel"
+                    Grid.Column="1"
+                    FontFamily="RobotoMedium"
+                    FontSize="11"
+                    HorizontalOptions="End"
+                    IsVisible="False"
+                    LineBreakMode="TailTruncation"
+                    Text="Отключите VPN, чтобы изменить"
+                    TextColor="#EF4444"
+                    VerticalOptions="Center" />
+            </Grid>
+
+            <Grid
+                Grid.Row="3"
+                ColumnDefinitions="{OnIdiom Desktop='*, *, *',
+                                            Phone='*'}"
+                ColumnSpacing="{OnIdiom Desktop=12,
+                                        Phone=0}"
+                RowSpacing="{OnIdiom Desktop=0,
+                                     Phone=12}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="EcoButton"
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnEcoTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="EcoIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=LeafOne24}"
+                            IconColor="#10B981"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Eco (1 Луч)" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="QoS для игр." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="BalancedButton"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=1}"
+                    Grid.Column="{OnIdiom Desktop=1,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBalancedTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="BalancedIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Scales24}"
+                            IconColor="#3B82F6"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Баланс (2)" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="0% потерь." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="TurboButton"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=2}"
+                    Grid.Column="{OnIdiom Desktop=2,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTurboTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="TurboIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Flash24}"
+                            IconColor="#EF4444"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Турбо (8)" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Макс. скорость." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Label
+                x:Name="ProtocolHeaderLabel"
+                Grid.Row="4"
+                Margin="0,4,0,0"
+                FontFamily="RobotoBold"
+                FontSize="15"
+                Text="Протокол связи (Анти-DPI)"
+                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                            Dark={StaticResource TextPrimary}}" />
+
+            <Grid
+                Grid.Row="5"
+                ColumnDefinitions="{OnIdiom Desktop='*, *, *, *',
+                                            Phone='*'}"
+                ColumnSpacing="{OnIdiom Desktop=10,
+                                        Phone=0}"
+                RowSpacing="{OnIdiom Desktop=0,
+                                     Phone=10}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="AutoButton"
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Padding="{OnIdiom Desktop='10,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAutoTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="AutoIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Sparkle24}"
+                            IconColor="#00E5FF"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=12,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="AUTO" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=10,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Умный подбор." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="FechsueButton"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=1}"
+                    Grid.Column="{OnIdiom Desktop=1,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='10,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnFechsueTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="FechsueIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Rocket24}"
+                            IconColor="#A855F7"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=12,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="FECHSUE" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=10,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="ГигаТуннель UDP." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="Http3Button"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=2}"
+                    Grid.Column="{OnIdiom Desktop=2,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='10,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnHttp3Tapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="Http3Icon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=ShieldLock24}"
+                            IconColor="#00E5FF"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=12,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="HTTP/3" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=10,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="QUIC (Chrome)." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="Http2Button"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=3}"
+                    Grid.Column="{OnIdiom Desktop=3,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='10,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnHttp2Tapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="Http2Icon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Flash24}"
+                            IconColor="#0078D4"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=12,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="HTTP/2" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=10,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Стандартный TCP." />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Grid
+                x:Name="SecurityHeaderGrid"
+                Grid.Row="6"
+                Margin="0,4,0,0"
+                ColumnDefinitions="*">
+                <Label
+                    FontFamily="RobotoBold"
+                    FontSize="15"
+                    Text="Надёжность и Безопасность"
+                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                Dark={StaticResource TextPrimary}}" />
+            </Grid>
+
+            <Grid
+                Grid.Row="7"
+                ColumnDefinitions="{OnIdiom Desktop='*, *',
+                                            Phone='*'}"
+                ColumnSpacing="{OnIdiom Desktop=12,
+                                        Phone=0}"
+                RowSpacing="{OnIdiom Desktop=10,
+                                     Phone=12}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="{OnIdiom Desktop=0, Phone=Auto}" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="AutoReconnectCard"
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=ArrowSync24}"
+                            IconColor="#10B981"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Авто-переподключение" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Восстанавливает при смене сети." />
+                        </VerticalStackLayout>
+                        <Switch
+                            x:Name="AutoReconnectToggle"
+                            Grid.Column="2"
+                            IsToggled="True"
+                            Toggled="OnAutoReconnectToggled"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="KillSwitchCard"
+                    Grid.Row="{OnIdiom Desktop=0,
+                                       Phone=1}"
+                    Grid.Column="{OnIdiom Desktop=1,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=ShieldDismiss24}"
+                            IconColor="#EF4444"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Kill Switch (Защита)" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Блокирует трафик при обрыве." />
+                        </VerticalStackLayout>
+                        <Switch
+                            x:Name="KillSwitchToggle"
+                            Grid.Column="2"
+                            IsToggled="False"
+                            Toggled="OnKillSwitchToggled"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="QuickProtocolSwitchCard"
+                    Grid.Row="{OnIdiom Desktop=1,
+                                       Phone=2}"
+                    Grid.Column="0"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=ArrowRepeatAll24}"
+                            IconColor="#00E5FF"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Горячая смена (Hot-Swap)" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Смена протокола без ручного стопа." />
+                        </VerticalStackLayout>
+                        <Switch
+                            x:Name="QuickProtocolSwitchToggle"
+                            Grid.Column="2"
+                            IsToggled="True"
+                            Toggled="OnQuickProtocolSwitchToggled"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="RunOnStartupCard"
+                    Grid.Row="{OnIdiom Desktop=1,
+                                       Phone=3}"
+                    Grid.Column="{OnIdiom Desktop=1,
+                                          Phone=0}"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    IsVisible="{OnIdiom Desktop=True,
+                                        Phone=False}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Rocket24}"
+                            IconColor="#3B82F6"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Запуск со стартом Windows" />
+                            <Label
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Автоматический запуск при входе в систему." />
+                        </VerticalStackLayout>
+                        <Switch
+                            x:Name="RunOnStartupToggle"
+                            Grid.Column="2"
+                            IsToggled="False"
+                            Toggled="OnRunOnStartupToggled"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="SpeedTestCard"
+                    Grid.Row="{OnIdiom Desktop=2,
+                                       Phone=4}"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="{OnIdiom Desktop=2,
+                                              Phone=1}"
+                    Padding="{OnIdiom Desktop='12,10',
+                                      Phone='16'}"
+                    HeightRequest="{OnIdiom Desktop=66,
+                                            Default=-1}"
+                    Style="{StaticResource NeoCard}">
+                    <Border.GestureRecognizers>
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            x:Name="SpeedGaugeIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Gauge24}"
+                            IconColor="#00E5FF"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            Spacing="2"
+                            VerticalOptions="Center">
+                            <Label
+                                FontFamily="RobotoBold"
+                                FontSize="{OnIdiom Desktop=13,
+                                                   Default=15}"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource LabelValue}"
+                                Text="Тест скорости сети" />
+                            <Label
+                                x:Name="SpeedTestResultLabel"
+                                FontSize="{OnIdiom Desktop=11,
+                                                   Default=12}"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Замер скорости и отклика." />
+                        </VerticalStackLayout>
+                        <Border
+                            x:Name="SpeedTestBtnBorder"
+                            Grid.Column="2"
+                            Padding="10,6"
+                            BackgroundColor="{AppThemeBinding Light=#1500E5FF,
+                                                              Dark=#2000E5FF}"
+                            Stroke="#00E5FF"
+                            StrokeShape="RoundRectangle 6"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnRunSpeedTestClickedAsync" />
+                            </Border.GestureRecognizers>
+                            <Label
+                                x:Name="SpeedTestBtnText"
+                                FontFamily="RobotoBold"
+                                FontSize="11"
+                                Text="ТЕСТ"
+                                TextColor="{AppThemeBinding Light=#0284C7,
+                                                            Dark=#00E5FF}"
+                                VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</ContentView>

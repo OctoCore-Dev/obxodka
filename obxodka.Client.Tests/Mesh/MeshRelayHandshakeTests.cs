@@ -6,7 +6,7 @@ public class MeshRelayHandshakeTests
     private const byte ProtocolVersion = 0x01;
 
     [Fact]
-    public void BinaryMagic_MatchesExpectedProtocolDefinition()
+    public void BinaryMagicMatchesExpectedProtocolDefinition()
     {
         var magicBytes = "OBXM"u8.ToArray();
         var magicUint = BinaryPrimitives.ReadUInt32LittleEndian(magicBytes);
@@ -14,7 +14,7 @@ public class MeshRelayHandshakeTests
     }
 
     [Fact]
-    public async Task LoopbackHandshake_SuccessfulExchangeAsync()
+    public async Task LoopbackHandshakeSuccessfulExchangeAsync()
     {
 
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -65,7 +65,7 @@ public class MeshRelayHandshakeTests
     }
 
     [Fact]
-    public async Task LoopbackHandshake_WhenOverloaded_ThrowsExpectedExceptionAsync()
+    public async Task LoopbackHandshakeWhenOverloadedThrowsExpectedExceptionAsync()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

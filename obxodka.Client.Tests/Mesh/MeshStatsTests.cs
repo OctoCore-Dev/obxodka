@@ -3,7 +3,7 @@ namespace obxodka.Client.Tests.Mesh;
 public class MeshStatsTests
 {
     [Fact]
-    public void InitialState_AllCountersZero()
+    public void InitialStateAllCountersZero()
     {
         var stats = new MeshStats();
         Assert.Equal(0, stats.BytesRelayedTotal);
@@ -12,7 +12,7 @@ public class MeshStatsTests
     }
 
     [Fact]
-    public void AddBytes_IncrementsTotalBytes_LockFree()
+    public void AddBytesIncrementsTotalBytesLockFree()
     {
         var stats = new MeshStats();
         stats.AddBytes(1024);
@@ -22,7 +22,7 @@ public class MeshStatsTests
     }
 
     [Fact]
-    public void AddBytes_IgnoresZeroOrNegativeValues()
+    public void AddBytesIgnoresZeroOrNegativeValues()
     {
         var stats = new MeshStats();
         stats.AddBytes(100);
@@ -33,7 +33,7 @@ public class MeshStatsTests
     }
 
     [Fact]
-    public void ClientCounters_IncrementAndDecrement_TrackAccurately()
+    public void ClientCountersIncrementAndDecrementTrackAccurately()
     {
         var stats = new MeshStats();
         stats.IncrementClients();
@@ -60,7 +60,7 @@ public class MeshStatsTests
     }
 
     [Fact]
-    public void Reset_RestoresZeroState()
+    public void ResetRestoresZeroState()
     {
         var stats = new MeshStats();
         stats.AddBytes(5_000_000);

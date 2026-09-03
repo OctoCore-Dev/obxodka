@@ -1,0 +1,43 @@
+﻿<Window
+    x:Class="obxodka.Avalonia.Views.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Obxodka VPN (Linux)"
+    Width="900"
+    Height="600"
+    Background="#0F0F1A"
+    WindowStartupLocation="CenterScreen">
+    <Grid RowDefinitions="Auto,*">
+        <Border
+            Grid.Row="0"
+            Padding="15"
+            Background="#161626">
+            <TextBlock
+                FontSize="18"
+                FontWeight="Bold"
+                Foreground="White"
+                Text="Obxodka Client - Avalonia Linux" />
+        </Border>
+        <Grid
+            Grid.Row="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+            <StackPanel HorizontalAlignment="Center" Spacing="15">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="24"
+                    Foreground="#A0A0C0"
+                    Text="Obxodka VPN (Linux)" />
+                <Button
+                    Width="160"
+                    Height="45"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Background="#7B2CBF"
+                    Content="Connect"
+                    CornerRadius="8"
+                    Foreground="White" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

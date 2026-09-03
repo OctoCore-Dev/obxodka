@@ -20,11 +20,11 @@ public sealed class BugReport
     public User User { get; set; } = null!;
 
     [Required]
-    [MaxLength(200)]
+    [StringLength(200)]
     public string Title { get; set; } = string.Empty;
 
     [Required]
-    [MaxLength(2000)]
+    [StringLength(2000)]
     public string Description { get; set; } = string.Empty;
 
     public BugStatus Status { get; set; } = BugStatus.New;

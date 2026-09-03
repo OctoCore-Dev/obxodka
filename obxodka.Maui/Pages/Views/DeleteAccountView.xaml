@@ -1,0 +1,116 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.DeleteAccountView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
+    <Grid
+        Padding="{OnIdiom Desktop='32,28',
+                          Default='20,16'}"
+        HorizontalOptions="Fill"
+        VerticalOptions="Fill">
+        <Border
+            x:Name="DeleteCardContainer"
+            Padding="28,26"
+            HorizontalOptions="Center"
+            Style="{StaticResource NeoDangerCard}"
+            VerticalOptions="Center"
+            WidthRequest="{OnIdiom Desktop=480,
+                                   Default=340}">
+            <VerticalStackLayout Spacing="16">
+                <mi:MauiIcon
+                    HorizontalOptions="Center"
+                    Icon="{mi:Fluent Icon=Warning28}"
+                    IconColor="{StaticResource Error}"
+                    IconSize="46" />
+
+                <Label
+                    FontFamily="CommissionerExtraBold"
+                    FontSize="20"
+                    HorizontalOptions="Center"
+                    Text="УДАЛЕНИЕ АККАУНТА"
+                    TextColor="{StaticResource Error}" />
+
+                <Label
+                    FontSize="14"
+                    HorizontalTextAlignment="Center"
+                    LineBreakMode="WordWrap"
+                    Style="{StaticResource LabelMuted}"
+                    Text="Это действие необратимо. Будут безвозвратно стёрты все данные вашего профиля:" />
+
+                <VerticalStackLayout Margin="8,4,8,4" Spacing="8">
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <Label
+                            Grid.Column="0"
+                            Text="•"
+                            TextColor="{StaticResource Error}" />
+                        <Label
+                            Grid.Column="1"
+                            FontSize="13"
+                            Style="{StaticResource LabelMuted}"
+                            Text="Все активные подписки и дни действия" />
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <Label
+                            Grid.Column="0"
+                            Text="•"
+                            TextColor="{StaticResource Error}" />
+                        <Label
+                            Grid.Column="1"
+                            FontSize="13"
+                            Style="{StaticResource LabelMuted}"
+                            Text="Персональные ключи шифрования и токены" />
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <Label
+                            Grid.Column="0"
+                            Text="•"
+                            TextColor="{StaticResource Error}" />
+                        <Label
+                            Grid.Column="1"
+                            FontSize="13"
+                            Style="{StaticResource LabelMuted}"
+                            Text="Все привязанные устройства (HWID)" />
+                    </Grid>
+                </VerticalStackLayout>
+
+                <Label
+                    x:Name="DeleteErrorLabel"
+                    IsVisible="False"
+                    Opacity="0"
+                    Style="{StaticResource LabelError}" />
+
+                <Grid
+                    Margin="0,8,0,0"
+                    ColumnDefinitions="*, *"
+                    ColumnSpacing="12">
+                    <Border Grid.Column="0" Style="{StaticResource NeoBtnSecondary}">
+                        <Button
+                            BackgroundColor="Transparent"
+                            Clicked="OnCancelDeleteClicked"
+                            FontFamily="RobotoMedium"
+                            FontSize="13"
+                            Text="ОТМЕНА"
+                            TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
+                                                        Dark={StaticResource TextPrimary}}" />
+                    </Border>
+
+                    <Border
+                        x:Name="DeleteAccountBorder"
+                        Grid.Column="1"
+                        Style="{StaticResource NeoBtnDanger}">
+                        <Button
+                            x:Name="DeleteAccountButton"
+                            BackgroundColor="Transparent"
+                            Clicked="OnConfirmDeleteClickedAsync"
+                            FontFamily="RobotoBold"
+                            FontSize="13"
+                            Text="УДАЛИТЬ"
+                            TextColor="{StaticResource Error}" />
+                    </Border>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

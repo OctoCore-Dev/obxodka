@@ -124,7 +124,7 @@ jobs:
             EXTRA_ARGS="-p:ApplicationDisplayVersion=$VERSION_NAME -p:Version=$VERSION_NAME"
           fi
 
-          dotnet publish obxodka.csproj -f net10.0-android -c Release \
+          dotnet publish obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
             -p:AndroidKeyStore=true \
             -p:AndroidSigningKeyStore="$HOME/keystore/release.keystore" \
             -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
@@ -197,7 +197,7 @@ jobs:
               $extraArgs += "-p:Version=$env:VERSION_NAME"
           }
 
-          dotnet publish obxodka.csproj -f net10.0-windows10.0.19041.0 -c Release `
+          dotnet publish obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
             -p:UapAppxPackageBuildMode=StoreUpload `
@@ -267,7 +267,7 @@ jobs:
       - name: 📝 Extract Release Info
         id: release-info
         run: |
-          VERSION=$(grep -oPm1 "(?<=<ApplicationDisplayVersion>)[^<]+" obxodka.csproj || echo "3.7.17")
+          VERSION=$(grep -oPm1 "(?<=<AppVersion>)[^<]+" version.props || echo "4.8.6")
           TAG="v${VERSION}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT

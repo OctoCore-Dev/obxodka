@@ -59,4 +59,67 @@ public class ObfuscatorTests
         Assert.InRange(primaryRay, 0, 3);
         Assert.InRange(secondaryRay, -1, 3);
     }
+
+    [Fact]
+    public void TryUnpackExtractsValidPayload()
+    {
+        var rawData = "Octopus Test Payload"u8.ToArray();
+        var packed = Obfuscator.Pack(rawData, rawData.Length, out var totalLen);
+
+        var success = Obfuscator.TryUnpack(packed.AsSpan(0, totalLen), out var realLen, out var payload);
+        Assert.True(success);
+        Assert.Equal(rawData.Length, realLen);
+        Assert.True(payload.SequenceEqual(rawData));
+
+        ArrayPool<byte>.Shared.Return(packed);
+    }
+
+    [Fact]
+    public async Task ReadPacketAsyncCorrectlyReadsStreamAsync()
+    {
+        var rawData = "Async stream packet payload"u8.ToArray();
+        var packed = Obfuscator.Pack(rawData, rawData.Length, out var totalLen);
+
+        using var ms = new MemoryStream(packed, 0, totalLen);
+        var header = new byte[8];
+        var (packet, len) = await Obfuscator.ReadPacketAsync(ms, header, CancellationToken.None);
+
+        Assert.NotNull(packet);
+        Assert.Equal(rawData.Length, len);
+        Assert.True(packet.AsSpan(0, len).SequenceEqual(rawData));
+
+        ArrayPool<byte>.Shared.Return(packet);
+        ArrayPool<byte>.Shared.Return(packed);
+    }
+
+    [Fact]
+    public void ClientHelloBuilderGeneratesValidTlsRecord()
+    {
+        var sni = "example.com"u8;
+        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+
+        Assert.NotNull(hello);
+        Assert.True(hello.Length > 100);
+        Assert.Equal(0x16, hello[0]);
+        Assert.Equal(0x03, hello[1]);
+        Assert.Equal(0x01, hello[2]);
+        var recordLen = BinaryPrimitives.ReadUInt16BigEndian(hello.AsSpan(3, 2));
+        Assert.Equal(hello.Length - 5, recordLen);
+        Assert.Equal(0x01, hello[5]);
+    }
+
+    [Fact]
+    public void QuicInitialBuilderGeneratesValidRfc9000Header()
+    {
+        var dcid = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        var scid = new byte[] { 8, 7, 6, 5, 4, 3, 2, 1 };
+        var clientHello = "DummyClientHello"u8.ToArray();
+
+        var packet = QuicInitialBuilder.BuildInitialPacket(dcid, scid, clientHello);
+
+        Assert.NotNull(packet);
+        Assert.True(packet.Length > dcid.Length + scid.Length + clientHello.Length);
+        var headerByte = packet[0];
+        Assert.Equal(0xC0, headerByte & 0xFC);
+    }
 }

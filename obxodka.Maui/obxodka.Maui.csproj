@@ -1,0 +1,149 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  
+	<PropertyGroup>
+		<WindowsPackageType>MSIX</WindowsPackageType>
+        <Configurations>Debug;Release</Configurations>
+        <TargetFrameworks>net10.0-android</TargetFrameworks>
+        <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+		<OutputType>Exe</OutputType>
+        <RootNamespace>obxodka.Maui</RootNamespace>
+        <UseMaui>true</UseMaui>
+        <SingleProject>true</SingleProject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>preview</LangVersion>
+        <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
+        <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Core\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
+    </PropertyGroup>
+
+	<PropertyGroup Condition="$(TargetFramework.Contains('-windows'))">
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>true</SelfContained>
+		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="$(TargetFramework.Contains('-android'))">
+		<RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+		<RunAOTCompilation>false</RunAOTCompilation>
+		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+		<AndroidUseFastDeployment>false</AndroidUseFastDeployment>
+	</PropertyGroup>
+
+    <PropertyGroup>
+        <ApplicationTitle>Obxodka</ApplicationTitle>
+        <ApplicationId>com.octocore.obxodka</ApplicationId>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+	<PropertyGroup>
+		<TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.17763.0</TargetPlatformMinVersion>
+        <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-android'))">29.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-ios'))">16.1</SupportedOSPlatformVersion>
+        <TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-ios'))">16.1</TargetPlatformMinVersion>
+        <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-maccatalyst'))">16.1</SupportedOSPlatformVersion>
+        <TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-maccatalyst'))">16.1</TargetPlatformMinVersion>
+        <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.19041.0</SupportedOSPlatformVersion>
+        <TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.19041.0</TargetPlatformMinVersion>
+        <AndroidPackageFormat>aab</AndroidPackageFormat>
+        <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+        <AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>
+        <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+        <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
+        <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+        <GenerateTestArtifacts>False</GenerateTestArtifacts>
+        <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+    </PropertyGroup>
+
+	<ItemGroup>
+        <MauiIcon Condition="$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#FFFFFF" />
+        <MauiIcon Condition="!$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appiconfg.svg" />
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="Transparent" />
+		<MauiImage Include="Resources\Images\**\*" />
+		<MauiFont Include="Resources\Fonts\**\*" />
+		<MauiAsset Include="Resources\Raw\**\*" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+		<MauiXaml Update="Pages\**\*.xaml" Generator="MSBuild:Compile" />
+	</ItemGroup>
+
+<ItemGroup>
+    <PackageReference Include="AathifMahir.Maui.MauiIcons.Fluent" Version="6.0.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.36.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.83.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.83.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.100" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.11" />
+    <PackageReference Include="Plugin.InAppBilling" Version="10.0.0" />
+    <PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="4.151.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
+    <PackageReference Include="WinUIEx" Version="2.9.3" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
+    <PackageReference Include="System.Management" Version="10.0.11" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
+</ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <PackageReference Include="Xamarin.AndroidX.Activity.Ktx" Version="1.13.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.8.9.4" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" Version="1.5.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+  </ItemGroup>
+
+	<ItemGroup Condition="$(TargetFramework.Contains('-windows'))">
+        <Content Include="Platforms\Windows\Engine\**\*">
+            <PackagePath>Engine</PackagePath>
+            <Link>Engine\%(RecursiveDir)%(Filename)%(Extension)</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj" />
+	  <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
+	  <ProjectReference Include="..\obxodka.Core\obxodka.Core.csproj" />
+	</ItemGroup>
+
+	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />
+
+	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('Platforms\Windows\Package.appxmanifest')">
+		<XmlPoke
+			XmlInputPath="Platforms\Windows\Package.appxmanifest"
+			Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10'/&gt;"
+			Query="/m:Package/m:Identity/@Version"
+			Value="$(AppxPackageVersion)" />
+	</Target>
+
+</Project>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
