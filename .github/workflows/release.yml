@@ -135,11 +135,15 @@ jobs:
       - name: 🔍 Locate AAB Package
         id: find-aab
         run: |
-          AAB_FILE=$(find bin/Release -type f -name "*.aab" 2>/dev/null | head -n 1)
+          AAB_FILE=$(find "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
           if [ -z "$AAB_FILE" ]; then
-            AAB_FILE=$(find . -type f -name "*.aab" | grep -v "/obj/" | head -n 1)
+            AAB_FILE=$(find "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
           fi
           echo "Found AAB at: $AAB_FILE"
+          if [ -z "$AAB_FILE" ]; then
+            echo "❌ No AAB found!"
+            exit 1
+          fi
           echo "aab_path=$AAB_FILE" >> $GITHUB_OUTPUT
 
       - name: 📤 Upload AAB Artifact

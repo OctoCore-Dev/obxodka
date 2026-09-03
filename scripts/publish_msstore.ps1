@@ -81,6 +81,18 @@ if ($pending -and $pending.id) {
             Log-Success "Submission $subId is already being processed by Microsoft (Status: $($subData.status))!"
             exit 0
         }
+
+        # Stale uncommitted draft (PendingCommit) has an expired Azure SAS token.
+        # Delete old draft to allow creating a fresh one with a valid SAS URL.
+        Log-Info "Deleting stale draft submission $subId to refresh Azure SAS token..."
+        try {
+            Invoke-RestMethod -Method Delete -Uri "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$subId" -Headers $authHeaders
+            $subData = $null
+            $subId = $null
+        }
+        catch {
+            Log-Info "Could not delete stale submission: $_"
+        }
     }
     catch {
         Log-Info "Could not fetch existing submission $subId, creating fresh draft..."
