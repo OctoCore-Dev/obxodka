@@ -103,12 +103,22 @@ if ($pending -and $pending.id) {
 if (-not $subData -or -not $subData.fileUploadUrl) {
     Log-Info "Preparing fresh submission from last published baseline..."
     $createUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions"
-    try {
-        $subData = Invoke-RestMethod -Method Post -Uri $createUri -Headers $authHeaders
+    
+    $client = [System.Net.Http.HttpClient]::new()
+    $postReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, $createUri)
+    $postReq.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $accessToken)
+    $postReq.Content = [System.Net.Http.ByteArrayContent]::new([byte[]]@())
+    $postReq.Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("application/json; charset=utf-8")
+
+    $postResp = $client.SendAsync($postReq).GetAwaiter().GetResult()
+    $respBody = $postResp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+
+    if (-not $postResp.IsSuccessStatusCode) {
+        Log-Error "Failed to create draft submission: $($postResp.StatusCode) - $respBody"
+        exit 1
     }
-    catch {
-        $subData = Invoke-RestMethod -Method Post -Uri $createUri -Headers $authHeaders -Body "{}" -ContentType "application/json; charset=utf-8"
-    }
+
+    $subData = $respBody | ConvertFrom-Json
     $subId = $subData.id
     Log-Success "Created new draft submission: $subId"
 }
@@ -179,7 +189,20 @@ Log-Success "Submission metadata updated successfully!"
 # 6. Commit submission for certification
 Log-Info "Submitting to Microsoft certification pipeline (POST /commit)..."
 $commitUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$subId/commit"
-$commitResp = Invoke-RestMethod -Method Post -Uri $commitUri -Headers $authHeaders
+$commitReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, $commitUri)
+$commitReq.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $accessToken)
+$commitReq.Content = [System.Net.Http.ByteArrayContent]::new([byte[]]@())
+$commitReq.Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("application/json; charset=utf-8")
+
+$commitResp = $httpClient.SendAsync($commitReq).GetAwaiter().GetResult()
+$commitBody = $commitResp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+
+if (-not $commitResp.IsSuccessStatusCode) {
+    Log-Error "Failed to commit submission: $($commitResp.StatusCode) - $commitBody"
+    exit 1
+}
+
+$commitData = $commitBody | ConvertFrom-Json
 Log-Success "Submission $subId committed for certification!"
-Log-Info "Current certification status: $($commitResp.status)"
+Log-Info "Current certification status: $($commitData.status)"
 Log-Success "=== MICROSOFT STORE PUBLICATION COMPLETE ==="
