@@ -1,6 +1,6 @@
-- Brand new FHARCSUE protocol: 4-stream Ray Bonding with 5-tuple flow hashing for maximum throughput and ultra-low latency.
-- Multi-ping Watchdog: keeps active NAT mappings across all 4 streams refreshed every 1.5s.
-- Bidirectional FEC (0% packet loss): real-time packet recovery without retransmission stalls.
-- Auto-Recovery: seamless self-healing on network roaming (Wi-Fi/LTE) without dropping the VPN tunnel.
-- .NET 10 memory and networking pipeline optimizations.
-- Documentation & Mesh guide: https://obxodka.one
+- New FHARCSUE protocol: 4-stream Ray Bonding for maximum speed & ultra-low ping.
+- Multi-ping Watchdog: keeps all 4 NAT ports refreshed every 1.5s.
+- 0% Packet Loss: real-time bidirectional FEC recovery.
+- Auto-Recovery: seamless self-healing on network switch (Wi-Fi/LTE).
+- .NET 10 zero-allocation pipeline optimizations.
+- Mesh guide: https://obxodka.one
