@@ -171,8 +171,10 @@ Log-Info "Updating submission packages list with $($pkgItem.Name)..."
 $updatedPackages = @()
 if ($subData.applicationPackages) {
     foreach ($pkg in $subData.applicationPackages) {
-        $pkg.fileStatus = "PendingDelete"
-        $updatedPackages += $pkg
+        if ($pkg.fileName -ne $pkgItem.Name) {
+            $pkg.fileStatus = "PendingDelete"
+            $updatedPackages += $pkg
+        }
     }
 }
 $updatedPackages += @{
@@ -203,6 +205,25 @@ if (-not $commitResp.IsSuccessStatusCode) {
 }
 
 $commitData = $commitBody | ConvertFrom-Json
-Log-Success "Submission $subId committed for certification!"
-Log-Info "Current certification status: $($commitData.status)"
+Log-Success "Commit initiated! Current status: $($commitData.status)"
+
+Log-Info "Polling Microsoft Store status until certification pipeline completes commit..."
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 6
+    try {
+        $checkData = Invoke-RestMethod -Method Get -Uri "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$subId/status" -Headers $authHeaders
+        Log-Info "Status check $($i+1)/30: $($checkData.status)"
+        if ($checkData.status -in @("CommitComplete", "Certification", "PreProcessing", "Release")) {
+            Log-Success "Submission $subId successfully in $($checkData.status)!"
+            break
+        }
+        if ($checkData.status -eq "CommitFailed") {
+            Log-Error "Microsoft rejected commit: $($checkData | ConvertTo-Json -Depth 5)"
+            exit 1
+        }
+    }
+    catch {
+        Log-Info "Polling check: $_"
+    }
+}
 Log-Success "=== MICROSOFT STORE PUBLICATION COMPLETE ==="

@@ -204,6 +204,8 @@ jobs:
           dotnet publish obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
+            -p:AppxBundle=Always `
+            -p:AppxBundlePlatforms="x64" `
             -p:UapAppxPackageBuildMode=StoreUpload `
             $extraArgs
 
