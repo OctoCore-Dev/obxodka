@@ -161,7 +161,7 @@ public sealed partial class VpnView : ContentView
             {
                 RayIndicatorIcon.Icon = FluentIcons.Rocket24;
                 RayIndicatorIcon.IconColor = Color.FromArgb("#A855F7");
-                RayIndicatorLabel.Text = "Режим: FECHSUE (ГигаТуннель • 0% потерь)";
+                RayIndicatorLabel.Text = "Режим: FHARCSUE (Мульти-пинговый Watchdog • 0% потерь)";
             }
             else if (activeProto == "AUTO" && OctopusEngine.Current is not { IsConnected: true })
             {
@@ -223,7 +223,7 @@ public sealed partial class VpnView : ContentView
             "Отмена",
             null,
             "AUTO (Умный подбор и Fallback)",
-            "FECHSUE (ГигаТуннель UDP • 0% потерь)",
+            "FHARCSUE (Мульти-пинговый Watchdog • 0% потерь)",
             "HTTP/3 (QUIC • Маскировка под Chrome)",
             "HTTP/2 (Стандартный TLS • Стабильный TCP)");
 
@@ -236,7 +236,7 @@ public sealed partial class VpnView : ContentView
         {
             ApplyProtocolSelection("AUTO");
         }
-        else if (action.StartsWith("FECHSUE", StringComparison.OrdinalIgnoreCase))
+        else if (action.StartsWith("FHARCSUE", StringComparison.OrdinalIgnoreCase) || action.StartsWith("FECHSUE", StringComparison.OrdinalIgnoreCase))
         {
             ApplyProtocolSelection("FECHSUE");
         }

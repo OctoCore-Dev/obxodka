@@ -11,11 +11,12 @@ public sealed partial class FechsueTransport : IVpnTransport
     private readonly Socket?[] _sockets = new Socket?[ParallelStreams];
     private readonly AesGcm?[] _rxCryptos = new AesGcm?[ParallelStreams];
     private readonly AesGcm?[] _txCryptos = new AesGcm?[ParallelStreams];
-    private readonly Lock[] _txLocks = [new Lock()];
+    private readonly Lock[] _txLocks = [new Lock(), new Lock(), new Lock(), new Lock()];
     private IPEndPoint? _serverEp;
     private uint _sessionId;
     private byte[] _key = new byte[32];
     private CancellationTokenSource? _cts;
+    private long _lastRxTicks = DateTime.UtcNow.Ticks;
 
     public event Action<byte[], int>? OnPacketReceived;
     public event Action<long>? OnPingUpdated;
@@ -151,9 +152,10 @@ public sealed partial class FechsueTransport : IVpnTransport
             return;
         }
 
-        var sock = _sockets[0];
-        var crypto = _txCryptos[0];
-        var txLock = _txLocks[0];
+        var ray = PacketRouter.GetRayIndex(packet, length, ParallelStreams);
+        var sock = _sockets[ray] ?? _sockets[0];
+        var crypto = _txCryptos[ray] ?? _txCryptos[0];
+        var txLock = _txLocks[ray] ?? _txLocks[0];
         if (sock == null || crypto == null)
         {
             ArrayPool<byte>.Shared.Return(packet);
@@ -211,6 +213,8 @@ public sealed partial class FechsueTransport : IVpnTransport
 
     private void HandleDecryptedPacket(byte[] payload, int realLen, TaskCompletionSource<(string, string)> ipTcs)
     {
+        Volatile.Write(ref _lastRxTicks, DateTime.UtcNow.Ticks);
+
         if (realLen >= 3 && payload[0] == 'I' && payload[1] == 'P' && payload[2] == ':')
         {
             try
@@ -238,11 +242,12 @@ public sealed partial class FechsueTransport : IVpnTransport
                 ArrayPool<byte>.Shared.Return(payload);
             }
         }
-        else if (payload[0] == 0x99 && realLen == 9)
+        else if (payload[0] == 0x99 && realLen >= 9)
         {
             try
             {
-                var sentTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(1, 8));
+                var ticksOffset = realLen >= 10 ? 2 : 1;
+                var sentTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(ticksOffset, 8));
                 var rtt = (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond;
                 OnPingUpdated?.Invoke(rtt);
             }
@@ -342,13 +347,78 @@ public sealed partial class FechsueTransport : IVpnTransport
         {
             try
             {
-                var packet = ArrayPool<byte>.Shared.Rent(9);
-                packet[0] = 0x99;
-                BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), DateTime.UtcNow.Ticks);
-                SendPacketFromPool(packet, 9);
+                for (byte i = 0; i < ParallelStreams; i++)
+                {
+                    if (_sockets[i] is { } sock && _txCryptos[i] is { } crypto)
+                    {
+                        var packet = ArrayPool<byte>.Shared.Rent(10);
+                        packet[0] = 0x99;
+                        packet[1] = i;
+                        BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(2, 8), DateTime.UtcNow.Ticks);
+
+                        byte[] packed;
+                        int totalLen;
+                        lock (_txLocks[i])
+                        {
+                            packed = FechsueCodec.Pack(packet, 10, _sessionId, crypto, out totalLen);
+                        }
+                        ArrayPool<byte>.Shared.Return(packet);
+                        try
+                        {
+                            _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                if (_serverEp != null)
+                                {
+                                    _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
+                                }
+                            }
+                            catch { }
+                        }
+                        finally
+                        {
+                            ArrayPool<byte>.Shared.Return(packed);
+                        }
+                    }
+                }
+
+                var idleTicks = DateTime.UtcNow.Ticks - Volatile.Read(ref _lastRxTicks);
+                if (idleTicks > TimeSpan.FromSeconds(3).Ticks && !string.IsNullOrEmpty(Thumbprint))
+                {
+                    // 🛡️ Auto-Recovery: Fast background NAT re-punch across all active streams
+                    for (byte i = 0; i < ParallelStreams; i++)
+                    {
+                        if (_sockets[i] is { } s)
+                        {
+                            var authPacket = FechsueCodec.PackAuth(Thumbprint, i, out var authLen);
+                            try
+                            {
+                                _ = s.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
+                            }
+                            catch
+                            {
+                                try
+                                {
+                                    if (_serverEp != null)
+                                    {
+                                        _ = s.SendTo(authPacket.AsSpan(0, authLen), SocketFlags.None, _serverEp);
+                                    }
+                                }
+                                catch { }
+                            }
+                            finally
+                            {
+                                ArrayPool<byte>.Shared.Return(authPacket);
+                            }
+                        }
+                    }
+                }
             }
             catch { }
-            await Task.Delay(2000, ct);
+            await Task.Delay(1500, ct);
         }
     }
 

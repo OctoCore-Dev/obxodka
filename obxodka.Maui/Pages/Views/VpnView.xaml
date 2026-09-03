@@ -616,11 +616,11 @@
                                         FontFamily="RobotoBold"
                                         FontSize="14"
                                         Style="{StaticResource LabelValue}"
-                                        Text="FECHSUE" />
+                                        Text="FHARCSUE" />
                                     <Label
                                         FontSize="11"
                                         Style="{StaticResource LabelMuted}"
-                                        Text="ГигаТуннель UDP (0% потерь пакетов)" />
+                                        Text="Мульти-пинговый Watchdog UDP (0% потерь)" />
                                 </VerticalStackLayout>
                                 <mi:MauiIcon
                                     x:Name="ModalFechsueCheck"

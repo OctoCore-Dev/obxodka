@@ -1,6 +1,6 @@
-- Major optimization: upgraded to pure 64-bit architecture (arm64) for faster startup and smaller app size.
-- Reduced memory footprint and improved battery efficiency via .NET 10 zero-allocation pipeline.
-- Faster, seamless server reconnection with dynamic certificate verification.
-- Enhanced background connection stability and minor bug fixes.
-- Modular foundation prepared for upcoming community Linux support.
+- Brand new FHARCSUE protocol: 4-stream Ray Bonding with 5-tuple flow hashing for maximum throughput and ultra-low latency.
+- Multi-ping Watchdog: keeps active NAT mappings across all 4 streams refreshed every 1.5s.
+- Bidirectional FEC (0% packet loss): real-time packet recovery without retransmission stalls.
+- Auto-Recovery: seamless self-healing on network roaming (Wi-Fi/LTE) without dropping the VPN tunnel.
+- .NET 10 memory and networking pipeline optimizations.
 - Documentation & Mesh guide: https://obxodka.one
