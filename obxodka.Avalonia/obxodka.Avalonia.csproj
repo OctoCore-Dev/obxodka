@@ -1,38 +1,25 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('linux'))">
-    <OutputType>Exe</OutputType>
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <RootNamespace>obxodka.Avalonia</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
-  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux'))">
-    <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Library</OutputType>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <EnableDefaultAvaloniaItems>false</EnableDefaultAvaloniaItems>
-  </PropertyGroup>
-
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('linux'))">
-    <PackageReference Include="Avalonia" Version="11.2.3" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" Condition="'$(Configuration)' == 'Debug'" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
-
-    <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj" />
-    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
-    <ProjectReference Include="..\obxodka.Core\obxodka.Core.csproj" />
+  <ItemGroup>
+    <Folder Include="Models\" />
+    <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
-  <Target Name="Build" Condition="!$([MSBuild]::IsOSPlatform('linux'))">
-    <Message Importance="high" Text="🪟 Non-Linux detected: obxodka.Avalonia skipped (Linux GUI only)." />
-  </Target>
-  <Target Name="Publish" Condition="!$([MSBuild]::IsOSPlatform('linux'))" />
-
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
 </Project>
