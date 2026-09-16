@@ -103,7 +103,7 @@ if ($pending -and $pending.id) {
 if (-not $subData -or -not $subData.fileUploadUrl) {
     Log-Info "Preparing fresh submission from last published baseline..."
     $createUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions"
-    
+
     $client = [System.Net.Http.HttpClient]::new()
     $postReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, $createUri)
     $postReq.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $accessToken)

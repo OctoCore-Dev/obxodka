@@ -3,12 +3,18 @@ namespace obxodka;
 internal sealed partial class App : Application
 {
     public static event Action? AppResumed;
+    public static event Action? WindowActivated;
+    public static event Action? WindowDeactivated;
     public static bool PendingTileAction { get; set; }
 #if WINDOWS
     private static bool t_isConnectivityHooked;
 #endif
 
-    public App() => InitializeComponent();
+    public App()
+    {
+        InitializeComponent();
+        DnsAdBlocker.IsAdBlockEnabled = Preferences.Default.Get("use_adblock_dns", true);
+    }
 
     public static void HandleTileClick()
     {
@@ -35,12 +41,38 @@ internal sealed partial class App : Application
             TitleBar = null
         };
         window.Resumed += (_, _) => AppResumed?.Invoke();
+        window.Activated += (_, _) => WindowActivated?.Invoke();
+        window.Deactivated += (_, _) => WindowDeactivated?.Invoke();
+        window.Stopped += (_, _) => WindowDeactivated?.Invoke();
 
 #if WINDOWS
         window.HandlerChanged += (_, _) =>
         {
             if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window winUIWindow)
             {
+                winUIWindow.Activated += (s, args) =>
+                {
+                    if (args.WindowActivationState == Microsoft.UI.Xaml.WindowActivationState.Deactivated)
+                    {
+                        WindowDeactivated?.Invoke();
+                    }
+                    else
+                    {
+                        WindowActivated?.Invoke();
+                    }
+                };
+                winUIWindow.VisibilityChanged += (s, args) =>
+                {
+                    if (!args.Visible)
+                    {
+                        WindowDeactivated?.Invoke();
+                    }
+                    else
+                    {
+                        WindowActivated?.Invoke();
+                    }
+                };
+
                 winUIWindow.ExtendsContentIntoTitleBar = true;
                 winUIWindow.SetTitleBar(new Microsoft.UI.Xaml.Controls.Grid { Height = 0, MaxHeight = 0 });
 
@@ -58,7 +90,13 @@ internal sealed partial class App : Application
 
                     void SyncTitleBarColors()
                     {
-                        var isLight = Current?.RequestedTheme == AppTheme.Light;
+                        var bgBase = Current?.Resources != null && Current.Resources.TryGetValue("BgBase", out var bObj) && bObj is Color c
+                            ? c
+                            : Color.FromArgb("#0E0E14");
+
+                        var luminance = (0.2126 * bgBase.Red) + (0.7152 * bgBase.Green) + (0.0722 * bgBase.Blue);
+                        var isLight = luminance > 0.55;
+
                         titleBar.ButtonForegroundColor = isLight ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
                         titleBar.ButtonHoverForegroundColor = isLight ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
                         titleBar.ButtonInactiveForegroundColor = isLight
@@ -74,19 +112,12 @@ internal sealed partial class App : Application
 
                     SyncTitleBarColors();
 
-                    Current?.RequestedThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(() =>
+                    Current?.RequestedThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                    if (IPlatformApplication.Current?.Services?.GetService<ThemeManager>() is { } tm)
                     {
-                        SyncTitleBarColors();
-                        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
-                        {
-                            Platforms.Windows.WindowsBackdropHelper.ApplyBackdrop(winUIWindow);
-                        }
-                    });
-                }
-
-                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
-                {
-                    Platforms.Windows.WindowsBackdropHelper.ApplyBackdrop(winUIWindow);
+                        tm.OnThemeApplied += _ => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                        tm.OnThemeReset += () => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                    }
                 }
             }
         };

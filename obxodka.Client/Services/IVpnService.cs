@@ -12,5 +12,7 @@ public interface IVpnService
     public event Action<string>? OnForceLogoutRequested;
 
     public Task StartVpnAsync(string serverIp, int serverPort);
+    public Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers) =>
+        StartVpnAsync(serverIp, serverPort);
     public Task StopVpnAsync();
 }

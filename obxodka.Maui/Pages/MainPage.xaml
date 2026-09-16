@@ -1,28 +1,131 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
     x:Class="obxodka.Pages.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:obxodka.Maui.Controls"
+    xmlns:media="clr-namespace:CommunityToolkit.Maui.Views;assembly=CommunityToolkit.Maui.MediaElement"
     xmlns:views="clr-namespace:obxodka.Views"
-    BackgroundColor="{OnPlatform WinUI=Transparent,
-                                 Default={AppThemeBinding Light={StaticResource BgBaseLight},
-                                                          Dark={StaticResource BgBase}}}"
+    BackgroundColor="{DynamicResource BgBase}"
     NavigationPage.HasNavigationBar="False"
     SafeAreaEdges="None"
     Shell.NavBarIsVisible="False">
 
-    <Grid x:Name="ThisPage" BackgroundColor="{OnPlatform WinUI=Transparent, Default={AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}}">
+    <Grid
+        x:Name="ThisPage"
+        BackgroundColor="{DynamicResource BgBase}"
+        SafeAreaEdges="None">
+        <Grid.GestureRecognizers>
+            <PointerGestureRecognizer PointerExited="OnPagePointerExited" PointerMoved="OnPagePointerMoved" />
+        </Grid.GestureRecognizers>
 
-        <views:PaperNoiseOverlay
+        <Image
+            x:Name="ThemeBackgroundImage"
+            Aspect="AspectFill"
             HorizontalOptions="Fill"
             InputTransparent="True"
+            IsVisible="False"
             VerticalOptions="Fill"
             ZIndex="0" />
+
+        <media:MediaElement
+            x:Name="ThemeBackgroundVideo"
+            Aspect="AspectFill"
+            HorizontalOptions="Fill"
+            InputTransparent="True"
+            IsVisible="False"
+            ShouldAutoPlay="False"
+            ShouldLoopPlayback="True"
+            ShouldMute="True"
+            ShouldShowPlaybackControls="False"
+            VerticalOptions="Fill"
+            ZIndex="1" />
+
+        <BoxView
+            x:Name="ThemeBackgroundVideoDimmer"
+            HorizontalOptions="Fill"
+            InputTransparent="True"
+            IsVisible="False"
+            VerticalOptions="Fill"
+            ZIndex="2" />
+
+        <controls:ThemeParticlesOverlay
+            x:Name="ThemeParticles"
+            HorizontalOptions="Fill"
+            InputTransparent="True"
+            IsVisible="False"
+            VerticalOptions="Fill"
+            ZIndex="15" />
+
+        <Grid
+            x:Name="ThemeDecorationsContainer"
+            HorizontalOptions="Fill"
+            InputTransparent="True"
+            IsVisible="False"
+            VerticalOptions="Fill"
+            ZIndex="20">
+
+            <controls:ThemeFrameOverlay
+                x:Name="ThemeScreenFrameOverlay"
+                HorizontalOptions="Fill"
+                InputTransparent="True"
+                IsVisible="False"
+                VerticalOptions="Fill" />
+
+            <Image
+                x:Name="ThemeCornerTopLeft"
+                Aspect="AspectFit"
+                HeightRequest="{OnIdiom Desktop=160,
+                                        Phone=110}"
+                HorizontalOptions="Start"
+                InputTransparent="True"
+                IsVisible="False"
+                VerticalOptions="Start"
+                WidthRequest="{OnIdiom Desktop=160,
+                                       Phone=110}" />
+
+            <Image
+                x:Name="ThemeCornerTopRight"
+                Aspect="AspectFit"
+                HeightRequest="{OnIdiom Desktop=160,
+                                        Phone=110}"
+                HorizontalOptions="End"
+                InputTransparent="True"
+                IsVisible="False"
+                VerticalOptions="Start"
+                WidthRequest="{OnIdiom Desktop=160,
+                                       Phone=110}" />
+
+            <Image
+                x:Name="ThemeCornerBottomLeft"
+                Aspect="AspectFit"
+                HeightRequest="{OnIdiom Desktop=140,
+                                        Phone=90}"
+                HorizontalOptions="Start"
+                InputTransparent="True"
+                IsVisible="False"
+                VerticalOptions="End"
+                WidthRequest="{OnIdiom Desktop=140,
+                                       Phone=90}" />
+
+            <Image
+                x:Name="ThemeCornerBottomRight"
+                Aspect="AspectFit"
+                HeightRequest="{OnIdiom Desktop=140,
+                                        Phone=90}"
+                HorizontalOptions="End"
+                InputTransparent="True"
+                IsVisible="False"
+                VerticalOptions="End"
+                WidthRequest="{OnIdiom Desktop=140,
+                                       Phone=90}" />
+        </Grid>
 
         <Grid
             ColumnDefinitions="Auto, *"
             RowDefinitions="*, Auto"
-            ZIndex="1">
+            SafeAreaEdges="None"
+            ZIndex="10">
             <views:DesktopSidebarView
                 x:Name="DesktopSidebar"
                 Grid.Row="0"
@@ -31,12 +134,18 @@
                 IsVisible="{OnIdiom Desktop=True,
                                     Default=False}" />
             <Grid
+                x:Name="MainContentContainer"
                 Grid.Row="0"
                 Grid.RowSpan="2"
                 Grid.Column="{OnIdiom Desktop=1,
                                       Default=0}"
                 Grid.ColumnSpan="{OnIdiom Desktop=1,
-                                          Default=2}">
+                                          Default=2}"
+                SafeAreaEdges="None">
+                <Grid.GestureRecognizers>
+                    <SwipeGestureRecognizer Direction="Left" Swiped="OnContentSwipedLeft" />
+                    <SwipeGestureRecognizer Direction="Right" Swiped="OnContentSwipedRight" />
+                </Grid.GestureRecognizers>
 
                 <views:AuthView x:Name="TabContentAuth" IsVisible="False" />
                 <views:VpnView x:Name="TabContentVpn" IsVisible="False" />
@@ -48,6 +157,7 @@
                 <views:SplitView x:Name="TabContentSplit" IsVisible="False" />
                 <views:DeleteAccountView x:Name="TabContentDelete" IsVisible="False" />
                 <views:PaymentView x:Name="TabContentPayment" IsVisible="False" />
+                <views:ThemeStoreView x:Name="TabContentThemeStore" IsVisible="False" />
             </Grid>
 
             <views:MobileSidebarView
@@ -61,8 +171,7 @@
 
         <Grid
             x:Name="SplashOverlay"
-            BackgroundColor="{AppThemeBinding Light={StaticResource BgSurfaceLight},
-                                              Dark={StaticResource BgSurface}}"
+            BackgroundColor="{DynamicResource BgSurface}"
             InputTransparent="False"
             IsVisible="{OnIdiom Desktop=True,
                                 Default=False}"
@@ -81,7 +190,7 @@
                     HorizontalOptions="Center"
                     IsRunning="True"
                     VerticalOptions="Center"
-                    Color="{StaticResource Primary}" />
+                    Color="{DynamicResource Primary}" />
             </VerticalStackLayout>
 
             <VerticalStackLayout
@@ -93,8 +202,7 @@
                     FontSize="12"
                     HorizontalOptions="Center"
                     Text="from"
-                    TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight},
-                                                Dark={StaticResource TextSecondary}}" />
+                    TextColor="{DynamicResource TextSecondary}" />
                 <HorizontalStackLayout HorizontalOptions="Center" Spacing="6">
                     <Image
                         HeightRequest="20"
@@ -103,11 +211,10 @@
                         WidthRequest="20" />
                     <Label
                         CharacterSpacing="1"
-                        FontFamily="CommissionerExtraBold"
+                        FontFamily="{DynamicResource AppFontTitle}"
                         FontSize="16"
                         Text="OCTOCORE"
-                        TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
-                                                    Dark={StaticResource TextPrimary}}"
+                        TextColor="{DynamicResource TextPrimary}"
                         VerticalOptions="Center" />
                 </HorizontalStackLayout>
             </VerticalStackLayout>
@@ -115,4 +222,3 @@
         </Grid>
     </Grid>
 </ContentPage>
-

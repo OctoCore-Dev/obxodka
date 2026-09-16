@@ -91,19 +91,7 @@ public sealed partial class MeshView : ContentView
     {
         Opacity = 1;
         TranslationY = 0;
-
-        var cards = new VisualElement[]
-        {
-            CardRelayServer,
-            CardReward,
-            CardLimits,
-            CardMyCode,
-            CardFriendCode,
-            CardFriendsList,
-            CardSecurity
-        };
-
-        await UIAnimations.PlayEntranceCascadeAsync(80, 450, cards);
+        await this.PlayCardsEntranceAsync(35, 240);
     }
 
     private void LoadSettings()
@@ -176,11 +164,9 @@ public sealed partial class MeshView : ContentView
             {
                 Padding = new Thickness(14, 10),
                 StrokeThickness = 0,
-                BackgroundColor = Application.Current?.RequestedTheme == AppTheme.Dark
-                    ? Color.FromArgb("#181824")
-                    : Color.FromArgb("#F9FAFB"),
                 StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 }
             };
+            item.SetDynamicResource(BackgroundColorProperty, "BgElevated");
 
             var grid = new Grid
             {
@@ -198,15 +184,16 @@ public sealed partial class MeshView : ContentView
                 FontSize = 13,
                 VerticalOptions = LayoutOptions.Center
             };
+            emailLabel.SetDynamicResource(Label.TextColorProperty, "TextPrimary");
 
             var badge = new Label
             {
                 Text = $"+{friend.BonusHours} ч (Бонус)",
                 FontFamily = "RobotoBold",
                 FontSize = 12,
-                TextColor = Color.FromArgb("#10B981"),
                 VerticalOptions = LayoutOptions.Center
             };
+            badge.SetDynamicResource(Label.TextColorProperty, "Success");
 
             grid.Add(emailLabel, 0, 0);
             grid.Add(badge, 1, 0);
@@ -292,16 +279,52 @@ public sealed partial class MeshView : ContentView
             MeshStatusBadge.Text = isForwarding
                 ? $"Раздача активна (:{port})"
                 : $"Фоновый релей активен (:{port})";
-            MeshStatusBadge.TextColor = Color.FromArgb("#10B981");
-            MeshStatusDot.Color = Color.FromArgb("#10B981");
+            MeshStatusBadge.TextColor = SuccessColor;
+            MeshStatusDot.Color = SuccessColor;
         }
         else
         {
             MeshStatusBadge.Text = "Релей неактивен";
-            MeshStatusBadge.TextColor = Color.FromArgb("#EF4444");
-            MeshStatusDot.Color = Color.FromArgb("#EF4444");
+            MeshStatusBadge.TextColor = ErrorColor;
+            MeshStatusDot.Color = ErrorColor;
         }
     }
+
+    private static Color SuccessColor =>
+        Application.Current?.Resources.TryGetValue("Success", out var s) == true && s is Color sc ? sc : Color.FromArgb("#10B981");
+
+    private static Color ErrorColor =>
+        Application.Current?.Resources.TryGetValue("Error", out var e) == true && e is Color ec ? ec : Color.FromArgb("#EF4444");
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        CardRelayServer.BackgroundColor = bgSurface;
+        CardReward.BackgroundColor = bgSurface;
+        CardLimits.BackgroundColor = bgSurface;
+        CardMyCode.BackgroundColor = bgSurface;
+        CardFriendCode.BackgroundColor = bgSurface;
+        CardFriendsList.BackgroundColor = bgSurface;
+        CardSecurity.BackgroundColor = bgSurface;
+    }
+
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && Content is Grid g)
+        {
+            g.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
+        }
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateStatusBadge();
+        });
 
     private async void OnRelayServerToggledAsync(object? sender, ToggledEventArgs e)
     {

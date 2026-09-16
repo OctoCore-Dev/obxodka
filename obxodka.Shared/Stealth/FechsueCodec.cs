@@ -1,4 +1,4 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 public static class FechsueCodec
 {
@@ -7,7 +7,6 @@ public static class FechsueCodec
     public const int Overhead = HeaderSize + TagSize;
     public const uint StealthAuthMask = 0xA55A3C7E;
     public const uint StealthDiscMask = 0x5AA5C381;
-
     public const byte QuicLongHeaderInitial = 0xC0;
     public const uint QuicVersion1 = 0x00000001;
     public const byte QuicFrameCrypto = 0x06;
@@ -24,10 +23,8 @@ public static class FechsueCodec
         var buf = ArrayPool<byte>.Shared.Rent(totalLength);
         Array.Clear(buf, 0, totalLength);
 
-
         buf[0] = QuicLongHeaderInitial;
         BinaryPrimitives.WriteUInt32BigEndian(buf.AsSpan(1, 4), QuicVersion1);
-
 
         buf[5] = 8;
         BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(6, 4), sessionId);
@@ -43,7 +40,6 @@ public static class FechsueCodec
         BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(24, 2), (ushort)(payloadLen | 0x4000));
 
         buf[26] = 0x01;
-
         buf[27] = QuicFrameCrypto;
         buf[28] = 0x00;
         BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(29, 2), (ushort)(cryptoDataLen | 0x4000));
@@ -253,6 +249,20 @@ public static class FechsueCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackEncryptedDisc(uint sessionId, AesGcm crypto, out int totalLength)
+    {
+        var closeFrame = new byte[8];
+        closeFrame[0] = 0x1C;
+        closeFrame[1] = 0x00;
+        Random.Shared.NextBytes(closeFrame.AsSpan(2, 6));
+        return Pack(closeFrame, closeFrame.Length, sessionId, crypto, out totalLength);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsDisconnectPayload(ReadOnlySpan<byte> payload) =>
+        payload.Length > 0 && (payload[0] is 0x1C or 0xFE || (payload.Length >= 4 && payload[..4].SequenceEqual("DISC"u8)));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryUnpack(
         byte[] buffer,
         int totalLength,
@@ -351,7 +361,7 @@ public static class FechsueCodec
         private readonly byte _groupSize = groupSize > 0 ? groupSize : DefaultFecGroupSize;
         private ushort _currentGroupId;
         private byte _currentIndex;
-        private readonly byte[] _parityAccumulator = new byte[2048];
+        private byte[] _parityAccumulator = new byte[2048];
         private int _maxPacketLengthInGroup;
         private readonly Lock _lock = new();
 
@@ -366,6 +376,11 @@ public static class FechsueCodec
                 var groupId = _currentGroupId;
                 var index = _currentIndex;
                 var gSize = _groupSize;
+
+                if (rawLength > _parityAccumulator.Length)
+                {
+                    Array.Resize(ref _parityAccumulator, Math.Max(rawLength, _parityAccumulator.Length * 2));
+                }
 
                 if (index == 0)
                 {
@@ -565,10 +580,33 @@ public static class FechsueCodec
                         }
                     }
 
+                    var actualPktLen = group.ParityLength;
+                    if (actualPktLen >= 20)
+                    {
+                        var ver = rec[0] >> 4;
+                        if (ver == 4)
+                        {
+                            var ipLen = BinaryPrimitives.ReadUInt16BigEndian(rec.AsSpan(2, 2));
+                            if (ipLen >= 20 && ipLen <= actualPktLen)
+                            {
+                                actualPktLen = ipLen;
+                            }
+                        }
+                        else if (ver == 6 && actualPktLen >= 40)
+                        {
+                            var payloadLen = BinaryPrimitives.ReadUInt16BigEndian(rec.AsSpan(4, 2));
+                            var ip6Len = payloadLen + 40;
+                            if (ip6Len >= 40 && ip6Len <= actualPktLen)
+                            {
+                                actualPktLen = ip6Len;
+                            }
+                        }
+                    }
+
                     group.Recovered = true;
-                    recoveredPacket = ArrayPool<byte>.Shared.Rent(group.ParityLength);
-                    Buffer.BlockCopy(rec, 0, recoveredPacket, 0, group.ParityLength);
-                    recoveredLength = group.ParityLength;
+                    recoveredPacket = ArrayPool<byte>.Shared.Rent(actualPktLen);
+                    Buffer.BlockCopy(rec, 0, recoveredPacket, 0, actualPktLen);
+                    recoveredLength = actualPktLen;
                 }
             }
         }
@@ -581,7 +619,7 @@ public static class FechsueCodec
                 foreach (var gId in _groups.Keys)
                 {
                     var diff = (ushort)(currentGroupId - gId);
-                    if (diff > MaxTrackedGroups)
+                    if (diff is > MaxTrackedGroups and < (65535 - MaxTrackedGroups))
                     {
                         keysToRemove.Add(gId);
                     }

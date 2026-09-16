@@ -1,6 +1,6 @@
-- New FHARCSUE protocol: 4-stream Ray Bonding for maximum speed & ultra-low ping.
-- Multi-ping Watchdog: keeps all 4 NAT ports refreshed every 1.5s.
-- 0% Packet Loss: real-time bidirectional FEC recovery.
-- Auto-Recovery: seamless self-healing on network switch (Wi-Fi/LTE).
-- .NET 10 zero-allocation pipeline optimizations.
-- Mesh guide: https://obxodka.one
+- Community Themes: browse and install custom creator themes.
+- New visual effects and theme audio support.
+- Octopus engine optimizations and reduced latency.
+- Built-in AdBlocker enabled by default.
+- Enhanced mobile layout and safe area support.
+- Overall stability and performance improvements.

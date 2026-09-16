@@ -52,7 +52,12 @@ public sealed record DeviceItem(
     string? Name,
     DateTime LastActive)
 {
-    public string LastActiveText => $"Активен: {LastActive.ToLocalTime():dd.MM.yyyy HH:mm}";
+    [JsonIgnore]
+    public bool IsCurrentDevice { get; set; }
+
+    public string LastActiveText => IsCurrentDevice
+        ? "Активно сейчас"
+        : $"Активен: {LastActive.ToLocalTime():dd.MM.yyyy HH:mm}";
 
     public string DeviceIcon => (Name?.ToLowerInvariant() ?? string.Empty) switch
     {

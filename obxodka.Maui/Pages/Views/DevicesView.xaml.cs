@@ -14,18 +14,59 @@ public sealed partial class DevicesView : ContentView
     {
         InitializeComponent();
 
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        DevicesScrollView.SizeChanged += (s, e) =>
         {
-            _ = ContentGrid.Children.Remove(DevicesGrid);
-            var scroll = new ScrollView
+            if (DevicesScrollView.Width > 0)
             {
-                Orientation = ScrollOrientation.Vertical,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
-                Content = DevicesGrid
-            };
-            ContentGrid.Children.Add(scroll);
+                ApplyCardWidth(DevicesScrollView.Width);
+            }
+        };
+    }
+
+    public void ForceLayoutWidth()
+    {
+        if (DevicesScrollView.Width > 0)
+        {
+            ApplyCardWidth(DevicesScrollView.Width);
         }
+        else if (Width > 0 && RootLayout is not null)
+        {
+            var avail = Width - RootLayout.Padding.HorizontalThickness;
+            if (avail > 0)
+            {
+                ApplyCardWidth(avail);
+            }
+        }
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width > 0 && RootLayout is not null)
+        {
+            var availableWidth = width - RootLayout.Padding.HorizontalThickness;
+            if (availableWidth > 0)
+            {
+                ApplyCardWidth(availableWidth);
+            }
+        }
+    }
+
+    private void ApplyCardWidth(double targetWidth)
+    {
+        if (targetWidth <= 0 || DevicesGrid is null)
+        {
+            return;
+        }
+
+        var safeWidth = Math.Min(targetWidth - 6, 950);
+        if (safeWidth <= 0)
+        {
+            return;
+        }
+
+        DevicesGrid.WidthRequest = safeWidth;
+        DevicesGrid.MaximumWidthRequest = safeWidth;
     }
 
     public void Initialize(MainPage parent, ApiService apiService)
@@ -38,12 +79,7 @@ public sealed partial class DevicesView : ContentView
     {
         Opacity = 1;
         TranslationY = 0;
-
-        var cards = DevicesGrid.Children.OfType<VisualElement>().ToArray();
-        if (cards.Length > 0)
-        {
-            await UIAnimations.PlayEntranceCascadeAsync(80, 450, cards);
-        }
+        await this.PlayCardsEntranceAsync(35, 240);
     }
 
     public async Task LoadDevicesAsync()
@@ -100,6 +136,32 @@ public sealed partial class DevicesView : ContentView
 
     public void InvalidateCache() => _lastFetchTime = DateTime.MinValue;
 
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        foreach (var child in DevicesGrid.Children)
+        {
+            if (child is DeviceCardView card)
+            {
+                card.UpdateCardOpacity(bgSurface);
+            }
+        }
+    }
+
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
+        {
+            RootLayout.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
+        }
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(RebuildDevicesGrid);
+
     private void RebuildDevicesGrid()
     {
         DevicesGrid.Children.Clear();
@@ -110,18 +172,33 @@ public sealed partial class DevicesView : ContentView
             return;
         }
 
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        var currentHwid = DeviceHelper.Hwid;
+        var orderedDevices = ConnectedDevices
+            .OrderByDescending(d => !string.IsNullOrEmpty(d.Hwid) && string.Equals(d.Hwid, currentHwid, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(d => d.LastActive)
+            .ToList();
+
         var columnsCount = DeviceInfo.Idiom == DeviceIdiom.Desktop ? 2 : 1;
         var col = 0;
         var row = 0;
 
-        foreach (var device in ConnectedDevices)
+        foreach (var device in orderedDevices)
         {
             if (col == 0)
             {
                 DevicesGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             }
 
+            var isCurrent = !string.IsNullOrEmpty(device.Hwid) && string.Equals(device.Hwid, currentHwid, StringComparison.OrdinalIgnoreCase);
+            device.IsCurrentDevice = isCurrent;
+
             var card = new DeviceCardView { BindingContext = device };
+            card.SetIsCurrentDevice(isCurrent);
+            card.UpdateCardOpacity(bgSurface);
             card.RemoveClicked += OnRemoveDeviceClickedAsync;
 
             Grid.SetRow(card, row);

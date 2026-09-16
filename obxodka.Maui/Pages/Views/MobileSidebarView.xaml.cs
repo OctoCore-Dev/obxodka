@@ -2,14 +2,14 @@ namespace obxodka.Views;
 
 public sealed partial class MobileSidebarView : ContentView
 {
-    private static readonly Color t_activeLightColor = Color.FromArgb("#7C3AED");
-    private static readonly Color t_activeDarkColor = Color.FromArgb("#9F6FF0");
-    private static readonly Color t_activeBgLightColor = Colors.Transparent;
-    private static readonly Color t_activeBgDarkColor = Colors.Transparent;
+    private static Color ActiveColor => (Application.Current?.Resources.TryGetValue("Primary", out var val) == true && val is Color c)
+        ? c
+        : Color.FromArgb("#7C3AED");
     private static readonly Color t_inactiveLightColor = Color.FromArgb("#9080B0");
     private static readonly Color t_inactiveDarkColor = Color.FromArgb("#6A5A8A");
 
     public event EventHandler<string>? NavTapped;
+    private string _currentTab = "vpn";
 
     public MobileSidebarView() => InitializeComponent();
 
@@ -23,24 +23,27 @@ public sealed partial class MobileSidebarView : ContentView
 
     public void UpdateActiveTab(string tabName)
     {
+        _currentTab = tabName;
         ResetAllBottomNavItems();
 
-        var isDark = Application.Current?.RequestedTheme != AppTheme.Light;
-        var activeColor = isDark ? t_activeDarkColor : t_activeLightColor;
-        var activeBg = isDark ? t_activeBgDarkColor : t_activeBgLightColor;
+        var activeColor = ActiveColor;
+        var activeBg = Colors.Transparent;
 
         switch (tabName)
         {
             case "vpn":
                 BottomNavVpn.BackgroundColor = activeBg;
                 BottomNavVpnIcon.IconColor = activeColor;
+                PillVpn.Color = activeColor;
                 _ = BottomNavVpn.ScaleToAsync(1.04, 140, Easing.SpringOut);
                 _ = UIAnimations.ShowPillAsync(PillVpn);
                 _ = UIAnimations.PlayIconSpringHoverAsync(BottomNavVpnIcon, 1.22);
                 break;
             case "configuration":
+            case "themes":
                 BottomNavConfiguration.BackgroundColor = activeBg;
                 BottomNavConfigurationIcon.IconColor = activeColor;
+                PillBattery.Color = activeColor;
                 _ = BottomNavConfiguration.ScaleToAsync(1.04, 140, Easing.SpringOut);
                 _ = UIAnimations.ShowPillAsync(PillBattery);
                 _ = UIAnimations.PlayIconSpinAsync(BottomNavConfigurationIcon, 180, 260);
@@ -48,6 +51,7 @@ public sealed partial class MobileSidebarView : ContentView
             case "profile":
                 BottomNavProfile.BackgroundColor = activeBg;
                 BottomNavProfileIcon.IconColor = activeColor;
+                PillProfile.Color = activeColor;
                 _ = BottomNavProfile.ScaleToAsync(1.04, 140, Easing.SpringOut);
                 _ = UIAnimations.ShowPillAsync(PillProfile);
                 _ = UIAnimations.PlayIconBounceJumpAsync(BottomNavProfileIcon, -4);
@@ -55,6 +59,7 @@ public sealed partial class MobileSidebarView : ContentView
             case "devices":
                 BottomNavDevices.BackgroundColor = activeBg;
                 BottomNavDevicesIcon.IconColor = activeColor;
+                PillDevices.Color = activeColor;
                 _ = BottomNavDevices.ScaleToAsync(1.04, 140, Easing.SpringOut);
                 _ = UIAnimations.ShowPillAsync(PillDevices);
                 _ = UIAnimations.PlayIconWiggleAsync(BottomNavDevicesIcon, 14);
@@ -62,6 +67,7 @@ public sealed partial class MobileSidebarView : ContentView
             case "split":
                 BottomNavSplit.BackgroundColor = activeBg;
                 BottomNavSplitIcon.IconColor = activeColor;
+                PillSplit.Color = activeColor;
                 _ = BottomNavSplit.ScaleToAsync(1.04, 140, Easing.SpringOut);
                 _ = UIAnimations.ShowPillAsync(PillSplit);
                 _ = UIAnimations.PlayIconTwinkleAsync(BottomNavSplitIcon);
@@ -79,6 +85,13 @@ public sealed partial class MobileSidebarView : ContentView
         _ = UIAnimations.HidePillAsync(PillDevices);
         _ = UIAnimations.HidePillAsync(PillSplit);
 
+        var activeColor = ActiveColor;
+        PillVpn.Color = activeColor;
+        PillBattery.Color = activeColor;
+        PillProfile.Color = activeColor;
+        PillDevices.Color = activeColor;
+        PillSplit.Color = activeColor;
+
         BottomNavVpn.BackgroundColor = Colors.Transparent;
         BottomNavConfiguration.BackgroundColor = Colors.Transparent;
         BottomNavProfile.BackgroundColor = Colors.Transparent;
@@ -91,9 +104,9 @@ public sealed partial class MobileSidebarView : ContentView
         BottomNavDevices.Scale = 1.0;
         BottomNavSplit.Scale = 1.0;
 
-        var inactiveColor = Application.Current?.RequestedTheme == AppTheme.Light
-            ? t_inactiveLightColor
-            : t_inactiveDarkColor;
+        var inactiveColor = (Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc)
+            ? tmc
+            : (Application.Current?.RequestedTheme == AppTheme.Light ? t_inactiveLightColor : t_inactiveDarkColor);
 
         BottomNavVpnIcon.IconColor = inactiveColor;
         BottomNavConfigurationIcon.IconColor = inactiveColor;
@@ -107,6 +120,26 @@ public sealed partial class MobileSidebarView : ContentView
         ResetIconTransform(BottomNavDevicesIcon);
         ResetIconTransform(BottomNavSplitIcon);
     }
+
+    public void UpdateCardOpacity()
+    {
+        var bgElevated = (Application.Current?.Resources.TryGetValue("BgElevated", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#202030");
+        var borderMedium = (Application.Current?.Resources.TryGetValue("BorderMedium", out var bm) == true && bm is Color bmColor)
+            ? bmColor
+            : Color.FromArgb("#363650");
+
+        MobileBottomBar.BackgroundColor = bgElevated;
+        MobileBottomBar.Stroke = borderMedium;
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateActiveTab(_currentTab);
+        });
 
     private static void ResetIconTransform(VisualElement icon)
     {

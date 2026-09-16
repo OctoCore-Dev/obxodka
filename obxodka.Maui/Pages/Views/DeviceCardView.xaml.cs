@@ -6,11 +6,22 @@ public sealed partial class DeviceCardView : ContentView
 
     public DeviceCardView() => InitializeComponent();
 
-    private async void OnRemoveDeviceClickedAsync(object? sender, TappedEventArgs e)
+    public void SetIsCurrentDevice(bool isCurrent)
+    {
+        DeleteBtn.IsVisible = !isCurrent;
+        CurrentDeviceBadge.IsVisible = isCurrent;
+
+        CardBorder.ClearValue(Border.StrokeProperty);
+        CardBorder.SetDynamicResource(Border.StrokeProperty, isCurrent ? "Primary" : "BorderSubtle");
+        CardBorder.StrokeThickness = isCurrent ? 1.5 : 1.0;
+    }
+
+    public void UpdateCardOpacity(Color bgSurface) =>
+        CardBorder.BackgroundColor = bgSurface;
+
+    private void OnRemoveDeviceClicked(object? sender, TappedEventArgs e)
     {
         _ = UIAnimations.PlayIconWiggleAsync(DeleteIcon, 18);
-        _ = await DeleteBtn.ScaleToAsync(0.9, 80, Easing.CubicOut);
-        _ = await DeleteBtn.ScaleToAsync(1.0, 100, Easing.SpringOut);
         RemoveClicked?.Invoke(this, EventArgs.Empty);
     }
 }

@@ -98,9 +98,18 @@ public static class DnsAdBlocker
         "vungle.com"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    public static byte[]? ProcessPacket(byte[] packet, int length, bool useAdblock)
+    private static volatile bool t_isAdBlockEnabled = true;
+
+    public static bool IsAdBlockEnabled
     {
-        if (!useAdblock || length < 20)
+        get => t_isAdBlockEnabled;
+        set => t_isAdBlockEnabled = value;
+    }
+
+    public static byte[]? ProcessPacket(byte[] packet, int length, bool? useAdblock = null)
+    {
+        var enabled = useAdblock ?? IsAdBlockEnabled;
+        if (!enabled || length < 20)
         {
             return null;
         }
@@ -184,7 +193,7 @@ public static class DnsAdBlocker
     {
         try
         {
-            if (length < 20)
+            if (!IsAdBlockEnabled || length < 20)
             {
                 return;
             }

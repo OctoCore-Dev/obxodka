@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
-    <WindowsPackageType>MSIX</WindowsPackageType>
+    <WindowsPackageType>$(PackageMode)</WindowsPackageType>
     <Configurations>Debug;Release</Configurations>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">net10.0-windows10.0.19041.0;net10.0-android</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux')) and ('$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android')))">net10.0-android</TargetFrameworks>
@@ -23,6 +23,7 @@
     <LangVersion>preview</LangVersion>
     <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
     <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Core\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
+    <NoWarn>$(NoWarn);NU1608;NU1603</NoWarn>
   </PropertyGroup>
 
 	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">
@@ -39,6 +40,8 @@
 		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' != 'true'">8G</JavaMaximumHeapSize>
 		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' == 'true'">4G</JavaMaximumHeapSize>
+		<AndroidLinkTool Condition="'$(Configuration)' == 'Release'">r8</AndroidLinkTool>
+		<AndroidEnableShrinking Condition="'$(Configuration)' == 'Release'">true</AndroidEnableShrinking>
 	</PropertyGroup>
 
     <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
@@ -95,6 +98,7 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
+    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="6.0.0" />
     <PackageReference Include="WinUIEx" Version="2.9.3" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
     <PackageReference Include="System.Management" Version="10.0.11" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
 </ItemGroup>
@@ -126,7 +130,7 @@
 
 	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />
 
-	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('Platforms\Windows\Package.appxmanifest')">
+	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and $(TargetFramework.Contains('-windows')) and Exists('Platforms\Windows\Package.appxmanifest')">
 		<XmlPoke
 			XmlInputPath="Platforms\Windows\Package.appxmanifest"
 			Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10'/&gt;"
@@ -140,19 +144,6 @@
 	<Target Name="Publish" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(GITHUB_ACTIONS)' != 'true' and !$(TargetFramework.Contains('-android'))" />
 
 </Project>
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

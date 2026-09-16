@@ -21,7 +21,7 @@ public sealed partial class GrpcTransport(
     private string _thumbprint = string.Empty;
 
     private readonly GrpcChannel?[] _grpcChannels = new GrpcChannel?[PacketRouter.MaxRays];
-    private readonly Channel<(byte[] buffer, int length)>?[] _txChannels = new Channel<(byte[], int)>?[PacketRouter.MaxRays];
+    private readonly PriorityPacketQueue?[] _txChannels = new PriorityPacketQueue?[PacketRouter.MaxRays];
     private readonly Stream?[] _tunnelStreams = new Stream?[PacketRouter.MaxRays];
     private readonly PacketDeduplicator _deduplicator = new();
     private CancellationTokenSource? _cts;
@@ -173,8 +173,19 @@ public sealed partial class GrpcTransport(
                         }
                         catch { }
                         OnSocketCreated?.Invoke(socket);
-                        await socket.ConnectAsync(context.DnsEndPoint, cToken);
-                        return new NetworkStream(socket, ownsSocket: true);
+                        try
+                        {
+                            Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {context.DnsEndPoint}...");
+                            await socket.ConnectAsync(context.DnsEndPoint, cToken);
+                            Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {context.DnsEndPoint}!");
+                            return new NetworkStream(socket, ownsSocket: true);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[GRPC-CONNECT ERROR] Failed TCP socket connect to {context.DnsEndPoint}: {ex.Message}");
+                            socket.Dispose();
+                            throw;
+                        }
                     };
                 }
 
@@ -197,8 +208,9 @@ public sealed partial class GrpcTransport(
                     DisposeHttpClient = true
                 };
 
+                Debug.WriteLine($"[GRPC-INIT] Creating channel for ray #{i} -> https://{serverIp}:{serverPort}");
                 _grpcChannels[i] = GrpcChannel.ForAddress($"https://{serverIp}:{serverPort}", channelOptions);
-                _txChannels[i] = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(i == 0 ? 2000 : 1500) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+                _txChannels[i] = new PriorityPacketQueue(i <= 1 ? 2000 : 1500);
                 await ConnectRayAsync(i, isNewConnection: i == 0);
                 _ = TxLoopAsync(i, _txChannels[i]!, _cts.Token);
             }
@@ -230,19 +242,25 @@ public sealed partial class GrpcTransport(
         }
     }
 
+    public Task SendPingProbeAsync()
+    {
+        try
+        {
+            var packet = ArrayPool<byte>.Shared.Rent(9);
+            packet[0] = 0x99;
+            BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), Stopwatch.GetTimestamp());
+            SendPacketFromPool(packet, 9);
+        }
+        catch { }
+        return Task.CompletedTask;
+    }
+
     private async Task PingLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            try
-            {
-                var packet = ArrayPool<byte>.Shared.Rent(9);
-                packet[0] = 0x99;
-                BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), DateTime.UtcNow.Ticks);
-                SendPacketFromPool(packet, 9);
-            }
-            catch { }
-            await Task.Delay(2000, ct);
+            await SendPingProbeAsync();
+            await Task.Delay(1500, ct);
         }
     }
 
@@ -265,18 +283,28 @@ public sealed partial class GrpcTransport(
         headers.Add("X-Active-Rays", _activeRays.ToString(CultureInfo.InvariantCulture));
         headers.Add("X-Ray-Index", rayIndex.ToString(CultureInfo.InvariantCulture));
 
-        var call = client.ConnectStream(headers, cancellationToken: _cts!.Token);
-        var handshake = new byte[16];
-        handshake[0] = 16;
-        handshake[1] = (byte)rayIndex;
-        handshake[2] = (byte)(isNewConnection ? 1 : 0);
+        try
+        {
+            Debug.WriteLine($"[GRPC-RAY-{rayIndex}] Connecting bidirectional stream (isNew: {isNewConnection})...");
+            var call = client.ConnectStream(headers, cancellationToken: _cts!.Token);
+            var handshake = new byte[16];
+            handshake[0] = 16;
+            handshake[1] = (byte)rayIndex;
+            handshake[2] = (byte)(isNewConnection ? 1 : 0);
 
-        await call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
-        _tunnelStreams[rayIndex] = new TunnelGrpcStream(call);
-        _ = ReceiveLoopAsync(rayIndex, _cts.Token);
+            await call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
+            _tunnelStreams[rayIndex] = new TunnelGrpcStream(call);
+            _ = ReceiveLoopAsync(rayIndex, _cts.Token);
+            Debug.WriteLine($"[GRPC-RAY-{rayIndex}] Handshake sent and receive loop started!");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[GRPC-RAY-{rayIndex} ERROR] ConnectStream failed: {ex.Message}");
+            throw;
+        }
     }
 
-    private async Task TxLoopAsync(int rayIndex, Channel<(byte[] buffer, int length)> txChannel, CancellationToken ct)
+    private async Task TxLoopAsync(int rayIndex, PriorityPacketQueue txQueue, CancellationToken ct)
     {
         var isGamingRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
         var batchBuffer = ArrayPool<byte>.Shared.Rent(65536);
@@ -284,7 +312,12 @@ public sealed partial class GrpcTransport(
         {
             while (!ct.IsCancellationRequested)
             {
-                var (buffer, length) = await txChannel.Reader.ReadAsync(ct).ConfigureAwait(false);
+                var (buffer, length) = await txQueue.DequeueAsync(ct).ConfigureAwait(false);
+                if (length <= 0)
+                {
+                    continue;
+                }
+
                 var offset = 0;
                 Buffer.BlockCopy(buffer, 0, batchBuffer, offset, length);
                 offset += length;
@@ -292,14 +325,17 @@ public sealed partial class GrpcTransport(
 
                 if (!isGamingRay)
                 {
-                    while (offset < 32768 && txChannel.Reader.TryRead(out var nextPkt))
+                    while (offset < 32768 && txQueue.TryDequeue(out var nextPkt))
                     {
-                        if (offset + nextPkt.length <= batchBuffer.Length)
+                        if (nextPkt.length > 0)
                         {
-                            Buffer.BlockCopy(nextPkt.buffer, 0, batchBuffer, offset, nextPkt.length);
-                            offset += nextPkt.length;
+                            if (offset + nextPkt.length <= batchBuffer.Length)
+                            {
+                                Buffer.BlockCopy(nextPkt.buffer, 0, batchBuffer, offset, nextPkt.length);
+                                offset += nextPkt.length;
+                            }
+                            ArrayPool<byte>.Shared.Return(nextPkt.buffer);
                         }
-                        ArrayPool<byte>.Shared.Return(nextPkt.buffer);
                     }
                 }
 
@@ -343,17 +379,29 @@ public sealed partial class GrpcTransport(
                     if (realLen >= 3 && packet[0] == 'I' && packet[1] == 'P' && packet[2] == ':')
                     {
                         var msg = Encoding.UTF8.GetString(packet, 0, realLen);
+                        Debug.WriteLine($"[GRPC-AUTH] Received IP assignment from server: '{msg}'");
                         ArrayPool<byte>.Shared.Return(packet);
                         var parts = msg.Split('|');
                         var ip = parts[0].Replace("IP:", "", StringComparison.Ordinal);
                         var ip6 = parts.Length > 1 ? parts[1].Replace("IP6:", "", StringComparison.Ordinal) : "fd00::2";
+                        Debug.WriteLine($"[GRPC-AUTH] Handshake SUCCESS -> Assigned IP: {ip}, IPv6: {ip6}");
                         _ = (_ipTcs?.TrySetResult((ip, ip6)));
                     }
-                    else if (packet[0] == 0x99 && realLen == 9)
+                    else if (packet[0] == 0x99 && realLen >= 9)
                     {
-                        var sentTicks = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
-                        var rtt = (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond;
-                        OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                        if (_activeRays > 1 && rayIndex != 0)
+                        {
+                            ArrayPool<byte>.Shared.Return(packet);
+                            continue;
+                        }
+
+                        var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
+                        var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
+                        var rtt = (long)Math.Round(elapsedMs);
+                        if (rtt is >= 0 and < 10000)
+                        {
+                            OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                        }
                         ArrayPool<byte>.Shared.Return(packet);
                     }
                     else
@@ -408,7 +456,7 @@ public sealed partial class GrpcTransport(
             Buffer.BlockCopy(packed, 0, dup, 0, totalLength);
         }
 
-        if (!primaryChannel.Writer.TryWrite((packed, totalLength)))
+        if (!primaryChannel.TryEnqueue(packed, totalLength))
         {
             ArrayPool<byte>.Shared.Return(packed);
         }
@@ -416,7 +464,7 @@ public sealed partial class GrpcTransport(
         if (dup is not null)
         {
             var secondaryChannel = _txChannels[secondaryRay];
-            if (secondaryChannel is null || !secondaryChannel.Writer.TryWrite((dup, totalLength)))
+            if (secondaryChannel is null || !secondaryChannel.TryEnqueue(dup, totalLength))
             {
                 ArrayPool<byte>.Shared.Return(dup);
             }
@@ -456,7 +504,9 @@ public sealed partial class GrpcTransport(
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            _ = (_txChannels[i]?.Writer.TryComplete());
+            _txChannels[i]?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
+            _txChannels[i]?.Dispose();
+            _txChannels[i] = null;
         }
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
@@ -488,7 +538,8 @@ public sealed partial class GrpcTransport(
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            _ = (_txChannels[i]?.Writer.TryComplete());
+            _txChannels[i]?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
+            _txChannels[i]?.Dispose();
             _txChannels[i] = null;
 
             try

@@ -123,7 +123,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
             if (!string.IsNullOrEmpty(OctopusEngine.Current.AssignedIp))
             {
-                EstablishTun();
+                _ = EstablishTun();
             }
         }
 
@@ -333,24 +333,58 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         }
     }
 
-    public void EstablishTun()
+    public bool EstablishTun()
     {
         try
         {
             var ip = OctopusEngine.Current.AssignedIp;
             if (string.IsNullOrEmpty(ip))
             {
-                return;
+                return false;
             }
+
+            _vpnCts?.Cancel();
+            try
+            {
+                _tunInputStream?.Close();
+            }
+            catch { }
+            try
+            {
+                _tunOutputStream?.Close();
+            }
+            catch { }
+            try
+            {
+                _tunInterface?.Close();
+            }
+            catch { }
+            _tunInputStream = null;
+            _tunOutputStream = null;
+            _tunInterface = null;
 
             _vpnCts = new CancellationTokenSource();
             using var builder = new Builder(this);
             _ = builder
                 .SetSession("Obxodka")
                 .AddAddress(ip, 10)
-                .SetMtu(1360)
+                .SetMtu(1280)
                 .SetBlocking(true)
                 .AddRoute("0.0.0.0", 0);
+
+            var ip6 = OctopusEngine.Current.AssignedIpV6;
+            if (!string.IsNullOrEmpty(ip6))
+            {
+                try
+                {
+                    _ = builder.AddAddress(ip6, 64);
+                    _ = builder.AddRoute("::", 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[VPN V6 ROUTE ERROR] {ex.Message}");
+                }
+            }
 
             _ = builder.AddDnsServer("1.1.1.1");
             _ = builder.AddDnsServer("1.0.0.1");
@@ -378,7 +412,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             {
                 AcquireWakeLock();
                 _tunOutputStream = new FileOutputStream(_tunInterface.FileDescriptor);
-                AndroidVpnService.Instance.ChangeState(AppVpnState.Connected);
 
                 var txThread = new Thread(() => ProcessTraffic(_vpnCts.Token))
                 {
@@ -395,13 +428,16 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     Name = "AndroidTunWriter"
                 };
                 rxThread.Start();
+                return true;
             }
+            return false;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[VPN ESTABLISH ERROR] {ex.Message}");
             AndroidVpnService.Instance.SetError("Не удалось создать туннель");
             StopSelf();
+            return false;
         }
     }
 
@@ -463,7 +499,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (length > 0)
                 {
-                    var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length, useAdblock: true);
+                    var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length);
                     if (sinkholeResp is not null)
                     {
                         var copy = ArrayPool<byte>.Shared.Rent(sinkholeResp.Length);

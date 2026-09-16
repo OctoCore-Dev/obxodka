@@ -1,11 +1,9 @@
-using obxodka.Client.Platforms;
-using obxodka.Maui.Services;
 #if WINDOWS
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
-using WinRT.Interop;
-using obxodka.Platforms.Windows;
 using obxodka.Maui.Platforms.Windows.Services;
+using obxodka.Platforms.Windows;
+using WinRT.Interop;
 #elif ANDROID
 using obxodka.Maui.Platforms.Android.Services;
 #endif
@@ -26,6 +24,7 @@ internal static partial class MauiProgram
             .UseMauiApp<App>()
             .UseFluentMauiIcons()
             .UseMauiCommunityToolkit()
+            .UseMauiCommunityToolkitMediaElement()
             .UseSkiaSharp()
             .ConfigureFonts(fonts =>
             {
@@ -68,6 +67,7 @@ internal static partial class MauiProgram
         });
 
         builder.Services.AddSingleton<AuthManager>();
+        builder.Services.AddSingleton<ThemeManager>();
 
 #if WINDOWS
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
@@ -135,6 +135,14 @@ internal static partial class MauiProgram
 #elif ANDROID
             handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
             handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+#endif
+        });
+
+        Microsoft.Maui.Handlers.SwitchHandler.Mapper.AppendToMapping("CleanSwitch", (handler, _) =>
+        {
+#if WINDOWS
+            handler.PlatformView.OnContent = null;
+            handler.PlatformView.OffContent = null;
 #endif
         });
 

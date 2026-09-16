@@ -83,7 +83,6 @@ StyleCopReport.xml
 *.ipdb
 *.pgc
 *.pgd
-*.rsp
 *.sbr
 *.tlb
 *.tli
@@ -98,7 +97,7 @@ StyleCopReport.xml
 *.pidb
 *.svclog
 *.scc
-
+*.runsettings
 # Chutzpah Test files
 _Chutzpah*
 
@@ -371,4 +370,18 @@ deploy_android.ps1
 *.key
 *.keystore
 *.env
+
+# MAUI Resizetizer and target framework generated artifacts
+**/resizetizer/
+**/net10.0-windows*/**
+**/net10.0-android*/**
+**/maui*.inputs
+**/maui*.outputs
+**/maui*.stamp
+
+# Build Cache (custom output path from Directory.Build.props)
+**/BuildCache/
+
+# Keep publish profiles in git (override *.pubxml exclusion on line 188)
+!**/PublishProfiles/*.pubxml
 

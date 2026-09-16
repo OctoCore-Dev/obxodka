@@ -1,28 +1,28 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:helpers="clr-namespace:obxodka.Helpers">
+
+    <x:String x:Key="AppFontRegular">RobotoRegular</x:String>
+    <x:String x:Key="AppFontMedium">RobotoMedium</x:String>
+    <x:String x:Key="AppFontBold">RobotoBold</x:String>
+    <x:String x:Key="AppFontTitle">CommissionerExtraBold</x:String>
 
     <Style ApplyToDerivedTypes="True" TargetType="Page">
         <Setter Property="Padding" Value="0" />
-        <Setter Property="BackgroundColor" Value="{OnPlatform WinUI=Transparent, Default={AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgBase}" />
     </Style>
 
     <Style ApplyToDerivedTypes="True" TargetType="Shell">
-        <Setter Property="Shell.BackgroundColor" Value="{OnPlatform WinUI=Transparent, Default={AppThemeBinding Light={StaticResource BgBaseLight}, Dark={StaticResource BgBase}}}" />
-        <Setter Property="Shell.ForegroundColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-        <Setter Property="Shell.TitleColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-        <Setter Property="Shell.DisabledColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
-        <Setter Property="Shell.UnselectedColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
-        <Setter Property="Shell.NavBarHasShadow" Value="False" />
-        <Setter Property="Shell.TabBarBackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
-        <Setter Property="Shell.TabBarForegroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
-        <Setter Property="Shell.TabBarTitleColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
-        <Setter Property="Shell.TabBarUnselectedColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
+        <Setter Property="Shell.BackgroundColor" Value="{DynamicResource BgBase}" />
+        <Setter Property="Shell.NavBarIsVisible" Value="False" />
     </Style>
 
     <Style TargetType="Label">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="VisualStateManager.VisualStateGroups">
             <VisualStateGroupList>
@@ -30,7 +30,7 @@
                     <VisualState x:Name="Normal" />
                     <VisualState x:Name="Disabled">
                         <VisualState.Setters>
-                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
+                            <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
@@ -39,36 +39,46 @@
     </Style>
 
     <Style TargetType="Button">
-        <Setter Property="TextColor" Value="{StaticResource TextOnPrimary}" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
-        <Setter Property="FontFamily" Value="RobotoMedium" />
+        <Setter Property="TextColor" Value="{DynamicResource TextOnPrimary}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource Primary}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontMedium}" />
         <Setter Property="FontSize" Value="14" />
-        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="BorderWidth" Value="0" />
-        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Padding" Value="16,10" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
+        <Setter Property="helpers:UIAnimations.BounceOnClick" Value="True" />
         <Setter Property="VisualStateManager.VisualStateGroups">
             <VisualStateGroupList>
                 <VisualStateGroup x:Name="CommonStates">
                     <VisualState x:Name="Normal" />
                     <VisualState x:Name="Disabled">
                         <VisualState.Setters>
-                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
-                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
+                            <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
+                            <Setter Property="BackgroundColor" Value="{DynamicResource BgElevated}" />
                         </VisualState.Setters>
                     </VisualState>
-                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryBright}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryDim}" />
+                        </VisualState.Setters>
+                    </VisualState>
                 </VisualStateGroup>
             </VisualStateGroupList>
         </Setter>
     </Style>
 
     <Style TargetType="Entry">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="PlaceholderColor" Value="{DynamicResource TextMuted}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
@@ -78,7 +88,7 @@
                     <VisualState x:Name="Normal" />
                     <VisualState x:Name="Disabled">
                         <VisualState.Setters>
-                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
+                            <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
@@ -87,52 +97,64 @@
     </Style>
 
     <Style TargetType="Editor">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="PlaceholderColor" Value="{DynamicResource TextMuted}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
     </Style>
 
     <Style TargetType="ActivityIndicator">
-        <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
+        <Setter Property="Color" Value="{DynamicResource Primary}" />
     </Style>
 
     <Style TargetType="Border">
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
         <Setter Property="StrokeShape" Value="Rectangle" />
         <Setter Property="StrokeThickness" Value="1" />
     </Style>
 
     <Style TargetType="BoxView">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource BorderSubtle}" />
     </Style>
 
     <Style TargetType="CheckBox">
-        <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
+        <Setter Property="Color" Value="{DynamicResource Primary}" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
     </Style>
 
     <Style TargetType="Switch">
-        <Setter Property="OnColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
+        <Setter Property="OnColor" Value="{DynamicResource Primary}" />
         <Setter Property="ThumbColor" Value="{StaticResource White}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.5" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style TargetType="Slider">
-        <Setter Property="MinimumTrackColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
-        <Setter Property="MaximumTrackColor" Value="{AppThemeBinding Light={StaticResource BorderMediumLight}, Dark={StaticResource BorderMedium}}" />
-        <Setter Property="ThumbColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
+        <Setter Property="MinimumTrackColor" Value="{DynamicResource Primary}" />
+        <Setter Property="MaximumTrackColor" Value="{DynamicResource BorderMedium}" />
+        <Setter Property="ThumbColor" Value="{DynamicResource Primary}" />
     </Style>
 
     <Style TargetType="ProgressBar">
-        <Setter Property="ProgressColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
+        <Setter Property="ProgressColor" Value="{DynamicResource Primary}" />
     </Style>
 
     <Style TargetType="RefreshView">
-        <Setter Property="RefreshColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
+        <Setter Property="RefreshColor" Value="{DynamicResource Primary}" />
     </Style>
 
     <Style TargetType="ImageButton">
@@ -145,102 +167,83 @@
     </Style>
 
     <Style TargetType="Picker">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-        <Setter Property="TitleColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="TitleColor" Value="{DynamicResource TextMuted}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
     </Style>
 
     <Style TargetType="SearchBar">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-        <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
-        <Setter Property="CancelButtonColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMuted}}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="PlaceholderColor" Value="{DynamicResource TextMuted}" />
+        <Setter Property="CancelButtonColor" Value="{DynamicResource TextMuted}" />
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
     </Style>
 
     <Style TargetType="SwipeItem">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
-    </Style>
-
-    <Style x:Key="TitleLarge" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoBold" />
-        <Setter Property="FontSize" Value="28" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-    </Style>
-
-    <Style x:Key="TitleMedium" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoBold" />
-        <Setter Property="FontSize" Value="20" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-    </Style>
-
-    <Style x:Key="TitleSmall" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoMedium" />
-        <Setter Property="FontSize" Value="16" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgSurface}" />
     </Style>
 
     <Style x:Key="LabelMuted" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondary}}" />
-    </Style>
-
-    <Style x:Key="LabelAccent" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoMedium" />
-        <Setter Property="FontSize" Value="14" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource PrimaryBrightLight}, Dark={StaticResource PrimaryBright}}" />
-    </Style>
-
-    <Style x:Key="LabelCyan" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoMedium" />
-        <Setter Property="FontSize" Value="14" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource AccentLight}, Dark={StaticResource Accent}}" />
-    </Style>
-
-    <Style x:Key="LabelValue" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoBold" />
-        <Setter Property="FontSize" Value="20" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextSecondary}" />
     </Style>
 
     <Style x:Key="LabelError" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoRegular" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontRegular}" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="TextColor" Value="{StaticResource Error}" />
+        <Setter Property="TextColor" Value="{DynamicResource Error}" />
         <Setter Property="HorizontalOptions" Value="Center" />
     </Style>
 
-    <Style x:Key="LabelLink" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoRegular" />
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource PrimaryBrightLight}, Dark={StaticResource PrimaryLight}}" />
-        <Setter Property="TextDecorations" Value="Underline" />
-        <Setter Property="HorizontalOptions" Value="Center" />
-    </Style>
 
     <Style x:Key="NeoCard" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgSurface}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
         <Setter Property="StrokeThickness" Value="1" />
         <Setter Property="StrokeShape" Value="RoundRectangle 8" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="0" />
+        <Setter Property="helpers:UIAnimations.AnimateEntrance" Value="True" />
+    </Style>
+
+    <Style x:Key="BtnSecondary" TargetType="Button">
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgElevated}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontMedium}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderColor" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="Padding" Value="16,10" />
+        <Setter Property="MinimumHeightRequest" Value="44" />
+        <Setter Property="MinimumWidthRequest" Value="44" />
         <Setter Property="VisualStateManager.VisualStateGroups">
             <VisualStateGroupList>
                 <VisualStateGroup x:Name="CommonStates">
                     <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
+                            <Setter Property="BackgroundColor" Value="{DynamicResource BgBase}" />
+                        </VisualState.Setters>
+                    </VisualState>
                     <VisualState x:Name="PointerOver">
                         <VisualState.Setters>
-                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
-                            <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderMediumLight}, Dark={StaticResource BorderMedium}}" />
+                            <Setter Property="BackgroundColor" Value="{DynamicResource BorderMedium}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{DynamicResource BorderSubtle}" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
@@ -248,58 +251,61 @@
         </Setter>
     </Style>
 
-    <Style x:Key="NeoCardInset" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgInputLight}, Dark={StaticResource BgInput}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-    </Style>
-
-    <Style x:Key="NeoPanel" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-    </Style>
-
-    <Style x:Key="NeoBottomBar" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgSurfaceLight}, Dark={StaticResource BgSurface}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+    <Style x:Key="BtnDanger" TargetType="Button">
+        <Setter Property="TextColor" Value="{DynamicResource Error}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource ErrorDim}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontMedium}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderColor" Value="{DynamicResource ErrorDim}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="Padding" Value="16,10" />
+        <Setter Property="MinimumHeightRequest" Value="44" />
+        <Setter Property="MinimumWidthRequest" Value="44" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
+                            <Setter Property="BackgroundColor" Value="{DynamicResource BgElevated}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{DynamicResource ErrorDim}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{DynamicResource Error}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style x:Key="NeoBtnPrimary" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource Primary}}" />
-        <Setter Property="Stroke" Value="#30FFFFFF" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource Primary}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderMedium}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
-    </Style>
-
-    <Style x:Key="NeoBtnSecondary" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+        <Setter Property="helpers:UIAnimations.BounceOnClick" Value="True" />
     </Style>
 
     <Style x:Key="NeoBtnDanger" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{StaticResource ErrorDim}" />
-        <Setter Property="Stroke" Value="#40EF4444" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource ErrorDim}" />
+        <Setter Property="Stroke" Value="{DynamicResource ErrorDim}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
-    </Style>
-
-    <Style x:Key="NeoBtnIcon" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgElevatedLight}, Dark={StaticResource BgElevated}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+        <Setter Property="helpers:UIAnimations.BounceOnClick" Value="True" />
     </Style>
 
     <Style x:Key="NeoInput" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BgInputLight}, Dark={StaticResource BgInput}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgInput}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
         <Setter Property="StrokeThickness" Value="1" />
         <Setter Property="StrokeShape" Value="RoundRectangle 6" />
         <Setter Property="Padding" Value="8,4" />
@@ -315,9 +321,55 @@
             <VisualStateGroupList>
                 <VisualStateGroup x:Name="CommonStates">
                     <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="BottomNavItem" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="HeightRequest" Value="56" />
+        <Setter Property="HorizontalOptions" Value="Fill" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+    </Style>
+
+    <Style x:Key="WarningBanner" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{DynamicResource ErrorDim}" />
+        <Setter Property="Stroke" Value="{DynamicResource Error}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+        <Setter Property="Padding" Value="12,10" />
+    </Style>
+
+    <Style x:Key="BtnGhost" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontMedium}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="MinimumHeightRequest" Value="36" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
+                            <Setter Property="Opacity" Value="0.5" />
+                        </VisualState.Setters>
+                    </VisualState>
                     <VisualState x:Name="PointerOver">
                         <VisualState.Setters>
-                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#14000000, Dark=#14FFFFFF}" />
+                            <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{DynamicResource Primary}" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
@@ -325,55 +377,4 @@
         </Setter>
     </Style>
 
-    <Style x:Key="SideNavItemActive" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#1F0078D4, Dark=#260078D4}" />
-        <Setter Property="Stroke" Value="#0078D4" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
-        <Setter Property="Padding" Value="0" />
-    </Style>
-
-    <Style x:Key="BottomNavItem" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="Stroke" Value="Transparent" />
-        <Setter Property="StrokeThickness" Value="0" />
-    </Style>
-
-    <Style x:Key="Divider" TargetType="BoxView">
-        <Setter Property="HeightRequest" Value="1" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BorderSubtleLight}, Dark={StaticResource BorderSubtle}}" />
-        <Setter Property="Margin" Value="0,8" />
-    </Style>
-
-    <Style x:Key="AppLogoText" TargetType="Label">
-        <Setter Property="FontFamily" Value="RobotoBold" />
-        <Setter Property="FontSize" Value="24" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimary}}" />
-        <Setter Property="VerticalOptions" Value="Center" />
-    </Style>
-
-    <Style x:Key="NeoBadge" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PrimaryLight2}, Dark={StaticResource PrimaryDim}}" />
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderMediumLight}, Dark={StaticResource BorderMedium}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-        <Setter Property="Padding" Value="10,4" />
-    </Style>
-
-    <Style x:Key="NeoDangerCard" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{StaticResource ErrorDim}" />
-        <Setter Property="Stroke" Value="#40EF4444" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-    </Style>
-
-    <Style x:Key="NeoSuccessCard" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{StaticResource SuccessDim}" />
-        <Setter Property="Stroke" Value="#4010B981" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-    </Style>
-
 </ResourceDictionary>
-
-

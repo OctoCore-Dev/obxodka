@@ -19,9 +19,21 @@ public sealed partial class DeleteAccountView : ContentView
     public Task PlayEntranceAnimationAsync() =>
         UIAnimations.PlayEntranceFadeScaleAsync(DeleteCardContainer);
 
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        DeleteCardContainer.BackgroundColor = bgSurface;
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
+
     private async void OnConfirmDeleteClickedAsync(object? sender, EventArgs e)
     {
-        _ = DeleteAccountBorder.BounceClickAsync();
+        _ = DeleteAccountButton.BounceClickAsync();
         _ = UIAnimations.HideErrorLabelAsync(DeleteErrorLabel);
 
         var session = await AuthManager.LoadSessionAsync();
@@ -74,7 +86,6 @@ public sealed partial class DeleteAccountView : ContentView
     {
         DeleteAccountButton.IsEnabled = !loading;
         DeleteAccountButton.Text = loading ? "УДАЛЕНИЕ..." : "УДАЛИТЬ АККАУНТ";
-        DeleteAccountBorder.Opacity = loading ? 0.6 : 1.0;
     }
 
     private void OnCancelDeleteClicked(object? sender, EventArgs e) =>

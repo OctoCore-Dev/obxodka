@@ -3,21 +3,28 @@ using Switch = Microsoft.Maui.Controls.Switch;
 
 namespace obxodka.Views;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "ContentView lifecycle is managed by MAUI visual tree")]
 public sealed partial class SplitView : ContentView
 {
-    private static readonly Color t_activeChipBgLight = Color.FromArgb("#207C3AED");
-    private static readonly Color t_activeChipBgDark = Color.FromArgb("#307C3AED");
-    private static readonly Color t_activeChipStroke = Color.FromArgb("#7C3AED");
-    private static readonly Color t_activeChipText = Color.FromArgb("#7C3AED");
+    private static Color ActiveChipColor => (Application.Current?.Resources.TryGetValue("Primary", out var val) == true && val is Color c)
+        ? c
+        : Color.FromArgb("#7C3AED");
+    private static Color ActiveChipBg => (Application.Current?.Resources.TryGetValue("PrimaryDim", out var pd) == true && pd is Color pdc)
+        ? pdc
+        : ActiveChipColor.WithAlpha(0.18f);
+    private static Color InactiveChipBg => (Application.Current?.Resources.TryGetValue("BgSurface", out var bs) == true && bs is Color bsc)
+        ? bsc
+        : Color.FromArgb("#15FFFFFF");
+    private static Color InactiveChipStroke => (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bst) == true && bst is Color bstc)
+        ? bstc
+        : Color.FromArgb("#30FFFFFF");
+    private static Color InactiveChipText => (Application.Current?.Resources.TryGetValue("TextSecondary", out var ts) == true && ts is Color tsc)
+        ? tsc
+        : Color.FromArgb("#9CA3AF");
 
-    private static readonly Color t_inactiveChipBgLight = Color.FromArgb("#15000000");
-    private static readonly Color t_inactiveChipBgDark = Color.FromArgb("#15FFFFFF");
-    private static readonly Color t_inactiveChipStrokeLight = Color.FromArgb("#30000000");
-    private static readonly Color t_inactiveChipStrokeDark = Color.FromArgb("#30FFFFFF");
-    private static readonly Color t_inactiveChipTextLight = Color.FromArgb("#6B7280");
-    private static readonly Color t_inactiveChipTextDark = Color.FromArgb("#9CA3AF");
-
-    private static readonly Color t_errorColor = Color.FromArgb("#EF4444");
+    private static Color ErrorColor => (Application.Current?.Resources.TryGetValue("Error", out var val) == true && val is Color c)
+        ? c
+        : Color.FromArgb("#EF4444");
 
     private MainPage _parent = null!;
     private IAppManager _appManager = null!;
@@ -39,6 +46,11 @@ public sealed partial class SplitView : ContentView
     {
         InitializeComponent();
         Unloaded += OnUnloaded;
+        HeaderContainer.SizeChanged += OnHeaderContainerSizeChanged;
+#if ANDROID
+        SplitAppsList.HandlerChanged += OnSplitAppsListHandlerChanged;
+        Loaded += (_, _) => AttachScrollListener();
+#endif
     }
 
     public void Initialize(MainPage parent, IAppManager appManager)
@@ -48,8 +60,15 @@ public sealed partial class SplitView : ContentView
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
     }
 
-    private void OnUnloaded(object? sender, EventArgs e) =>
+    private void OnUnloaded(object? sender, EventArgs e)
+    {
+        HeaderContainer.SizeChanged -= OnHeaderContainerSizeChanged;
         _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
+#if ANDROID
+        SplitAppsList.HandlerChanged -= OnSplitAppsListHandlerChanged;
+        DetachScrollListener();
+#endif
+    }
 
     private void OnVpnStateChanged(AppVpnState s) =>
         MainThread.BeginInvokeOnMainThread(() =>
@@ -164,8 +183,8 @@ public sealed partial class SplitView : ContentView
             var chip = new Border
             {
                 Padding = new Thickness(10, 6, 8, 6),
-                BackgroundColor = t_activeChipBgDark,
-                Stroke = t_activeChipStroke,
+                BackgroundColor = ActiveChipBg,
+                Stroke = ActiveChipColor,
                 StrokeThickness = 1,
                 StrokeShape = new RoundRectangle { CornerRadius = 16 }
             };
@@ -194,7 +213,7 @@ public sealed partial class SplitView : ContentView
                 Text = app.Name,
                 FontSize = 12,
                 FontFamily = "RobotoMedium",
-                TextColor = t_activeChipText,
+                TextColor = ActiveChipColor,
                 VerticalOptions = LayoutOptions.Center
             };
 
@@ -207,7 +226,7 @@ public sealed partial class SplitView : ContentView
                 Content = new MauiIcon
                 {
                     Icon = FluentIcons.Dismiss16,
-                    IconColor = t_errorColor,
+                    IconColor = ErrorColor,
                     IconSize = 14
                 }
             };
@@ -278,29 +297,81 @@ public sealed partial class SplitView : ContentView
 
     private void UpdateFilterChipStyles()
     {
-        var isDark = Application.Current?.RequestedTheme != AppTheme.Light;
-
         if (_showOnlyBypassed)
         {
-            ChipFilterAll.BackgroundColor = isDark ? t_inactiveChipBgDark : t_inactiveChipBgLight;
-            ChipFilterAll.Stroke = isDark ? t_inactiveChipStrokeDark : t_inactiveChipStrokeLight;
-            FilterAllLabel.TextColor = isDark ? t_inactiveChipTextDark : t_inactiveChipTextLight;
+            ChipFilterAll.BackgroundColor = InactiveChipBg;
+            ChipFilterAll.Stroke = InactiveChipStroke;
+            FilterAllLabel.TextColor = InactiveChipText;
 
-            ChipFilterBypassed.BackgroundColor = isDark ? t_activeChipBgDark : t_activeChipBgLight;
-            ChipFilterBypassed.Stroke = t_activeChipStroke;
-            FilterBypassedLabel.TextColor = t_activeChipText;
+            ChipFilterBypassed.BackgroundColor = ActiveChipBg;
+            ChipFilterBypassed.Stroke = ActiveChipColor;
+            FilterBypassedLabel.TextColor = ActiveChipColor;
         }
         else
         {
-            ChipFilterAll.BackgroundColor = isDark ? t_activeChipBgDark : t_activeChipBgLight;
-            ChipFilterAll.Stroke = t_activeChipStroke;
-            FilterAllLabel.TextColor = t_activeChipText;
+            ChipFilterAll.BackgroundColor = ActiveChipBg;
+            ChipFilterAll.Stroke = ActiveChipColor;
+            FilterAllLabel.TextColor = ActiveChipColor;
 
-            ChipFilterBypassed.BackgroundColor = isDark ? t_inactiveChipBgDark : t_inactiveChipBgLight;
-            ChipFilterBypassed.Stroke = isDark ? t_inactiveChipStrokeDark : t_inactiveChipStrokeLight;
-            FilterBypassedLabel.TextColor = isDark ? t_inactiveChipTextDark : t_inactiveChipTextLight;
+            ChipFilterBypassed.BackgroundColor = InactiveChipBg;
+            ChipFilterBypassed.Stroke = InactiveChipStroke;
+            FilterBypassedLabel.TextColor = InactiveChipText;
         }
     }
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        var bgBase = (Application.Current?.Resources.TryGetValue("BgBase", out var bgb) == true && bgb is Color bgBaseColor)
+            ? bgBaseColor
+            : Color.FromArgb("#0E0E14");
+
+        HeaderContainer.BackgroundColor = bgBase.WithAlpha(0.92f);
+        ChipFilterBypassed.BackgroundColor = bgSurface;
+        ChipResetAll.BackgroundColor = bgSurface;
+
+        if (SplitAppsList.ItemsSource != null && _allApps.Count > 0)
+        {
+            var currentItems = SplitAppsList.ItemsSource;
+            SplitAppsList.ItemsSource = null;
+            SplitAppsList.ItemsSource = currentItems;
+        }
+    }
+
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        {
+            var safeTop = Math.Max(top, 10);
+            HeaderContainer.Padding = new Thickness(16, safeTop, 16, 10);
+            UpdateHeaderSpacerHeight();
+        }
+    }
+
+    private void OnHeaderContainerSizeChanged(object? sender, EventArgs e) =>
+        UpdateHeaderSpacerHeight();
+
+    private void UpdateHeaderSpacerHeight()
+    {
+        if (HeaderContainer.Height > 0)
+        {
+            var targetHeight = HeaderContainer.Height + 8;
+            if (Math.Abs(SplitListHeaderSpacer.HeightRequest - targetHeight) > 1.0)
+            {
+                SplitListHeaderSpacer.HeightRequest = targetHeight;
+            }
+        }
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateChipsAndCounters();
+        });
 
     private async void OnResetAllBypassedClickedAsync(object? sender, EventArgs e)
     {
@@ -372,4 +443,61 @@ public sealed partial class SplitView : ContentView
         await UIAnimations.ShowErrorLabelAsync(SplitAppsErrorLabel);
         await this.ShakeErrorAsync();
     }
+
+#if ANDROID
+    private CardStackScrollHelper.CardStackRecyclerViewScrollListener? _scrollListener;
+    private AndroidX.RecyclerView.Widget.RecyclerView? _attachedRecyclerView;
+
+    private void OnSplitAppsListHandlerChanged(object? sender, EventArgs e) =>
+        AttachScrollListener();
+
+    private void AttachScrollListener()
+    {
+        if (SplitAppsList.Handler?.PlatformView is Android.Views.ViewGroup viewGroup)
+        {
+            var recyclerView = viewGroup as AndroidX.RecyclerView.Widget.RecyclerView
+                ?? FindRecyclerView(viewGroup);
+
+            if (recyclerView != null && recyclerView != _attachedRecyclerView)
+            {
+                DetachScrollListener();
+                _attachedRecyclerView = recyclerView;
+                _scrollListener = new CardStackScrollHelper.CardStackRecyclerViewScrollListener();
+                _attachedRecyclerView.AddOnScrollListener(_scrollListener);
+            }
+        }
+    }
+
+    private void DetachScrollListener()
+    {
+        if (_attachedRecyclerView != null && _scrollListener != null)
+        {
+            _attachedRecyclerView.RemoveOnScrollListener(_scrollListener);
+            _scrollListener.Dispose();
+            _scrollListener = null;
+            _attachedRecyclerView = null;
+        }
+    }
+
+    private static AndroidX.RecyclerView.Widget.RecyclerView? FindRecyclerView(Android.Views.ViewGroup parent)
+    {
+        for (var i = 0; i < parent.ChildCount; i++)
+        {
+            var child = parent.GetChildAt(i);
+            if (child is AndroidX.RecyclerView.Widget.RecyclerView rv)
+            {
+                return rv;
+            }
+            if (child is Android.Views.ViewGroup vg)
+            {
+                var nested = FindRecyclerView(vg);
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+        }
+        return null;
+    }
+#endif
 }

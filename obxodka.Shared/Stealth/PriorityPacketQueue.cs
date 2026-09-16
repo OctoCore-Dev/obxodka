@@ -1,4 +1,4 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "Specialized network priority packet queue")]
 public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
@@ -32,18 +32,23 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
     public async ValueTask<(byte[] buffer, int length)> DequeueAsync(CancellationToken ct)
     {
-        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
-
-        if (_high.TryDequeue(out var highItem))
+        while (!ct.IsCancellationRequested)
         {
-            _ = Interlocked.Decrement(ref _count);
-            return highItem;
-        }
+            await _semaphore.WaitAsync(ct).ConfigureAwait(false);
 
-        if (_low.TryDequeue(out var lowItem))
-        {
-            _ = Interlocked.Decrement(ref _count);
-            return lowItem;
+            if (_high.TryDequeue(out var highItem))
+            {
+                _ = Interlocked.Decrement(ref _count);
+                return highItem;
+            }
+
+            if (_low.TryDequeue(out var lowItem))
+            {
+                _ = Interlocked.Decrement(ref _count);
+                return lowItem;
+            }
+
+            _ = _semaphore.Release();
         }
 
         return ([], 0);
@@ -64,10 +69,23 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 _ = Interlocked.Decrement(ref _count);
                 return true;
             }
+
+            _ = _semaphore.Release();
         }
 
         item = default;
         return false;
+    }
+
+    public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
+    {
+        while (TryDequeue(out var item))
+        {
+            if (item.buffer != null && item.buffer.Length > 0)
+            {
+                returnBuffer?.Invoke(item.buffer);
+            }
+        }
     }
 
     public int Count => Volatile.Read(ref _count);

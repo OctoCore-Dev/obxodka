@@ -62,6 +62,47 @@ public sealed class MainActivity : MauiAppCompatActivity
                     controller.AppearanceLightStatusBars = isLight;
                     controller.AppearanceLightNavigationBars = isLight;
                 }
+
+                ViewCompat.SetOnApplyWindowInsetsListener(window.DecorView, new WindowInsetsHandler());
+            }
+        }
+        catch { }
+    }
+
+    private sealed class WindowInsetsHandler : Java.Lang.Object, IOnApplyWindowInsetsListener
+    {
+        public WindowInsetsCompat? OnApplyWindowInsets(Android.Views.View? v, WindowInsetsCompat? insets)
+        {
+            if (insets is null)
+            {
+                return insets;
+            }
+
+            var systemBars = insets.GetInsets(WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
+            var density = Platform.AppContext.Resources?.DisplayMetrics?.Density ?? 1.0f;
+            var topDp = (systemBars?.Top ?? 0) / density;
+            var bottomDp = (systemBars?.Bottom ?? 0) / density;
+
+            SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
+            return insets;
+        }
+    }
+
+    public static void UpdateSystemBarsTheme(Color? bgBaseColor)
+    {
+        try
+        {
+            if (Platform.CurrentActivity?.Window is { } window)
+            {
+                var controller = WindowCompat.GetInsetsController(window, window.DecorView);
+                if (controller is not null)
+                {
+                    var isLight = bgBaseColor != null
+                        ? ((bgBaseColor.Red * 0.299) + (bgBaseColor.Green * 0.587) + (bgBaseColor.Blue * 0.114)) > 0.55
+                        : Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
+                    controller.AppearanceLightStatusBars = isLight;
+                    controller.AppearanceLightNavigationBars = isLight;
+                }
             }
         }
         catch { }

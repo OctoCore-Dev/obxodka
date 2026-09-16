@@ -1,4 +1,4 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 public static class PacketRouter
 {
@@ -96,12 +96,12 @@ public static class PacketRouter
         {
             if (activeRays >= 8)
             {
-                primaryRay = 1 + (Math.Abs(hash) % 6);
+                primaryRay = 1 + ((hash & 0x7FFFFFFF) % 6);
                 secondaryRay = -1;
             }
             else if (activeRays >= 4)
             {
-                primaryRay = 1 + (Math.Abs(hash) % 2);
+                primaryRay = 1 + ((hash & 0x7FFFFFFF) % 2);
                 secondaryRay = -1;
             }
             else if (activeRays == 2)

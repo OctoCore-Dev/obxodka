@@ -78,6 +78,32 @@ public class ModelsSerializationTests
     }
 
     [Fact]
+    public void DeviceItemCurrentDeviceStatus()
+    {
+        var device = new DeviceItem("hwid_current", "Pixel 9 Pro", DateTime.UtcNow)
+        {
+            IsCurrentDevice = true
+        };
+        Assert.True(device.IsCurrentDevice);
+        Assert.Equal("Активно сейчас", device.LastActiveText);
+
+        device.IsCurrentDevice = false;
+        Assert.False(device.IsCurrentDevice);
+        Assert.StartsWith("Активен:", device.LastActiveText);
+    }
+
+    [Fact]
+    public void DeviceItemSerializationIgnoresIsCurrentDevice()
+    {
+        var device = new DeviceItem("hwid_test", "Laptop", DateTime.UtcNow)
+        {
+            IsCurrentDevice = true
+        };
+        var json = JsonSerializer.Serialize(device, TestJsonContext.Default.DeviceItem);
+        Assert.DoesNotContain("isCurrentDevice", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TelemetryDtoSerialization()
     {
         var telemetry = new TelemetryDto("hwid_xyz", "3.7.18", "Socket connection dropped", "at FechsueTransport.Receive()");

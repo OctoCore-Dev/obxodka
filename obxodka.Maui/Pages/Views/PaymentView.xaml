@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.PaymentView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -12,13 +12,12 @@
             HorizontalOptions="Center"
             Spacing="4">
             <Label
-                FontFamily="CommissionerExtraBold"
+                FontFamily="{DynamicResource AppFontTitle}"
                 FontSize="{OnIdiom Desktop=24,
                                    Default=22}"
                 HorizontalOptions="Center"
                 Text="ТАРИФНЫЕ ПЛАНЫ"
-                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
-                                            Dark={StaticResource TextPrimary}}" />
+                TextColor="{DynamicResource TextPrimary}" />
             <Label
                 FontSize="13"
                 HorizontalOptions="Center"
@@ -54,24 +53,21 @@
                         Grid.Row="0"
                         Grid.Column="0"
                         Padding="22,20"
-                        Opacity="0"
-                        Style="{StaticResource NeoCard}"
-                        TranslationY="28">
+                        Style="{StaticResource NeoCard}">
                         <VerticalStackLayout Spacing="10">
                             <Label
-                                FontFamily="RobotoBold"
+                                FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="11"
                                 Text="СТАРТОВЫЙ"
-                                TextColor="{StaticResource Primary}" />
+                                TextColor="{DynamicResource Primary}" />
                             <Label
-                                FontFamily="CommissionerExtraBold"
+                                FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="300 ₽"
-                                TextColor="{StaticResource Primary}" />
+                                TextColor="{DynamicResource Primary}" />
                             <Label
-                                FontFamily="RobotoMedium"
+                                FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
-                                Style="{StaticResource LabelValue}"
                                 Text="300 часов доступа" />
                             <Label
                                 FontSize="12"
@@ -89,10 +85,10 @@
                                         x:Name="Btn300"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuy300ClickedAsync"
-                                        FontFamily="RobotoMedium"
+                                        FontFamily="{DynamicResource AppFontMedium}"
                                         FontSize="13"
                                         Text="Купить за 300 ₽"
-                                        TextColor="{StaticResource TextOnPrimary}" />
+                                        TextColor="{DynamicResource TextPrimary}" />
                                     <ActivityIndicator
                                         x:Name="Loader300"
                                         HeightRequest="22"
@@ -101,7 +97,7 @@
                                         IsVisible="False"
                                         VerticalOptions="Center"
                                         WidthRequest="22"
-                                        Color="{StaticResource TextOnPrimary}" />
+                                        Color="{DynamicResource TextPrimary}" />
                                 </Grid>
                             </Border>
                         </VerticalStackLayout>
@@ -114,43 +110,40 @@
                         Grid.Column="{OnIdiom Desktop=1,
                                               Phone=0}"
                         Padding="22,20"
-                        Opacity="0"
-                        Stroke="#4000E5FF"
+                        Stroke="{DynamicResource Accent}"
                         StrokeThickness="1.5"
-                        Style="{StaticResource NeoCard}"
-                        TranslationY="28">
+                        Style="{StaticResource NeoCard}">
                         <VerticalStackLayout Spacing="10">
                             <Grid ColumnDefinitions="*, Auto">
                                 <Label
                                     Grid.Column="0"
-                                    FontFamily="RobotoBold"
+                                    FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="11"
                                     Text="ОПТИМАЛЬНЫЙ"
-                                    TextColor="#00E5FF" />
+                                    TextColor="{DynamicResource Accent}" />
                                 <Border
                                     Grid.Column="1"
                                     Padding="6,2"
-                                    BackgroundColor="#2000E5FF"
-                                    Stroke="#00E5FF"
+                                    BackgroundColor="{DynamicResource BorderSubtle}"
+                                    Stroke="{DynamicResource Accent}"
                                     StrokeShape="RoundRectangle 4"
                                     StrokeThickness="1">
                                     <Label
-                                        FontFamily="RobotoBold"
+                                        FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="10"
                                         Text="ХИТ"
-                                        TextColor="#00E5FF" />
+                                        TextColor="{DynamicResource Accent}" />
                                 </Border>
                             </Grid>
 
                             <Label
-                                FontFamily="CommissionerExtraBold"
+                                FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="500 ₽"
-                                TextColor="#00E5FF" />
+                                TextColor="{DynamicResource Accent}" />
                             <Label
-                                FontFamily="RobotoMedium"
+                                FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
-                                Style="{StaticResource LabelValue}"
                                 Text="700 часов (+200ч бонус)" />
                             <Label
                                 FontSize="12"
@@ -161,19 +154,19 @@
                             <Border
                                 x:Name="Btn500Border"
                                 Margin="0,8,0,0"
-                                BackgroundColor="#00E5FF"
+                                BackgroundColor="{DynamicResource Accent}"
                                 HeightRequest="44"
-                                Stroke="#00E5FF"
+                                Stroke="{DynamicResource Accent}"
                                 Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="Btn500"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuy500ClickedAsync"
-                                        FontFamily="RobotoBold"
+                                        FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="13"
                                         Text="Купить за 500 ₽"
-                                        TextColor="#0A0A10" />
+                                        TextColor="{DynamicResource BgBase}" />
                                     <ActivityIndicator
                                         x:Name="Loader500"
                                         HeightRequest="22"
@@ -182,7 +175,7 @@
                                         IsVisible="False"
                                         VerticalOptions="Center"
                                         WidthRequest="22"
-                                        Color="#0A0A10" />
+                                        Color="{DynamicResource BgBase}" />
                                 </Grid>
                             </Border>
                         </VerticalStackLayout>
@@ -195,24 +188,21 @@
                         Grid.Column="{OnIdiom Desktop=2,
                                               Phone=0}"
                         Padding="22,20"
-                        Opacity="0"
-                        Style="{StaticResource NeoCard}"
-                        TranslationY="28">
+                        Style="{StaticResource NeoCard}">
                         <VerticalStackLayout Spacing="10">
                             <Label
-                                FontFamily="RobotoBold"
+                                FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="11"
                                 Text="МАКСИМУМ (ВЫГОДНЫЙ)"
-                                TextColor="#F59E0B" />
+                                TextColor="{DynamicResource Warning}" />
                             <Label
-                                FontFamily="CommissionerExtraBold"
+                                FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="1000 ₽"
-                                TextColor="#F59E0B" />
+                                TextColor="{DynamicResource Warning}" />
                             <Label
-                                FontFamily="RobotoMedium"
+                                FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
-                                Style="{StaticResource LabelValue}"
                                 Text="2000 часов (х2 бонус)" />
                             <Label
                                 FontSize="12"
@@ -223,19 +213,19 @@
                             <Border
                                 x:Name="Btn1000Border"
                                 Margin="0,8,0,0"
-                                BackgroundColor="#F59E0B"
+                                BackgroundColor="{DynamicResource Warning}"
                                 HeightRequest="44"
-                                Stroke="#F59E0B"
+                                Stroke="{DynamicResource Warning}"
                                 Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="Btn1000"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuy1000ClickedAsync"
-                                        FontFamily="RobotoBold"
+                                        FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="13"
                                         Text="Купить за 1000 ₽"
-                                        TextColor="#0A0A10" />
+                                        TextColor="{DynamicResource BgBase}" />
                                     <ActivityIndicator
                                         x:Name="Loader1000"
                                         HeightRequest="22"
@@ -244,7 +234,7 @@
                                         IsVisible="False"
                                         VerticalOptions="Center"
                                         WidthRequest="22"
-                                        Color="#0A0A10" />
+                                        Color="{DynamicResource BgBase}" />
                                 </Grid>
                             </Border>
                         </VerticalStackLayout>

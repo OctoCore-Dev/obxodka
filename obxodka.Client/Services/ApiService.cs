@@ -6,7 +6,7 @@ public sealed class ApiService(HttpClient client)
 
     private static readonly Lazy<HttpClient> t_fallbackNative = new(() => new HttpClient(new HttpClientHandler())
     {
-        Timeout = TimeSpan.FromSeconds(30),
+        Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
     });
 
@@ -20,7 +20,7 @@ public sealed class ApiService(HttpClient client)
         UseProxy = false
     })
     {
-        Timeout = TimeSpan.FromSeconds(30),
+        Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
     });
 
@@ -34,7 +34,7 @@ public sealed class ApiService(HttpClient client)
         UseProxy = false
     })
     {
-        Timeout = TimeSpan.FromSeconds(30),
+        Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(2, 0)
     });
 
@@ -63,7 +63,7 @@ public sealed class ApiService(HttpClient client)
         where TRequest : class
         where TResponse : class
     {
-        if (Connectivity.Current.NetworkAccess != AppNetworkAccess.Internet)
+        if (Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
         {
             return (false, null, "Нет подключения к интернету. Проверьте сеть и повторите попытку.");
         }
@@ -107,19 +107,23 @@ public sealed class ApiService(HttpClient client)
                 }
 
                 var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                try
-                {
-                    var errorObj = JsonSerializer.Deserialize(rawError, AppJsonContext.Default.MessageResponse);
-                    if (errorObj is { Message: { Length: > 0 } msg })
-                    {
-                        return (false, null, msg);
-                    }
-                }
-                catch { }
-
                 if (!string.IsNullOrWhiteSpace(rawError))
                 {
-                    return (false, null, rawError);
+                    var trimmed = rawError.Trim();
+                    if (trimmed.StartsWith('{'))
+                    {
+                        try
+                        {
+                            var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
+                            if (errorObj is { Message: { Length: > 0 } msg })
+                            {
+                                return (false, null, msg);
+                            }
+                        }
+                        catch { }
+                    }
+
+                    return (false, null, trimmed);
                 }
 
                 return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
@@ -132,6 +136,49 @@ public sealed class ApiService(HttpClient client)
             {
                 lastEx = ex;
                 Debug.WriteLine($"[API ERROR] {method} {url} via fallback: {ex.Message}");
+            }
+        }
+
+        if (AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
+        {
+            try
+            {
+                Debug.WriteLine($"[API] Retrying {method} {url} with DefaultApiBaseUrl {AppConfig.DefaultApiBaseUrl}...");
+                var fallbackUrl = $"{AppConfig.DefaultApiBaseUrl.TrimEnd('/')}/{url.TrimStart('/')}";
+                using var request = new HttpRequestMessage(method, fallbackUrl);
+                if (body is not null && requestInfo is not null)
+                {
+                    request.Content = JsonContent.Create(body, requestInfo);
+                }
+
+                await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
+                var response = await client.SendAsync(request, ct).ConfigureAwait(false);
+
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    try
+                    {
+                        MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+                    }
+                    catch { }
+
+                    return (false, null, "Сессия истекла или устройство было удалено.");
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+                    if (responseInfo is not null)
+                    {
+                        return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                    }
+
+                    return (true, null, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[API] Fallback to DefaultApiBaseUrl also failed: {ex.Message}");
             }
         }
 
@@ -187,7 +234,7 @@ public sealed class ApiService(HttpClient client)
             var result = await SendRequestAsync<object, UserProfileResponse>(
                 HttpMethod.Get, "api/Auth/me", null, null, AppJsonContext.Default.UserProfileResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
 
-            if (result.Success || attempt >= maxRetries || Connectivity.Current.NetworkAccess != AppNetworkAccess.Internet)
+            if (result.Success || attempt >= maxRetries || Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
             {
                 return result;
             }
@@ -239,7 +286,7 @@ public sealed class ApiService(HttpClient client)
                 return result;
             }
 
-            if (attempt >= maxRetries || Connectivity.Current.NetworkAccess != AppNetworkAccess.Internet)
+            if (attempt >= maxRetries || Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
             {
                 return (false, result.Data, result.Error ?? "Не удалось получить список нод");
             }

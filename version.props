@@ -1,11 +1,11 @@
 <Project>
   <PropertyGroup>
-    <AppVersion>4.9.0</AppVersion>
-    <AppBuildNumber>18</AppBuildNumber>
+    <AppVersion>5.0.0</AppVersion>
+    <AppBuildNumber>19</AppBuildNumber>
     <Version>$(AppVersion)</Version>
     <PackageVersion>$(AppVersion)</PackageVersion>
     <ApplicationDisplayVersion>$(AppVersion)</ApplicationDisplayVersion>
-    <ApplicationVersion>49$(AppBuildNumber)</ApplicationVersion>
+    <ApplicationVersion>50$(AppBuildNumber)</ApplicationVersion>
     <AppxPackageVersion>$(AppVersion).0</AppxPackageVersion>
   </PropertyGroup>
 </Project>

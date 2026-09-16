@@ -2,21 +2,35 @@ namespace obxodka.Core.Transports;
 
 public sealed partial class FechsueTransport : IVpnTransport
 {
-    public const int ParallelStreams = 1;
-    public const int FechsueServerPort = 443;
+    public const int DefaultParallelStreams = 1;
+    public const int FechsueServerPort = 6767;
 
     public string ProtocolName => "FECHSUE";
     public string Thumbprint { get; private set; } = string.Empty;
+    public int ParallelStreams { get; }
 
-    private readonly Socket?[] _sockets = new Socket?[ParallelStreams];
-    private readonly AesGcm?[] _rxCryptos = new AesGcm?[ParallelStreams];
-    private readonly AesGcm?[] _txCryptos = new AesGcm?[ParallelStreams];
-    private readonly Lock[] _txLocks = [new Lock(), new Lock(), new Lock(), new Lock()];
+    private readonly Socket?[] _sockets;
+    private readonly AesGcm?[] _rxCryptos;
+    private readonly AesGcm?[] _txCryptos;
+    private readonly Lock[] _txLocks;
+    private readonly FechsueCodec.FecEncoder[] _fecEncoders;
+    private readonly FechsueCodec.FecDecoder _fecDecoder = new();
+    private readonly PacketDeduplicator _deduplicator = new();
     private IPEndPoint? _serverEp;
     private uint _sessionId;
     private byte[] _key = new byte[32];
     private CancellationTokenSource? _cts;
     private long _lastRxTicks = DateTime.UtcNow.Ticks;
+
+    public FechsueTransport(int activeRays = 1)
+    {
+        ParallelStreams = Math.Clamp(activeRays, 1, PacketRouter.MaxRays);
+        _sockets = new Socket?[ParallelStreams];
+        _rxCryptos = new AesGcm?[ParallelStreams];
+        _txCryptos = new AesGcm?[ParallelStreams];
+        _txLocks = [.. Enumerable.Range(0, ParallelStreams).Select(_ => new Lock())];
+        _fecEncoders = [.. Enumerable.Range(0, ParallelStreams).Select(_ => new FechsueCodec.FecEncoder(FechsueCodec.DefaultFecGroupSize))];
+    }
 
     public event Action<byte[], int>? OnPacketReceived;
     public event Action<long>? OnPingUpdated;
@@ -57,6 +71,7 @@ public sealed partial class FechsueTransport : IVpnTransport
         var addresses = await Dns.GetHostAddressesAsync(serverIp, ct);
         var targetIp = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.First();
         _serverEp = new IPEndPoint(targetIp, FechsueServerPort);
+        Debug.WriteLine($"[FECHSUE] Starting connection to {serverIp} ({_serverEp}), SessionId={_sessionId:X8}, ParallelStreams={ParallelStreams}");
 
         var ipTcs = new TaskCompletionSource<(string, string)>();
 
@@ -67,6 +82,11 @@ public sealed partial class FechsueTransport : IVpnTransport
                 ReceiveBufferSize = 16777216,
                 SendBufferSize = 16777216
             };
+            try
+            {
+                sock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
+            }
+            catch { }
 
             OnSocketCreated?.Invoke(sock);
             if (OperatingSystem.IsWindows())
@@ -81,8 +101,12 @@ public sealed partial class FechsueTransport : IVpnTransport
             try
             {
                 sock.Connect(_serverEp);
+                Debug.WriteLine($"[FECHSUE] Stream #{i} connected socket to {_serverEp}. Local: {sock.LocalEndPoint}");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[FECHSUE] Stream #{i} sock.Connect failed: {ex.Message}");
+            }
             _sockets[i] = sock;
             _rxCryptos[i] = new AesGcm(_key, 16);
 
@@ -96,6 +120,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                 break;
             }
 
+            Debug.WriteLine($"[FECHSUE] Sending auth handshake attempt #{attempt + 1}/20 to {_serverEp}...");
             for (byte i = 0; i < ParallelStreams; i++)
             {
                 var authPacket = FechsueCodec.PackAuth(thumbprint, i, out var authLen);
@@ -105,11 +130,14 @@ public sealed partial class FechsueTransport : IVpnTransport
                     {
                         try
                         {
-                            _ = s.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
+                            var sent = s.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
+                            Debug.WriteLine($"[FECHSUE] Stream #{i} sent auth datagram ({sent} bytes)");
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            _ = s.SendTo(authPacket.AsSpan(0, authLen), SocketFlags.None, _serverEp);
+                            Debug.WriteLine($"[FECHSUE] Stream #{i} s.Send failed ({ex.Message}), trying SendTo...");
+                            var sent = s.SendTo(authPacket.AsSpan(0, authLen), SocketFlags.None, _serverEp);
+                            Debug.WriteLine($"[FECHSUE] Stream #{i} sent via SendTo ({sent} bytes)");
                         }
                     }
                 }
@@ -122,16 +150,19 @@ public sealed partial class FechsueTransport : IVpnTransport
             var completed = await Task.WhenAny(ipTcs.Task, Task.Delay(300, ct));
             if (completed == ipTcs.Task)
             {
+                Debug.WriteLine("[FECHSUE] Auth response received successfully!");
                 break;
             }
         }
 
         if (!ipTcs.Task.IsCompleted)
         {
+            Debug.WriteLine("[FECHSUE] Initial 20 attempts finished without response. Final 2s timeout wait...");
             var timeoutTask = await Task.WhenAny(ipTcs.Task, Task.Delay(2000, ct));
             if (timeoutTask != ipTcs.Task)
             {
-                throw new TimeoutException("Сервер FECHSUE не ответил на авторизационное рукопожатие (порт 443 UDP).");
+                Debug.WriteLine($"[FECHSUE TIMEOUT] Server {_serverEp} did not reply to UDP auth handshake!");
+                throw new TimeoutException("Сервер FECHSUE не ответил на авторизационное рукопожатие (порт 6767 UDP).");
             }
         }
 
@@ -141,35 +172,96 @@ public sealed partial class FechsueTransport : IVpnTransport
         return await ipTcs.Task;
     }
 
-    private readonly FechsueCodec.FecEncoder _fecEncoder = new(FechsueCodec.DefaultFecGroupSize);
-    private readonly FechsueCodec.FecDecoder _fecDecoder = new();
-
     public void SendPacketFromPool(byte[] packet, int length)
     {
-        if (_serverEp == null)
+        if (_serverEp == null || !_isConnected)
         {
             ArrayPool<byte>.Shared.Return(packet);
             return;
         }
 
-        var ray = PacketRouter.GetRayIndex(packet, length, ParallelStreams);
-        var sock = _sockets[ray] ?? _sockets[0];
-        var crypto = _txCryptos[ray] ?? _txCryptos[0];
-        var txLock = _txLocks[ray] ?? _txLocks[0];
+        PacketRouter.GetRays(packet, length, ParallelStreams, out var primaryRay, out var secondaryRay);
+        var pRay = primaryRay % ParallelStreams;
+        var sock = _sockets[pRay] ?? _sockets[0];
+        var crypto = _txCryptos[pRay] ?? _txCryptos[0];
+        var txLock = _txLocks[pRay] ?? _txLocks[0];
         if (sock == null || crypto == null)
         {
             ArrayPool<byte>.Shared.Return(packet);
             return;
         }
 
+        var isFastTrack = secondaryRay >= 0 || length < 20;
+
+        if (isFastTrack)
+        {
+            byte[] packed;
+            int totalLen;
+            lock (txLock)
+            {
+                packed = FechsueCodec.Pack(packet, length, _sessionId, crypto, out totalLen);
+            }
+            try
+            {
+                _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
+            }
+            catch
+            {
+                try
+                {
+                    _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
+                }
+                catch { }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(packed);
+            }
+
+            if (secondaryRay >= 0 && secondaryRay < ParallelStreams && secondaryRay != pRay)
+            {
+                var sSock = _sockets[secondaryRay];
+                var sCrypto = _txCryptos[secondaryRay] ?? crypto;
+                var sLock = _txLocks[secondaryRay] ?? txLock;
+                if (sSock != null)
+                {
+                    byte[] secPacked;
+                    int secLen;
+                    lock (sLock)
+                    {
+                        secPacked = FechsueCodec.Pack(packet, length, _sessionId, sCrypto, out secLen);
+                    }
+                    try
+                    {
+                        _ = sSock.Send(secPacked.AsSpan(0, secLen), SocketFlags.None);
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            _ = sSock.SendTo(secPacked.AsSpan(0, secLen), SocketFlags.None, _serverEp);
+                        }
+                        catch { }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(secPacked);
+                    }
+                }
+            }
+
+            ArrayPool<byte>.Shared.Return(packet);
+            return;
+        }
+
         byte[] dataPacked;
         int dataLen;
-
         byte[]? parityPacked;
         int parityLen;
+
         lock (txLock)
         {
-            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoder.Encode(packet, length, _sessionId, crypto);
+            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, length, _sessionId, crypto);
         }
         ArrayPool<byte>.Shared.Return(packet);
 
@@ -220,6 +312,7 @@ public sealed partial class FechsueTransport : IVpnTransport
             try
             {
                 var msg = Encoding.UTF8.GetString(payload, 0, realLen);
+                Debug.WriteLine($"[FECHSUE-AUTH] Received IP configuration packet: '{msg}'");
                 string ip = "", ip6 = "";
                 foreach (var part in msg.Split('|'))
                 {
@@ -234,6 +327,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                 }
                 if (!string.IsNullOrEmpty(ip))
                 {
+                    Debug.WriteLine($"[FECHSUE-AUTH] Handshake SUCCESS -> Assigned IP: {ip}, IPv6: {ip6}");
                     _ = ipTcs.TrySetResult((ip, ip6));
                 }
             }
@@ -246,10 +340,20 @@ public sealed partial class FechsueTransport : IVpnTransport
         {
             try
             {
+                var streamIdx = realLen >= 10 ? payload[1] : (byte)0;
+                if (ParallelStreams > 1 && streamIdx != 0)
+                {
+                    return;
+                }
+
                 var ticksOffset = realLen >= 10 ? 2 : 1;
-                var sentTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(ticksOffset, 8));
-                var rtt = (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond;
-                OnPingUpdated?.Invoke(rtt);
+                var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(ticksOffset, 8));
+                var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
+                var rtt = (long)Math.Round(elapsedMs);
+                if (rtt is >= 0 and < 10000)
+                {
+                    OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                }
             }
             finally
             {
@@ -258,7 +362,14 @@ public sealed partial class FechsueTransport : IVpnTransport
         }
         else
         {
-            OnPacketReceived?.Invoke(payload, realLen);
+            if (!_deduplicator.IsDuplicate(payload, realLen))
+            {
+                OnPacketReceived?.Invoke(payload, realLen);
+            }
+            else
+            {
+                ArrayPool<byte>.Shared.Return(payload);
+            }
         }
     }
 
@@ -268,6 +379,7 @@ public sealed partial class FechsueTransport : IVpnTransport
         {
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
             Thread.CurrentThread.Name = $"Fechsue-Stream-{streamId}";
+            Debug.WriteLine($"[FECHSUE-RX-{streamId}] Receive thread started.");
             var rxBuffer = new byte[65536];
             while (!ct.IsCancellationRequested)
             {
@@ -279,7 +391,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                         continue;
                     }
 
-                    if (!FechsueCodec.TryUnpack(rxBuffer, len, rxCrypto, out _, out var payload, out var realLen))
+                    if (!FechsueCodec.TryUnpack(rxBuffer, len, rxCrypto, out var rxSessionId, out var payload, out var realLen))
                     {
                         continue;
                     }
@@ -322,14 +434,13 @@ public sealed partial class FechsueTransport : IVpnTransport
                     OnConnectionDropped?.Invoke();
                     break;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     if (ct.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    Debug.WriteLine($"[FECHSUE RX ERROR] {ex.Message}");
                     OnConnectionDropped?.Invoke();
                     break;
                 }
@@ -341,46 +452,96 @@ public sealed partial class FechsueTransport : IVpnTransport
         thread.Start();
     }
 
+    public Task SendPingProbeAsync()
+    {
+        try
+        {
+            if (_sockets[0] is { } sock0 && _txCryptos[0] is { } crypto0)
+            {
+                var packet = ArrayPool<byte>.Shared.Rent(10);
+                packet[0] = 0x99;
+                packet[1] = 0;
+                BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(2, 8), Stopwatch.GetTimestamp());
+
+                byte[] packed;
+                int totalLen;
+                lock (_txLocks[0])
+                {
+                    packed = FechsueCodec.Pack(packet, 10, _sessionId, crypto0, out totalLen);
+                }
+                ArrayPool<byte>.Shared.Return(packet);
+                try
+                {
+                    _ = sock0.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
+                }
+                catch
+                {
+                    try
+                    {
+                        if (_serverEp != null)
+                        {
+                            _ = sock0.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
+                        }
+                    }
+                    catch { }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(packed);
+                }
+            }
+        }
+        catch { }
+        return Task.CompletedTask;
+    }
+
     private async Task PingLoopAsync(CancellationToken ct)
     {
+        var loopCount = 0;
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                for (byte i = 0; i < ParallelStreams; i++)
-                {
-                    if (_sockets[i] is { } sock && _txCryptos[i] is { } crypto)
-                    {
-                        var packet = ArrayPool<byte>.Shared.Rent(10);
-                        packet[0] = 0x99;
-                        packet[1] = i;
-                        BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(2, 8), DateTime.UtcNow.Ticks);
+                await SendPingProbeAsync();
 
-                        byte[] packed;
-                        int totalLen;
-                        lock (_txLocks[i])
+                loopCount++;
+                if (loopCount % 5 == 0 && ParallelStreams > 1)
+                {
+                    for (byte i = 1; i < ParallelStreams; i++)
+                    {
+                        if (_sockets[i] is { } sock && _txCryptos[i] is { } crypto)
                         {
-                            packed = FechsueCodec.Pack(packet, 10, _sessionId, crypto, out totalLen);
-                        }
-                        ArrayPool<byte>.Shared.Return(packet);
-                        try
-                        {
-                            _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
-                        }
-                        catch
-                        {
+                            var packet = ArrayPool<byte>.Shared.Rent(10);
+                            packet[0] = 0x99;
+                            packet[1] = i;
+                            BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(2, 8), Stopwatch.GetTimestamp());
+
+                            byte[] packed;
+                            int totalLen;
+                            lock (_txLocks[i])
+                            {
+                                packed = FechsueCodec.Pack(packet, 10, _sessionId, crypto, out totalLen);
+                            }
+                            ArrayPool<byte>.Shared.Return(packet);
                             try
                             {
-                                if (_serverEp != null)
-                                {
-                                    _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
-                                }
+                                _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
                             }
-                            catch { }
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(packed);
+                            catch
+                            {
+                                try
+                                {
+                                    if (_serverEp != null)
+                                    {
+                                        _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
+                                    }
+                                }
+                                catch { }
+                            }
+                            finally
+                            {
+                                ArrayPool<byte>.Shared.Return(packed);
+                            }
                         }
                     }
                 }
@@ -388,7 +549,6 @@ public sealed partial class FechsueTransport : IVpnTransport
                 var idleTicks = DateTime.UtcNow.Ticks - Volatile.Read(ref _lastRxTicks);
                 if (idleTicks > TimeSpan.FromSeconds(3).Ticks && !string.IsNullOrEmpty(Thumbprint))
                 {
-                    // 🛡️ Auto-Recovery: Fast background NAT re-punch across all active streams
                     for (byte i = 0; i < ParallelStreams; i++)
                     {
                         if (_sockets[i] is { } s)
@@ -418,7 +578,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                 }
             }
             catch { }
-            await Task.Delay(1500, ct);
+            await Task.Delay(1000, ct);
         }
     }
 
@@ -431,7 +591,35 @@ public sealed partial class FechsueTransport : IVpnTransport
 
         try
         {
-            for (var attempt = 0; attempt < 3; attempt++)
+            var crypto = _txCryptos[0];
+            if (crypto != null && _sessionId != 0)
+            {
+                for (var attempt = 0; attempt < 3; attempt++)
+                {
+                    var discPacket = FechsueCodec.PackEncryptedDisc(_sessionId, crypto, out var len);
+                    try
+                    {
+                        if (_sockets[0] is { } sock)
+                        {
+                            try
+                            {
+                                _ = sock.Send(discPacket.AsSpan(0, len), SocketFlags.None);
+                            }
+                            catch
+                            {
+                                _ = sock.SendTo(discPacket.AsSpan(0, len), SocketFlags.None, _serverEp);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(discPacket);
+                    }
+                    await Task.Delay(10);
+                }
+            }
+
+            for (var attempt = 0; attempt < 2; attempt++)
             {
                 var discPacket = FechsueCodec.PackDisc(Thumbprint, out var len);
                 try
@@ -452,7 +640,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                 {
                     ArrayPool<byte>.Shared.Return(discPacket);
                 }
-                await Task.Delay(15);
+                await Task.Delay(10);
             }
         }
         catch { }

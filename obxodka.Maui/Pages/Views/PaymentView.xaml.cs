@@ -27,10 +27,24 @@ public sealed partial class PaymentView : ContentView
     {
         Opacity = 1;
         TranslationY = 0;
-        await UIAnimations.PlayEntranceCascadeAsync(80, 450, Card300, Card500, Card1000);
+        await this.PlayCardsEntranceAsync(40, 260);
     }
 
     public void LoadPaymentPage() => ResetPaymentView();
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        Card300.BackgroundColor = bgSurface;
+        Card500.BackgroundColor = bgSurface;
+        Card1000.BackgroundColor = bgSurface;
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
 
     public void ResetPaymentView()
     {

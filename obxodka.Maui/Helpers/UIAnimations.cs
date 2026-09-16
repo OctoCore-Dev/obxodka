@@ -11,8 +11,29 @@ public static class UIAnimations
     private static readonly Color t_mutedColor = Color.FromArgb("#6A5A8A");
     private static readonly Color t_cyanColor = Color.FromArgb("#00E5FF");
     private static readonly Color t_disconnectedLabelColor = Color.FromArgb("#C4ABFF");
-    private static readonly Color t_sideItemBgActive = Color.FromArgb("#227C3AED");
-    private static readonly Color t_sideItemStrokeActive = Color.FromArgb("#557C3AED");
+
+    private static Color GetThemeColor(string key, Color fallback)
+    {
+        if (Application.Current?.Resources is { } res)
+        {
+            if (res.TryGetValue(key, out var val) && val is Color c)
+            {
+                return c;
+            }
+
+            if (res.MergedDictionaries != null)
+            {
+                foreach (var md in res.MergedDictionaries)
+                {
+                    if (md.TryGetValue(key, out var mVal) && mVal is Color mc)
+                    {
+                        return mc;
+                    }
+                }
+            }
+        }
+        return fallback;
+    }
 
     public static async Task PlayEntranceCascadeAsync(
         int delayBetweenMs = 80,
@@ -34,6 +55,7 @@ public static class UIAnimations
 
         await Task.Delay(40);
 
+        var count = 0;
         foreach (var el in elements)
         {
             if (el is null)
@@ -45,7 +67,8 @@ public static class UIAnimations
             _ = el.TranslateToAsync(0, 0, duration, Easing.SpringOut);
             _ = el.ScaleToAsync(1.0, duration, Easing.SpringOut);
 
-            if (delayBetweenMs > 0)
+            count++;
+            if (delayBetweenMs > 0 && count < 8)
             {
                 await Task.Delay(delayBetweenMs);
             }
@@ -176,11 +199,12 @@ public static class UIAnimations
         }
 
         incoming.CancelAnimations();
-        incoming.Opacity = 1.0;
         incoming.Scale = 1.0;
         incoming.TranslationY = 0;
         incoming.TranslationX = 0;
+        incoming.Opacity = 0;
         incoming.IsVisible = true;
+        _ = incoming.FadeToAsync(1.0, 160, Easing.CubicOut);
 
         await Task.CompletedTask;
     }
@@ -297,18 +321,20 @@ public static class UIAnimations
 
     public static void SetNavActive(MauiIcon? bottomIcon, Border? sideItem)
     {
+        var primary = GetThemeColor("Primary", t_primaryColor);
+
         if (bottomIcon is not null)
         {
             bottomIcon.CancelAnimations();
-            bottomIcon.IconColor = t_primaryColor;
+            bottomIcon.IconColor = primary;
             _ = bottomIcon.ScaleToAsync(1.08, DurNormal, Easing.SpringOut);
         }
 
         if (sideItem is not null)
         {
             sideItem.CancelAnimations();
-            sideItem.BackgroundColor = t_sideItemBgActive;
-            sideItem.Stroke = t_sideItemStrokeActive;
+            sideItem.BackgroundColor = primary.WithAlpha(0.14f);
+            sideItem.Stroke = primary.WithAlpha(0.35f);
             sideItem.StrokeThickness = 1;
             _ = sideItem.ScaleToAsync(1.0, DurNormal, Easing.SpringOut);
         }
@@ -319,7 +345,7 @@ public static class UIAnimations
         if (bottomIcon is not null)
         {
             bottomIcon.CancelAnimations();
-            bottomIcon.IconColor = t_mutedColor;
+            bottomIcon.IconColor = GetThemeColor("TextMuted", t_mutedColor);
             _ = bottomIcon.ScaleToAsync(1.0, DurFast, Easing.CubicOut);
         }
 
@@ -345,8 +371,8 @@ public static class UIAnimations
         pill.IsVisible = true;
 
         _ = await Task.WhenAll(
-            pill.FadeToAsync(1, DurNormal, Easing.SpringOut),
-            pill.ScaleToAsync(1.0, DurNormal, Easing.SpringOut)
+            pill.FadeToAsync(1, DurFast, Easing.SpringOut),
+            pill.ScaleToAsync(1.0, DurFast, Easing.SpringOut)
         );
     }
 
@@ -399,10 +425,19 @@ public static class UIAnimations
             return;
         }
 
-        _ = aura.AbortAnimation("AuraPulse");
-        aura.CancelAnimations();
-        _ = await aura.FadeToAsync(0, DurNormal, Easing.CubicOut);
-        aura.Scale = 1.0;
+        try
+        {
+            _ = aura.AbortAnimation("AuraPulse");
+            aura.CancelAnimations();
+            _ = await aura.FadeToAsync(0, DurNormal, Easing.CubicOut);
+            aura.Scale = 1.0;
+        }
+        catch (Exception)
+        {
+            try
+            { aura.Opacity = 0; aura.Scale = 1.0; }
+            catch { }
+        }
     }
 
     public static async Task SetVpnConnectedAsync(
@@ -410,17 +445,24 @@ public static class UIAnimations
         Label? label,
         VisualElement? aura)
     {
-        _ = (icon?.IconColor = t_cyanColor);
-        _ = (label?.TextColor = t_cyanColor);
-
-        if (aura is not null)
+        try
         {
-            _ = aura.AbortAnimation("AuraPulse");
-            aura.CancelAnimations();
-            aura.Opacity = 0;
-            aura.IsVisible = true;
-            _ = await aura.FadeToAsync(0.65, 400, Easing.CubicOut);
-            StartAuraPulse(aura);
+            var accent = GetThemeColor("Accent", t_cyanColor);
+            _ = (icon?.IconColor = accent);
+            _ = (label?.TextColor = accent);
+
+            if (aura is not null)
+            {
+                _ = aura.AbortAnimation("AuraPulse");
+                aura.CancelAnimations();
+                aura.Opacity = 0;
+                aura.IsVisible = true;
+                _ = await aura.FadeToAsync(0.65, 400, Easing.CubicOut);
+                StartAuraPulse(aura);
+            }
+        }
+        catch (Exception)
+        {
         }
     }
 
@@ -429,12 +471,21 @@ public static class UIAnimations
         Label? label,
         VisualElement? aura)
     {
-        _ = (icon?.IconColor = t_primaryColor);
-        _ = (label?.TextColor = t_disconnectedLabelColor);
-
-        if (aura is not null)
+        try
         {
-            await StopAuraPulseAsync(aura);
+            var primary = GetThemeColor("Primary", t_primaryColor);
+            var primaryBright = GetThemeColor("PrimaryBright", t_disconnectedLabelColor);
+
+            _ = (icon?.IconColor = primary);
+            _ = (label?.TextColor = primaryBright);
+
+            if (aura is not null)
+            {
+                await StopAuraPulseAsync(aura);
+            }
+        }
+        catch (Exception)
+        {
         }
     }
 
@@ -444,50 +495,56 @@ public static class UIAnimations
         ActivityIndicator? indicator,
         bool loading)
     {
-        if (loading)
+        try
         {
-            if (border is not null)
+            if (loading)
             {
-                border.CancelAnimations();
-                _ = border.ScaleToAsync(0.97, DurFast, Easing.CubicIn);
-            }
+                if (border is not null)
+                {
+                    border.CancelAnimations();
+                    _ = border.ScaleToAsync(0.97, DurFast, Easing.CubicIn);
+                }
 
-            if (button is not null)
-            {
-                button.CancelAnimations();
-                button.IsEnabled = false;
-                _ = await button.FadeToAsync(0, DurFast, Easing.CubicIn);
-            }
+                if (button is not null)
+                {
+                    button.CancelAnimations();
+                    button.IsEnabled = false;
+                    _ = await button.FadeToAsync(0, DurFast, Easing.CubicIn);
+                }
 
-            if (indicator is not null)
+                if (indicator is not null)
+                {
+                    indicator.CancelAnimations();
+                    indicator.Opacity = 0;
+                    indicator.IsVisible = true;
+                    _ = indicator.FadeToAsync(1, DurNormal, Easing.CubicOut);
+                }
+            }
+            else
             {
-                indicator.CancelAnimations();
-                indicator.Opacity = 0;
-                indicator.IsVisible = true;
-                _ = indicator.FadeToAsync(1, DurNormal, Easing.CubicOut);
+                if (indicator is not null)
+                {
+                    indicator.CancelAnimations();
+                    _ = await indicator.FadeToAsync(0, DurFast, Easing.CubicIn);
+                    indicator.IsVisible = false;
+                }
+
+                if (button is not null)
+                {
+                    button.CancelAnimations();
+                    button.IsEnabled = true;
+                    _ = button.FadeToAsync(1, DurFast, Easing.CubicOut);
+                }
+
+                if (border is not null)
+                {
+                    border.CancelAnimations();
+                    _ = border.ScaleToAsync(1.0, DurSpring, Easing.SpringOut);
+                }
             }
         }
-        else
+        catch (Exception)
         {
-            if (indicator is not null)
-            {
-                indicator.CancelAnimations();
-                _ = await indicator.FadeToAsync(0, DurFast, Easing.CubicIn);
-                indicator.IsVisible = false;
-            }
-
-            if (button is not null)
-            {
-                button.CancelAnimations();
-                button.IsEnabled = true;
-                _ = button.FadeToAsync(1, DurFast, Easing.CubicOut);
-            }
-
-            if (border is not null)
-            {
-                border.CancelAnimations();
-                _ = border.ScaleToAsync(1.0, DurSpring, Easing.SpringOut);
-            }
         }
     }
 
@@ -505,12 +562,14 @@ public static class UIAnimations
         sidebar.TranslationX = -36;
         sidebar.IsVisible = true;
 
-        _ = await Task.WhenAll(
-            sidebar.FadeToAsync(1, DurSpring, Easing.CubicOut),
-            sidebar.TranslateToAsync(0, 0, DurSpring, Easing.SpringOut)
+        var sidebarEntrance = Task.WhenAll(
+            sidebar.FadeToAsync(1, 240, Easing.CubicOut),
+            sidebar.TranslateToAsync(0, 0, 240, Easing.SpringOut)
         );
 
-        await PlayEntranceCascadeAsync(60, DurNormal, navItems);
+        var navEntrance = PlayEntranceCascadeAsync(22, 220, navItems);
+
+        await Task.WhenAll(sidebarEntrance, navEntrance);
     }
 
     public static async Task PlayBottomBarEntranceAsync(Border? bar)
@@ -526,8 +585,8 @@ public static class UIAnimations
         bar.IsVisible = true;
 
         _ = await Task.WhenAll(
-            bar.FadeToAsync(1, DurSpring, Easing.CubicOut),
-            bar.TranslateToAsync(0, 0, DurSpring, Easing.SpringOut)
+            bar.FadeToAsync(1, 240, Easing.CubicOut),
+            bar.TranslateToAsync(0, 0, 240, Easing.SpringOut)
         );
     }
 
@@ -659,6 +718,354 @@ public static class UIAnimations
             await icon.PlayIconHoverExitAsync();
         };
         item.GestureRecognizers.Add(pointer);
+    }
+
+    #endregion
+
+    #region XAML Attached Properties
+
+    public enum EntranceType
+    {
+        SlideUp,
+        FadeScale,
+        SlideInLeft
+    }
+
+    public static readonly BindableProperty AnimateEntranceProperty =
+        BindableProperty.CreateAttached(
+            "AnimateEntrance",
+            typeof(bool),
+            typeof(UIAnimations),
+            false,
+            propertyChanged: OnAnimateEntranceChanged);
+
+    public static bool GetAnimateEntrance(BindableObject view) => (bool)view.GetValue(AnimateEntranceProperty);
+    public static void SetAnimateEntrance(BindableObject view, bool value) => view.SetValue(AnimateEntranceProperty, value);
+
+    public static readonly BindableProperty EntranceKindProperty =
+        BindableProperty.CreateAttached(
+            "EntranceKind",
+            typeof(EntranceType),
+            typeof(UIAnimations),
+            EntranceType.SlideUp);
+
+    public static EntranceType GetEntranceKind(BindableObject view) => (EntranceType)view.GetValue(EntranceKindProperty);
+    public static void SetEntranceKind(BindableObject view, EntranceType value) => view.SetValue(EntranceKindProperty, value);
+
+    public static readonly BindableProperty EntranceDelayProperty =
+        BindableProperty.CreateAttached(
+            "EntranceDelay",
+            typeof(int),
+            typeof(UIAnimations),
+            0);
+
+    public static int GetEntranceDelay(BindableObject view) => (int)view.GetValue(EntranceDelayProperty);
+    public static void SetEntranceDelay(BindableObject view, int value) => view.SetValue(EntranceDelayProperty, value);
+
+    public static readonly BindableProperty AutoStaggerProperty =
+        BindableProperty.CreateAttached(
+            "AutoStagger",
+            typeof(bool),
+            typeof(UIAnimations),
+            false);
+
+    public static bool GetAutoStagger(BindableObject view) => (bool)view.GetValue(AutoStaggerProperty);
+    public static void SetAutoStagger(BindableObject view, bool value) => view.SetValue(AutoStaggerProperty, value);
+
+    public static readonly BindableProperty EntranceDurationProperty =
+        BindableProperty.CreateAttached(
+            "EntranceDuration",
+            typeof(uint),
+            typeof(UIAnimations),
+            DurNormal);
+
+    public static uint GetEntranceDuration(BindableObject view) => (uint)view.GetValue(EntranceDurationProperty);
+    public static void SetEntranceDuration(BindableObject view, uint value) => view.SetValue(EntranceDurationProperty, value);
+
+    public static readonly BindableProperty EntranceFromYProperty =
+        BindableProperty.CreateAttached(
+            "EntranceFromY",
+            typeof(double),
+            typeof(UIAnimations),
+            28.0);
+
+    public static double GetEntranceFromY(BindableObject view) => (double)view.GetValue(EntranceFromYProperty);
+    public static void SetEntranceFromY(BindableObject view, double value) => view.SetValue(EntranceFromYProperty, value);
+
+    public static readonly BindableProperty EntranceFromXProperty =
+        BindableProperty.CreateAttached(
+            "EntranceFromX",
+            typeof(double),
+            typeof(UIAnimations),
+            -36.0);
+
+    public static double GetEntranceFromX(BindableObject view) => (double)view.GetValue(EntranceFromXProperty);
+    public static void SetEntranceFromX(BindableObject view, double value) => view.SetValue(EntranceFromXProperty, value);
+
+    private static void OnAnimateEntranceChanged(BindableObject bindable, object oldValue, object newValue)
+    {
+        if (bindable is not VisualElement element)
+        {
+            return;
+        }
+
+        if ((bool)newValue)
+        {
+            if (!element.IsLoaded)
+            {
+                element.Opacity = 0;
+                var kind = GetEntranceKind(element);
+                if (kind == EntranceType.SlideInLeft)
+                {
+                    element.TranslationX = GetEntranceFromX(element);
+                }
+                else if (kind == EntranceType.SlideUp)
+                {
+                    element.TranslationY = GetEntranceFromY(element);
+                    element.Scale = 0.97;
+                }
+                else if (kind == EntranceType.FadeScale)
+                {
+                    element.Scale = 0.82;
+                }
+            }
+
+            element.Loaded -= OnElementLoadedForEntranceAsync;
+            element.Loaded += OnElementLoadedForEntranceAsync;
+
+            if (element.IsLoaded)
+            {
+                _ = CheckAndTriggerLoadedEntranceAsync(element);
+            }
+        }
+        else
+        {
+            element.Loaded -= OnElementLoadedForEntranceAsync;
+            element.Opacity = 1.0;
+            element.Scale = 1.0;
+            element.TranslationX = 0;
+            element.TranslationY = 0;
+        }
+    }
+
+    private static async void OnElementLoadedForEntranceAsync(object? sender, EventArgs e)
+    {
+        if (sender is VisualElement element)
+        {
+            element.Loaded -= OnElementLoadedForEntranceAsync;
+            await CheckAndTriggerLoadedEntranceAsync(element);
+        }
+    }
+
+    private static async Task CheckAndTriggerLoadedEntranceAsync(VisualElement element)
+    {
+        if (!IsElementVisibleInHierarchy(element))
+        {
+            element.Opacity = 1.0;
+            element.Scale = 1.0;
+            element.TranslationX = 0;
+            element.TranslationY = 0;
+            return;
+        }
+
+        await TriggerEntranceAsync(element);
+    }
+
+    public static async Task PlayCardsEntranceAsync(
+        this VisualElement? container,
+        int delayBetweenMs = 35,
+        uint duration = DurNormal)
+    {
+        if (container is null)
+        {
+            return;
+        }
+
+        var cards = new List<VisualElement>();
+        CollectAnimatedChildren(container, cards);
+
+        if (cards.Count > 0)
+        {
+            await PlayEntranceCascadeAsync(delayBetweenMs, duration, [.. cards]);
+        }
+    }
+
+    private static void CollectAnimatedChildren(VisualElement root, List<VisualElement> result)
+    {
+        if (!root.IsVisible)
+        {
+            return;
+        }
+
+        switch (root)
+        {
+            case IContentView cv when cv.Content is VisualElement cvContent:
+                CollectAnimatedElements(cvContent, result);
+                break;
+            case Layout layout:
+                foreach (var child in layout.Children.OfType<VisualElement>())
+                {
+                    CollectAnimatedElements(child, result);
+                }
+                break;
+            case ScrollView sv when sv.Content is VisualElement svContent:
+                CollectAnimatedElements(svContent, result);
+                break;
+            case Border b when b.Content is VisualElement bContent:
+                CollectAnimatedElements(bContent, result);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void CollectAnimatedElements(VisualElement element, List<VisualElement> result)
+    {
+        if (!element.IsVisible)
+        {
+            return;
+        }
+
+        if (GetAnimateEntrance(element))
+        {
+            result.Add(element);
+            return;
+        }
+
+        switch (element)
+        {
+            case IContentView cv when cv.Content is VisualElement cvContent:
+                CollectAnimatedElements(cvContent, result);
+                break;
+            case Layout layout:
+                foreach (var child in layout.Children.OfType<VisualElement>())
+                {
+                    CollectAnimatedElements(child, result);
+                }
+                break;
+            case ScrollView sv when sv.Content is VisualElement svContent:
+                CollectAnimatedElements(svContent, result);
+                break;
+            case Border b when b.Content is VisualElement bContent:
+                CollectAnimatedElements(bContent, result);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static bool IsElementVisibleInHierarchy(VisualElement element)
+    {
+        Element? current = element;
+        while (current is VisualElement ve)
+        {
+            if (!ve.IsVisible)
+            {
+                return false;
+            }
+            current = current.Parent;
+        }
+        return true;
+    }
+
+    private static async Task TriggerEntranceAsync(VisualElement element)
+    {
+        var delay = GetEntranceDelay(element);
+        if (delay <= 0 && GetAutoStagger(element))
+        {
+            var idx = GetSiblingIndex(element);
+            if (idx > 0)
+            {
+                delay = Math.Min(idx * 50, 400);
+            }
+        }
+
+        if (delay > 0)
+        {
+            await Task.Delay(delay);
+        }
+
+        var duration = GetEntranceDuration(element);
+        var kind = GetEntranceKind(element);
+
+        switch (kind)
+        {
+            case EntranceType.FadeScale:
+                await PlayEntranceFadeScaleAsync(element, duration);
+                break;
+            case EntranceType.SlideInLeft:
+                await PlayEntranceSlideInLeftAsync(element, GetEntranceFromX(element), duration);
+                break;
+            case EntranceType.SlideUp:
+            default:
+                await PlayEntranceSlideUpAsync(element, GetEntranceFromY(element), duration);
+                break;
+        }
+    }
+
+    private static int GetSiblingIndex(VisualElement element) =>
+        element.Parent is Layout layout ? layout.Children.IndexOf(element) : -1;
+
+    public static readonly BindableProperty BounceOnClickProperty =
+        BindableProperty.CreateAttached(
+            "BounceOnClick",
+            typeof(bool),
+            typeof(UIAnimations),
+            false,
+            propertyChanged: OnBounceOnClickChanged);
+
+    public static bool GetBounceOnClick(BindableObject view) => (bool)view.GetValue(BounceOnClickProperty);
+    public static void SetBounceOnClick(BindableObject view, bool value) => view.SetValue(BounceOnClickProperty, value);
+
+    private static readonly BindableProperty t_isBounceGestureProperty =
+        BindableProperty.CreateAttached(
+            "IsBounceGesture",
+            typeof(bool),
+            typeof(UIAnimations),
+            false);
+
+    private static void OnBounceOnClickChanged(BindableObject bindable, object oldValue, object newValue)
+    {
+        var enable = (bool)newValue;
+
+        if (bindable is Button button)
+        {
+            button.Clicked -= OnButtonClickedBounceAsync;
+            if (enable)
+            {
+                button.Clicked += OnButtonClickedBounceAsync;
+            }
+            return;
+        }
+
+        if (bindable is View view)
+        {
+            var existing = view.GestureRecognizers.OfType<TapGestureRecognizer>()
+                .FirstOrDefault(t => (bool)t.GetValue(t_isBounceGestureProperty));
+
+            if (enable)
+            {
+                if (existing is null)
+                {
+                    var tap = new TapGestureRecognizer();
+                    tap.SetValue(t_isBounceGestureProperty, true);
+                    tap.Tapped += async (_, _) => await view.BounceClickAsync();
+                    view.GestureRecognizers.Add(tap);
+                }
+            }
+            else if (existing is not null)
+            {
+                _ = view.GestureRecognizers.Remove(existing);
+            }
+        }
+    }
+
+    private static async void OnButtonClickedBounceAsync(object? sender, EventArgs e)
+    {
+        if (sender is Button { IsEnabled: true } btn)
+        {
+            await btn.BounceClickAsync();
+        }
     }
 
     #endregion

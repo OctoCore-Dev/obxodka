@@ -2,9 +2,13 @@ namespace obxodka.Views;
 
 public sealed partial class ProfileView : ContentView
 {
-    private static readonly Color t_errorColor = Color.FromArgb("#EF4444");
-    private static readonly Color t_cyanColor = Color.FromArgb("#00E5FF");
+    private static Color ErrorColor =>
+        Application.Current?.Resources.TryGetValue("Error", out var val) == true && val is Color c ? c : Color.FromArgb("#EF4444");
 
+    private static Color AccentColor =>
+        Application.Current?.Resources.TryGetValue("Accent", out var val) == true && val is Color c ? c : Color.FromArgb("#00E5FF");
+
+    private long _lastRemainingSeconds;
     private MainPage _parent = null!;
     public event EventHandler? BuyTokensRequested;
     public event EventHandler? LogoutRequested;
@@ -23,18 +27,9 @@ public sealed partial class ProfileView : ContentView
     {
         InitializeComponent();
 
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
-        {
-            var content = Content;
-            Content = new ScrollView
-            {
-                Orientation = ScrollOrientation.Vertical,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
-                Content = content
-            };
-        }
-
-        AdBlockSwitch.IsToggled = Preferences.Default.Get("use_adblock_dns", false);
+        var isAdblock = Preferences.Default.Get("use_adblock_dns", true);
+        AdBlockSwitch.IsToggled = isAdblock;
+        DnsAdBlocker.IsAdBlockEnabled = isAdblock;
         TelemetrySwitch.IsToggled = Preferences.Default.Get("use_telemetry", true);
         MeshSwitch.IsToggled = MeshSettings.MeshEnabled;
 
@@ -45,10 +40,64 @@ public sealed partial class ProfileView : ContentView
             CardLogout.IsVisible = false;
         }
 
+        ProfileScrollView.SizeChanged += (s, e) =>
+        {
+            if (ProfileScrollView.Width > 0)
+            {
+                ApplyCardWidth(ProfileScrollView.Width);
+            }
+        };
+
         Unloaded += OnUnloaded;
     }
 
-    public void Initialize(MainPage parent)
+    public void ForceLayoutWidth()
+    {
+        if (ProfileScrollView.Width > 0)
+        {
+            ApplyCardWidth(ProfileScrollView.Width);
+        }
+        else if (Width > 0 && RootLayoutGrid is not null)
+        {
+            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (avail > 0)
+            {
+                ApplyCardWidth(avail);
+            }
+        }
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width > 0 && RootLayoutGrid is not null)
+        {
+            var availableWidth = width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (availableWidth > 0)
+            {
+                ApplyCardWidth(availableWidth);
+            }
+        }
+    }
+
+    private void ApplyCardWidth(double targetWidth)
+    {
+        if (targetWidth <= 0 || ContentGrid is null)
+        {
+            return;
+        }
+
+        var safeWidth = Math.Min(targetWidth - 6, 950);
+        if (safeWidth <= 0)
+        {
+            return;
+        }
+
+        ContentGrid.WidthRequest = safeWidth;
+        ContentGrid.MaximumWidthRequest = safeWidth;
+    }
+
+    public void Initialize(MainPage parent, ThemeManager? _ = null)
     {
         _parent = parent;
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
@@ -64,15 +113,7 @@ public sealed partial class ProfileView : ContentView
     {
         Opacity = 1;
         TranslationY = 0;
-
-        var visibleCards = new[] { CardProfile, CardBalance, CardAdBlock, CardTelemetry, CardMesh, CardFriends, CardLogout, CardDeleteAccount }
-            .Where(c => c.IsVisible)
-            .ToArray();
-
-        if (visibleCards.Length > 0)
-        {
-            await UIAnimations.PlayEntranceCascadeAsync(80, 450, visibleCards);
-        }
+        await this.PlayCardsEntranceAsync(35, 240);
     }
 
     private void OnMeshToggled(object? sender, ToggledEventArgs e) => MeshSettings.MeshEnabled = e.Value;
@@ -128,7 +169,7 @@ public sealed partial class ProfileView : ContentView
         ProfileProviderLabel.Text = $"{providerName} АККАУНТ";
         ProfileProviderIcon.Source = iconSource;
 
-        if (session.SubscriptionUntil.HasValue)
+        if (session.SubscriptionUntil.HasValue && session.SubscriptionUntil.Value > DateTime.UtcNow)
         {
             SubscriptionContainer.IsVisible = true;
             var dt = session.SubscriptionUntil.Value.ToLocalTime();
@@ -142,17 +183,49 @@ public sealed partial class ProfileView : ContentView
 
     public void UpdateBalance(long remainingSeconds)
     {
+        _lastRemainingSeconds = remainingSeconds;
         if (remainingSeconds <= 0)
         {
             ProfileTokenLabel.Text = "0ч 00м 00с";
-            ProfileTokenLabel.TextColor = t_errorColor;
+            ProfileTokenLabel.TextColor = ErrorColor;
         }
         else
         {
             ProfileTokenLabel.Text = TimeFormatHelper.FormatSeconds(remainingSeconds, true);
-            ProfileTokenLabel.TextColor = t_cyanColor;
+            ProfileTokenLabel.TextColor = AccentColor;
         }
     }
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        CardProfile.BackgroundColor = bgSurface;
+        CardAdBlock.BackgroundColor = bgSurface;
+        CardBalance.BackgroundColor = bgSurface;
+        CardTelemetry.BackgroundColor = bgSurface;
+        CardMesh.BackgroundColor = bgSurface;
+        CardFriends.BackgroundColor = bgSurface;
+        CardLogout.BackgroundColor = bgSurface;
+        CardDeleteAccount.BackgroundColor = bgSurface;
+    }
+
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
+        {
+            RootLayoutGrid.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
+        }
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateBalance(_lastRemainingSeconds);
+        });
 
     private void OnBuyTokensClicked(object? sender, EventArgs e) =>
         BuyTokensRequested?.Invoke(this, EventArgs.Empty);
@@ -172,24 +245,9 @@ public sealed partial class ProfileView : ContentView
         }
 
         Preferences.Default.Set("use_adblock_dns", e.Value);
+        DnsAdBlocker.IsAdBlockEnabled = e.Value;
     }
 
     private void OnTelemetryToggled(object? sender, ToggledEventArgs e) =>
         Preferences.Default.Set("use_telemetry", e.Value);
-
-    private async void OnPointerEnteredAsync(object? sender, PointerEventArgs e)
-    {
-        if (sender is VisualElement ve && ve.IsEnabled)
-        {
-            _ = await ve.ScaleToAsync(1.02, 120, Easing.CubicOut);
-        }
-    }
-
-    private async void OnPointerExitedAsync(object? sender, PointerEventArgs e)
-    {
-        if (sender is VisualElement ve && ve.IsEnabled)
-        {
-            _ = await ve.ScaleToAsync(1.0, 120, Easing.CubicIn);
-        }
-    }
 }

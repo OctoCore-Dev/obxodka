@@ -1,15 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <TargetFramework Condition="$([MSBuild]::IsOSPlatform('linux'))">net10.0</TargetFramework>
-    <WindowsPackageType>None</WindowsPackageType>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <Platforms>AnyCPU;x64;ARM64</Platforms>
-    <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,7 +14,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -26,17 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="net10.0-windows10.0.19041.0\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\obxodka.Maui\obxodka.Maui.csproj" />
+    <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj" />
     <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
   </ItemGroup>
-
-  <Target Name="Build" Condition="$([MSBuild]::IsOSPlatform('linux'))">
-    <Message Importance="high" Text="🐧 Linux detected: obxodka.Client.Tests skipped." />
-  </Target>
-  <Target Name="Publish" Condition="$([MSBuild]::IsOSPlatform('linux'))" />
 
 </Project>

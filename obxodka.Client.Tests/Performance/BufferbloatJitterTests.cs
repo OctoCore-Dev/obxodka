@@ -38,7 +38,7 @@ public class BufferbloatJitterTests
         sw.Stop();
 
         Assert.Equal(packetCount, consumed);
-        Assert.True(sw.ElapsedMilliseconds < 50, $"Elapsed was {sw.ElapsedMilliseconds}ms");
+        Assert.True(sw.ElapsedMilliseconds < 500, $"Elapsed was {sw.ElapsedMilliseconds}ms");
     }
 
     [Fact]

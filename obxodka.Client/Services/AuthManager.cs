@@ -101,7 +101,7 @@ public sealed class AuthManager
                 Password = pass,
                 JwtToken = jwt,
                 VpnConfig = vpnConf,
-                SubscriptionUntil = new DateTime(subTicks, DateTimeKind.Utc),
+                SubscriptionUntil = subTicks > 0 ? new DateTime(subTicks, DateTimeKind.Utc) : null,
                 BalanceSeconds = balanceSec
             };
 
