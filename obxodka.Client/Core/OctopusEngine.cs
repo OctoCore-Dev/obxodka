@@ -128,8 +128,8 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 ]
                 :
                 [
-                    ("FECHSUE", () => new FechsueTransport(activeRays: ActiveRays)),
-                    ("HTTP2", () => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort))
+                    ("HTTP2", () => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort)),
+                    ("FECHSUE", () => new FechsueTransport(activeRays: ActiveRays))
                 ];
 
             Exception? lastError = null;
