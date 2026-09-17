@@ -114,6 +114,15 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
         {
             Debug.WriteLine($"[GRPC STREAM WRITE ERROR] {ex.GetType().Name}: {ex.Message}");
             Shared.Logging.AppLogger.LogError($"[GRPC STREAM WRITE] {ex.Message}", ex);
+            try
+            {
+                _cts.Cancel();
+            }
+            catch
+            {
+            }
+
+            throw;
         }
     }
 

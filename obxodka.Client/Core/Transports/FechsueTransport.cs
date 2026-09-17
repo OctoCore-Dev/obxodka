@@ -324,6 +324,15 @@ public sealed partial class FechsueTransport : IVpnTransport
                     {
                         ip6 = part[4..].Trim();
                     }
+                    else if (part.StartsWith("WAN:", StringComparison.Ordinal))
+                    {
+                        var wan = part[4..].Trim();
+                        if (!string.IsNullOrEmpty(wan))
+                        {
+                            OctopusEngine.Current.PublicWanIp = wan;
+                            Debug.WriteLine($"[FECHSUE-AUTH] Detected Public WAN IP: {wan}");
+                        }
+                    }
                 }
                 if (!string.IsNullOrEmpty(ip))
                 {

@@ -118,9 +118,9 @@ public sealed partial class GrpcTransport(
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _thumbprint = thumbprint;
         var serverPort = _serverPort;
-        var targetHost = !string.IsNullOrWhiteSpace(_configuredSni)
+        var targetHost = !string.IsNullOrWhiteSpace(_configuredSni) && !IPAddress.TryParse(_configuredSni, out _)
             ? _configuredSni
-            : serverIp;
+            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : "www.microsoft.com");
 
         try
         {
@@ -130,18 +130,18 @@ public sealed partial class GrpcTransport(
                 {
                     EnableMultipleHttp2Connections = true,
                     PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-                    KeepAlivePingDelay = TimeSpan.FromSeconds(60),
-                    KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+                    KeepAlivePingDelay = TimeSpan.FromSeconds(10),
+                    KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
                     KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
                     SslOptions = new SslClientAuthenticationOptions
                     {
                         TargetHost = targetHost,
+                        ApplicationProtocols = [SslApplicationProtocol.Http2],
                         EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
                         ClientCertificates = _clientCert != null ? [_clientCert] : null,
                         RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
                             ValidateServerCertificate(certificate, chain, errors)
-                    },
-                    InitialHttp2StreamWindowSize = 16777216
+                    }
                 };
 
                 if (!_useHttp3)
@@ -430,6 +430,18 @@ public sealed partial class GrpcTransport(
                         var parts = msg.Split('|');
                         var ip = parts[0].Replace("IP:", "", StringComparison.Ordinal);
                         var ip6 = parts.Length > 1 ? parts[1].Replace("IP6:", "", StringComparison.Ordinal) : "fd00::2";
+                        foreach (var p in parts)
+                        {
+                            if (p.StartsWith("WAN:", StringComparison.Ordinal))
+                            {
+                                var wan = p[4..].Trim();
+                                if (!string.IsNullOrEmpty(wan))
+                                {
+                                    OctopusEngine.Current.PublicWanIp = wan;
+                                    Debug.WriteLine($"[GRPC-AUTH] Detected Public WAN IP: {wan}");
+                                }
+                            }
+                        }
                         Debug.WriteLine($"[GRPC-AUTH] Handshake SUCCESS -> Assigned IP: {ip}, IPv6: {ip6}");
                         _ = (_ipTcs?.TrySetResult((ip, ip6)));
                     }

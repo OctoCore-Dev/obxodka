@@ -20,6 +20,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private string _currentServerIp = "";
     private uint _currentServerIpUint;
     private uint _localGatewayIpUint;
+    private static uint _publicWanIpUint;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, string> _bypassedManagementIps = new();
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
     private static bool t_networkSettingsBoosted;
@@ -520,12 +522,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             Debug.WriteLine($"[WINTUN-TX-PKT #{wintunPktsRead}] Read {len}B -> dest {destStr}. Total={wintunBytesRead}B");
                         }
 
-                        // Anti-loopback protection: Never send packets destined for the VPN server or local gateway back into the tunnel!
+                        // Anti-loopback protection: Never send packets destined for the VPN server, local gateway, public WAN IP, or active remote management sessions back into the tunnel!
                         if (len >= 20 && (buf[0] >> 4) == 4)
                         {
                             var destIp = MemoryMarshal.Read<uint>(buf.AsSpan(16, 4));
                             if ((_currentServerIpUint != 0 && destIp == _currentServerIpUint) ||
-                                (_localGatewayIpUint != 0 && destIp == _localGatewayIpUint))
+                                (_localGatewayIpUint != 0 && destIp == _localGatewayIpUint) ||
+                                (_publicWanIpUint != 0 && destIp == _publicWanIpUint) ||
+                                _bypassedManagementIps.ContainsKey(destIp))
                             {
                                 ArrayPool<byte>.Shared.Return(buf);
                                 continue;
@@ -803,6 +807,35 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
+    private static async Task<List<string>> DetectRemoteManagementIpsAsync()
+    {
+        var result = new List<string>();
+        try
+        {
+            var psScript = @"
+                $ErrorActionPreference = 'SilentlyContinue';
+                Get-NetTCPConnection -State Established | Where-Object {
+                    $proc = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName;
+                    $proc -match 'AnyDesk|TeamViewer|RustDesk|mstsc' -or $_.RemotePort -in 6568,7070,3389
+                } | Select-Object -ExpandProperty RemoteAddress -Unique
+            ";
+            var (_, output) = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\r", "").Replace("\n", " ")}\"");
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var trimmed = line.Trim();
+                    if (IPAddress.TryParse(trimmed, out var parsed) && parsed.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(parsed))
+                    {
+                        result.Add(trimmed);
+                    }
+                }
+            }
+        }
+        catch { }
+        return result;
+    }
+
     private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
     {
         var (gw, physicalIfIndex) = await GetDefaultGatewayInfoAsync();
@@ -829,18 +862,49 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 ifIndex = output.Trim();
             }
 
+            var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(serverIp))
             {
                 _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
-                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1");
+                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
                 Debug.WriteLine($"[ROUTE] Add Server Route: ExitCode {exitCode}, Output: {output}");
+            }
+
+            // 1. Bypass client's detected Public WAN IP (anti-hairpinning protection)
+            var wanIp = OctopusEngine.Current.PublicWanIp;
+            if (!string.IsNullOrEmpty(wanIp) && IPAddress.TryParse(wanIp, out var parsedWan) && parsedWan.AddressFamily == AddressFamily.InterNetwork)
+            {
+                _publicWanIpUint = MemoryMarshal.Read<uint>(parsedWan.GetAddressBytes());
+                if (!string.IsNullOrEmpty(gw) && _bypassedManagementIps.TryAdd(_publicWanIpUint, wanIp))
+                {
+                    _ = await RunCmdAsync("route", $"add {wanIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
+                    Debug.WriteLine($"[ROUTE] Bypassed Client Public WAN IP: {wanIp} via {gw}{physIfArg}");
+                }
+            }
+
+            // 2. Bypass active Remote Desktop / Management sessions (AnyDesk, TeamViewer, RustDesk, RDP)
+            if (!string.IsNullOrEmpty(gw))
+            {
+                var remoteIps = await DetectRemoteManagementIpsAsync();
+                foreach (var rIp in remoteIps)
+                {
+                    if (IPAddress.TryParse(rIp, out var parsedRemote) && parsedRemote.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        var rUint = MemoryMarshal.Read<uint>(parsedRemote.GetAddressBytes());
+                        if (_bypassedManagementIps.TryAdd(rUint, rIp))
+                        {
+                            _ = await RunCmdAsync("route", $"add {rIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
+                            Debug.WriteLine($"[ROUTE] Bypassed Remote Management session IP: {rIp} via {gw}{physIfArg}");
+                        }
+                    }
+                }
             }
 
             if (!string.IsNullOrEmpty(ifIndex))
             {
                 await Task.Delay(200);
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
+                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}");
+                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}");
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
             }
             else
@@ -860,6 +924,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
             }
+
+            foreach (var rIp in _bypassedManagementIps.Values)
+            {
+                deleteTasks.Add(RunCmdAsync("route", $"delete {rIp} mask 255.255.255.255"));
+            }
+            _bypassedManagementIps.Clear();
+            _publicWanIpUint = 0;
 
             if (!string.IsNullOrEmpty(adapterName))
             {
@@ -927,6 +998,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             _currentServerIpUint = 0;
             _localGatewayIpUint = 0;
+            _publicWanIpUint = 0;
+            _bypassedManagementIps.Clear();
             UpdateState(AppVpnState.Disconnected);
         }
         finally
@@ -983,10 +1056,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
-            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
 
             var psScript = @"
                 $ErrorActionPreference = 'SilentlyContinue';

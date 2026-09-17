@@ -22,6 +22,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public bool IsConnected => _transport is { IsConnected: true };
     public string AssignedIp { get; private set; } = "10.8.0.2";
     public string AssignedIpV6 { get; private set; } = "fd00::2";
+    public string? PublicWanIp { get; set; }
 
     public event Action<byte[], int>? OnPacketReceived;
     public event Action? OnConnectionDropped;
