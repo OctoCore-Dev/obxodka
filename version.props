@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <AppVersion>5.0.0</AppVersion>
-    <AppBuildNumber>19</AppBuildNumber>
+    <AppVersion>5.0.1</AppVersion>
+    <AppBuildNumber>20</AppBuildNumber>
     <Version>$(AppVersion)</Version>
     <PackageVersion>$(AppVersion)</PackageVersion>
     <ApplicationDisplayVersion>$(AppVersion)</ApplicationDisplayVersion>

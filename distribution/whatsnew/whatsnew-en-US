@@ -1,6 +1,5 @@
-- Community Themes: browse and install custom creator themes.
-- New visual effects and theme audio support.
+- New unified NeoDialog system alerts and confirmations.
+- Automatic update detection for Windows and Android.
 - Octopus engine optimizations and reduced latency.
-- Built-in AdBlocker enabled by default.
 - Enhanced mobile layout and safe area support.
 - Overall stability and performance improvements.
