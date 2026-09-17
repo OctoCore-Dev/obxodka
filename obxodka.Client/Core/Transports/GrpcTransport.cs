@@ -389,12 +389,6 @@ public sealed partial class GrpcTransport(
                     }
                     else if (packet[0] == 0x99 && realLen >= 9)
                     {
-                        if (_activeRays > 1 && rayIndex != 0)
-                        {
-                            ArrayPool<byte>.Shared.Return(packet);
-                            continue;
-                        }
-
                         var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
                         var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
                         var rtt = (long)Math.Round(elapsedMs);

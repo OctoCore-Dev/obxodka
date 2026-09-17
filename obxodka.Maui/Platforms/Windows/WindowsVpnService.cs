@@ -183,7 +183,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _ = await RunCmdAsync("route", $"delete {_currentServerIp} mask 255.255.255.255");
                             _ = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {gw} metric 1");
                             await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(2500));
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
                             if (verified)
                             {
                                 UpdateState(AppVpnState.Connected);
@@ -374,7 +374,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
                             OnLogUpdated?.Invoke("Проверка сквозного прохождения пакетов (RX)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(2500), _cts.Token);
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), _cts.Token);
                             if (verified)
                             {
                                 OnLogUpdated?.Invoke("Связь подтверждена! Защищенное соединение установлено.");

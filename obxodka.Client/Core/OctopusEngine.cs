@@ -237,10 +237,13 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
             try
             {
-                var probePkt = BuildDnsProbePacket(AssignedIp);
-                if (probePkt is not null)
+                if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
                 {
-                    _ = SendPacketAsync(probePkt);
+                    _ = SendPacketAsync(p1);
+                }
+                if (BuildDnsProbePacket(AssignedIp, 8) is { } p8)
+                {
+                    _ = SendPacketAsync(p8);
                 }
             }
             catch { }
@@ -280,7 +283,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
     }
 
-    private static byte[]? BuildDnsProbePacket(string assignedIp)
+    private static byte[]? BuildDnsProbePacket(string assignedIp, byte dstOctet = 1)
     {
         if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork)
         {
@@ -305,10 +308,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         packet[8] = 64;
         packet[9] = 17;
         srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
-        packet[16] = 1;
-        packet[17] = 1;
-        packet[18] = 1;
-        packet[19] = 1;
+        packet[16] = dstOctet;
+        packet[17] = dstOctet;
+        packet[18] = dstOctet;
+        packet[19] = dstOctet;
 
         var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
