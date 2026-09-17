@@ -232,32 +232,19 @@ public sealed partial class FriendsView : ContentView
         {
             var claimId = Guid.NewGuid().ToString("N");
             var (success, data, error) = await _apiService.ClaimReferralRewardAsync(claimId);
-            var page = Application.Current?.Windows is { Count: > 0 } windows ? windows[0].Page : null;
-
             if (success)
             {
-                if (page is not null)
-                {
-                    await page.DisplayAlertAsync("Награда получена!", $"Вам успешно начислено +{data?.HoursGranted ?? 5} часов подписки за помощь сети Obxodka.", "Отлично");
-                }
+                await NeoAlert.ShowAsync("Награда получена!", $"Вам успешно начислено +{data?.HoursGranted ?? 5} часов подписки за помощь сети Obxodka.", "Отлично");
             }
-
             else
             {
-                if (page is not null)
-                {
-                    await page.DisplayAlertAsync("Ошибка", error ?? "Не удалось получить награду", "OK");
-                }
+                await NeoAlert.ShowAsync("Ошибка", error ?? "Не удалось получить награду", "OK");
             }
             RefreshStats();
         }
         catch (Exception ex)
         {
-            var page = Application.Current?.Windows is { Count: > 0 } windows ? windows[0].Page : null;
-            if (page is not null)
-            {
-                await page.DisplayAlertAsync("Ошибка", ex.Message, "OK");
-            }
+            await NeoAlert.ShowAsync("Ошибка", ex.Message, "OK");
         }
         finally
         {

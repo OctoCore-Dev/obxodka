@@ -29,7 +29,6 @@ global using obxodka.Maui.Services;
 global using obxodka.Models;
 global using obxodka.Pages;
 global using obxodka.Services;
-global using obxodka.Shared.Logging;
 global using obxodka.Shared.Themes;
 global using obxodka.Views;
 global using Plugin.InAppBilling;

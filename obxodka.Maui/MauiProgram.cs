@@ -24,7 +24,7 @@ internal static partial class MauiProgram
             .UseMauiApp<App>()
             .UseFluentMauiIcons()
             .UseMauiCommunityToolkit()
-            .UseMauiCommunityToolkitMediaElement()
+            .UseMauiCommunityToolkitMediaElement(isAndroidForegroundServiceEnabled: false)
             .UseSkiaSharp()
             .ConfigureFonts(fonts =>
             {
@@ -175,6 +175,7 @@ internal static partial class MauiProgram
         window.ExtendsContentIntoTitleBar = true;
 
         var handle = WindowNative.GetWindowHandle(window);
+        App.MainWindowHandle = handle;
         var id = Win32Interop.GetWindowIdFromWindow(handle);
         var appWindow = AppWindow.GetFromWindowId(id);
         if (appWindow is null)

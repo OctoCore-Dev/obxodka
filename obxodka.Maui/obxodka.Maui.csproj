@@ -47,7 +47,6 @@
     <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
@@ -98,7 +97,7 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
-    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="6.0.0" />
+    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="10.0.0" />
     <PackageReference Include="WinUIEx" Version="2.9.3" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
     <PackageReference Include="System.Management" Version="10.0.11" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
 </ItemGroup>
@@ -112,6 +111,7 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" Version="1.5.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+    <ProguardConfiguration Include="Platforms\Android\proguard.cfg" />
   </ItemGroup>
 
 	<ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">

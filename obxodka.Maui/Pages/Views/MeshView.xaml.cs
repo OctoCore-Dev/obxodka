@@ -394,17 +394,11 @@ public sealed partial class MeshView : ContentView
         if (!string.IsNullOrWhiteSpace(code) && !code.Contains('.'))
         {
             await Clipboard.Default.SetTextAsync(code);
-            if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-            {
-                await Application.Current.Windows[0].Page!.DisplayAlertAsync("Скопировано", $"Ваш код {code} скопирован в буфер обмена.", "OK");
-            }
+            await NeoAlert.ShowAsync("Скопировано", $"Ваш код {code} скопирован в буфер обмена.", "OK");
         }
         else
         {
-            if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-            {
-                await Application.Current.Windows[0].Page!.DisplayAlertAsync("Внимание", "Код загружается с сервера. Попробуйте через пару секунд.", "OK");
-            }
+            await NeoAlert.ShowAsync("Внимание", "Код загружается с сервера. Попробуйте через пару секунд.", "OK");
         }
     }
 
@@ -435,10 +429,7 @@ public sealed partial class MeshView : ContentView
         }
         else
         {
-            if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-            {
-                await Application.Current.Windows[0].Page!.DisplayAlertAsync("Внимание", "Код загружается с сервера. Попробуйте через пару секунд.", "OK");
-            }
+            await NeoAlert.ShowAsync("Внимание", "Код загружается с сервера. Попробуйте через пару секунд.", "OK");
         }
     }
 
@@ -447,10 +438,7 @@ public sealed partial class MeshView : ContentView
         var code = FriendCodeEntry.Text?.Trim();
         if (string.IsNullOrWhiteSpace(code))
         {
-            if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-            {
-                await Application.Current.Windows[0].Page!.DisplayAlertAsync("Ошибка", "Введите код друга.", "OK");
-            }
+            await NeoAlert.ShowAsync("Ошибка", "Введите код друга.", "OK");
             return;
         }
 
@@ -466,18 +454,12 @@ public sealed partial class MeshView : ContentView
             if (success)
             {
                 FriendCodeEntry.Text = string.Empty;
-                if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-                {
-                    await Application.Current.Windows[0].Page!.DisplayAlertAsync("Успешно", resp?.Message ?? "Код активирован! Вам начислен +1 час в подарок.", "OK");
-                }
+                await NeoAlert.ShowAsync("Успешно", resp?.Message ?? "Код активирован! Вам начислен +1 час в подарок.", "OK");
                 await LoadReferralDataAsync();
             }
             else
             {
-                if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-                {
-                    await Application.Current.Windows[0].Page!.DisplayAlertAsync("Ошибка", error ?? "Не удалось активировать код.", "OK");
-                }
+                await NeoAlert.ShowAsync("Ошибка", error ?? "Не удалось активировать код.", "OK");
             }
         }
         finally
@@ -500,18 +482,12 @@ public sealed partial class MeshView : ContentView
             var (success, resp, error) = await _apiService.ClaimReferralRewardAsync(claimId);
             if (success && resp != null)
             {
-                if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-                {
-                    await Application.Current.Windows[0].Page!.DisplayAlertAsync("Поздравляем!", $"Вам начислено +{resp.HoursGranted} часов к подписке за раздачу в Mesh-сети!", "Отлично");
-                }
+                await NeoAlert.ShowAsync("Поздравляем!", $"Вам начислено +{resp.HoursGranted} часов к подписке за раздачу в Mesh-сети!", "Отлично");
                 await LoadReferralDataAsync();
             }
             else
             {
-                if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-                {
-                    await Application.Current.Windows[0].Page!.DisplayAlertAsync("Ошибка", error ?? "Не удалось забрать награду.", "OK");
-                }
+                await NeoAlert.ShowAsync("Ошибка", error ?? "Не удалось забрать награду.", "OK");
                 ClaimRewardButton.IsEnabled = true;
             }
         }

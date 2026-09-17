@@ -7,6 +7,7 @@ internal sealed partial class App : Application
     public static event Action? WindowDeactivated;
     public static bool PendingTileAction { get; set; }
 #if WINDOWS
+    public static IntPtr MainWindowHandle { get; set; } = IntPtr.Zero;
     private static bool t_isConnectivityHooked;
 #endif
 
@@ -77,6 +78,7 @@ internal sealed partial class App : Application
                 winUIWindow.SetTitleBar(new Microsoft.UI.Xaml.Controls.Grid { Height = 0, MaxHeight = 0 });
 
                 var handle = WinRT.Interop.WindowNative.GetWindowHandle(winUIWindow);
+                MainWindowHandle = handle;
                 var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
                 var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
                 if (appWindow is not null && Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())

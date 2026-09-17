@@ -1,0 +1,125 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Maui.Controls.NeoDialog"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    HorizontalOptions="Fill"
+    InputTransparent="True"
+    IsVisible="False"
+    Opacity="0"
+    VerticalOptions="Fill">
+
+    <Grid
+        x:Name="DialogOverlay"
+        BackgroundColor="{DynamicResource BgOverlay}"
+        HorizontalOptions="Fill"
+        VerticalOptions="Fill">
+
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnBackdropTapped" />
+        </Grid.GestureRecognizers>
+
+        <Border
+            x:Name="DialogCard"
+            Margin="24"
+            Padding="24,22,24,20"
+            HorizontalOptions="Center"
+            MaximumWidthRequest="{OnIdiom Desktop=440,
+                                          Phone=360,
+                                          Default=400}"
+            Stroke="{DynamicResource BorderMedium}"
+            StrokeShape="RoundRectangle 16"
+            StrokeThickness="1.2"
+            Style="{StaticResource NeoCard}"
+            VerticalOptions="Center">
+
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer />
+            </Border.GestureRecognizers>
+
+            <Border.Shadow>
+                <Shadow
+                    x:Name="DialogShadow"
+                    Brush="{DynamicResource Accent}"
+                    Opacity="0.45"
+                    Radius="28"
+                    Offset="0, 8" />
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="16">
+                <Border
+                    x:Name="IconBadge"
+                    BackgroundColor="{DynamicResource AccentDim}"
+                    HeightRequest="54"
+                    HorizontalOptions="Center"
+                    Stroke="{DynamicResource Accent}"
+                    StrokeShape="RoundRectangle 27"
+                    StrokeThickness="1.5"
+                    WidthRequest="54">
+                    <Border.Shadow>
+                        <Shadow
+                            x:Name="IconShadow"
+                            Brush="{DynamicResource Accent}"
+                            Opacity="0.4"
+                            Radius="12"
+                            Offset="0, 2" />
+                    </Border.Shadow>
+                    <mi:MauiIcon
+                        x:Name="DialogMauiIcon"
+                        HorizontalOptions="Center"
+                        Icon="{mi:Fluent Icon=Info24}"
+                        IconColor="{DynamicResource Accent}"
+                        IconSize="26"
+                        VerticalOptions="Center" />
+                </Border>
+
+                <Label
+                    x:Name="TitleLabel"
+                    FontAttributes="Bold"
+                    FontFamily="{DynamicResource AppFontTitle}"
+                    FontSize="17"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{DynamicResource TextPrimary}" />
+
+                <ScrollView HorizontalOptions="Fill" MaximumHeightRequest="240">
+                    <Label
+                        x:Name="MessageLabel"
+                        FontFamily="{DynamicResource AppFontRegular}"
+                        FontSize="13"
+                        HorizontalTextAlignment="Center"
+                        LineHeight="1.25"
+                        TextColor="{DynamicResource TextSecondary}" />
+                </ScrollView>
+
+                <Grid
+                    x:Name="ButtonsGrid"
+                    Margin="0,4,0,0"
+                    ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="CancelCol" Width="*" />
+                        <ColumnDefinition x:Name="AcceptCol" Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        x:Name="CancelButton"
+                        Grid.Column="0"
+                        Clicked="OnCancelClicked"
+                        CornerRadius="10"
+                        HeightRequest="44"
+                        Style="{StaticResource BtnSecondary}"
+                        Text="Отмена" />
+
+                    <Button
+                        x:Name="AcceptButton"
+                        Grid.Column="1"
+                        Clicked="OnAcceptClicked"
+                        CornerRadius="10"
+                        FontAttributes="Bold"
+                        HeightRequest="44"
+                        Text="OK" />
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

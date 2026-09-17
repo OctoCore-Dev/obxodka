@@ -807,10 +807,7 @@ public sealed partial class ThemeStoreView : ContentView
                         var err = _themeManager?.LastError ?? "Неизвестная ошибка загрузки";
                         LabelStatus.Text = $"Ошибка загрузки темы: {err}";
                         LabelStatus.IsVisible = true;
-                        if (Shell.Current != null)
-                        {
-                            await Shell.Current.DisplayAlertAsync("Ошибка загрузки темы", err, "OK");
-                        }
+                        await NeoAlert.ShowAsync("Ошибка загрузки темы", err, "OK");
                     }
                 }
                 catch (Exception ex)
@@ -820,10 +817,7 @@ public sealed partial class ThemeStoreView : ContentView
                     btnDownload.Opacity = 1.0;
                     LabelStatus.Text = $"Исключение: {ex.Message}";
                     LabelStatus.IsVisible = true;
-                    if (Shell.Current != null)
-                    {
-                        await Shell.Current.DisplayAlertAsync("Ошибка загрузки темы", ex.Message, "OK");
-                    }
+                    await NeoAlert.ShowAsync("Ошибка загрузки темы", ex.Message, "OK");
                 }
             };
             btnDownload.GestureRecognizers.Add(tapDownload);
@@ -870,20 +864,17 @@ public sealed partial class ThemeStoreView : ContentView
             tapDelete.Tapped += async (s, e) =>
             {
                 await btnDelete.BounceClickAsync();
-                if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-                {
-                    var confirm = await Application.Current.Windows[0].Page!.DisplayAlertAsync(
-                        "Удаление темы",
-                        $"Вы уверены, что хотите удалить тему '{model.Name}' с устройства?",
-                        "Удалить",
-                        "Отмена");
+                var confirm = await NeoAlert.ShowConfirmAsync(
+                    "Удаление темы",
+                    $"Вы уверены, что хотите удалить тему '{model.Name}' с устройства?",
+                    "Удалить",
+                    "Отмена");
 
-                    if (confirm && _themeManager != null)
-                    {
-                        _ = _themeManager.DeleteTheme(model.Id);
-                        UpdateTabButtons();
-                        RenderThemes(animate: false);
-                    }
+                if (confirm && _themeManager != null)
+                {
+                    _ = _themeManager.DeleteTheme(model.Id);
+                    UpdateTabButtons();
+                    RenderThemes(animate: false);
                 }
             };
             btnDelete.GestureRecognizers.Add(tapDelete);
@@ -915,13 +906,10 @@ public sealed partial class ThemeStoreView : ContentView
             tapReport.Tapped += async (s, e) =>
             {
                 await btnReport.BounceClickAsync();
-                if (Application.Current?.Windows.Count > 0 && Application.Current.Windows[0].Page != null)
-                {
-                    await Application.Current.Windows[0].Page!.DisplayAlertAsync(
-                        "Жалоба на тему",
-                        $"Жалоба на тему '{model.Name}' отправлена на модерацию. Спасибо за помощь в поддержании чистоты и безопасности сообщества!",
-                        "ОК");
-                }
+                await NeoAlert.ShowAsync(
+                    "Жалоба на тему",
+                    $"Жалоба на тему '{model.Name}' отправлена на модерацию. Спасибо за помощь в поддержании чистоты и безопасности сообщества!",
+                    "ОК");
             };
             btnReport.GestureRecognizers.Add(tapReport);
             actionLayout.Add(btnReport);
@@ -1091,13 +1079,10 @@ public sealed partial class ThemeStoreView : ContentView
                 var ok = await (_themeManager?.DownloadAndInstallThemeAsync(themeId) ?? Task.FromResult(false));
                 if (ok)
                 {
-                    if (Shell.Current != null)
-                    {
-                        var msg = isActive || _themeManager?.ActiveTheme?.Id == themeId
-                            ? $"Тема '{themeName}' успешно обновлена до версии v{targetVersion} и применена!"
-                            : $"Тема '{themeName}' успешно обновлена до версии v{targetVersion}!";
-                        await Shell.Current.DisplayAlertAsync("Обновление темы", msg, "OK");
-                    }
+                    var msg = isActive || _themeManager?.ActiveTheme?.Id == themeId
+                        ? $"Тема '{themeName}' успешно обновлена до версии v{targetVersion} и применена!"
+                        : $"Тема '{themeName}' успешно обновлена до версии v{targetVersion}!";
+                    await NeoAlert.ShowAsync("Обновление темы", msg, "OK");
                 }
                 else
                 {
@@ -1107,10 +1092,7 @@ public sealed partial class ThemeStoreView : ContentView
                     var err = _themeManager?.LastError ?? "Неизвестная ошибка при обновлении";
                     LabelStatus.Text = $"Ошибка обновления темы: {err}";
                     LabelStatus.IsVisible = true;
-                    if (Shell.Current != null)
-                    {
-                        await Shell.Current.DisplayAlertAsync("Ошибка обновления темы", err, "OK");
-                    }
+                    await NeoAlert.ShowAsync("Ошибка обновления темы", err, "OK");
                 }
             }
             catch (Exception ex)
@@ -1120,10 +1102,7 @@ public sealed partial class ThemeStoreView : ContentView
                 btnUpdate.Opacity = 1.0;
                 LabelStatus.Text = $"Исключение: {ex.Message}";
                 LabelStatus.IsVisible = true;
-                if (Shell.Current != null)
-                {
-                    await Shell.Current.DisplayAlertAsync("Ошибка обновления темы", ex.Message, "OK");
-                }
+                await NeoAlert.ShowAsync("Ошибка обновления темы", ex.Message, "OK");
             }
         };
 

@@ -379,4 +379,18 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = LogoutIcon.ScaleToAsync(1.0, 120, Easing.CubicOut);
         }
     }
+
+    private async void OnVersionBadgeTappedAsync(object? sender, EventArgs e)
+    {
+        if (sender is VisualElement ve)
+        {
+            _ = ve.BounceClickAsync();
+        }
+
+        var updater = IPlatformApplication.Current?.Services?.GetService<IAppUpdaterService>();
+        if (updater is not null)
+        {
+            await updater.CheckForUpdatesAsync(manualCheck: true);
+        }
+    }
 }

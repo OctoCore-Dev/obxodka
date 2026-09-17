@@ -2,6 +2,8 @@ namespace obxodka.Pages;
 
 public sealed partial class MainPage : ContentPage, IDisposable
 {
+    public static MainPage? Current { get; private set; }
+
     private readonly ApiService _apiService;
     private readonly IAppManager _appManager;
     private readonly IAppUpdaterService? _appUpdaterService;
@@ -24,6 +26,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         ThemeManager themeManager,
         IAppUpdaterService? appUpdaterService = null)
     {
+        Current = this;
         InitializeComponent();
         VpnService = vpnService;
         _apiService = apiService;
@@ -85,6 +88,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
 
         DesktopSidebar.NavTapped += OnSidebarNavTapped;
+        DesktopSidebar.LogoutTapped += OnSidebarLogoutTappedAsync;
         MobileBottomBar.NavTapped += OnBottomBarNavTapped;
 
         SafeAreaHelper.InsetsChanged -= OnSafeAreaInsetsChanged;
@@ -182,6 +186,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
         DesktopSidebar.LogoutTapped -= OnSidebarLogoutTappedAsync;
         MobileBottomBar.NavTapped -= OnBottomBarNavTapped;
         SafeAreaHelper.InsetsChanged -= OnSafeAreaInsetsChanged;
+        if (Current == this)
+        {
+            Current = null;
+        }
 
         GC.SuppressFinalize(this);
     }
@@ -238,6 +246,58 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private void HandleApiUnauthorized() =>
         HandleForceLogout("Сессия истекла. Пожалуйста, войдите снова.");
+
+    private bool? _isWideLayout;
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
+        var isWide = AdaptiveLayoutHelper.IsWideLayout(width, isDesktopOrTablet);
+        if (_isWideLayout != isWide)
+        {
+            _isWideLayout = isWide;
+            ApplyAdaptiveLayout(isWide);
+        }
+
+        if (!isWide)
+        {
+            MobileBottomBar.SetCompactMode(AdaptiveLayoutHelper.IsShortScreen(height));
+        }
+    }
+
+    private void ApplyAdaptiveLayout(bool isWide)
+    {
+        if (isWide)
+        {
+            MobileBottomBar.IsVisible = false;
+            MobileBottomBar.HideSidebar();
+            DesktopSidebar.IsVisible = true;
+            Grid.SetColumn(MainContentContainer, 1);
+            Grid.SetColumnSpan(MainContentContainer, 1);
+            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
+            {
+                _ = DesktopSidebar.PlayEntranceAnimationAsync();
+            }
+        }
+        else
+        {
+            DesktopSidebar.IsVisible = false;
+            DesktopSidebar.HideSidebar();
+            MobileBottomBar.IsVisible = true;
+            Grid.SetColumn(MainContentContainer, 0);
+            Grid.SetColumnSpan(MainContentContainer, 2);
+            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
+            {
+                _ = MobileBottomBar.PlayEntranceAnimationAsync();
+            }
+        }
+    }
 
     protected override void OnAppearing()
     {
@@ -363,8 +423,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentVpn.Initialize(this, VpnService, _apiService);
         _ = SwitchTabAsync("vpn");
 
-        _ = DesktopSidebar.PlayEntranceAnimationAsync();
-        _ = MobileBottomBar.PlayEntranceAnimationAsync();
+        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
+        var isWide = _isWideLayout ?? AdaptiveLayoutHelper.IsWideLayout(Width, isDesktopOrTablet);
+        _isWideLayout = isWide;
+        ApplyAdaptiveLayout(isWide);
 
         _ = Task.Run(async () =>
         {
@@ -1266,4 +1328,45 @@ public sealed partial class MainPage : ContentPage, IDisposable
 #pragma warning restore CA1416
     }
 #endif
+
+    #region Custom NeoCard Dialog
+
+    public Task<bool> ShowCustomDialogAsync(
+        string title,
+        string message,
+        string? acceptText = null,
+        string cancelText = "OK") =>
+        NeoDialog.ShowAsync(title, message, acceptText, cancelText);
+
+    public new Task<bool> DisplayAlert(string title, string message, string accept, string cancel) =>
+        ShowCustomDialogAsync(title, message, accept, cancel);
+
+    public new Task DisplayAlert(string title, string message, string cancel) =>
+        ShowCustomDialogAsync(title, message, null, cancel);
+
+    public new Task<bool> DisplayAlert(string title, string message, string accept, string cancel, FlowDirection flowDirection)
+    {
+        _ = flowDirection;
+        return ShowCustomDialogAsync(title, message, accept, cancel);
+    }
+
+    public new Task DisplayAlert(string title, string message, string cancel, FlowDirection flowDirection)
+    {
+        _ = flowDirection;
+        return ShowCustomDialogAsync(title, message, null, cancel);
+    }
+
+    public new Task<bool> DisplayAlertAsync(string title, string message, string accept, string cancel, FlowDirection flowDirection = FlowDirection.MatchParent)
+    {
+        _ = flowDirection;
+        return ShowCustomDialogAsync(title, message, accept, cancel);
+    }
+
+    public new Task DisplayAlertAsync(string title, string message, string cancel, FlowDirection flowDirection = FlowDirection.MatchParent)
+    {
+        _ = flowDirection;
+        return ShowCustomDialogAsync(title, message, null, cancel);
+    }
+
+    #endregion
 }

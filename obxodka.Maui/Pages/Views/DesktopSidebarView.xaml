@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.DesktopSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -307,14 +307,23 @@
                     </Grid>
                 </Border>
 
-                <Label
-                    x:Name="AppVersionLabel"
-                    FontSize="11"
-                    HorizontalOptions="Center"
-                    LineBreakMode="NoWrap"
-                    Opacity="0"
-                    Style="{StaticResource LabelMuted}"
-                    Text="v4.8.0" />
+                <Border
+                    x:Name="VersionBadgeBorder"
+                    Padding="6,3"
+                    BackgroundColor="Transparent"
+                    Stroke="Transparent">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnVersionBadgeTappedAsync" />
+                    </Border.GestureRecognizers>
+                    <Label
+                        x:Name="AppVersionLabel"
+                        FontSize="11"
+                        HorizontalOptions="Center"
+                        LineBreakMode="NoWrap"
+                        Opacity="0"
+                        Style="{StaticResource LabelMuted}"
+                        Text="v5.0.0" />
+                </Border>
             </VerticalStackLayout>
 
         </Grid>

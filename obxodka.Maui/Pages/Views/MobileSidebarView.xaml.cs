@@ -21,6 +21,22 @@ public sealed partial class MobileSidebarView : ContentView
 
     public void HideSidebar() => MobileBottomBar.IsVisible = false;
 
+    public void SetCompactMode(bool isCompact)
+    {
+        if (isCompact)
+        {
+            MobileBottomBar.HeightRequest = 52;
+            MobileBottomBar.Margin = new Thickness(12, 0, 12, 8);
+            MobileBottomBar.Padding = new Thickness(4, 2);
+        }
+        else
+        {
+            MobileBottomBar.HeightRequest = 68;
+            MobileBottomBar.Margin = new Thickness(16, 0, 16, 20);
+            MobileBottomBar.Padding = new Thickness(6, 6);
+        }
+    }
+
     public void UpdateActiveTab(string tabName)
     {
         _currentTab = tabName;

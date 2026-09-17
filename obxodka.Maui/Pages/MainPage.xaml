@@ -132,14 +132,17 @@
                 Grid.RowSpan="2"
                 Grid.Column="0"
                 IsVisible="{OnIdiom Desktop=True,
+                                    Tablet=True,
                                     Default=False}" />
             <Grid
                 x:Name="MainContentContainer"
                 Grid.Row="0"
                 Grid.RowSpan="2"
                 Grid.Column="{OnIdiom Desktop=1,
+                                      Tablet=1,
                                       Default=0}"
                 Grid.ColumnSpan="{OnIdiom Desktop=1,
+                                          Tablet=1,
                                           Default=2}"
                 SafeAreaEdges="None">
                 <Grid.GestureRecognizers>
@@ -220,5 +223,7 @@
             </VerticalStackLayout>
 
         </Grid>
+
+        <controls:NeoDialog x:Name="NeoDialog" ZIndex="2000" />
     </Grid>
 </ContentPage>

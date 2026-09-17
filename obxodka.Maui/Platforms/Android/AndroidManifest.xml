@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36" />
     <application
         android:allowBackup="false"
@@ -22,6 +23,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="VPN tunnel maintenance and network traffic encryption" />
         </service>
+
+        <service
+            android:name="communityToolkit.maui.media.services"
+            tools:node="remove" />
 
     </application>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
