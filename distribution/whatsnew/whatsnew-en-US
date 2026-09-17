@@ -1,4 +1,4 @@
-- Seamless network roaming between Wi-Fi and Cellular data on Android without connection drops.
-- Fixed UI connection status indicators and smooth state transitions on mobile devices.
-- Reliable packet downlink verification (RX) preventing blackholed connections.
-- Multi-stream transport optimizations and protocol stability improvements.
+- Fixed a critical crash on Windows 10 during RX packet downlink verification.
+- Thread-safe Wintun session synchronization and access violation prevention.
+- Fixed ArrayPool buffer corruption when transmitting DNS probe packets.
+- Seamless network roaming on Android and reliable connection state indicators.

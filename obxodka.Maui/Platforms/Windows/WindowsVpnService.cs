@@ -384,6 +384,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             }
 
                             OnLogUpdated?.Invoke("Входящие пакеты не поступают (0 RX). Быстрое переподключение...");
+                            _cts?.Cancel();
+                            await Task.Delay(60);
                             try
                             {
                                 _adapter?.Dispose();
@@ -400,6 +402,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         catch (Exception ex)
                         {
                             lastException = ex;
+                            _cts?.Cancel();
+                            await Task.Delay(60);
                             try
                             {
                                 _adapter?.Dispose();
@@ -431,14 +435,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
 
-                if (!connected && lastException is not null)
+                if (!connected)
                 {
                     if (lastException is OperationCanceledException || _isExplicitlyStopped)
                     {
                         UpdateState(AppVpnState.Disconnected);
                         return;
                     }
-                    throw lastException;
+                    throw lastException ?? new InvalidOperationException("Сервер не отвечает или пакеты блокируются (0 RX). Проверьте интернет или смените протокол.");
                 }
             }
             catch (Exception ex)
@@ -530,13 +534,27 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 }
             }
             catch { }
+            finally
+            {
+                while (reader.TryRead(out var item))
+                {
+                    ArrayPool<byte>.Shared.Return(item.buffer);
+                }
+            }
         })
         {
             IsBackground = true
         };
         rxThread.Start();
 
-        await tcs.Task;
+        try
+        {
+            await tcs.Task;
+        }
+        finally
+        {
+            OctopusEngine.Current.OnPacketReceived -= HandlePacketFromVpn;
+        }
     }
 
     private void HandlePacketFromVpn(byte[] data, int length) =>
