@@ -419,17 +419,17 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         }
 
                         OctopusEngine.Current.ResetTrafficCounters();
-                        OnLogUpdated?.Invoke("Проверка сквозного прохождения пакетов (RX)...");
-                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(2500));
+                        OnLogUpdated?.Invoke($"Проверка сквозного прохождения пакетов (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
+                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
                         if (verified)
                         {
-                            OnLogUpdated?.Invoke("Связь подтверждена! Защищенное соединение установлено.");
+                            OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
                             ChangeState(AppVpnState.Connected);
                             connected = true;
                             break;
                         }
 
-                        OnLogUpdated?.Invoke("Входящие пакеты не поступают (0 RX). Быстрое переподключение...");
+                        OnLogUpdated?.Invoke($"Входящие пакеты не поступают (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B). Быстрое переподключение...");
                         OctopusVpnService.Instance?.StopNativeVpn();
                         await OctopusEngine.Current.DisposeAsync();
                     }

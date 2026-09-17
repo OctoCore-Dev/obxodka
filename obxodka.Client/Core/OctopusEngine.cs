@@ -37,10 +37,13 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public string ActiveProtocol { get; private set; } = "AUTO";
 
+    private long _trafficStartTicks = Environment.TickCount64;
+
     public void ResetTrafficCounters()
     {
         _ = Interlocked.Exchange(ref _totalBytesSent, 0);
         _ = Interlocked.Exchange(ref _totalBytesReceived, 0);
+        Volatile.Write(ref _trafficStartTicks, Environment.TickCount64);
     }
 
     private double _smoothedPing;
@@ -51,6 +54,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             return;
         }
+        _ = Interlocked.Add(ref _totalBytesReceived, 9);
         if (_smoothedPing <= 0)
         {
             _smoothedPing = rawRtt;
@@ -226,48 +230,52 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         try
         {
-            _ = Task.Run(async () =>
+            async Task SendProbesAsync()
             {
                 try
                 {
                     await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
                 }
                 catch { }
-            }, linkedCts.Token);
 
-            try
-            {
-                if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
+                try
                 {
-                    _ = SendPacketAsync(p1);
+                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1") is { } pIcmp)
+                    {
+                        _ = SendPacketAsync(pIcmp);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
+                    {
+                        _ = SendPacketAsync(p1);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, 8) is { } p8)
+                    {
+                        _ = SendPacketAsync(p8);
+                    }
                 }
-                if (BuildDnsProbePacket(AssignedIp, 8) is { } p8)
-                {
-                    _ = SendPacketAsync(p8);
-                }
+                catch { }
             }
-            catch { }
+
+            _ = Task.Run(SendProbesAsync, linkedCts.Token);
 
             var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
             while (Stopwatch.GetTimestamp() < deadline && !linkedCts.IsCancellationRequested)
             {
                 if (TotalBytesReceived > initialReceived)
                 {
+                    Debug.WriteLine($"[VERIFY] Success! Received bytes: {TotalBytesReceived - initialReceived}");
                     return true;
                 }
 
-                var delayTask = Task.Delay(200, linkedCts.Token);
+                var delayTask = Task.Delay(350, linkedCts.Token);
                 var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {
+                    Debug.WriteLine($"[VERIFY] Probe acknowledged! TotalBytesReceived={TotalBytesReceived}");
                     return true;
                 }
 
-                try
-                {
-                    await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
-                }
-                catch { }
+                _ = Task.Run(SendProbesAsync, linkedCts.Token);
             }
 
             return TotalBytesReceived > initialReceived;
@@ -281,6 +289,43 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             OnPacketReceived -= OnPacket;
             OnPingUpdated -= OnPing;
         }
+    }
+
+    private static byte[]? BuildIcmpProbePacket(string assignedIp, string targetIp = "100.64.0.1")
+    {
+        if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork ||
+            !IPAddress.TryParse(targetIp, out var dstIp) || dstIp.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return null;
+        }
+
+        const int totalLen = 28;
+        var packet = new byte[totalLen];
+
+        packet[0] = 0x45;
+        packet[1] = 0x00;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2, 2), totalLen);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(4, 2), 0x7788);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(6, 2), 0x4000);
+        packet[8] = 64;
+        packet[9] = 1; // ICMP
+        srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
+        dstIp.GetAddressBytes().CopyTo(packet.AsSpan(16, 4));
+
+        var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
+
+        // ICMP Echo Request (Type 8, Code 0)
+        packet[20] = 8;
+        packet[21] = 0;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(24, 2), 0x1337);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(26, 2), 1);
+
+        var icmpChecksum = ComputeIpChecksum(packet.AsSpan(20, 8));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), icmpChecksum);
+
+        return packet;
     }
 
     private static byte[]? BuildDnsProbePacket(string assignedIp, byte dstOctet = 1)
@@ -356,9 +401,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             long lastSent = 0;
             long lastReceived = 0;
             var deadTicks = 0;
-            var connectTicks = Environment.TickCount64;
+            Volatile.Write(ref _trafficStartTicks, Environment.TickCount64);
 
-            void OnPing(long _) => deadTicks = 0;
+            void OnPing(long _) => Volatile.Write(ref deadTicks, 0);
             OnPingUpdated += OnPing;
 
             try
@@ -372,16 +417,17 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     if (currentSent > lastSent && currentReceived == lastReceived)
                     {
                         deadTicks++;
-                        var elapsedMs = Environment.TickCount64 - connectTicks;
-                        var isInitialBlackhole = elapsedMs is >= 3000 and < 30000 && currentSent > 2000 && currentReceived == 0;
+                        var startTicks = Volatile.Read(ref _trafficStartTicks);
+                        var elapsedMs = Environment.TickCount64 - startTicks;
+                        var isInitialBlackhole = elapsedMs is >= 10000 and < 60000 && currentSent > 3000 && currentReceived == 0;
 
-                        var isDead = (isInitialBlackhole && deadTicks >= 15) ||
-                                     (currentSent > 5000 && currentReceived == 0 && deadTicks >= 20) ||
-                                     deadTicks >= 40;
+                        var isDead = (isInitialBlackhole && deadTicks >= 40) ||
+                                     (currentSent > 10000 && currentReceived == 0 && deadTicks >= 50) ||
+                                     deadTicks >= 60;
 
                         if (isDead)
                         {
-                            Debug.WriteLine($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, DeadTicks={deadTicks}");
+                            Debug.WriteLine($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, DeadTicks={deadTicks}, ElapsedMs={elapsedMs}");
                             OnDeadConnectionDetected?.Invoke();
                             break;
                         }

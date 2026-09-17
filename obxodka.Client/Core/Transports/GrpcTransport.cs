@@ -392,6 +392,7 @@ public sealed partial class GrpcTransport(
                         var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
                         var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
                         var rtt = (long)Math.Round(elapsedMs);
+                        Debug.WriteLine($"[GRPC-PING] Received pong on ray #{rayIndex}, RTT={rtt}ms");
                         if (rtt is >= 0 and < 10000)
                         {
                             OnPingUpdated?.Invoke(Math.Max(1, rtt));

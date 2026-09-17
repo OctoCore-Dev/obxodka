@@ -384,17 +384,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.Current.ResetTrafficCounters();
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
-                            OnLogUpdated?.Invoke("Проверка сквозного прохождения пакетов (RX)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), _cts.Token);
+                            OnLogUpdated?.Invoke($"Проверка сквозного прохождения пакетов (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(7000), _cts.Token);
                             if (verified)
                             {
-                                OnLogUpdated?.Invoke("Связь подтверждена! Защищенное соединение установлено.");
+                                OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
                                 UpdateState(AppVpnState.Connected);
                                 connected = true;
                                 return;
                             }
 
-                            OnLogUpdated?.Invoke("Входящие пакеты не поступают (0 RX). Быстрое переподключение...");
+                            OnLogUpdated?.Invoke($"Входящие пакеты не поступают (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B). Быстрое переподключение...");
                             _cts?.Cancel();
                             await Task.Delay(60);
                             try
