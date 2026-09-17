@@ -455,12 +455,12 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                         var startTicks = Volatile.Read(ref _trafficStartTicks);
                         var elapsedMs = Environment.TickCount64 - startTicks;
 
-                        // Safety margin: do not declare a blackhole during first 25 seconds of connection
-                        var isInitialBlackhole = elapsedMs is >= 25000 and < 90000 && currentSent > 15000 && currentReceived == 0;
+                        // Safety margin: do not declare a blackhole during first 60 seconds of connection
+                        var isInitialBlackhole = elapsedMs is >= 60000 and < 180000 && currentSent > 50000 && currentReceived == 0;
 
-                        var isDead = (isInitialBlackhole && deadTicks >= 50) ||
-                                     (currentSent > 30000 && currentReceived == 0 && deadTicks >= 60) ||
-                                     deadTicks >= 90;
+                        var isDead = (isInitialBlackhole && deadTicks >= 100) ||
+                                     (elapsedMs >= 60000 && currentSent > 100000 && currentReceived == 0 && deadTicks >= 150) ||
+                                     deadTicks >= 200;
 
                         if (isDead)
                         {
@@ -472,6 +472,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     else if (currentReceived > lastReceived)
                     {
                         deadTicks = 0;
+                    }
+                    else if (currentSent == lastSent && deadTicks > 0)
+                    {
+                        deadTicks--;
                     }
 
                     lastSent = currentSent;

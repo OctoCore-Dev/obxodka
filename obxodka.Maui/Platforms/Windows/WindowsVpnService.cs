@@ -19,6 +19,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     private string _currentServerIp = "";
     private uint _currentServerIpUint;
+    private uint _localGatewayIpUint;
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
     private static bool t_networkSettingsBoosted;
@@ -378,6 +379,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke("Применение настроек сети...");
                             await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0");
 
+                            var (defaultGw, _) = await GetDefaultGatewayInfoAsync();
+                            if (IPAddress.TryParse(defaultGw, out var parsedGw) && parsedGw.AddressFamily == AddressFamily.InterNetwork)
+                            {
+                                _localGatewayIpUint = BitConverter.ToUInt32(parsedGw.GetAddressBytes(), 0);
+                            }
+
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
                             await SetWindowsRoutesAsync(_adapter.Name, targetIp, ip, true);
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
@@ -513,11 +520,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             Debug.WriteLine($"[WINTUN-TX-PKT #{wintunPktsRead}] Read {len}B -> dest {destStr}. Total={wintunBytesRead}B");
                         }
 
-                        // Anti-loopback protection: Never send packets destined for the VPN server itself back into the VPN tunnel!
-                        if (_currentServerIpUint != 0 && len >= 20 && (buf[0] >> 4) == 4)
+                        // Anti-loopback protection: Never send packets destined for the VPN server or local gateway back into the tunnel!
+                        if (len >= 20 && (buf[0] >> 4) == 4)
                         {
                             var destIp = MemoryMarshal.Read<uint>(buf.AsSpan(16, 4));
-                            if (destIp == _currentServerIpUint)
+                            if ((_currentServerIpUint != 0 && destIp == _currentServerIpUint) ||
+                                (_localGatewayIpUint != 0 && destIp == _localGatewayIpUint))
                             {
                                 ArrayPool<byte>.Shared.Return(buf);
                                 continue;
@@ -824,14 +832,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(serverIp))
             {
                 _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
-                var ifParam = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
-                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{ifParam}");
+                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1");
                 Debug.WriteLine($"[ROUTE] Add Server Route: ExitCode {exitCode}, Output: {output}");
-
-                if (physicalIfIndex > 0)
-                {
-                    _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ New-NetRoute -DestinationPrefix '{serverIp}/32' -InterfaceIndex {physicalIfIndex} -NextHop '{gw}' -RouteMetric 1 -PolicyStore ActiveStore -ErrorAction SilentlyContinue }} catch {{ }}\"");
-                }
             }
 
             if (!string.IsNullOrEmpty(ifIndex))
@@ -857,7 +859,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (!string.IsNullOrEmpty(serverIp))
             {
                 deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
-                deleteTasks.Add(RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Remove-NetRoute -DestinationPrefix '{serverIp}/32' -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}\""));
             }
 
             if (!string.IsNullOrEmpty(adapterName))
@@ -925,6 +926,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
 
             _currentServerIpUint = 0;
+            _localGatewayIpUint = 0;
             UpdateState(AppVpnState.Disconnected);
         }
         finally
