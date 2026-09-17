@@ -140,7 +140,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 {
                     Debug.WriteLine($"[AUTO PROTOCOL] Probing {pName}...");
                     using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-                    probeCts.CancelAfter(TimeSpan.FromSeconds(3));
+                    probeCts.CancelAfter(TimeSpan.FromSeconds(pName == "FECHSUE" ? 3 : 8));
 
                     probeTransport.OnPacketReceived += (pkt, len) =>
                     {
@@ -208,11 +208,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
 
         var initialReceived = TotalBytesReceived;
-        if (initialReceived > 0)
-        {
-            return true;
-        }
-
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts?.Token ?? CancellationToken.None);
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 

@@ -140,21 +140,15 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             if (cm is not null)
             {
                 _networkCallback = new VpnNetworkCallback();
-                if (OperatingSystem.IsAndroidVersionAtLeast(24))
-                {
-                    cm.RegisterDefaultNetworkCallback(_networkCallback);
-                }
-                else
-                {
-                    using var builder = new NetworkRequest.Builder();
-                    var request = builder
-                        .AddCapability(NetCapability.Internet)?
-                        .Build();
+                using var builder = new NetworkRequest.Builder();
+                var request = builder
+                    .AddCapability(NetCapability.Internet)?
+                    .AddCapability(NetCapability.NotVpn)?
+                    .Build();
 
-                    if (request is not null)
-                    {
-                        cm.RegisterNetworkCallback(request, _networkCallback);
-                    }
+                if (request is not null)
+                {
+                    cm.RegisterNetworkCallback(request, _networkCallback);
                 }
             }
         }
@@ -211,15 +205,28 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 var netId = network.NetworkHandle;
                 System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Physical network available: {network} (Handle: {netId})");
 
+                if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                {
+                    _ = Instance?.SetUnderlyingNetworks([network]);
+                }
+
                 if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
                 {
                     System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Active network changed from {_lastActiveNetworkId} to {netId}. Instant roaming reconnect!");
+                    _lastActiveNetworkId = netId;
                     if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
                     {
                         AndroidVpnService.Instance.TriggerImmediateReconnect();
                     }
                 }
-                _lastActiveNetworkId = netId;
+                else
+                {
+                    _lastActiveNetworkId = netId;
+                    if (AndroidVpnService.Instance?.CurrentState == AppVpnState.Reconnecting)
+                    {
+                        AndroidVpnService.Instance.TriggerImmediateReconnect();
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -244,7 +251,21 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (capabilities.HasCapability(NetCapability.Internet))
                 {
-                    _lastActiveNetworkId = network.NetworkHandle;
+                    var netId = network.NetworkHandle;
+                    if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                    {
+                        _ = Instance?.SetUnderlyingNetworks([network]);
+                    }
+
+                    if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Capabilities changed to new network {netId}. Instant roaming reconnect!");
+                        _lastActiveNetworkId = netId;
+                        if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
+                        {
+                            AndroidVpnService.Instance.TriggerImmediateReconnect();
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -275,6 +296,11 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 if (_lastActiveNetworkId == netId)
                 {
                     _lastActiveNetworkId = -1;
+                    if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                    {
+                        _ = Instance?.SetUnderlyingNetworks(null);
+                    }
+
                     if (AndroidVpnService.Instance?.CurrentState == AppVpnState.Connected)
                     {
                         AndroidVpnService.Instance.TriggerImmediateReconnect();
@@ -363,6 +389,11 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             _tunOutputStream = null;
             _tunInterface = null;
 
+            while (_downstreamChannel.Reader.TryRead(out var stale))
+            {
+                ArrayPool<byte>.Shared.Return(stale.buffer);
+            }
+
             _vpnCts = new CancellationTokenSource();
             using var builder = new Builder(this);
             _ = builder
@@ -373,7 +404,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 .AddRoute("0.0.0.0", 0);
 
             var ip6 = OctopusEngine.Current.AssignedIpV6;
-            if (!string.IsNullOrEmpty(ip6))
+            if (!string.IsNullOrEmpty(ip6) && !ip6.StartsWith("fd00::", StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {

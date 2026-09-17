@@ -1,5 +1,4 @@
-- New unified NeoDialog system alerts and confirmations.
-- Automatic update detection for Windows and Android.
-- Octopus engine optimizations and reduced latency.
-- Enhanced mobile layout and safe area support.
-- Overall stability and performance improvements.
+- Seamless network roaming between Wi-Fi and Cellular data on Android without connection drops.
+- Fixed UI connection status indicators and smooth state transitions on mobile devices.
+- Reliable packet downlink verification (RX) preventing blackholed connections.
+- Multi-stream transport optimizations and protocol stability improvements.

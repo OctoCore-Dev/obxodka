@@ -253,6 +253,21 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         await Task.Delay(500, ct);
                     }
                 }
+
+                if (!ct.IsCancellationRequested && !_isExplicitlyStopped)
+                {
+                    Debug.WriteLine("[NETWORK ROAMING] Fast reconnect attempts exhausted. Initiating server failover...");
+                    try
+                    {
+                        await StartVpnAsync(_currentServerIp, _currentServerPort, _fallbackServers);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[NETWORK ROAMING FULL RECOVERY ERROR] {ex.Message}");
+                        await StopVpnAsync();
+                        SetError("Не удалось восстановить подключение после смены сети.");
+                    }
+                }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -267,6 +282,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
     public async Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers)
     {
+        ChangeState(AppVpnState.Connecting);
         _fallbackServers = fallbackServers != null ? [.. fallbackServers] : [];
         _currentServerIndex = _fallbackServers.FindIndex(s => s.Ip == serverIp);
         if (_currentServerIndex < 0 && !string.IsNullOrEmpty(serverIp))
@@ -312,13 +328,13 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             var granted = await MainActivity.RequestVpnPermissionAsync(intent);
             if (!granted)
             {
+                ChangeState(AppVpnState.Disconnected);
                 SetError("VPN разрешение не выдано");
                 return;
             }
         }
 
         OnLogUpdated?.Invoke($"[DOMAINS] Traffic will route via domain: {originalHost}");
-        ChangeState(AppVpnState.Connecting);
 
         try
         {

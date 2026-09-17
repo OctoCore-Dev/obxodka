@@ -77,11 +77,6 @@ public sealed partial class VpnView : ContentView
     public VpnView()
     {
         InitializeComponent();
-        if (Preferences.Get("ProtocolMode", "AUTO") == "HTTP2")
-        {
-            Preferences.Set("ProtocolMode", "AUTO");
-        }
-
         RootLayoutGrid.SizeChanged += (s, e) =>
         {
             if (RootLayoutGrid.Width > 0)
@@ -708,6 +703,11 @@ public sealed partial class VpnView : ContentView
                 return;
             }
 
+            StartLoaderAnimation();
+            ConnectButtonCore.IsEnabled = false;
+            IpAddressLabel.Text = "IP: получение...";
+            await SetNeonStateAsync("Подключение...", "ЖДИТЕ", AppVpnState.Connecting);
+
             try
             {
                 using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
@@ -734,6 +734,10 @@ public sealed partial class VpnView : ContentView
 
             if (!success || servers is null || servers.Count == 0)
             {
+                StopLoaderAnimation();
+                ConnectButtonCore.IsEnabled = true;
+                IpAddressLabel.Text = "IP: не назначен";
+                await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
                 await _parent.DisplayAlertAsync("Ошибка", errorMsg ?? "Не удалось получить список нод", "OK");
                 return;
             }
@@ -741,6 +745,10 @@ public sealed partial class VpnView : ContentView
             var candidateServers = await ProbeBestServerAsync(servers);
             if (candidateServers.Count == 0)
             {
+                StopLoaderAnimation();
+                ConnectButtonCore.IsEnabled = true;
+                IpAddressLabel.Text = "IP: не назначен";
+                await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
                 await _parent.DisplayAlertAsync("Ошибка", "Доступные сервера не отвечают. Проверьте интернет-соединение.", "OK");
                 return;
             }
@@ -764,6 +772,10 @@ public sealed partial class VpnView : ContentView
         catch (Exception ex)
         {
             Debug.WriteLine($"[VPN CONNECT ERROR] {ex.Message}");
+            StopLoaderAnimation();
+            ConnectButtonCore.IsEnabled = true;
+            IpAddressLabel.Text = "IP: не назначен";
+            await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
             var friendlyMsg = ex is SocketException or InvalidOperationException
                 ? ex.Message
                 : "Произошла ошибка при подключении/отключении";
