@@ -6,9 +6,8 @@
     <WorkspaceCodeRoot Condition="'$(WorkspaceCodeRoot)' == '' and '$(HOME)' != ''">$(HOME)/code/</WorkspaceCodeRoot>
     <ProjectCacheSubDir Condition="'$(WorkspaceCodeRoot)' != '' and $([System.String]::Copy('$(MSBuildProjectDirectory)').StartsWith('$(WorkspaceCodeRoot)'))">$([System.String]::Copy('$(MSBuildProjectDirectory)').Substring('$([System.String]::Copy('$(WorkspaceCodeRoot)').Length)'))</ProjectCacheSubDir>
     <ProjectCacheSubDir Condition="'$(ProjectCacheSubDir)' == ''">$(MSBuildProjectName)</ProjectCacheSubDir>
-    <CustomCachePath Condition="'$(IsWindows)' == 'true'">C:\BuildCache\$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(HOME)' != ''">$(HOME)/cache/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == ''">C:\BuildCache\$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(IsWindows)' == 'true' and Exists('C:\BuildCache')">C:\BuildCache\$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">$(LocalAppData)\BuildCache\$(ProjectCacheSubDir)</CustomCachePath>
     <PackageRoot Condition="'$(IsWindows)' == 'true'">C:\Users\irovb\Documents\Package\</PackageRoot>
     <PackageRoot Condition="'$(PackageRoot)' == '' and '$(HOME)' != ''">$(HOME)/Package/</PackageRoot>
     <PackageRoot Condition="'$(PackageRoot)' == ''">C:\Users\irovb\Documents\Package\</PackageRoot>

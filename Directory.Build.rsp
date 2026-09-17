@@ -4,5 +4,3 @@
 -lowPriority:True
 -nodeReuse:false
 -clp:Summary;Verbosity=minimal;ForceConsoleColor;ShowEventId
--flp:LogFile=C:\BuildCache\errors.log;errorsonly
--check
