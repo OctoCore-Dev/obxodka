@@ -15,6 +15,16 @@ public class ReleaseIntegrityTests
 
     private static string FindRepoRoot()
     {
+        var ghWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (!string.IsNullOrWhiteSpace(ghWorkspace) && Directory.Exists(ghWorkspace))
+        {
+            if (File.Exists(Path.Combine(ghWorkspace, "obxodka.slnx")) ||
+                File.Exists(Path.Combine(ghWorkspace, "version.props")))
+            {
+                return ghWorkspace;
+            }
+        }
+
         var candidates = new[]
         {
             Directory.GetCurrentDirectory(),
@@ -23,10 +33,16 @@ public class ReleaseIntegrityTests
 
         foreach (var start in candidates)
         {
+            if (string.IsNullOrWhiteSpace(start) || !Directory.Exists(start))
+            {
+                continue;
+            }
+
             var current = new DirectoryInfo(start);
             while (current != null)
             {
                 if (File.Exists(Path.Combine(current.FullName, "obxodka.slnx")) ||
+                    File.Exists(Path.Combine(current.FullName, "version.props")) ||
                     File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
                 {
                     return current.FullName;
@@ -36,8 +52,14 @@ public class ReleaseIntegrityTests
         }
 
         var defaultPath = @"C:\Users\irovb\Documents\code\obxodka";
-        return Directory.Exists(defaultPath)
-            ? defaultPath
+        if (Directory.Exists(defaultPath))
+        {
+            return defaultPath;
+        }
+
+        var runnerFallback = @"D:\a\obxodka\obxodka";
+        return Directory.Exists(runnerFallback)
+            ? runnerFallback
             : throw new DirectoryNotFoundException("Repository root not found from: " + Directory.GetCurrentDirectory());
     }
 
