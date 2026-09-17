@@ -208,6 +208,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     {
         if (!IsConnected || _transport is null)
         {
+            Debug.WriteLine("[VERIFY] Verification skipped: transport is not connected.");
             return false;
         }
 
@@ -219,14 +220,21 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             if (len > 0)
             {
+                Debug.WriteLine($"[VERIFY] Inbound packet acknowledged ({len} bytes)! Downlink confirmed.");
                 _ = tcs.TrySetResult(true);
             }
         }
 
-        void OnPing(long rtt) => _ = tcs.TrySetResult(true);
+        void OnPing(long rtt)
+        {
+            Debug.WriteLine($"[VERIFY] Ping probe acknowledged (RTT={rtt}ms)! Downlink confirmed.");
+            _ = tcs.TrySetResult(true);
+        }
 
         OnPacketReceived += OnPacket;
         OnPingUpdated += OnPing;
+
+        Debug.WriteLine($"[VERIFY-START] Verifying downlink. Timeout={timeout.TotalMilliseconds}ms, InitialRX={initialReceived}");
 
         try
         {
@@ -234,26 +242,42 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 try
                 {
+                    Debug.WriteLine("[VERIFY-PROBE] Dispatching internal Ping probe (0x99)...");
                     await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[VERIFY-PROBE-ERR] Ping probe failed: {ex.Message}");
+                }
 
                 try
                 {
-                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1") is { } pIcmp)
+                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1") is { } pIcmpGw)
                     {
-                        _ = SendPacketAsync(pIcmp);
+                        _ = SendPacketAsync(pIcmpGw);
                     }
-                    if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
+                    if (BuildIcmpProbePacket(AssignedIp, "8.8.8.8") is { } pIcmpExt)
+                    {
+                        _ = SendPacketAsync(pIcmpExt);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, "77.88.8.8") is { } pYandex)
+                    {
+                        _ = SendPacketAsync(pYandex);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, "1.1.1.1") is { } p1)
                     {
                         _ = SendPacketAsync(p1);
                     }
-                    if (BuildDnsProbePacket(AssignedIp, 8) is { } p8)
+                    if (BuildDnsProbePacket(AssignedIp, "8.8.8.8") is { } p8)
                     {
                         _ = SendPacketAsync(p8);
                     }
+                    Debug.WriteLine($"[VERIFY-PROBES-SENT] Probes dispatched. Current TX={TotalBytesSent}B, RX={TotalBytesReceived}B");
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[VERIFY-PROBE-ERR] Packet probes failed: {ex.Message}");
+                }
             }
 
             _ = Task.Run(SendProbesAsync, linkedCts.Token);
@@ -263,7 +287,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 if (TotalBytesReceived > initialReceived)
                 {
-                    Debug.WriteLine($"[VERIFY] Success! Received bytes: {TotalBytesReceived - initialReceived}");
+                    Debug.WriteLine($"[VERIFY-SUCCESS] Received bytes increased: {TotalBytesReceived - initialReceived} B (TotalRX={TotalBytesReceived})");
                     return true;
                 }
 
@@ -271,18 +295,22 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {
-                    Debug.WriteLine($"[VERIFY] Probe acknowledged! TotalBytesReceived={TotalBytesReceived}");
+                    Debug.WriteLine($"[VERIFY-SUCCESS] Probe event completed! TotalBytesReceived={TotalBytesReceived}");
                     return true;
                 }
 
                 _ = Task.Run(SendProbesAsync, linkedCts.Token);
             }
 
-            return TotalBytesReceived > initialReceived;
+            var success = TotalBytesReceived > initialReceived;
+            Debug.WriteLine($"[VERIFY-DONE] Completed. Result={success}, InitialRX={initialReceived}, CurrentRX={TotalBytesReceived}");
+            return success;
         }
         catch (OperationCanceledException)
         {
-            return TotalBytesReceived > initialReceived;
+            var success = TotalBytesReceived > initialReceived;
+            Debug.WriteLine($"[VERIFY-CANCEL] Canceled. Result={success}");
+            return success;
         }
         finally
         {
@@ -328,9 +356,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         return packet;
     }
 
-    private static byte[]? BuildDnsProbePacket(string assignedIp, byte dstOctet = 1)
+    private static byte[]? BuildDnsProbePacket(string assignedIp, string targetDnsIp = "1.1.1.1")
     {
-        if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork)
+        if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork ||
+            !IPAddress.TryParse(targetDnsIp, out var dstIp) || dstIp.AddressFamily != AddressFamily.InterNetwork)
         {
             return null;
         }
@@ -353,10 +382,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         packet[8] = 64;
         packet[9] = 17;
         srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
-        packet[16] = dstOctet;
-        packet[17] = dstOctet;
-        packet[18] = dstOctet;
-        packet[19] = dstOctet;
+        dstIp.GetAddressBytes().CopyTo(packet.AsSpan(16, 4));
 
         var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
@@ -401,6 +427,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             long lastSent = 0;
             long lastReceived = 0;
             var deadTicks = 0;
+            long heartbeatCount = 0;
             Volatile.Write(ref _trafficStartTicks, Environment.TickCount64);
 
             void OnPing(long _) => Volatile.Write(ref deadTicks, 0);
@@ -414,16 +441,26 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     var currentReceived = TotalBytesReceived;
                     OnTrafficUpdated?.Invoke(currentSent, currentReceived);
 
+                    heartbeatCount++;
+                    if (heartbeatCount % 5 == 0) // Every 1000ms
+                    {
+                        var startTicks = Volatile.Read(ref _trafficStartTicks);
+                        var elapsedMs = Environment.TickCount64 - startTicks;
+                        Debug.WriteLine($"[MONITOR-HEARTBEAT] TX={currentSent}B, RX={currentReceived}B, DeadTicks={deadTicks}, Elapsed={elapsedMs}ms, Proto={ActiveProtocol}");
+                    }
+
                     if (currentSent > lastSent && currentReceived == lastReceived)
                     {
                         deadTicks++;
                         var startTicks = Volatile.Read(ref _trafficStartTicks);
                         var elapsedMs = Environment.TickCount64 - startTicks;
-                        var isInitialBlackhole = elapsedMs is >= 10000 and < 60000 && currentSent > 3000 && currentReceived == 0;
 
-                        var isDead = (isInitialBlackhole && deadTicks >= 40) ||
-                                     (currentSent > 10000 && currentReceived == 0 && deadTicks >= 50) ||
-                                     deadTicks >= 60;
+                        // Safety margin: do not declare a blackhole during first 25 seconds of connection
+                        var isInitialBlackhole = elapsedMs is >= 25000 and < 90000 && currentSent > 15000 && currentReceived == 0;
+
+                        var isDead = (isInitialBlackhole && deadTicks >= 50) ||
+                                     (currentSent > 30000 && currentReceived == 0 && deadTicks >= 60) ||
+                                     deadTicks >= 90;
 
                         if (isDead)
                         {
@@ -447,6 +484,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             finally
             {
                 OnPingUpdated -= OnPing;
+                Debug.WriteLine("[MONITOR] Traffic monitor thread terminated.");
             }
         }, token);
     }

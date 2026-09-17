@@ -246,12 +246,32 @@ public sealed partial class GrpcTransport(
     {
         try
         {
-            var packet = ArrayPool<byte>.Shared.Rent(9);
-            packet[0] = 0x99;
-            BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), Stopwatch.GetTimestamp());
-            SendPacketFromPool(packet, 9);
+            var ts = Stopwatch.GetTimestamp();
+            var targetRays = Math.Min(2, _activeRays);
+            for (var r = 0; r < targetRays; r++)
+            {
+                if (_txChannels[r] is { } ch)
+                {
+                    var packet = ArrayPool<byte>.Shared.Rent(9);
+                    packet[0] = 0x99;
+                    BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), ts);
+                    var packed = Obfuscator.Pack(packet, 9, out var totalLength);
+                    ArrayPool<byte>.Shared.Return(packet);
+                    if (!ch.TryEnqueue(packed, totalLength))
+                    {
+                        ArrayPool<byte>.Shared.Return(packed);
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[GRPC-PING-PROBE] Enqueued 0x99 ping probe to Ray #{r} (timestamp={ts})");
+                    }
+                }
+            }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[GRPC-PING-PROBE-ERR] {ex.Message}");
+        }
         return Task.CompletedTask;
     }
 
@@ -308,8 +328,11 @@ public sealed partial class GrpcTransport(
     {
         var isGamingRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
         var batchBuffer = ArrayPool<byte>.Shared.Rent(65536);
+        long pktsSent = 0;
+        long bytesSent = 0;
         try
         {
+            Debug.WriteLine($"[GRPC-TX-START #{rayIndex}] TX loop initialized (isGamingRay={isGamingRay}).");
             while (!ct.IsCancellationRequested)
             {
                 var (buffer, length) = await txQueue.DequeueAsync(ct).ConfigureAwait(false);
@@ -322,6 +345,7 @@ public sealed partial class GrpcTransport(
                 Buffer.BlockCopy(buffer, 0, batchBuffer, offset, length);
                 offset += length;
                 ArrayPool<byte>.Shared.Return(buffer);
+                pktsSent++;
 
                 if (!isGamingRay)
                 {
@@ -333,6 +357,7 @@ public sealed partial class GrpcTransport(
                             {
                                 Buffer.BlockCopy(nextPkt.buffer, 0, batchBuffer, offset, nextPkt.length);
                                 offset += nextPkt.length;
+                                pktsSent++;
                             }
                             ArrayPool<byte>.Shared.Return(nextPkt.buffer);
                         }
@@ -342,44 +367,65 @@ public sealed partial class GrpcTransport(
                 if (_tunnelStreams[rayIndex] is { } stream)
                 {
                     await stream.WriteAsync(batchBuffer.AsMemory(0, offset), ct).ConfigureAwait(false);
+                    bytesSent += offset;
+                    if (pktsSent <= 20 || pktsSent % 100 == 0)
+                    {
+                        Debug.WriteLine($"[GRPC-TX-RAY#{rayIndex}] Sent frame: batch={offset}B, totalPkts={pktsSent}, totalBytes={bytesSent}");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine($"[GRPC-TX-WARN-RAY#{rayIndex}] Stream is null! Packet of {offset}B dropped.");
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            Debug.WriteLine($"[GRPC-TX-STOP #{rayIndex}] TX loop canceled.");
+        }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GRPC TX FAIL #{rayIndex}] {ex.Message}");
+            Debug.WriteLine($"[GRPC-TX-FAIL #{rayIndex}] {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(batchBuffer);
+            Debug.WriteLine($"[GRPC-TX-EXIT #{rayIndex}] TX loop exited. Lifetime stats: {pktsSent} pkts, {bytesSent} bytes.");
         }
     }
 
     private async Task ReceiveLoopAsync(int rayIndex, CancellationToken ct)
     {
         var header = new byte[8];
+        long pktsReceived = 0;
+        long bytesReceived = 0;
         try
         {
+            Debug.WriteLine($"[GRPC-RX-START #{rayIndex}] Receive loop initialized.");
             while (!ct.IsCancellationRequested)
             {
                 if (_tunnelStreams[rayIndex] is not { } stream)
                 {
+                    Debug.WriteLine($"[GRPC-RX-WARN #{rayIndex}] Stream is null! Exiting loop.");
                     break;
                 }
 
                 var (packet, realLen) = await Obfuscator.ReadPacketAsync(stream, header, ct).ConfigureAwait(false);
                 if (packet is null)
                 {
+                    Debug.WriteLine($"[GRPC-RX-EOF #{rayIndex}] Stream closed (null packet read).");
                     break;
                 }
 
                 if (realLen > 0)
                 {
+                    pktsReceived++;
+                    bytesReceived += realLen;
+
                     if (realLen >= 3 && packet[0] == 'I' && packet[1] == 'P' && packet[2] == ':')
                     {
                         var msg = Encoding.UTF8.GetString(packet, 0, realLen);
-                        Debug.WriteLine($"[GRPC-AUTH] Received IP assignment from server: '{msg}'");
+                        Debug.WriteLine($"[GRPC-AUTH] Received IP assignment from server on Ray #{rayIndex}: '{msg}'");
                         ArrayPool<byte>.Shared.Return(packet);
                         var parts = msg.Split('|');
                         var ip = parts[0].Replace("IP:", "", StringComparison.Ordinal);
@@ -392,7 +438,7 @@ public sealed partial class GrpcTransport(
                         var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
                         var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
                         var rtt = (long)Math.Round(elapsedMs);
-                        Debug.WriteLine($"[GRPC-PING] Received pong on ray #{rayIndex}, RTT={rtt}ms");
+                        Debug.WriteLine($"[GRPC-PING] Received pong on ray #{rayIndex}, RTT={rtt}ms, EngineTotalRX={OctopusEngine.Current.TotalBytesReceived}B");
                         if (rtt is >= 0 and < 10000)
                         {
                             OnPingUpdated?.Invoke(Math.Max(1, rtt));
@@ -401,6 +447,12 @@ public sealed partial class GrpcTransport(
                     }
                     else
                     {
+                        if (pktsReceived <= 20 || pktsReceived % 50 == 0)
+                        {
+                            var protoDesc = realLen >= 20 ? ((packet[0] >> 4) == 4 ? $"IPv4(proto={packet[9]})" : "IPv6") : "NonIP";
+                            Debug.WriteLine($"[GRPC-RX-RAY#{rayIndex}] Packet #{pktsReceived}: {protoDesc}, len={realLen}B, totalRayBytes={bytesReceived}B");
+                        }
+
                         if (!_deduplicator.IsDuplicate(packet, realLen))
                         {
                             OnPacketReceived?.Invoke(packet, realLen);
@@ -417,11 +469,21 @@ public sealed partial class GrpcTransport(
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            Debug.WriteLine($"[GRPC-RX-STOP #{rayIndex}] Receive loop canceled.");
+        }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GRPC RX FAIL #{rayIndex}] {ex.Message}");
-            OnConnectionDropped?.Invoke();
+            Debug.WriteLine($"[GRPC-RX-FAIL #{rayIndex}] {ex.GetType().Name}: {ex.Message}");
+            if (rayIndex == 0)
+            {
+                OnConnectionDropped?.Invoke();
+            }
+        }
+        finally
+        {
+            Debug.WriteLine($"[GRPC-RX-EXIT #{rayIndex}] Receive loop exited. Lifetime stats: {pktsReceived} pkts, {bytesReceived} bytes.");
         }
     }
 
@@ -429,6 +491,7 @@ public sealed partial class GrpcTransport(
     {
         if (!IsConnected)
         {
+            Debug.WriteLine($"[GRPC-TX-DROP] Cannot send {length}B: Not connected.");
             ArrayPool<byte>.Shared.Return(packet);
             return;
         }
@@ -437,6 +500,7 @@ public sealed partial class GrpcTransport(
         var primaryChannel = _txChannels[primaryRay];
         if (primaryChannel is null)
         {
+            Debug.WriteLine($"[GRPC-TX-DROP] Primary channel #{primaryRay} is null for {length}B packet.");
             ArrayPool<byte>.Shared.Return(packet);
             return;
         }
@@ -453,6 +517,7 @@ public sealed partial class GrpcTransport(
 
         if (!primaryChannel.TryEnqueue(packed, totalLength))
         {
+            Debug.WriteLine($"[GRPC-TX-QUEUE-FULL] Ray #{primaryRay} queue full ({primaryChannel.Count} items)! Dropping {totalLength}B frame.");
             ArrayPool<byte>.Shared.Return(packed);
         }
 

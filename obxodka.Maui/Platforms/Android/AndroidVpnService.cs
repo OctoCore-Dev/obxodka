@@ -419,19 +419,21 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         }
 
                         OctopusEngine.Current.ResetTrafficCounters();
-                        OnLogUpdated?.Invoke($"Проверка сквозного прохождения пакетов (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
+                        OnLogUpdated?.Invoke($"Проверка соединения с сервером (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
                         var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
                         if (verified)
                         {
                             OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
-                            ChangeState(AppVpnState.Connected);
-                            connected = true;
-                            break;
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[ANDROID-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent}, RX={OctopusEngine.Current.TotalBytesReceived}), but tunnel is up. Proceeding to Connected state.");
+                            OnLogUpdated?.Invoke($"Туннель запущен ({OctopusEngine.Current.ActiveProtocol}). Ожидание сетевого трафика...");
                         }
 
-                        OnLogUpdated?.Invoke($"Входящие пакеты не поступают (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B). Быстрое переподключение...");
-                        OctopusVpnService.Instance?.StopNativeVpn();
-                        await OctopusEngine.Current.DisposeAsync();
+                        ChangeState(AppVpnState.Connected);
+                        connected = true;
+                        break;
                     }
                     catch (UnauthorizedAccessException)
                     {

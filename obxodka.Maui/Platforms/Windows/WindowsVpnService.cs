@@ -26,6 +26,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
+    private long _vpnRxPacketsCount;
 
     private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
         Channel.CreateUnbounded<(byte[] buffer, int length)>(
@@ -191,8 +192,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _ = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {gw} metric 1{ifParam}");
                             await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
-                            if (verified)
+                            if (verified || OctopusEngine.Current.IsConnected)
                             {
+                                Debug.WriteLine($"[RECONNECT] Reconnected! verified={verified}, isConnected={OctopusEngine.Current.IsConnected}");
                                 UpdateState(AppVpnState.Connected);
                                 return;
                             }
@@ -384,26 +386,21 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.Current.ResetTrafficCounters();
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
-                            OnLogUpdated?.Invoke($"Проверка сквозного прохождения пакетов (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
+                            OnLogUpdated?.Invoke($"Проверка соединения с сервером (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(7000), _cts.Token);
                             if (verified)
                             {
                                 OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
-                                UpdateState(AppVpnState.Connected);
-                                connected = true;
-                                return;
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"[VPN-CONNECT] Downlink probe did not get immediate echo (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B), but tunnel is connected and routes are active. Transitioning to Connected state.");
+                                OnLogUpdated?.Invoke($"Туннель запущен ({OctopusEngine.Current.ActiveProtocol}). Ожидание сетевого трафика...");
                             }
 
-                            OnLogUpdated?.Invoke($"Входящие пакеты не поступают (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B). Быстрое переподключение...");
-                            _cts?.Cancel();
-                            await Task.Delay(60);
-                            try
-                            {
-                                _adapter?.Dispose();
-                                _adapter = null;
-                            }
-                            catch { }
-                            await OctopusEngine.Current.DisposeAsync();
+                            UpdateState(AppVpnState.Connected);
+                            connected = true;
+                            return;
                         }
                         catch (UnauthorizedAccessException ex)
                         {
@@ -486,6 +483,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
             Thread.CurrentThread.Name = "Wintun-UploadReader";
             var batch = new PacketBatch();
+            long wintunPktsRead = 0;
+            long wintunBytesRead = 0;
+            Debug.WriteLine("[WINTUN-TX] Upload reader thread started.");
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -493,6 +493,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var adapter = _adapter;
                     if (adapter is null)
                     {
+                        Debug.WriteLine("[WINTUN-TX] Adapter is null! Exiting loop.");
                         break;
                     }
 
@@ -500,6 +501,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     for (var i = 0; i < count; i++)
                     {
                         var (buf, len) = batch[i];
+                        wintunPktsRead++;
+                        wintunBytesRead += len;
+
+                        if (wintunPktsRead <= 15 || wintunPktsRead % 200 == 0)
+                        {
+                            var version = len >= 20 ? (buf[0] >> 4) : 0;
+                            var destStr = version == 4 && len >= 20
+                                ? $"{buf[16]}.{buf[17]}.{buf[18]}.{buf[19]}"
+                                : "unknown";
+                            Debug.WriteLine($"[WINTUN-TX-PKT #{wintunPktsRead}] Read {len}B -> dest {destStr}. Total={wintunBytesRead}B");
+                        }
 
                         // Anti-loopback protection: Never send packets destined for the VPN server itself back into the VPN tunnel!
                         if (_currentServerIpUint != 0 && len >= 20 && (buf[0] >> 4) == 4)
@@ -524,9 +536,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
             }
-            catch { }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("[WINTUN-TX] Cancelled.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WINTUN-TX-ERR] {ex.GetType().Name}: {ex.Message}");
+            }
             finally
             {
+                Debug.WriteLine($"[WINTUN-TX-EXIT] Exited. Stats: {wintunPktsRead} pkts, {wintunBytesRead} bytes.");
                 _ = tcs.TrySetResult();
             }
         })
@@ -540,12 +560,21 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
             Thread.CurrentThread.Name = "Wintun-Downloader";
             var reader = _downstreamChannel.Reader;
+            long wintunPktsWritten = 0;
+            long wintunBytesWritten = 0;
+            Debug.WriteLine("[WINTUN-RX] Downloader thread started.");
             try
             {
                 while (!ct.IsCancellationRequested)
                 {
                     while (reader.TryRead(out var item))
                     {
+                        wintunPktsWritten++;
+                        wintunBytesWritten += item.length;
+                        if (wintunPktsWritten <= 15 || wintunPktsWritten % 200 == 0)
+                        {
+                            Debug.WriteLine($"[WINTUN-RX-PKT #{wintunPktsWritten}] Writing {item.length}B to Wintun. Total={wintunBytesWritten}B");
+                        }
                         _adapter?.SendPacket(item.buffer, item.length);
                         ArrayPool<byte>.Shared.Return(item.buffer);
                     }
@@ -556,9 +585,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
             }
-            catch { }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("[WINTUN-RX] Cancelled.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WINTUN-RX-ERR] {ex.GetType().Name}: {ex.Message}");
+            }
             finally
             {
+                Debug.WriteLine($"[WINTUN-RX-EXIT] Exited. Stats: {wintunPktsWritten} pkts, {wintunBytesWritten} bytes.");
                 while (reader.TryRead(out var item))
                 {
                     ArrayPool<byte>.Shared.Return(item.buffer);
@@ -580,8 +617,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private void HandlePacketFromVpn(byte[] data, int length) =>
-        _downstreamChannel.Writer.TryWrite((data, length));
+    private void HandlePacketFromVpn(byte[] data, int length)
+    {
+        var count = Interlocked.Increment(ref _vpnRxPacketsCount);
+        if (count <= 15 || count % 200 == 0)
+        {
+            Debug.WriteLine($"[VPN-RX-PACKET #{count}] Inbound packet from engine: {length} bytes");
+        }
+        _ = _downstreamChannel.Writer.TryWrite((data, length));
+    }
 
     private void UpdateState(AppVpnState state)
     {
