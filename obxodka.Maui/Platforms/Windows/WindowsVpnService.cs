@@ -20,8 +20,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private string _currentServerIp = "";
     private uint _currentServerIpUint;
     private uint _localGatewayIpUint;
-    private static uint _publicWanIpUint;
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, string> _bypassedManagementIps = new();
+    private static uint t_publicWanIpUint;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, string> t_bypassedManagementIps = new();
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
     private static bool t_networkSettingsBoosted;
@@ -388,8 +388,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             }
 
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
-                            await SetWindowsRoutesAsync(_adapter.Name, targetIp, ip, true);
-                            await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
+                            await SetWindowsRoutesAsync(_adapter.Name, targetIp, true);
+                            await EnableDnsLeakProtectionAsync(_adapter.Name);
                             await ApplyExtremeNetworkBoostAsync();
 
                             OctopusEngine.Current.ResetTrafficCounters();
@@ -528,8 +528,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var destIp = MemoryMarshal.Read<uint>(buf.AsSpan(16, 4));
                             if ((_currentServerIpUint != 0 && destIp == _currentServerIpUint) ||
                                 (_localGatewayIpUint != 0 && destIp == _localGatewayIpUint) ||
-                                (_publicWanIpUint != 0 && destIp == _publicWanIpUint) ||
-                                _bypassedManagementIps.ContainsKey(destIp))
+                                (t_publicWanIpUint != 0 && destIp == t_publicWanIpUint) ||
+                                t_bypassedManagementIps.ContainsKey(destIp))
                             {
                                 ArrayPool<byte>.Shared.Return(buf);
                                 continue;
@@ -836,7 +836,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return result;
     }
 
-    private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
+    private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, bool enable)
     {
         var (gw, physicalIfIndex) = await GetDefaultGatewayInfoAsync();
         Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, PhysicalIfIndex: {physicalIfIndex}, Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
@@ -874,8 +874,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var wanIp = OctopusEngine.Current.PublicWanIp;
             if (!string.IsNullOrEmpty(wanIp) && IPAddress.TryParse(wanIp, out var parsedWan) && parsedWan.AddressFamily == AddressFamily.InterNetwork)
             {
-                _publicWanIpUint = MemoryMarshal.Read<uint>(parsedWan.GetAddressBytes());
-                if (!string.IsNullOrEmpty(gw) && _bypassedManagementIps.TryAdd(_publicWanIpUint, wanIp))
+                t_publicWanIpUint = MemoryMarshal.Read<uint>(parsedWan.GetAddressBytes());
+                if (!string.IsNullOrEmpty(gw) && t_bypassedManagementIps.TryAdd(t_publicWanIpUint, wanIp))
                 {
                     _ = await RunCmdAsync("route", $"add {wanIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
                     Debug.WriteLine($"[ROUTE] Bypassed Client Public WAN IP: {wanIp} via {gw}{physIfArg}");
@@ -891,7 +891,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     if (IPAddress.TryParse(rIp, out var parsedRemote) && parsedRemote.AddressFamily == AddressFamily.InterNetwork)
                     {
                         var rUint = MemoryMarshal.Read<uint>(parsedRemote.GetAddressBytes());
-                        if (_bypassedManagementIps.TryAdd(rUint, rIp))
+                        if (t_bypassedManagementIps.TryAdd(rUint, rIp))
                         {
                             _ = await RunCmdAsync("route", $"add {rIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
                             Debug.WriteLine($"[ROUTE] Bypassed Remote Management session IP: {rIp} via {gw}{physIfArg}");
@@ -925,12 +925,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
             }
 
-            foreach (var rIp in _bypassedManagementIps.Values)
+            foreach (var rIp in t_bypassedManagementIps.Values)
             {
                 deleteTasks.Add(RunCmdAsync("route", $"delete {rIp} mask 255.255.255.255"));
             }
-            _bypassedManagementIps.Clear();
-            _publicWanIpUint = 0;
+            t_bypassedManagementIps.Clear();
+            t_publicWanIpUint = 0;
 
             if (!string.IsNullOrEmpty(adapterName))
             {
@@ -985,7 +985,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 }
 
                 await DisableDnsLeakProtectionAsync();
-                await SetWindowsRoutesAsync(adapterName, serverIp, "", false);
+                await SetWindowsRoutesAsync(adapterName, serverIp, false);
                 await CleanupStaleRoutesAsync();
                 await RestoreOriginalNetworkSettingsAsync();
                 await OctopusEngine.Current.DisposeAsync();
@@ -998,8 +998,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             _currentServerIpUint = 0;
             _localGatewayIpUint = 0;
-            _publicWanIpUint = 0;
-            _bypassedManagementIps.Clear();
+            t_publicWanIpUint = 0;
+            t_bypassedManagementIps.Clear();
             UpdateState(AppVpnState.Disconnected);
         }
         finally
@@ -1048,7 +1048,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         catch { }
     }
 
-    private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
+    private static async Task EnableDnsLeakProtectionAsync(string adapterName)
     {
         try
         {
