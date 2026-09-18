@@ -403,15 +403,38 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             }
 
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
-                            await SetWindowsRoutesAsync(_adapter.Name, targetIp, true);
-                            await EnableDnsLeakProtectionAsync(_adapter.Name);
-                            await ApplyExtremeNetworkBoostAsync();
+                            try
+                            {
+                                await SetWindowsRoutesAsync(_adapter.Name, targetIp, true).WaitAsync(TimeSpan.FromSeconds(8));
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[ROUTE ERROR] {ex.Message}");
+                            }
+
+                            try
+                            {
+                                await EnableDnsLeakProtectionAsync(_adapter.Name).WaitAsync(TimeSpan.FromSeconds(5));
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[DNS LEAK ERROR] {ex.Message}");
+                            }
+
+                            try
+                            {
+                                await ApplyExtremeNetworkBoostAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[BOOST ERROR] {ex.Message}");
+                            }
 
                             OctopusEngine.Current.ResetTrafficCounters();
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
                             OnLogUpdated?.Invoke($"Проверка соединения с сервером (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(7000), _cts.Token);
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000), _cts.Token);
                             if (verified)
                             {
                                 OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
@@ -724,41 +747,55 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         throw new InvalidOperationException($"Не удалось настроить адаптер '{adapterName}'. Ошибка PS: {lastError}");
     }
 
-    private static async Task<(int exitCode, string output)> RunCmdAsync(string fileName, string args)
+    private static async Task<(int exitCode, string output)> RunCmdAsync(string fileName, string args, int timeoutMs = 5000)
     {
-        var tcs = new TaskCompletionSource<(int, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = Task.Run(() =>
+        try
         {
+            var psi = new ProcessStartInfo(fileName, args)
+            {
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            using var proc = Process.Start(psi);
+            if (proc is null)
+            {
+                return (-1, $"Failed to start {fileName}");
+            }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
+
+            // CRITICAL: Read stdout and stderr concurrently to prevent anonymous pipe buffer deadlock!
+            var stdTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+            var errTask = proc.StandardError.ReadToEndAsync(cts.Token);
+
             try
             {
-                var psi = new ProcessStartInfo(fileName, args)
-                {
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    RedirectStandardError = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false
-                };
+                await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+                var std = await stdTask.ConfigureAwait(false);
+                var err = await errTask.ConfigureAwait(false);
 
-                using var proc = Process.Start(psi);
-                if (proc is null)
-                {
-                    tcs.SetResult((-1, "Failed to start cmd.exe"));
-                    return;
-                }
-
-                var err = proc.StandardError.ReadToEnd();
-                var std = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit();
-                tcs.SetResult((proc.ExitCode, string.IsNullOrWhiteSpace(err) ? std : err));
+                return (proc.ExitCode, string.IsNullOrWhiteSpace(err) ? std : err);
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                tcs.SetResult((-1, ex.Message));
-            }
-        });
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch { }
 
-        return await tcs.Task;
+                Debug.WriteLine($"[RunCmdAsync] Command '{fileName} {args}' timed out after {timeoutMs}ms and was killed.");
+                return (-1, "Command timed out");
+            }
+        }
+        catch (Exception ex)
+        {
+            return (-1, ex.Message);
+        }
     }
 
     private static async Task<(string Gateway, int InterfaceIndex)> GetDefaultGatewayInfoAsync()
@@ -845,7 +882,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 catch { }
             }
 
-            var (_, output) = await RunCmdAsync("netstat", "-ano -p tcp");
+            var (_, output) = await RunCmdAsync("netstat", "-ano -p tcp", timeoutMs: 3000);
             if (!string.IsNullOrWhiteSpace(output))
             {
                 var lines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
@@ -913,15 +950,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (string.IsNullOrEmpty(ifIndex))
             {
                 var (_, output) = await RunCmdAsync("powershell",
-                    $"-NoProfile -Command \"(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like '*{adapterName}*' -or $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*Wintun*' }} | Select-Object -First 1).ifIndex\"");
+                    $"-NoProfile -Command \"(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like '*{adapterName}*' -or $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*Wintun*' }} | Select-Object -First 1).ifIndex\"", timeoutMs: 3000);
                 ifIndex = output.Trim();
             }
 
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(serverIp))
             {
-                _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
-                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
+                _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255", timeoutMs: 2000);
+                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{physIfArg}", timeoutMs: 2000);
                 Debug.WriteLine($"[ROUTE] Add Server Route: ExitCode {exitCode}, Output: {output}");
             }
 
@@ -932,7 +969,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 t_publicWanIpUint = MemoryMarshal.Read<uint>(parsedWan.GetAddressBytes());
                 if (!string.IsNullOrEmpty(gw) && t_bypassedManagementIps.TryAdd(t_publicWanIpUint, wanIp))
                 {
-                    _ = await RunCmdAsync("route", $"add {wanIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
+                    _ = await RunCmdAsync("route", $"add {wanIp} mask 255.255.255.255 {gw} metric 1{physIfArg}", timeoutMs: 2000);
                     Debug.WriteLine($"[ROUTE] Bypassed Client Public WAN IP: {wanIp} via {gw}{physIfArg}");
                 }
             }
@@ -940,26 +977,33 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             // 2. Bypass active Remote Desktop / Management sessions (AnyDesk, TeamViewer, RustDesk, RDP)
             if (!string.IsNullOrEmpty(gw))
             {
-                var remoteIps = await DetectRemoteManagementIpsAsync();
-                foreach (var rIp in remoteIps)
+                try
                 {
-                    if (IPAddress.TryParse(rIp, out var parsedRemote) && parsedRemote.AddressFamily == AddressFamily.InterNetwork)
+                    var remoteIps = await DetectRemoteManagementIpsAsync().WaitAsync(TimeSpan.FromSeconds(3));
+                    foreach (var rIp in remoteIps)
                     {
-                        var rUint = MemoryMarshal.Read<uint>(parsedRemote.GetAddressBytes());
-                        if (t_bypassedManagementIps.TryAdd(rUint, rIp))
+                        if (IPAddress.TryParse(rIp, out var parsedRemote) && parsedRemote.AddressFamily == AddressFamily.InterNetwork)
                         {
-                            _ = await RunCmdAsync("route", $"add {rIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
-                            Debug.WriteLine($"[ROUTE] Bypassed Remote Management session IP: {rIp} via {gw}{physIfArg}");
+                            var rUint = MemoryMarshal.Read<uint>(parsedRemote.GetAddressBytes());
+                            if (t_bypassedManagementIps.TryAdd(rUint, rIp))
+                            {
+                                _ = await RunCmdAsync("route", $"add {rIp} mask 255.255.255.255 {gw} metric 1{physIfArg}", timeoutMs: 2000);
+                                Debug.WriteLine($"[ROUTE] Bypassed Remote Management session IP: {rIp} via {gw}{physIfArg}");
+                            }
                         }
                     }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ROUTE REMOTE DETECT TIMEOUT/ERROR] {ex.Message}");
                 }
             }
 
             if (!string.IsNullOrEmpty(ifIndex))
             {
-                await Task.Delay(200);
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}");
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}");
+                await Task.Delay(100);
+                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}", timeoutMs: 2000);
+                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}", timeoutMs: 2000);
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
             }
             else
