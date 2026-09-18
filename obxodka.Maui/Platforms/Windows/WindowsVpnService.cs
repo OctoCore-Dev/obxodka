@@ -52,6 +52,18 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         await DisableDnsLeakProtectionAsync();
     }
 
+    private async Task SyncAdapterIpAsync()
+    {
+        if (_adapter != null)
+        {
+            var ip = OctopusEngine.Current.AssignedIp;
+            if (!string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out _))
+            {
+                await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0");
+            }
+        }
+    }
+
     private void HandleDeadConnection()
     {
         if (!IsRunning || _isExplicitlyStopped)
@@ -80,6 +92,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     try
                     {
                         await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                        await SyncAdapterIpAsync();
                         UpdateState(AppVpnState.Connected);
                         OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено!");
                         return;
@@ -134,6 +147,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             }
 
                             await OctopusEngine.Current.ReconnectAsync(newIp, newPort);
+                            await SyncAdapterIpAsync();
                             UpdateState(AppVpnState.Connected);
                             OnLogUpdated?.Invoke("[SMART CONNECT] Подключение успешно переведено на новый узел!");
                             return;
@@ -194,6 +208,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var ifParam = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
                             _ = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {gw} metric 1{ifParam}");
                             await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
+                            await SyncAdapterIpAsync();
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
@@ -812,28 +827,68 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         var result = new List<string>();
         try
         {
-            var psScript = @"
-                $ErrorActionPreference = 'SilentlyContinue';
-                Get-NetTCPConnection -State Established | Where-Object {
-                    $proc = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName;
-                    $proc -match 'AnyDesk|TeamViewer|RustDesk|mstsc' -or $_.RemotePort -in 6568,7070,3389
-                } | Select-Object -ExpandProperty RemoteAddress -Unique
-            ";
-            var (_, output) = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\r", "").Replace("\n", " ")}\"");
+            var remoteProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "AnyDesk", "TeamViewer", "RustDesk", "mstsc", "vncserver", "tv_w32", "tv_x64"
+            };
+
+            var targetPids = new HashSet<int>();
+            foreach (var proc in Process.GetProcesses())
+            {
+                try
+                {
+                    if (remoteProcessNames.Contains(proc.ProcessName))
+                    {
+                        _ = targetPids.Add(proc.Id);
+                    }
+                }
+                catch { }
+            }
+
+            var (_, output) = await RunCmdAsync("netstat", "-ano -p tcp");
             if (!string.IsNullOrWhiteSpace(output))
             {
-                foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+                var lines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+                foreach (var rawLine in lines)
                 {
-                    var trimmed = line.Trim();
-                    if (IPAddress.TryParse(trimmed, out var parsed) && parsed.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(parsed))
+                    var parts = rawLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 5 && parts[0].Equals("TCP", StringComparison.OrdinalIgnoreCase) &&
+                        parts[3].Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
                     {
-                        result.Add(trimmed);
+                        var foreignEp = parts[2];
+                        var lastColon = foreignEp.LastIndexOf(':');
+                        if (lastColon <= 0)
+                        {
+                            continue;
+                        }
+
+                        var foreignIp = foreignEp[..lastColon];
+                        var portStr = foreignEp[(lastColon + 1)..];
+
+                        if (!int.TryParse(parts[4], out var pid))
+                        {
+                            continue;
+                        }
+                        _ = int.TryParse(portStr, out var port);
+
+                        if (targetPids.Contains(pid) || port is 6568 or 7070 or 3389)
+                        {
+                            if (IPAddress.TryParse(foreignIp, out var parsed) &&
+                                parsed.AddressFamily == AddressFamily.InterNetwork &&
+                                !IPAddress.IsLoopback(parsed))
+                            {
+                                result.Add(foreignIp);
+                            }
+                        }
                     }
                 }
             }
         }
-        catch { }
-        return result;
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[DETECT REMOTE IP ERROR] {ex.Message}");
+        }
+        return [.. result.Distinct()];
     }
 
     private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, bool enable)

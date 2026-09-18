@@ -247,10 +247,10 @@ public sealed partial class GrpcTransport(
         try
         {
             var ts = Stopwatch.GetTimestamp();
-            var targetRays = Math.Min(2, _activeRays);
+            var targetRays = _activeRays;
             for (var r = 0; r < targetRays; r++)
             {
-                if (_txChannels[r] is { } ch)
+                if (_txChannels[r] is { } ch && _tunnelStreams[r] != null)
                 {
                     var packet = ArrayPool<byte>.Shared.Rent(9);
                     packet[0] = 0x99;

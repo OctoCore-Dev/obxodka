@@ -117,6 +117,55 @@ public sealed class DynamicProtocolAndConnectivityTests
     }
 
     [Fact]
+    public async Task LiveGrpcEchoTestAsync()
+    {
+        using var http = new HttpClient();
+        var apiJson = await http.GetStringAsync("https://obxodka.one/api/vpn/cert-hash");
+        using var doc = JsonDocument.Parse(apiJson);
+        var expectedHash = doc.RootElement.GetProperty("hash").GetString();
+        OctopusEngine.DynamicSslPublicKeyHash = expectedHash;
+
+        var transport = new GrpcTransport(useHttp3: false, activeRays: 8, clientCert: null, jwtToken: null, serverPort: 443);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var (ip, ip6) = await transport.ConnectAsync("45.63.117.29", "8C4D558DD38236249DA05CA9FD59658C0CAC305E", cts.Token);
+
+        long pingRtt = -1;
+        var pingTcs = new TaskCompletionSource<long>();
+        transport.OnPingUpdated += rtt =>
+        {
+            pingRtt = rtt;
+            _ = pingTcs.TrySetResult(rtt);
+        };
+
+        await transport.SendPingProbeAsync();
+        var completed = await Task.WhenAny(pingTcs.Task, Task.Delay(5000));
+        Assert.True(completed == pingTcs.Task, $"Ping probe timed out! Assigned IP was {ip}");
+        Assert.True(pingRtt > 0, $"Expected positive RTT, got: {pingRtt}");
+    }
+
+    [Fact]
+    public async Task LiveFechsueEchoTestAsync()
+    {
+        var transport = new FechsueTransport(activeRays: 1);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var (ip, ip6) = await transport.ConnectAsync("45.63.117.29", "8C4D558DD38236249DA05CA9FD59658C0CAC305E", cts.Token);
+
+        long pingRtt = -1;
+        var pingTcs = new TaskCompletionSource<long>();
+        transport.OnPingUpdated += rtt =>
+        {
+            pingRtt = rtt;
+            _ = pingTcs.TrySetResult(rtt);
+        };
+
+        await transport.SendPingProbeAsync();
+        var completed = await Task.WhenAny(pingTcs.Task, Task.Delay(5000));
+        Assert.True(completed == pingTcs.Task, $"FECHSUE ping probe timed out! Assigned IP was {ip}");
+        Assert.True(pingRtt > 0, $"Expected positive RTT, got: {pingRtt}");
+    }
+
+
+    [Fact]
     public void SwitchingProtocolResetsSessionCleanly()
     {
         var activeProtocols = new List<string>
