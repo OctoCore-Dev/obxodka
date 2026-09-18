@@ -77,6 +77,16 @@ public sealed partial class GrpcTransport(
                     }
                 }
 
+                // If the certificate is issued by a publicly trusted CA (e.g. Let's Encrypt on obxodka.one), accept it
+                if (errors == SslPolicyErrors.None && chain is not null)
+                {
+                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    if (chain.Build(cert2))
+                    {
+                        return true;
+                    }
+                }
+
                 Debug.WriteLine($"[CERT PINNING MISMATCH] Expected: {expectedPin}, Actual: {hash}");
                 return false;
             }
@@ -187,15 +197,17 @@ public sealed partial class GrpcTransport(
                         OnSocketCreated?.Invoke(socket);
                         try
                         {
-                            Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {context.DnsEndPoint}...");
-                            await socket.ConnectAsync(context.DnsEndPoint, cToken);
-                            Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {context.DnsEndPoint}!");
-                            var rawStream = new NetworkStream(socket, ownsSocket: true);
-                            return new DpiBypassStream(rawStream, splitPosition: 2, delayMs: 25);
+                            var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
+                                ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
+                                : context.DnsEndPoint;
+                            Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {connectTarget}...");
+                            await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
+                            Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {connectTarget}!");
+                            return new NetworkStream(socket, ownsSocket: true);
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"[GRPC-CONNECT ERROR] Failed TCP socket connect to {context.DnsEndPoint}: {ex.Message}");
+                            Debug.WriteLine($"[GRPC-CONNECT ERROR] Failed TCP socket connect to {serverIp}:{serverPort}: {ex.Message}");
                             socket.Dispose();
                             throw;
                         }
@@ -221,8 +233,9 @@ public sealed partial class GrpcTransport(
                     DisposeHttpClient = true
                 };
 
-                Debug.WriteLine($"[GRPC-INIT] Creating channel for ray #{i} -> https://{serverIp}:{serverPort}");
-                _grpcChannels[i] = GrpcChannel.ForAddress($"https://{serverIp}:{serverPort}", channelOptions);
+                var channelHost = !string.IsNullOrWhiteSpace(targetHost) ? targetHost : serverIp;
+                Debug.WriteLine($"[GRPC-INIT] Creating channel for ray #{i} -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
+                _grpcChannels[i] = GrpcChannel.ForAddress($"https://{channelHost}:{serverPort}", channelOptions);
                 _txChannels[i] = new PriorityPacketQueue(i <= 1 ? 2000 : 1500);
                 await ConnectRayAsync(i, isNewConnection: i == 0);
                 _ = TxLoopAsync(i, _txChannels[i]!, _cts.Token);
