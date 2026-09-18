@@ -178,7 +178,8 @@ public sealed partial class GrpcTransport(
                             Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {context.DnsEndPoint}...");
                             await socket.ConnectAsync(context.DnsEndPoint, cToken);
                             Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {context.DnsEndPoint}!");
-                            return new NetworkStream(socket, ownsSocket: true);
+                            var rawStream = new NetworkStream(socket, ownsSocket: true);
+                            return new DpiBypassStream(rawStream, splitPosition: 2, delayMs: 25);
                         }
                         catch (Exception ex)
                         {

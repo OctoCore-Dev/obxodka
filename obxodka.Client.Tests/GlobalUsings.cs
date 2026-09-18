@@ -14,6 +14,7 @@ global using System.Threading.Channels;
 global using System.Xml.Linq;
 global using Moq;
 global using Moq.Protected;
+global using obxodka.Client.Diagnostics;
 global using obxodka.Client.Platforms;
 global using obxodka.Config;
 global using obxodka.Core;

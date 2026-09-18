@@ -688,7 +688,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static 1.1.1.1 primary");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" 1.0.0.1 index=2");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1360 store=active");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1280 store=active");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
                 Debug.WriteLine("[NET CONFIG] Configured adapter via netsh successfully.");
                 return;
@@ -705,7 +705,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ exit 1; }}
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes 1360 -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes 1280 -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
             ";

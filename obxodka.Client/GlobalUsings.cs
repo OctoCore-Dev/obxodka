@@ -27,6 +27,7 @@ global using System.Threading.Tasks;
 global using Google.Protobuf;
 global using Grpc.Core;
 global using Grpc.Net.Client;
+global using obxodka.Client.Diagnostics;
 global using obxodka.Client.Models;
 global using obxodka.Client.Platforms;
 global using obxodka.Config;
