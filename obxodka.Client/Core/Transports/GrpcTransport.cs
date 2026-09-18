@@ -118,9 +118,21 @@ public sealed partial class GrpcTransport(
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _thumbprint = thumbprint;
         var serverPort = _serverPort;
+        var defaultSni = "obxodka.one";
+        try
+        {
+            if (Uri.TryCreate(Config.AppConfig.ApiBaseUrl, UriKind.Absolute, out var apiUri) &&
+                !string.IsNullOrWhiteSpace(apiUri.Host) &&
+                !IPAddress.TryParse(apiUri.Host, out _))
+            {
+                defaultSni = apiUri.Host;
+            }
+        }
+        catch { }
+
         var targetHost = !string.IsNullOrWhiteSpace(_configuredSni) && !IPAddress.TryParse(_configuredSni, out _)
             ? _configuredSni
-            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : "www.microsoft.com");
+            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : defaultSni);
 
         try
         {
