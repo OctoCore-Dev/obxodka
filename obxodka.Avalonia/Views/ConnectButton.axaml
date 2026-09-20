@@ -1,0 +1,122 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="300"
+             x:Class="obxodka.Avalonia.Views.ConnectButton">
+
+    <UserControl.Styles>
+        <!-- Базовый стиль кнопки -->
+        <Style Selector="ToggleButton.connect-btn">
+            <Setter Property="CornerRadius" Value="70" />
+            <Setter Property="Width" Value="140" />
+            <Setter Property="Height" Value="140" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="#1E2028" />
+            <Setter Property="BorderBrush" Value="#3B82F6" />
+            <Setter Property="BorderThickness" Value="2.5" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="RenderTransform" Value="scale(1.0)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.25" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.25" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Наведение курсора -->
+        <Style Selector="ToggleButton.connect-btn:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.04)" />
+            <Setter Property="Background" Value="#252836" />
+            <Setter Property="BorderBrush" Value="#60A5FA" />
+        </Style>
+
+        <!-- Нажатие (эффект пружины / клика) -->
+        <Style Selector="ToggleButton.connect-btn:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.93)" />
+        </Style>
+
+        <!-- Активное состояние (когда нажали и включили) -->
+        <Style Selector="ToggleButton.connect-btn:checked">
+            <Setter Property="Background" Value="#142B23" />
+            <Setter Property="BorderBrush" Value="#10B981" />
+        </Style>
+        <Style Selector="ToggleButton.connect-btn:checked:pointerover">
+            <Setter Property="Background" Value="#1A382E" />
+            <Setter Property="BorderBrush" Value="#34D399" />
+            <Setter Property="RenderTransform" Value="scale(1.04)" />
+        </Style>
+        <Style Selector="ToggleButton.connect-btn:checked Path">
+            <Setter Property="Stroke" Value="#34D399" />
+        </Style>
+        <Style Selector="ToggleButton.connect-btn:checked TextBlock">
+            <Setter Property="Foreground" Value="#6EE7B7" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Основной контейнер кнопки подключения -->
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
+        
+        <!-- Внешнее декоративное кольцо -->
+        <Border Width="164" 
+                Height="164" 
+                CornerRadius="82" 
+                Background="#0D3B82F6" 
+                BorderBrush="#263B82F6" 
+                BorderThickness="1.5"
+                HorizontalAlignment="Center">
+
+            <!-- Кнопка-переключатель с плавной анимацией нажатия и переключения -->
+            <ToggleButton x:Name="VpnButton" 
+                          Classes="connect-btn"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                    <!-- Иконка питания -->
+                    <Path Data="M 12 2 L 12 11 M 6.34 6.34 A 8 8 0 1 0 17.66 6.34"
+                          Stroke="#60A5FA"
+                          StrokeThickness="2.8"
+                          StrokeLineCap="Round"
+                          Width="32"
+                          Height="32"
+                          Stretch="Uniform"
+                          HorizontalAlignment="Center" />
+                    
+                    <!-- Текст на кнопке -->
+                    <TextBlock Text="ПОДКЛЮЧИТЬ"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="#E2E8F0"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </ToggleButton>
+        </Border>
+
+        <!-- Индикатор статуса под кнопкой -->
+        <StackPanel HorizontalAlignment="Center" Spacing="5">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                <Ellipse Width="9" 
+                         Height="9" 
+                         Fill="#94A3B8" 
+                         VerticalAlignment="Center" />
+                
+                <TextBlock Text="VPN"
+                           FontSize="13"
+                           FontWeight="Medium"
+                           Foreground="#94A3B8"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <TextBlock Text="Нажмите для подключения"
+                       FontSize="11"
+                       Foreground="#64748B"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+
+    </StackPanel>
+
+</UserControl>

@@ -13,8 +13,8 @@
         <!-- Вызываем наш отдельный сайдбар -->
         <views:Sidebar Grid.Column="0" />
 
-        <!-- Здесь в будущем будет основной контент (например, Grid с Grid.Column="1") -->
-        <ContentControl Grid.Column="1" />
+        <!-- Основной контент: кнопка подключения -->
+        <views:ConnectButton Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
 
     </Grid>
 

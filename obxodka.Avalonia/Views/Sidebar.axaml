@@ -8,7 +8,7 @@
     <!-- Сайдбар как отдельная плашка (Внешняя рамка DarkGray) -->
     <Border Margin="26" 
             Padding="4" 
-            CornerRadius="16"
+            CornerRadius="15"
             Background="DarkGray"
             ClipToBounds="True">
         
