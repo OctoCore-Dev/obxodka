@@ -1,43 +1,21 @@
-﻿<Window
-    x:Class="obxodka.Avalonia.Views.MainWindow"
-    xmlns="https://github.com/avaloniaui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Obxodka VPN (Linux)"
-    Width="900"
-    Height="600"
-    Background="#0F0F1A"
-    WindowStartupLocation="CenterScreen">
-    <Grid RowDefinitions="Auto,*">
-        <Border
-            Grid.Row="0"
-            Padding="15"
-            Background="#161626">
-            <TextBlock
-                FontSize="18"
-                FontWeight="Bold"
-                Foreground="White"
-                Text="Obxodka Client - Avalonia Linux" />
-        </Border>
-        <Grid
-            Grid.Row="1"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center">
-            <StackPanel HorizontalAlignment="Center" Spacing="15">
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    FontSize="24"
-                    Foreground="#A0A0C0"
-                    Text="Obxodka VPN (Linux)" />
-                <Button
-                    Width="160"
-                    Height="45"
-                    HorizontalContentAlignment="Center"
-                    VerticalContentAlignment="Center"
-                    Background="#7B2CBF"
-                    Content="Connect"
-                    CornerRadius="8"
-                    Foreground="White" />
-            </StackPanel>
-        </Grid>
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="using:obxodka.Avalonia.Views"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+        x:Class="obxodka.Avalonia.Views.MainWindow"
+        Title="Obxodka">
+
+    <!-- Главная сетка: колонка 150px под сайдбар и '*' под основной контент -->
+    <Grid Background="{DynamicResource PrimaryBackground}" ColumnDefinitions="150, *">
+        
+        <!-- Вызываем наш отдельный сайдбар -->
+        <views:Sidebar Grid.Column="0" />
+
+        <!-- Основной контент: кнопка подключения -->
+        <views:ConnectButton Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+
     </Grid>
+
 </Window>
