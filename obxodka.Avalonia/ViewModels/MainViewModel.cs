@@ -1,5 +1,3 @@
-using CommunityToolkit.Mvvm.ComponentModel;
-
 namespace obxodka.Avalonia.ViewModels;
 
 public partial class MainViewModel : ViewModelBase
