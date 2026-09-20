@@ -1,10 +1,10 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 public sealed class PacketDeduplicator
 {
     private const int RingSize = 16384;
     private const int RingMask = RingSize - 1;
-    private const long MaxDuplicateAgeMs = 500; // 500ms TTL
+    private const long MaxDuplicateAgeMs = 500;
 
     private readonly ulong[] _seenKeys = new ulong[RingSize];
     private readonly long[] _seenTimestamps = new long[RingSize];

@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup Condition="'$(IsWindows)' == 'true' and '$(DOTNET_RUNNING_IN_CONTAINER)' != 'true' and '$(CI)' != 'true'">
+    <IsMauiProject Condition="'$(UseMaui)' == 'true' or $(MSBuildProjectName.EndsWith('.Maui'))">true</IsMauiProject>
+    <PackageMode Condition="'$(PackageMode)' == '' and '$(IsMauiProject)' == 'true'">MSIX</PackageMode>
+    <PackageMode Condition="'$(PackageMode)' == '' and '$(IsMauiProject)' != 'true'">None</PackageMode>
+    <AppxPackageDir Condition="'$(AppxPackageDir)' == '' and '$(PackageMode)' == 'MSIX'">$(PackageRoot)AppPackages\$(MSBuildProjectName)\</AppxPackageDir>
+    <PublishDir Condition="'$(PublishDir)' == '' and $(TargetFramework.Contains('-android'))">$(PackageRoot)GooglePlay\$(MSBuildProjectName)\</PublishDir>
+    <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' == 'MSIX' and !$(TargetFramework.Contains('-android'))">$(PackageRoot)Msix\$(MSBuildProjectName)\</PublishDir>
+    <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' != 'MSIX' and !$(TargetFramework.Contains('-android')) and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTrimmable)' == 'true')">$(PackageRoot)exe\$(MSBuildProjectName)\</PublishDir>
+  </PropertyGroup>
+
+  <Target Name="RedirectPublishDirToPackage"
+          Condition="'$(IsWindows)' == 'true' and '$(DOTNET_RUNNING_IN_CONTAINER)' != 'true' and '$(CI)' != 'true'"
+          BeforeTargets="PrepareForPublish;ComputeAndCopyFilesToPublishDirectory;Publish">
+    <PropertyGroup>
+      <PublishDir Condition="'$(PublishDir)' == '' and $(TargetFramework.Contains('-android'))">$(PackageRoot)GooglePlay\$(MSBuildProjectName)\</PublishDir>
+      <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' == 'MSIX' and !$(TargetFramework.Contains('-android'))">$(PackageRoot)Msix\$(MSBuildProjectName)\</PublishDir>
+      <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' != 'MSIX' and !$(TargetFramework.Contains('-android')) and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTrimmable)' == 'true')">$(PackageRoot)exe\$(MSBuildProjectName)\</PublishDir>
+    </PropertyGroup>
+  </Target>
+</Project>

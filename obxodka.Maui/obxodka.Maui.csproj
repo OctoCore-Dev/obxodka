@@ -9,11 +9,12 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
-    <WindowsPackageType>MSIX</WindowsPackageType>
+    <WindowsPackageType>$(PackageMode)</WindowsPackageType>
     <Configurations>Debug;Release</Configurations>
-    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true'">net10.0-android</TargetFrameworks>
-    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(GITHUB_ACTIONS)' == 'true'">net10.0-windows10.0.19041.0;net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(GITHUB_ACTIONS)' != 'true'">net10.0-windows10.0.19041.0</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux')) and ('$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android')))">net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">net10.0-maccatalyst;net10.0-ios;net10.0-android</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>obxodka.Maui</RootNamespace>
     <UseMaui>true</UseMaui>
@@ -23,6 +24,7 @@
     <LangVersion>preview</LangVersion>
     <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
     <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Core\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
+    <NoWarn>$(NoWarn);NU1608;NU1603</NoWarn>
   </PropertyGroup>
 
 	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">
@@ -30,6 +32,7 @@
 		<SelfContained>true</SelfContained>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 		<AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+		<ApplicationManifest>Platforms\Windows\app.manifest</ApplicationManifest>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))) and $(TargetFramework.Contains('-android'))">
@@ -37,13 +40,15 @@
 		<RunAOTCompilation>false</RunAOTCompilation>
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
 		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-		<AndroidUseFastDeployment>false</AndroidUseFastDeployment>
+		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' != 'true'">8G</JavaMaximumHeapSize>
+		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' == 'true'">4G</JavaMaximumHeapSize>
+		<AndroidLinkTool Condition="'$(Configuration)' == 'Release'">r8</AndroidLinkTool>
+		<AndroidEnableShrinking Condition="'$(Configuration)' == 'Release'">true</AndroidEnableShrinking>
 	</PropertyGroup>
 
     <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
@@ -57,7 +62,8 @@
         <TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-maccatalyst'))">16.1</TargetPlatformMinVersion>
         <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.19041.0</SupportedOSPlatformVersion>
         <TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.19041.0</TargetPlatformMinVersion>
-        <AndroidPackageFormat>aab</AndroidPackageFormat>
+        <AndroidPackageFormat Condition="'$(Configuration)' == 'Release'">aab</AndroidPackageFormat>
+        <AndroidPackageFormat Condition="'$(Configuration)' != 'Release'">apk</AndroidPackageFormat>
         <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
         <AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>
         <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
@@ -93,6 +99,7 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
+    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="10.0.0" />
     <PackageReference Include="WinUIEx" Version="2.9.3" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
     <PackageReference Include="System.Management" Version="10.0.11" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
 </ItemGroup>
@@ -106,6 +113,7 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" Version="1.5.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+    <ProguardConfiguration Include="Platforms\Android\proguard.cfg" />
   </ItemGroup>
 
 	<ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">
@@ -124,7 +132,7 @@
 
 	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />
 
-	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('Platforms\Windows\Package.appxmanifest')">
+	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and $(TargetFramework.Contains('-windows')) and Exists('Platforms\Windows\Package.appxmanifest')">
 		<XmlPoke
 			XmlInputPath="Platforms\Windows\Package.appxmanifest"
 			Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10'/&gt;"
@@ -138,19 +146,6 @@
 	<Target Name="Publish" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(GITHUB_ACTIONS)' != 'true' and !$(TargetFramework.Contains('-android'))" />
 
 </Project>
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

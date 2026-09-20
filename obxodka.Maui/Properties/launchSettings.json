@@ -1,10 +1,10 @@
 {
   "profiles": {
-    "Windows Machine (Unpackaged)": {
+    "Windows (EXE)": {
       "commandName": "Project",
       "nativeDebugging": false
     },
-    "Windows Machine (MSIX)": {
+    "Windows (MSIX)": {
       "commandName": "MsixPackage",
       "nativeDebugging": false
     }

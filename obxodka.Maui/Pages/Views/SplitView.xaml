@@ -9,210 +9,33 @@
     x:Name="ThisView">
 
     <Grid
-        Padding="{OnIdiom Desktop='32,24',
-                          Default='16,16'}"
-        RowDefinitions="Auto, *"
-        RowSpacing="12">
+        x:Name="RootLayout"
+        Padding="0"
+        SafeAreaEdges="None">
 
-        <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Label
-                FontFamily="CommissionerExtraBold"
-                FontSize="{OnIdiom Desktop=20,
-                                   Default=22}"
-                HorizontalOptions="Center"
-                Text="Разделение трафика"
-                TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
-                                            Dark={StaticResource TextPrimary}}" />
-
-            <Border Padding="10,4" Style="{StaticResource NeoInput}">
-                <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
-                    <mi:MauiIcon
-                        Grid.Column="0"
-                        Icon="{mi:Fluent Icon=Search24}"
-                        IconColor="{AppThemeBinding Light=#9CA3AF,
-                                                    Dark=#6B7280}"
-                        IconSize="18"
-                        VerticalOptions="Center" />
-                    <Entry
-                        x:Name="SplitSearchEntry"
-                        Grid.Column="1"
-                        FontSize="13"
-                        Placeholder="Поиск по названию или пакету..."
-                        TextChanged="OnSplitSearchTextChanged" />
+        <CollectionView
+            x:Name="SplitAppsList"
+            ItemSizingStrategy="MeasureFirstItem"
+            VerticalScrollBarVisibility="Never">
+            <CollectionView.Header>
+                <ContentView x:Name="SplitListHeaderSpacer" HeightRequest="{OnIdiom Phone=260, Default=240}" />
+            </CollectionView.Header>
+            <CollectionView.Footer>
+                <ContentView HeightRequest="{OnIdiom Phone=120, Default=32}" />
+            </CollectionView.Footer>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="m:AppInfoItem">
                     <Border
-                        x:Name="ClearSearchBtn"
-                        Grid.Column="2"
-                        Padding="4"
-                        IsVisible="False"
-                        VerticalOptions="Center">
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnClearSearchClicked" />
-                        </Border.GestureRecognizers>
-                        <mi:MauiIcon
-                            Icon="{mi:Fluent Icon=Dismiss24}"
-                            IconColor="{AppThemeBinding Light=#9CA3AF,
-                                                        Dark=#6B7280}"
-                            IconSize="16" />
-                    </Border>
-                </Grid>
-            </Border>
-
-            <Grid ColumnDefinitions="*, *, Auto" ColumnSpacing="8">
-                <Border
-                    x:Name="ChipFilterAll"
-                    Grid.Column="0"
-                    Padding="8,6"
-                    BackgroundColor="{AppThemeBinding Light=#207C3AED,
-                                                      Dark=#307C3AED}"
-                    Stroke="#7C3AED"
-                    StrokeShape="RoundRectangle 6"
-                    StrokeThickness="1">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnFilterAllClicked" />
-                    </Border.GestureRecognizers>
-                    <Label
-                        x:Name="FilterAllLabel"
-                        FontFamily="RobotoBold"
-                        FontSize="11"
-                        HorizontalOptions="Center"
-                        Text="Все"
-                        TextColor="{AppThemeBinding Light=#7C3AED,
-                                                    Dark=#9F6FF0}" />
-                </Border>
-
-                <Border
-                    x:Name="ChipFilterBypassed"
-                    Grid.Column="1"
-                    Padding="8,6"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource BgSurfaceLight},
-                                                      Dark={StaticResource BgSurface}}"
-                    Stroke="{AppThemeBinding Light={StaticResource BorderSubtleLight},
-                                             Dark={StaticResource BorderSubtle}}"
-                    StrokeShape="RoundRectangle 6"
-                    StrokeThickness="1">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnFilterBypassedClicked" />
-                    </Border.GestureRecognizers>
-                    <Label
-                        x:Name="FilterBypassedLabel"
-                        FontFamily="RobotoBold"
-                        FontSize="11"
-                        HorizontalOptions="Center"
-                        Text="В обходе (0)"
-                        TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight},
-                                                    Dark={StaticResource TextSecondary}}" />
-                </Border>
-
-                <Border
-                    x:Name="ChipResetAll"
-                    Grid.Column="2"
-                    Padding="10,6"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource BgSurfaceLight},
-                                                      Dark={StaticResource BgSurface}}"
-                    Stroke="{AppThemeBinding Light={StaticResource BorderSubtleLight},
-                                             Dark={StaticResource BorderSubtle}}"
-                    StrokeShape="RoundRectangle 6"
-                    StrokeThickness="1">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnResetAllBypassedClickedAsync" />
-                    </Border.GestureRecognizers>
-                    <Label
-                        FontFamily="RobotoMedium"
-                        FontSize="11"
-                        Text="Сброс"
-                        TextColor="#EF4444" />
-                </Border>
-            </Grid>
-
-            <VerticalStackLayout
-                x:Name="ActiveBypassedSection"
-                Margin="0,4,0,0"
-                IsVisible="False"
-                Spacing="6">
-                <Grid ColumnDefinitions="*, Auto">
-                    <Label
-                        Grid.Column="0"
-                        FontFamily="RobotoBold"
-                        FontSize="11"
-                        Text="ВКЛЮЧЕННЫЕ В ОБХОД (БЫСТРОЕ ОТКЛЮЧЕНИЕ)"
-                        TextColor="{StaticResource Primary}" />
-                    <Label
-                        x:Name="ActiveBypassedCountLabel"
-                        Grid.Column="1"
-                        FontSize="11"
-                        Style="{StaticResource LabelMuted}" />
-                </Grid>
-
-                <ScrollView
-                    HorizontalScrollBarVisibility="Never"
-                    Orientation="Horizontal"
-                    VerticalScrollBarVisibility="Never">
-                    <HorizontalStackLayout
-                        x:Name="ActiveBypassedChipsLayout"
-                        Margin="0,2,0,4"
-                        Spacing="8" />
-                </ScrollView>
-            </VerticalStackLayout>
-
-            <Border
-                Margin="0,2,0,0"
-                Padding="10,8"
-                BackgroundColor="#2D1A1A"
-                Stroke="#EF4444"
-                StrokeThickness="1">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="8" />
-                </Border.StrokeShape>
-                <Label
-                    FontSize="11"
-                    HorizontalTextAlignment="Center"
-                    Text="Изменение списка возможно только при выключенном VPN."
-                    TextColor="#FCA5A5"
-                    VerticalTextAlignment="Center" />
-                <Border.Triggers>
-                    <DataTrigger
-                        Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=views:SplitView}"
-                        TargetType="Border"
-                        Value="True">
-                        <Setter Property="IsVisible" Value="False" />
-                    </DataTrigger>
-                </Border.Triggers>
-            </Border>
-        </VerticalStackLayout>
-
-        <Grid Grid.Row="1">
-            <ActivityIndicator
-                x:Name="SplitLoadingOverlay"
-                HorizontalOptions="Center"
-                IsRunning="True"
-                IsVisible="False"
-                VerticalOptions="Center" />
-
-            <Label
-                x:Name="SplitAppsErrorLabel"
-                HorizontalOptions="Center"
-                IsVisible="False"
-                Opacity="0"
-                Style="{StaticResource LabelError}"
-                VerticalOptions="Center" />
-
-            <CollectionView
-                x:Name="SplitAppsList"
-                ItemSizingStrategy="MeasureFirstItem"
-                VerticalScrollBarVisibility="Never">
-                <CollectionView.Footer>
-                    <ContentView HeightRequest="{OnIdiom Phone=110, Default=32}" />
-                </CollectionView.Footer>
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="m:AppInfoItem">
-                        <Grid
-                            Margin="0,2"
-                            Padding="14,8"
-                            BackgroundColor="{AppThemeBinding Light={StaticResource BgSurfaceLight},
-                                                              Dark={StaticResource BgSurface}}"
-                            ColumnDefinitions="38, *, Auto"
-                            ColumnSpacing="12"
-                            HeightRequest="62">
+                        Margin="{OnIdiom Desktop='32,3',
+                                         Phone='16,3',
+                                         Default='16,3'}"
+                        Padding="14,8"
+                        BackgroundColor="{DynamicResource BgSurface}"
+                        HeightRequest="64"
+                        Stroke="{DynamicResource BorderSubtle}"
+                        StrokeShape="RoundRectangle 12"
+                        StrokeThickness="1">
+                        <Grid ColumnDefinitions="38, *, Auto" ColumnSpacing="12">
                             <Grid.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnAppRowTapped" />
                             </Grid.GestureRecognizers>
@@ -231,12 +54,11 @@
                                 Spacing="1"
                                 VerticalOptions="Center">
                                 <Label
-                                    FontFamily="RobotoBold"
+                                    FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="14"
                                     LineBreakMode="TailTruncation"
                                     Text="{Binding Name}"
-                                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight},
-                                                                Dark={StaticResource TextPrimary}}" />
+                                    TextColor="{DynamicResource TextPrimary}" />
                                 <Label
                                     FontSize="11"
                                     LineBreakMode="TailTruncation"
@@ -251,10 +73,185 @@
                                 Toggled="OnSplitAppToggled"
                                 VerticalOptions="Center" />
                         </Grid>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
-        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <ActivityIndicator
+            x:Name="SplitLoadingOverlay"
+            HorizontalOptions="Center"
+            IsRunning="True"
+            IsVisible="False"
+            VerticalOptions="Center"
+            ZIndex="5" />
+
+        <Label
+            x:Name="SplitAppsErrorLabel"
+            HorizontalOptions="Center"
+            IsVisible="False"
+            Opacity="0"
+            Style="{StaticResource LabelError}"
+            VerticalOptions="Center"
+            ZIndex="5" />
+
+        <Border
+            x:Name="HeaderContainer"
+            Padding="{OnIdiom Desktop='32,24,32,12',
+                              Phone='16,10,16,12',
+                              Default='16,16'}"
+            BackgroundColor="{DynamicResource BgBase}"
+            StrokeThickness="0"
+            VerticalOptions="Start"
+            ZIndex="20">
+            <VerticalStackLayout Spacing="10">
+                <Label
+                    FontFamily="{DynamicResource AppFontTitle}"
+                    FontSize="{OnIdiom Desktop=20,
+                                       Default=22}"
+                    HorizontalOptions="Center"
+                    Text="Разделение трафика"
+                    TextColor="{DynamicResource TextPrimary}" />
+
+                <Border Padding="10,4" Style="{StaticResource NeoInput}">
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Search24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="18"
+                            VerticalOptions="Center" />
+                        <Entry
+                            x:Name="SplitSearchEntry"
+                            Grid.Column="1"
+                            FontSize="13"
+                            Placeholder="Поиск по названию или пакету..."
+                            TextChanged="OnSplitSearchTextChanged" />
+                        <Border
+                            x:Name="ClearSearchBtn"
+                            Grid.Column="2"
+                            Padding="4"
+                            IsVisible="False"
+                            VerticalOptions="Center">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnClearSearchClicked" />
+                            </Border.GestureRecognizers>
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=Dismiss24}"
+                                IconColor="{DynamicResource TextMuted}"
+                                IconSize="16" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Grid ColumnDefinitions="*, *, Auto" ColumnSpacing="8">
+                    <Border
+                        x:Name="ChipFilterAll"
+                        Grid.Column="0"
+                        Padding="8,6"
+                        BackgroundColor="{DynamicResource PrimaryDim}"
+                        Stroke="{DynamicResource Primary}"
+                        StrokeShape="RoundRectangle 6"
+                        StrokeThickness="1">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnFilterAllClicked" />
+                        </Border.GestureRecognizers>
+                        <Label
+                            x:Name="FilterAllLabel"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="11"
+                            HorizontalOptions="Center"
+                            Text="Все"
+                            TextColor="{DynamicResource PrimaryBright}" />
+                    </Border>
+
+                    <Border
+                        x:Name="ChipFilterBypassed"
+                        Grid.Column="1"
+                        Padding="8,6"
+                        BackgroundColor="{DynamicResource BgSurface}"
+                        Stroke="{DynamicResource BorderSubtle}"
+                        StrokeShape="RoundRectangle 6"
+                        StrokeThickness="1">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnFilterBypassedClicked" />
+                        </Border.GestureRecognizers>
+                        <Label
+                            x:Name="FilterBypassedLabel"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="11"
+                            HorizontalOptions="Center"
+                            Text="В обходе (0)"
+                            TextColor="{DynamicResource TextSecondary}" />
+                    </Border>
+
+                    <Border
+                        x:Name="ChipResetAll"
+                        Grid.Column="2"
+                        Padding="10,6"
+                        BackgroundColor="{DynamicResource BgSurface}"
+                        Stroke="{DynamicResource BorderSubtle}"
+                        StrokeShape="RoundRectangle 6"
+                        StrokeThickness="1">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnResetAllBypassedClickedAsync" />
+                        </Border.GestureRecognizers>
+                        <Label
+                            FontFamily="{DynamicResource AppFontMedium}"
+                            FontSize="11"
+                            Text="Сброс"
+                            TextColor="{DynamicResource Error}" />
+                    </Border>
+                </Grid>
+
+                <VerticalStackLayout
+                    x:Name="ActiveBypassedSection"
+                    Margin="0,4,0,0"
+                    IsVisible="False"
+                    Spacing="6">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label
+                            Grid.Column="0"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="11"
+                            Text="ВКЛЮЧЕННЫЕ В ОБХОД (БЫСТРОЕ ОТКЛЮЧЕНИЕ)"
+                            TextColor="{DynamicResource Primary}" />
+                        <Label
+                            x:Name="ActiveBypassedCountLabel"
+                            Grid.Column="1"
+                            FontSize="11"
+                            Style="{StaticResource LabelMuted}" />
+                    </Grid>
+
+                    <ScrollView
+                        HorizontalScrollBarVisibility="Never"
+                        Orientation="Horizontal"
+                        VerticalScrollBarVisibility="Never">
+                        <HorizontalStackLayout
+                            x:Name="ActiveBypassedChipsLayout"
+                            Margin="0,2,0,4"
+                            Spacing="8" />
+                    </ScrollView>
+                </VerticalStackLayout>
+
+                <Border Margin="0,2,0,0" Style="{StaticResource WarningBanner}">
+                    <Label
+                        FontSize="11"
+                        HorizontalTextAlignment="Center"
+                        Text="Изменение списка возможно только при выключенном VPN."
+                        TextColor="{DynamicResource Error}"
+                        VerticalTextAlignment="Center" />
+                    <Border.Triggers>
+                        <DataTrigger
+                            Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=views:SplitView}"
+                            TargetType="Border"
+                            Value="True">
+                            <Setter Property="IsVisible" Value="False" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                </Border>
+            </VerticalStackLayout>
+        </Border>
 
     </Grid>
 </ContentView>

@@ -1,5 +1,3 @@
-using System.Buffers;
-using System.Threading.Channels;
 using Android.App;
 using Android.Content;
 using Android.Net;
@@ -58,6 +56,41 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         }
     }
 
+    public override void OnCreate()
+    {
+        base.OnCreate();
+        Instance = this;
+        HookProtection();
+    }
+
+    private void HookProtection()
+    {
+        FechsueTransport.OnSocketCreated = sock =>
+        {
+            try
+            {
+                var fd = (int)sock.Handle;
+                _ = Protect(fd);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FECHSUE PROTECT ERROR] {ex.Message}");
+            }
+        };
+        GrpcTransport.OnSocketCreated = sock =>
+        {
+            try
+            {
+                var fd = (int)sock.Handle;
+                _ = Protect(fd);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GRPC PROTECT ERROR] {ex.Message}");
+            }
+        };
+    }
+
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
         if (intent?.Action == "STOP")
@@ -69,28 +102,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         if (intent?.Action == "START")
         {
             Instance = this;
-            FechsueTransport.OnSocketCreated = sock =>
-            {
-                try
-                {
-                    _ = Protect((int)sock.Handle);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[FECHSUE PROTECT ERROR] {ex.Message}");
-                }
-            };
-            GrpcTransport.OnSocketCreated = sock =>
-            {
-                try
-                {
-                    _ = Protect((int)sock.Handle);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[GRPC PROTECT ERROR] {ex.Message}");
-                }
-            };
+            HookProtection();
 
             RegisterNetworkCallback();
             CreateNotificationChannel();
@@ -111,14 +123,14 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
             if (!string.IsNullOrEmpty(OctopusEngine.Current.AssignedIp))
             {
-                EstablishTun();
+                _ = EstablishTun();
             }
         }
 
         return StartCommandResult.Sticky;
     }
 
-    private ConnectivityManager.NetworkCallback? _networkCallback;
+    private VpnNetworkCallback? _networkCallback;
 
     private void RegisterNetworkCallback()
     {
@@ -128,21 +140,15 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             if (cm is not null)
             {
                 _networkCallback = new VpnNetworkCallback();
-                if (OperatingSystem.IsAndroidVersionAtLeast(24))
-                {
-                    cm.RegisterDefaultNetworkCallback(_networkCallback);
-                }
-                else
-                {
-                    using var builder = new NetworkRequest.Builder();
-                    var request = builder
-                        .AddCapability(NetCapability.Internet)?
-                        .Build();
+                using var builder = new NetworkRequest.Builder();
+                var request = builder
+                    .AddCapability(NetCapability.Internet)?
+                    .AddCapability(NetCapability.NotVpn)?
+                    .Build();
 
-                    if (request is not null)
-                    {
-                        cm.RegisterNetworkCallback(request, _networkCallback);
-                    }
+                if (request is not null)
+                {
+                    cm.RegisterNetworkCallback(request, _networkCallback);
                 }
             }
         }
@@ -158,76 +164,152 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         {
             if (_networkCallback is not null)
             {
+                _networkCallback.IsActive = false;
                 var cm = (ConnectivityManager?)GetSystemService(ConnectivityService);
                 cm?.UnregisterNetworkCallback(_networkCallback);
-                _networkCallback.Dispose();
                 _networkCallback = null;
             }
         }
         catch { }
     }
 
+    [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)]
     private sealed class VpnNetworkCallback : ConnectivityManager.NetworkCallback
     {
+        public volatile bool IsActive = true;
         private long _lastActiveNetworkId = -1;
+
+        [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
+        public VpnNetworkCallback() { }
+
+        [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
+        public VpnNetworkCallback(IntPtr handle, global::Android.Runtime.JniHandleOwnership transfer) : base(handle, transfer) { }
 
         public override void OnAvailable(Network network)
         {
-            base.OnAvailable(network);
-            var cm = (ConnectivityManager?)global::Android.App.Application.Context.GetSystemService(ConnectivityService);
-            var caps = cm?.GetNetworkCapabilities(network);
-            if (caps is null || caps.HasTransport(TransportType.Vpn))
+            if (!IsActive)
             {
                 return;
             }
 
-            var netId = network.NetworkHandle;
-            System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Physical network available: {network} (Handle: {netId})");
-
-            if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
+            try
             {
-                System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Active network changed from {_lastActiveNetworkId} to {netId}. Instant roaming reconnect!");
-                if (AndroidVpnService.Instance.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
+                base.OnAvailable(network);
+                var cm = (ConnectivityManager?)global::Android.App.Application.Context.GetSystemService(ConnectivityService);
+                var caps = cm?.GetNetworkCapabilities(network);
+                if (caps is null || caps.HasTransport(TransportType.Vpn))
                 {
-                    AndroidVpnService.Instance.TriggerImmediateReconnect();
+                    return;
+                }
+
+                var netId = network.NetworkHandle;
+                System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Physical network available: {network} (Handle: {netId})");
+
+                if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                {
+                    _ = Instance?.SetUnderlyingNetworks([network]);
+                }
+
+                if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Active network changed from {_lastActiveNetworkId} to {netId}. Instant roaming reconnect!");
+                    _lastActiveNetworkId = netId;
+                    if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
+                    {
+                        AndroidVpnService.Instance.TriggerImmediateReconnect();
+                    }
+                }
+                else
+                {
+                    _lastActiveNetworkId = netId;
+                    if (AndroidVpnService.Instance?.CurrentState == AppVpnState.Reconnecting)
+                    {
+                        AndroidVpnService.Instance.TriggerImmediateReconnect();
+                    }
                 }
             }
-            _lastActiveNetworkId = netId;
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING ERROR] {ex.Message}");
+            }
         }
 
         public override void OnCapabilitiesChanged(Network network, NetworkCapabilities capabilities)
         {
-            base.OnCapabilitiesChanged(network, capabilities);
-            if (capabilities.HasTransport(TransportType.Vpn))
+            if (!IsActive)
             {
                 return;
             }
 
-            if (capabilities.HasCapability(NetCapability.Internet))
+            try
             {
-                _lastActiveNetworkId = network.NetworkHandle;
+                base.OnCapabilitiesChanged(network, capabilities);
+                if (capabilities.HasTransport(TransportType.Vpn))
+                {
+                    return;
+                }
+
+                if (capabilities.HasCapability(NetCapability.Internet))
+                {
+                    var netId = network.NetworkHandle;
+                    if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                    {
+                        _ = Instance?.SetUnderlyingNetworks([network]);
+                    }
+
+                    if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Capabilities changed to new network {netId}. Instant roaming reconnect!");
+                        _lastActiveNetworkId = netId;
+                        if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
+                        {
+                            AndroidVpnService.Instance.TriggerImmediateReconnect();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING ERROR] {ex.Message}");
             }
         }
 
         public override void OnLost(Network network)
         {
-            base.OnLost(network);
-            var cm = (ConnectivityManager?)global::Android.App.Application.Context.GetSystemService(ConnectivityService);
-            var caps = cm?.GetNetworkCapabilities(network);
-            if (caps is not null && caps.HasTransport(TransportType.Vpn))
+            if (!IsActive)
             {
                 return;
             }
 
-            var netId = network.NetworkHandle;
-            System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Physical network lost: {network} (Handle: {netId})");
-            if (_lastActiveNetworkId == netId)
+            try
             {
-                _lastActiveNetworkId = -1;
-                if (AndroidVpnService.Instance.CurrentState == AppVpnState.Connected)
+                base.OnLost(network);
+                var cm = (ConnectivityManager?)global::Android.App.Application.Context.GetSystemService(ConnectivityService);
+                var caps = cm?.GetNetworkCapabilities(network);
+                if (caps is not null && caps.HasTransport(TransportType.Vpn))
                 {
-                    AndroidVpnService.Instance.TriggerImmediateReconnect();
+                    return;
                 }
+
+                var netId = network.NetworkHandle;
+                System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Physical network lost: {network} (Handle: {netId})");
+                if (_lastActiveNetworkId == netId)
+                {
+                    _lastActiveNetworkId = -1;
+                    if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                    {
+                        _ = Instance?.SetUnderlyingNetworks(null);
+                    }
+
+                    if (AndroidVpnService.Instance?.CurrentState == AppVpnState.Connected)
+                    {
+                        AndroidVpnService.Instance.TriggerImmediateReconnect();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING ERROR] {ex.Message}");
             }
         }
     }
@@ -277,14 +359,39 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         }
     }
 
-    public void EstablishTun()
+    public bool EstablishTun()
     {
         try
         {
             var ip = OctopusEngine.Current.AssignedIp;
             if (string.IsNullOrEmpty(ip))
             {
-                return;
+                return false;
+            }
+
+            _vpnCts?.Cancel();
+            try
+            {
+                _tunInputStream?.Close();
+            }
+            catch { }
+            try
+            {
+                _tunOutputStream?.Close();
+            }
+            catch { }
+            try
+            {
+                _tunInterface?.Close();
+            }
+            catch { }
+            _tunInputStream = null;
+            _tunOutputStream = null;
+            _tunInterface = null;
+
+            while (_downstreamChannel.Reader.TryRead(out var stale))
+            {
+                ArrayPool<byte>.Shared.Return(stale.buffer);
             }
 
             _vpnCts = new CancellationTokenSource();
@@ -292,9 +399,23 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             _ = builder
                 .SetSession("Obxodka")
                 .AddAddress(ip, 10)
-                .SetMtu(1360)
+                .SetMtu(1280)
                 .SetBlocking(true)
                 .AddRoute("0.0.0.0", 0);
+
+            var ip6 = OctopusEngine.Current.AssignedIpV6;
+            if (!string.IsNullOrEmpty(ip6) && !ip6.StartsWith("fd00::", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    _ = builder.AddAddress(ip6, 64);
+                    _ = builder.AddRoute("::", 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[VPN V6 ROUTE ERROR] {ex.Message}");
+                }
+            }
 
             _ = builder.AddDnsServer("1.1.1.1");
             _ = builder.AddDnsServer("1.0.0.1");
@@ -322,7 +443,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             {
                 AcquireWakeLock();
                 _tunOutputStream = new FileOutputStream(_tunInterface.FileDescriptor);
-                AndroidVpnService.Instance.ChangeState(AppVpnState.Connected);
 
                 var txThread = new Thread(() => ProcessTraffic(_vpnCts.Token))
                 {
@@ -339,13 +459,16 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     Name = "AndroidTunWriter"
                 };
                 rxThread.Start();
+                return true;
             }
+            return false;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[VPN ESTABLISH ERROR] {ex.Message}");
             AndroidVpnService.Instance.SetError("Не удалось создать туннель");
             StopSelf();
+            return false;
         }
     }
 
@@ -407,7 +530,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (length > 0)
                 {
-                    var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length, useAdblock: true);
+                    var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length);
                     if (sinkholeResp is not null)
                     {
                         var copy = ArrayPool<byte>.Shared.Rent(sinkholeResp.Length);

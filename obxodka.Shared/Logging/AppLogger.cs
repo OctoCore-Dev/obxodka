@@ -1,10 +1,4 @@
-#pragma warning disable CA1716, CA2255
-
-using System.Diagnostics;
-using System.Globalization;
-using System.Net;
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
+#pragma warning disable CA2255
 
 namespace obxodka.Shared.Logging;
 
@@ -84,7 +78,7 @@ public static class AppLogger
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[AppLogger] Failed to initialize in BaseDirectory: {ex.Message}");
+            Debug.WriteLine($"[AppLogger] Failed to initialize in BaseDirectory: {ex.Message}");
         }
 
         try
@@ -104,7 +98,7 @@ public static class AppLogger
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[AppLogger] Failed to initialize backup logger: {ex.Message}");
+            Debug.WriteLine($"[AppLogger] Failed to initialize backup logger: {ex.Message}");
         }
     }
 

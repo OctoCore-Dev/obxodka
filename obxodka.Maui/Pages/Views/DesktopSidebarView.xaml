@@ -3,21 +3,18 @@
     x:Class="obxodka.Views.DesktopSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:helpers="clr-namespace:obxodka.Helpers"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
     xmlns:views="clr-namespace:obxodka.Views">
     <Border
         x:Name="DesktopSidebar"
         Margin="16,16,0,16"
         Padding="16,24"
+        helpers:UIAnimations.AnimateEntrance="False"
         Opacity="0"
-        Style="{StaticResource NeoPanel}"
+        Style="{StaticResource NeoCard}"
         TranslationX="-36"
         WidthRequest="84">
-        <Border.BackgroundColor>
-            <OnPlatform x:TypeArguments="Color">
-                <On Platform="WinUI" Value="Transparent" />
-            </OnPlatform>
-        </Border.BackgroundColor>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnSidebarTapped" />
         </Border.GestureRecognizers>
@@ -43,10 +40,12 @@
                     x:Name="AppLogoText"
                     Grid.Column="1"
                     Margin="8,0,0,0"
+                    FontFamily="{DynamicResource AppFontBold}"
+                    FontSize="24"
                     LineBreakMode="NoWrap"
                     Opacity="0"
-                    Style="{StaticResource AppLogoText}"
                     Text="OBXODKA"
+                    TextColor="{DynamicResource TextPrimary}"
                     VerticalOptions="Center" />
             </Grid>
 
@@ -62,18 +61,17 @@
                             x:Name="NavVpnIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Shield24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelVpn"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="VPN"
                             VerticalOptions="Center" />
                     </Grid>
@@ -89,18 +87,17 @@
                             x:Name="NavProfileIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Person24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelProfile"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="Профиль"
                             VerticalOptions="Center" />
                     </Grid>
@@ -116,18 +113,17 @@
                             x:Name="NavConfigurationIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Settings24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelConfiguration"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="Конфигурация"
                             VerticalOptions="Center" />
                     </Grid>
@@ -143,18 +139,17 @@
                             x:Name="NavMeshIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Globe24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelMesh"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="Mesh Сеть"
                             VerticalOptions="Center" />
                     </Grid>
@@ -171,18 +166,17 @@
                             x:Name="NavDevicesIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=PhoneDesktop24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelDevices"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="Устройства"
                             VerticalOptions="Center" />
                     </Grid>
@@ -191,8 +185,7 @@
                 <BoxView
                     Margin="12,8,12,8"
                     HeightRequest="1"
-                    Color="{AppThemeBinding Light=#20000000,
-                                            Dark=#20FFFFFF}" />
+                    Color="{DynamicResource BorderSubtle}" />
 
                 <Border x:Name="NavBug" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
@@ -204,17 +197,16 @@
                             x:Name="NavBugIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Bug24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="20" />
                         <Label
                             x:Name="LabelBug"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="Отправка бага"
                             VerticalOptions="Center" />
                     </Grid>
@@ -230,17 +222,16 @@
                             x:Name="NavReviewsIcon"
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Star24}"
-                            IconColor="{AppThemeBinding Light=#9080B0,
-                                                        Dark=#6A5A8A}"
+                            IconColor="{DynamicResource TextMuted}"
                             IconSize="20" />
                         <Label
                             x:Name="LabelReviews"
                             Grid.Column="1"
                             Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource TitleSmall}"
                             Text="Отзывы"
                             VerticalOptions="Center" />
                     </Grid>
@@ -256,6 +247,7 @@
                 <Border
                     x:Name="VpnStatusCard"
                     Padding="16,8"
+                    helpers:UIAnimations.AnimateEntrance="False"
                     BackgroundColor="Transparent"
                     Stroke="Transparent"
                     Style="{StaticResource NeoCard}">
@@ -268,7 +260,7 @@
                             HeightRequest="10"
                             VerticalOptions="Center"
                             WidthRequest="10"
-                            Color="#6A5A8A" />
+                            Color="{DynamicResource TextMuted}" />
                         <Label
                             x:Name="VpnStatusLabel"
                             Grid.Column="1"
@@ -296,33 +288,42 @@
                             x:Name="LogoutIcon"
                             HorizontalOptions="Start"
                             Icon="{mi:Fluent Icon=ArrowExit20}"
-                            IconColor="{StaticResource Error}"
+                            IconColor="{DynamicResource Error}"
                             IconSize="20"
                             Opacity="1"
                             VerticalOptions="Center" />
 
                         <Label
                             x:Name="LogoutText"
-                            FontFamily="RobotoBold"
+                            FontFamily="{DynamicResource AppFontBold}"
                             FontSize="13"
                             HorizontalOptions="Center"
                             HorizontalTextAlignment="Center"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="ВЫХОД"
-                            TextColor="{StaticResource Error}"
+                            TextColor="{DynamicResource Error}"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
 
-                <Label
-                    x:Name="AppVersionLabel"
-                    FontSize="11"
-                    HorizontalOptions="Center"
-                    LineBreakMode="NoWrap"
-                    Opacity="0"
-                    Style="{StaticResource LabelMuted}"
-                    Text="v4.8.0" />
+                <Border
+                    x:Name="VersionBadgeBorder"
+                    Padding="6,3"
+                    BackgroundColor="Transparent"
+                    Stroke="Transparent">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnVersionBadgeTappedAsync" />
+                    </Border.GestureRecognizers>
+                    <Label
+                        x:Name="AppVersionLabel"
+                        FontSize="11"
+                        HorizontalOptions="Center"
+                        LineBreakMode="NoWrap"
+                        Opacity="0"
+                        Style="{StaticResource LabelMuted}"
+                        Text="v5.0.0" />
+                </Border>
             </VerticalStackLayout>
 
         </Grid>

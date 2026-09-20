@@ -4,14 +4,17 @@ public sealed partial class DesktopSidebarView : ContentView
 {
     private static readonly Color t_cyanColor = Color.FromArgb("#00E5FF");
     private static readonly Color t_mutedColor = Color.FromArgb("#6A5A8A");
-    private static readonly Color t_activeColor = Color.FromArgb("#7C3AED");
-    private static readonly Color t_activeBgColor = Color.FromArgb("#1A7C3AED");
+    private static Color ActiveColor => (Application.Current?.Resources.TryGetValue("Primary", out var val) == true && val is Color c)
+        ? c
+        : Color.FromArgb("#7C3AED");
+    private static Color ActiveBgColor => ActiveColor.WithAlpha(0.14f);
     private static readonly Color t_inactiveLightColor = Color.FromArgb("#9080B0");
     private static readonly Color t_inactiveDarkColor = Color.FromArgb("#6A5A8A");
 
     public event EventHandler<string>? NavTapped;
     public event EventHandler? LogoutTapped;
     private bool _isExpanded;
+    private string _currentTab = "vpn";
 
     public DesktopSidebarView()
     {
@@ -39,17 +42,39 @@ public sealed partial class DesktopSidebarView : ContentView
     {
         if (isConnected)
         {
-            VpnStatusDot.Color = t_cyanColor;
+            var accent = (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac) ? ac : t_cyanColor;
+            VpnStatusDot.Color = accent;
             VpnStatusLabel.Text = "Защищено";
-            VpnStatusLabel.TextColor = t_cyanColor;
+            VpnStatusLabel.TextColor = accent;
         }
         else
         {
-            VpnStatusDot.Color = t_mutedColor;
+            var muted = (Application.Current?.Resources.TryGetValue("TextMuted", out var m) == true && m is Color mc) ? mc : t_mutedColor;
+            VpnStatusDot.Color = muted;
             VpnStatusLabel.Text = "Отключен";
-            VpnStatusLabel.TextColor = t_mutedColor;
+            VpnStatusLabel.TextColor = muted;
         }
     }
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsColor)
+            ? bsColor
+            : Color.FromArgb("#282838");
+
+        DesktopSidebar.BackgroundColor = bgSurface;
+        DesktopSidebar.Stroke = borderSubtle;
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateActiveTab(_currentTab);
+        });
 
     private void OnSidebarTapped(object? sender, TappedEventArgs e)
     {
@@ -72,7 +97,7 @@ public sealed partial class DesktopSidebarView : ContentView
 
         if (!_isExpanded)
         {
-            _ = AppLogoImage.RotateToAsync(0, 250, Easing.CubicInOut);
+            _ = AppLogoImage.RotateToAsync(0, 200, Easing.CubicInOut);
 
             _ = AnimateLabelHideAsync(AppLogoText);
             _ = AnimateLabelHideAsync(LabelVpn);
@@ -85,31 +110,30 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelHideAsync(VpnStatusLabel);
             _ = AnimateLabelHideAsync(AppVersionLabel);
             _ = AnimateLabelHideAsync(LogoutText);
-            _ = LogoutIcon.FadeToAsync(1, 150);
+            _ = LogoutIcon.FadeToAsync(1, 140);
 
             var anim = new Animation(v => DesktopSidebar.WidthRequest = v, DesktopSidebar.Width, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 250, Easing.CubicInOut);
+            anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicInOut);
         }
         else
         {
-            _ = AppLogoImage.RotateToAsync(360, 300, Easing.CubicOut);
+            _ = AppLogoImage.RotateToAsync(360, 240, Easing.CubicOut);
+
+            _ = AnimateLabelShowAsync(AppLogoText, 10);
+            _ = AnimateLabelShowAsync(LabelVpn, 25);
+            _ = AnimateLabelShowAsync(LabelProfile, 40);
+            _ = AnimateLabelShowAsync(LabelConfiguration, 55);
+            _ = AnimateLabelShowAsync(LabelMesh, 70);
+            _ = AnimateLabelShowAsync(LabelDevices, 85);
+            _ = AnimateLabelShowAsync(LabelBug, 100);
+            _ = AnimateLabelShowAsync(LabelReviews, 115);
+            _ = AnimateLabelShowAsync(VpnStatusLabel, 125);
+            _ = AnimateLabelShowAsync(LogoutText, 135);
+            _ = AnimateLabelShowAsync(AppVersionLabel, 145, 0.5);
+            _ = LogoutIcon.FadeToAsync(0, 120);
 
             var anim = new Animation(v => DesktopSidebar.WidthRequest = v, DesktopSidebar.Width, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 250, Easing.CubicInOut, (v, c) =>
-            {
-                _ = AnimateLabelShowAsync(AppLogoText, 0);
-                _ = AnimateLabelShowAsync(LabelVpn, 20);
-                _ = AnimateLabelShowAsync(LabelProfile, 35);
-                _ = AnimateLabelShowAsync(LabelConfiguration, 50);
-                _ = AnimateLabelShowAsync(LabelMesh, 65);
-                _ = AnimateLabelShowAsync(LabelDevices, 80);
-                _ = AnimateLabelShowAsync(LabelBug, 95);
-                _ = AnimateLabelShowAsync(LabelReviews, 110);
-                _ = AnimateLabelShowAsync(VpnStatusLabel, 125);
-                _ = AnimateLabelShowAsync(LogoutText, 140);
-                _ = AnimateLabelShowAsync(AppVersionLabel, 155, 0.5);
-                _ = LogoutIcon.FadeToAsync(0, 150);
-            });
+            anim.Commit(this, "SidebarResize", 16, 220, Easing.CubicOut);
         }
     }
 
@@ -120,15 +144,17 @@ public sealed partial class DesktopSidebarView : ContentView
             return;
         }
 
+        label.CancelAnimations();
+
         if (delayMs > 0)
         {
             await Task.Delay(delayMs);
         }
 
-        label.TranslationX = -10;
+        label.TranslationX = -8;
         label.Opacity = 0;
-        _ = label.TranslateToAsync(0, 0, 200, Easing.SpringOut);
-        _ = label.FadeToAsync(targetOpacity, 180, Easing.CubicOut);
+        _ = label.TranslateToAsync(0, 0, 160, Easing.SpringOut);
+        _ = label.FadeToAsync(targetOpacity, 140, Easing.CubicOut);
     }
 
     private static async Task AnimateLabelHideAsync(VisualElement? label)
@@ -138,44 +164,47 @@ public sealed partial class DesktopSidebarView : ContentView
             return;
         }
 
-        _ = label.TranslateToAsync(-10, 0, 120, Easing.CubicIn);
-        _ = await label.FadeToAsync(0, 120, Easing.CubicIn);
+        label.CancelAnimations();
+        _ = label.TranslateToAsync(-8, 0, 100, Easing.CubicIn);
+        _ = await label.FadeToAsync(0, 100, Easing.CubicIn);
         label.TranslationX = 0;
     }
 
     public void UpdateActiveTab(string tabName)
     {
+        _currentTab = tabName;
         ResetAllSideNavItems();
 
         switch (tabName)
         {
             case "vpn":
-                SideNavVpn.BackgroundColor = t_activeBgColor;
-                NavVpnIcon.IconColor = t_activeColor;
+                SideNavVpn.BackgroundColor = ActiveBgColor;
+                NavVpnIcon.IconColor = ActiveColor;
                 _ = SideNavVpn.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconSpringHoverAsync(NavVpnIcon, 1.2);
                 break;
             case "profile":
-                SideNavProfile.BackgroundColor = t_activeBgColor;
-                NavProfileIcon.IconColor = t_activeColor;
+                SideNavProfile.BackgroundColor = ActiveBgColor;
+                NavProfileIcon.IconColor = ActiveColor;
                 _ = SideNavProfile.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconBounceJumpAsync(NavProfileIcon, -3);
                 break;
             case "configuration":
-                SideNavConfiguration.BackgroundColor = t_activeBgColor;
-                NavConfigurationIcon.IconColor = t_activeColor;
+            case "themes":
+                SideNavConfiguration.BackgroundColor = ActiveBgColor;
+                NavConfigurationIcon.IconColor = ActiveColor;
                 _ = SideNavConfiguration.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconSpinAsync(NavConfigurationIcon, 90, 200);
                 break;
             case "mesh":
-                SideNavMesh.BackgroundColor = t_activeBgColor;
-                NavMeshIcon.IconColor = t_activeColor;
+                SideNavMesh.BackgroundColor = ActiveBgColor;
+                NavMeshIcon.IconColor = ActiveColor;
                 _ = SideNavMesh.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconPulseAsync(NavMeshIcon, 1.2);
                 break;
             case "devices":
-                SideNavDevices.BackgroundColor = t_activeBgColor;
-                NavDevicesIcon.IconColor = t_activeColor;
+                SideNavDevices.BackgroundColor = ActiveBgColor;
+                NavDevicesIcon.IconColor = ActiveColor;
                 _ = SideNavDevices.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconWiggleAsync(NavDevicesIcon, 12);
                 break;
@@ -198,9 +227,9 @@ public sealed partial class DesktopSidebarView : ContentView
         SideNavMesh.Scale = 1.0;
         SideNavDevices.Scale = 1.0;
 
-        var inactiveColor = Application.Current?.RequestedTheme == AppTheme.Light
-            ? t_inactiveLightColor
-            : t_inactiveDarkColor;
+        var inactiveColor = (Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc)
+            ? tmc
+            : (Application.Current?.RequestedTheme == AppTheme.Light ? t_inactiveLightColor : t_inactiveDarkColor);
 
         NavVpnIcon.IconColor = inactiveColor;
         NavProfileIcon.IconColor = inactiveColor;
@@ -348,6 +377,20 @@ public sealed partial class DesktopSidebarView : ContentView
         else if (border == LogoutButtonBorder)
         {
             _ = LogoutIcon.ScaleToAsync(1.0, 120, Easing.CubicOut);
+        }
+    }
+
+    private async void OnVersionBadgeTappedAsync(object? sender, EventArgs e)
+    {
+        if (sender is VisualElement ve)
+        {
+            _ = ve.BounceClickAsync();
+        }
+
+        var updater = IPlatformApplication.Current?.Services?.GetService<IAppUpdaterService>();
+        if (updater is not null)
+        {
+            await updater.CheckForUpdatesAsync(manualCheck: true);
         }
     }
 }

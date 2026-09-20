@@ -5,11 +5,28 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
     xmlns:shared="clr-namespace:obxodka.Models;assembly=obxodka.Shared">
-    <Grid>
+    <Grid
+        x:Name="RootLayout"
+        Padding="{OnIdiom Desktop='32,28',
+                          Phone='16,20,16,0',
+                          Default='16,20'}"
+        RowDefinitions="Auto, *"
+        RowSpacing="16"
+        SafeAreaEdges="None">
+
+        <Label
+            Grid.Row="0"
+            FontFamily="{DynamicResource AppFontTitle}"
+            FontSize="{OnIdiom Desktop=22,
+                               Default=24}"
+            HorizontalOptions="Center"
+            Text="Устройства"
+            TextColor="{DynamicResource TextPrimary}"
+            VerticalOptions="Center" />
+
         <Grid
             x:Name="ContentGrid"
-            Padding="{OnIdiom Desktop='32,90,32,28',
-                              Default='16,90,16,20'}"
+            Grid.Row="1"
             RowDefinitions="*">
             <ActivityIndicator
                 x:Name="DevicesLoadingOverlay"
@@ -24,28 +41,23 @@
                 Opacity="0"
                 Style="{StaticResource LabelError}"
                 VerticalOptions="Center" />
-            <Grid
-                x:Name="DevicesGrid"
-                ColumnDefinitions="{OnIdiom Desktop='*, *',
-                                            Default='*'}"
-                ColumnSpacing="28"
-                RowSpacing="24"
-                VerticalOptions="Start" />
+            <ScrollView
+                x:Name="DevicesScrollView"
+                HorizontalOptions="Fill"
+                HorizontalScrollBarVisibility="Never"
+                Orientation="Vertical"
+                VerticalScrollBarVisibility="Never">
+                <Grid
+                    x:Name="DevicesGrid"
+                    Padding="{OnIdiom Phone='0,0,0,130',
+                                      Default='0'}"
+                    ColumnDefinitions="{OnIdiom Desktop='*, *',
+                                                Default='*'}"
+                    ColumnSpacing="28"
+                    HorizontalOptions="Start"
+                    RowSpacing="24"
+                    VerticalOptions="Start" />
+            </ScrollView>
         </Grid>
-
-        <Border
-            x:Name="FloatingHeader"
-            Padding="{OnIdiom Desktop='32,28,32,16',
-                              Default='16,20,16,16'}"
-            BackgroundColor="{OnPlatform WinUI=Transparent,
-                                         Default={AppThemeBinding Light={StaticResource BgBaseLight},
-                                                                  Dark={StaticResource BgBase}}}"
-            StrokeThickness="0"
-            VerticalOptions="Start">
-            <Label
-                HorizontalOptions="Center"
-                Style="{StaticResource TitleMedium}"
-                Text="Устройства" />
-        </Border>
     </Grid>
 </ContentView>

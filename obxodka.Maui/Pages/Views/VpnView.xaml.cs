@@ -1,3 +1,6 @@
+using Microsoft.Maui.Controls.Shapes;
+using Path = System.IO.Path;
+
 namespace obxodka.Views;
 
 public sealed partial class VpnView : ContentView
@@ -13,7 +16,6 @@ public sealed partial class VpnView : ContentView
     private static readonly Color t_grayText = Color.FromArgb("#9CA3AF");
 
     private static readonly Color t_cyanAccent = Color.FromArgb("#00E5FF");
-    private static readonly Color t_cyanBg = Color.FromArgb("#1A00E5FF");
     private static readonly Color t_redBg = Color.FromArgb("#1AFF0000");
     private static readonly string[] t_errorSeparators = ["\r\n", "\n", "Status(", "Detail="];
 
@@ -21,8 +23,6 @@ public sealed partial class VpnView : ContentView
     private static readonly SKColor t_skCyan = SKColor.Parse("#00E5FF");
     private static readonly SKColor t_skGraphUp = SKColor.Parse("#9F6FF0");
     private static readonly SKColor t_skGraphDown = SKColor.Parse("#00E5FF");
-    private static readonly SKColor t_skGraphUpFill = new(159, 111, 240, 55);
-    private static readonly SKColor t_skGraphDownFill = new(0, 229, 255, 75);
     private static readonly SKColor t_skGridDash = new(255, 255, 255, 14);
 
     private static readonly SKPaint t_skGridPaint = new()
@@ -33,28 +33,6 @@ public sealed partial class VpnView : ContentView
         IsAntialias = true,
         Style = SKPaintStyle.Stroke
     };
-
-    private static readonly SKPaint t_skStrokeUpPaint = new()
-    {
-        IsAntialias = true,
-        Style = SKPaintStyle.Stroke,
-        Color = t_skGraphUp,
-        StrokeWidth = 2.5f,
-        StrokeCap = SKStrokeCap.Round,
-        StrokeJoin = SKStrokeJoin.Round
-    };
-
-    private static readonly SKPaint t_skStrokeDownPaint = new()
-    {
-        IsAntialias = true,
-        Style = SKPaintStyle.Stroke,
-        Color = t_skGraphDown,
-        StrokeWidth = 2.5f,
-        StrokeCap = SKStrokeCap.Round,
-        StrokeJoin = SKStrokeJoin.Round
-    };
-
-    private static readonly string[] t_suffixes = ["B", "KB", "MB", "GB", "TB"];
 
     private MainPage _parent = null!;
     private IVpnService _vpnService = null!;
@@ -82,10 +60,73 @@ public sealed partial class VpnView : ContentView
     private long _lastBytesSent, _lastBytesReceived;
     private DateTime _lastTrafficUpdate = DateTime.Now;
 
+    private string? _buttonImageIdlePath;
+    private string? _buttonImageConnectingPath;
+    private string? _buttonImageActivePath;
+    private string? _buttonImageErrorPath;
+
+    private ButtonAnimatedClip? _buttonAnimatedIdle;
+    private ButtonAnimatedClip? _buttonAnimatedConnecting;
+    private ButtonAnimatedClip? _buttonAnimatedActive;
+    private ButtonAnimatedClip? _buttonAnimatedError;
+    private ButtonAnimatedClip? _buttonAnimatedCurrent;
+    private IDispatcherTimer? _buttonAnimationTimer;
+    private CancellationTokenSource? _buttonAnimCts;
+    private bool _isWindowFocused = true;
+
     public VpnView()
     {
         InitializeComponent();
+        RootLayoutGrid.SizeChanged += (s, e) =>
+        {
+            if (RootLayoutGrid.Width > 0)
+            {
+                var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
+                if (avail > 0)
+                {
+                    ApplyCardWidth(avail);
+                }
+            }
+        };
+
         Unloaded += (_, _) => UnsubscribeEvents();
+    }
+
+    public void ForceLayoutWidth()
+    {
+        if (Width > 0 && RootLayoutGrid is not null)
+        {
+            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (avail > 0)
+            {
+                ApplyCardWidth(avail);
+            }
+        }
+        else if (RootLayoutGrid is { Width: > 0 })
+        {
+            var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (avail > 0)
+            {
+                ApplyCardWidth(avail);
+            }
+        }
+    }
+
+    private void ApplyCardWidth(double targetWidth)
+    {
+        if (targetWidth <= 0 || ContentGrid is null)
+        {
+            return;
+        }
+
+        var safeWidth = Math.Min(targetWidth - 6, 950);
+        if (safeWidth <= 0)
+        {
+            return;
+        }
+
+        ContentGrid.WidthRequest = safeWidth;
+        ContentGrid.MaximumWidthRequest = safeWidth;
     }
 
     public void Initialize(MainPage parent, IVpnService vpnService, ApiService apiService)
@@ -123,13 +164,15 @@ public sealed partial class VpnView : ContentView
 
         StopLoaderAnimation();
         StopGraphAnimation();
+        DisposeAnimatedButtonResources();
     }
 
     public async Task PlayEntranceAnimationAsync()
     {
         UpdateRayIndicator();
-        await UIAnimations.PlayEntranceCascadeAsync(80, 450,
-            CardIpWrapper, Card2Wrapper, Card5Wrapper, Card1Wrapper);
+        Opacity = 1;
+        TranslationY = 0;
+        await this.PlayCardsEntranceAsync(35, 240);
     }
 
     public void UpdateBalanceUI(string timeText, string? trafficText = null)
@@ -161,7 +204,7 @@ public sealed partial class VpnView : ContentView
             {
                 RayIndicatorIcon.Icon = FluentIcons.Rocket24;
                 RayIndicatorIcon.IconColor = Color.FromArgb("#A855F7");
-                RayIndicatorLabel.Text = "Режим: FECHSUE (ГигаТуннель • 0% потерь)";
+                RayIndicatorLabel.Text = "Режим: FHARCSUE (Мульти-пинговый Watchdog • 0% потерь)";
             }
             else if (activeProto == "AUTO" && OctopusEngine.Current is not { IsConnected: true })
             {
@@ -193,21 +236,6 @@ public sealed partial class VpnView : ContentView
         });
     }
 
-    private async void OnPointerEnteredAsync(object? sender, PointerEventArgs e)
-    {
-        if (sender is VisualElement ve && ve.IsEnabled)
-        {
-            _ = await ve.ScaleToAsync(1.03, 120, Easing.CubicOut);
-        }
-    }
-
-    private async void OnPointerExitedAsync(object? sender, PointerEventArgs e)
-    {
-        if (sender is VisualElement ve && ve.IsEnabled)
-        {
-            _ = await ve.ScaleToAsync(1.0, 120, Easing.CubicIn);
-        }
-    }
 #pragma warning disable IDE0390
     private async void OnRayIndicatorBadgeTappedAsync(object? sender, EventArgs e)
 #pragma warning restore IDE0390
@@ -223,7 +251,7 @@ public sealed partial class VpnView : ContentView
             "Отмена",
             null,
             "AUTO (Умный подбор и Fallback)",
-            "FECHSUE (ГигаТуннель UDP • 0% потерь)",
+            "FHARCSUE (Мульти-пинговый Watchdog • 0% потерь)",
             "HTTP/3 (QUIC • Маскировка под Chrome)",
             "HTTP/2 (Стандартный TLS • Стабильный TCP)");
 
@@ -236,7 +264,7 @@ public sealed partial class VpnView : ContentView
         {
             ApplyProtocolSelection("AUTO");
         }
-        else if (action.StartsWith("FECHSUE", StringComparison.OrdinalIgnoreCase))
+        else if (action.StartsWith("FHARCSUE", StringComparison.OrdinalIgnoreCase) || action.StartsWith("FECHSUE", StringComparison.OrdinalIgnoreCase))
         {
             ApplyProtocolSelection("FECHSUE");
         }
@@ -317,7 +345,11 @@ public sealed partial class VpnView : ContentView
                     var (success, servers, _) = await _apiService.GetServersAsync();
                     if (success && servers is { Count: > 0 })
                     {
-                        await OctopusEngine.Current.ReconnectAsync(servers[0].Ip, servers[0].Port);
+                        var candidateServers = await ProbeBestServerAsync(servers);
+                        var targetServer = candidateServers.Count > 0 ? candidateServers[0] : servers[0];
+                        await _vpnService.StopVpnAsync();
+                        await Task.Delay(250);
+                        await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, candidateServers.Count > 0 ? candidateServers : servers);
                         UpdateRayIndicator();
                     }
                 }
@@ -331,21 +363,32 @@ public sealed partial class VpnView : ContentView
 
     private void UpdateProtocolModalUI(string selectedProto)
     {
-        var borderInactive = Color.FromArgb("#2D2D3D");
+        var borderInactive = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bi) == true && bi is Color bic)
+            ? bic
+            : Color.FromArgb("#2D2D3D");
+        var activeStroke = (Application.Current?.Resources.TryGetValue("Primary", out var p) == true && p is Color pc)
+            ? pc
+            : Color.FromArgb("#0078D4");
+        var accentColor = (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac)
+            ? ac
+            : Color.FromArgb("#00E5FF");
+        var purpleColor = (Application.Current?.Resources.TryGetValue("Purple", out var pr) == true && pr is Color prc)
+            ? prc
+            : Color.FromArgb("#A855F7");
 
-        ModalAutoCard.Stroke = selectedProto == "AUTO" ? Color.FromArgb("#00E5FF") : borderInactive;
+        ModalAutoCard.Stroke = selectedProto == "AUTO" ? accentColor : borderInactive;
         ModalAutoCard.StrokeThickness = selectedProto == "AUTO" ? 1.5 : 1;
         ModalAutoCheck.IsVisible = selectedProto == "AUTO";
 
-        ModalFechsueCard.Stroke = selectedProto == "FECHSUE" ? Color.FromArgb("#A855F7") : borderInactive;
+        ModalFechsueCard.Stroke = selectedProto == "FECHSUE" ? purpleColor : borderInactive;
         ModalFechsueCard.StrokeThickness = selectedProto == "FECHSUE" ? 1.5 : 1;
         ModalFechsueCheck.IsVisible = selectedProto == "FECHSUE";
 
-        ModalHttp3Card.Stroke = selectedProto == "HTTP3" ? Color.FromArgb("#00E5FF") : borderInactive;
+        ModalHttp3Card.Stroke = selectedProto == "HTTP3" ? accentColor : borderInactive;
         ModalHttp3Card.StrokeThickness = selectedProto == "HTTP3" ? 1.5 : 1;
         ModalHttp3Check.IsVisible = selectedProto == "HTTP3";
 
-        ModalHttp2Card.Stroke = selectedProto == "HTTP2" ? Color.FromArgb("#0078D4") : borderInactive;
+        ModalHttp2Card.Stroke = selectedProto == "HTTP2" ? activeStroke : borderInactive;
         ModalHttp2Card.StrokeThickness = selectedProto == "HTTP2" ? 1.5 : 1;
         ModalHttp2Check.IsVisible = selectedProto == "HTTP2";
     }
@@ -457,7 +500,7 @@ public sealed partial class VpnView : ContentView
                     OuterAura.IsVisible = true;
                     IpAddressLabel.Text = "IP: не назначен";
                     ConnectButtonCore.IsEnabled = true;
-                    await SetNeonStateAsync("Не в сети", "СТАРТ", false);
+                    await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
                     _parent.NotifyVpnDisconnected();
                     break;
 
@@ -466,9 +509,10 @@ public sealed partial class VpnView : ContentView
                     _isErrorState = false;
                     StartGraphAnimation();
                     OuterAura.IsVisible = true;
+                    IpAddressLabel.Text = OctopusEngine.Current.AssignedIp ?? "Подключен";
                     ConnectButtonCore.IsEnabled = true;
                     UpdateRayIndicator();
-                    await SetNeonStateAsync("Защищено", "СТОП", true);
+                    await SetNeonStateAsync("Защищено", "СТОП", AppVpnState.Connected);
                     _parent.NotifyVpnConnected();
                     break;
 
@@ -480,7 +524,7 @@ public sealed partial class VpnView : ContentView
                     OuterAura.IsVisible = true;
                     IpAddressLabel.Text = "IP: не назначен";
                     ConnectButtonCore.IsEnabled = true;
-                    await SetNeonStateAsync("Ошибка", "ПОВТОРИТЬ", false, true);
+                    await SetNeonStateAsync("Ошибка", "ПОВТОРИТЬ", AppVpnState.Error);
                     _parent.NotifyVpnDisconnected();
                     break;
 
@@ -490,7 +534,7 @@ public sealed partial class VpnView : ContentView
                     StartLoaderAnimation();
                     ConnectButtonCore.IsEnabled = false;
                     IpAddressLabel.Text = "IP: получение...";
-                    await SetNeonStateAsync("Подключение...", "ЖДИТЕ", false);
+                    await SetNeonStateAsync("Подключение...", "ЖДИТЕ", state);
                     break;
 
                 case AppVpnState.Disconnecting:
@@ -499,6 +543,7 @@ public sealed partial class VpnView : ContentView
                     IpAddressLabel.Text = "IP: отключение...";
                     StatusLabel.Text = "Отключение...";
                     ConnectButtonText.Text = "ЖДИТЕ";
+                    _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
                     _ = LoaderCanvas.ScaleToAsync(1.0, 500, Easing.SpringOut);
                     _ = LoaderCanvas.FadeToAsync(0, 400, Easing.CubicOut);
                     break;
@@ -509,33 +554,60 @@ public sealed partial class VpnView : ContentView
         });
     }
 
-    private async Task SetNeonStateAsync(string status, string btnText, bool connected, bool isError = false)
+    private async Task SetNeonStateAsync(string status, string btnText, AppVpnState state)
     {
         StatusLabel.Text = status;
         ConnectButtonText.Text = btnText;
 
-        if (connected)
+        _ = UpdateCustomButtonStateAsync(state);
+
+        if (state == AppVpnState.Connected)
         {
             await UIAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-            ConnectButtonCore.BackgroundColor = t_cyanBg;
-            ConnectButtonCore.Stroke = t_cyanAccent;
+            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+            {
+                var accentColor = (Application.Current?.Resources.TryGetValue("Accent", out var ac) == true && ac is Color acc)
+                    ? acc
+                    : t_cyanAccent;
+                ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
+                ConnectButtonCore.Stroke = accentColor;
+            }
             var targetScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.3 : 2.0;
             SafeScaleTo(LoaderCanvas, targetScale, 500, Easing.SpringOut);
         }
-        else if (isError)
+        else if (state == AppVpnState.Error)
         {
             await UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
             ConnectIcon.IconColor = Colors.Red;
             StatusLabel.TextColor = Colors.Red;
-            ConnectButtonCore.BackgroundColor = t_redBg;
-            ConnectButtonCore.Stroke = Colors.Red;
+            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+            {
+                ConnectButtonCore.BackgroundColor = t_redBg;
+                ConnectButtonCore.Stroke = Colors.Red;
+            }
+            SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
+        }
+        else if (state is AppVpnState.Connecting or AppVpnState.Reconnecting)
+        {
+            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+            {
+                ConnectButtonCore.ClearValue(BackgroundColorProperty);
+                ConnectButtonCore.ClearValue(Border.StrokeProperty);
+                ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+                ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+            }
             SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
         }
         else
         {
             await UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-            ConnectButtonCore.ClearValue(BackgroundColorProperty);
-            ConnectButtonCore.ClearValue(Border.StrokeProperty);
+            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+            {
+                ConnectButtonCore.ClearValue(BackgroundColorProperty);
+                ConnectButtonCore.ClearValue(Border.StrokeProperty);
+                ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+                ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+            }
             SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
         }
     }
@@ -562,6 +634,10 @@ public sealed partial class VpnView : ContentView
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[VPN STOP ERROR] {ex.Message}");
+                }
+                finally
+                {
+                    _isBusy = false;
                 }
             });
             return;
@@ -591,13 +667,12 @@ public sealed partial class VpnView : ContentView
             }
 #endif
 
-            if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet)
+            if (Connectivity.Current.NetworkAccess == NetworkAccess.None)
             {
                 await _parent.DisplayAlertAsync("Нет интернета", "Отсутствует подключение к интернету. Проверьте сеть и повторите попытку.", "OK");
                 return;
             }
 
-            // 🛡️ Проверка на наличие сертификатов перехвата трафика (Russian Root CA / MITM)
             var auditResult = await PlatformServices.CertificateAudit.CheckCertificatesAsync();
             if (auditResult.HasUntrustedRoot)
             {
@@ -628,14 +703,57 @@ public sealed partial class VpnView : ContentView
                 return;
             }
 
+            StartLoaderAnimation();
+            ConnectButtonCore.IsEnabled = false;
+            IpAddressLabel.Text = "IP: получение...";
+            await SetNeonStateAsync("Подключение...", "ЖДИТЕ", AppVpnState.Connecting);
+
+            try
+            {
+                using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var activeBridge = await DiscoveryService.GetActiveBridgeUrlAsync(forceRefresh: true, ct: bridgeCts.Token);
+                if (!string.IsNullOrWhiteSpace(activeBridge))
+                {
+                    AppConfig.ApiBaseUrl = $"https://{activeBridge}/";
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[VPN CONNECT] Bridge discovery check failed: {ex.Message}");
+            }
+
             var (success, servers, errorMsg) = await _apiService.GetServersAsync();
             if (!success || servers is null || servers.Count == 0)
             {
+                if (AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
+                {
+                    AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+                    (success, servers, errorMsg) = await _apiService.GetServersAsync();
+                }
+            }
+
+            if (!success || servers is null || servers.Count == 0)
+            {
+                StopLoaderAnimation();
+                ConnectButtonCore.IsEnabled = true;
+                IpAddressLabel.Text = "IP: не назначен";
+                await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
                 await _parent.DisplayAlertAsync("Ошибка", errorMsg ?? "Не удалось получить список нод", "OK");
                 return;
             }
 
-            var targetServer = servers[0];
+            var candidateServers = await ProbeBestServerAsync(servers);
+            if (candidateServers.Count == 0)
+            {
+                StopLoaderAnimation();
+                ConnectButtonCore.IsEnabled = true;
+                IpAddressLabel.Text = "IP: не назначен";
+                await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
+                await _parent.DisplayAlertAsync("Ошибка", "Доступные сервера не отвечают. Проверьте интернет-соединение.", "OK");
+                return;
+            }
+
+            var targetServer = candidateServers[0];
             if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
             {
                 OctopusEngine.DynamicSslPublicKeyHash = targetServer.CertHash;
@@ -649,17 +767,103 @@ public sealed partial class VpnView : ContentView
                 }
             }
 
-            await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port));
+            await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, candidateServers));
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[VPN CONNECT ERROR] {ex.Message}");
-            await _parent.DisplayAlertAsync("Ошибка", "Произошла ошибка при подключении/отключении", "OK");
+            StopLoaderAnimation();
+            ConnectButtonCore.IsEnabled = true;
+            IpAddressLabel.Text = "IP: не назначен";
+            await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
+            var friendlyMsg = ex is SocketException or InvalidOperationException
+                ? ex.Message
+                : "Произошла ошибка при подключении/отключении";
+            await _parent.DisplayAlertAsync("Ошибка", friendlyMsg, "OK");
         }
         finally
         {
             _isBusy = false;
         }
+    }
+
+    private static async Task<List<VpnServerDto>> ProbeBestServerAsync(List<VpnServerDto> servers)
+    {
+        var probeTasks = servers.Select(async server =>
+        {
+            var sw = Stopwatch.StartNew();
+            var reachable = false;
+            try
+            {
+                using var cts = new CancellationTokenSource(1500);
+                var host = server.Ip;
+                var port = server.Port > 0 ? server.Port : 443;
+
+                if (!IPAddress.TryParse(host, out _))
+                {
+                    var addrs = await Dns.GetHostAddressesAsync(host, cts.Token);
+                    if (!addrs.Any(a => a.AddressFamily == AddressFamily.InterNetwork))
+                    {
+                        return (server, reachable: false, latencyMs: long.MaxValue);
+                    }
+                }
+
+                using var client = new TcpClient();
+                await client.ConnectAsync(host, port, cts.Token).AsTask();
+                sw.Stop();
+                reachable = true;
+            }
+            catch
+            {
+                sw.Stop();
+                reachable = false;
+            }
+
+            return (server, reachable, latencyMs: reachable ? sw.ElapsedMilliseconds : long.MaxValue);
+        }).ToList();
+
+        var results = await Task.WhenAll(probeTasks);
+        var reachableServers = results
+            .Where(r => r.reachable)
+            .OrderBy(r => r.latencyMs)
+            .Select(r => r.server)
+            .ToList();
+
+        if (reachableServers.Count > 0)
+        {
+            return reachableServers;
+        }
+
+        var fallbackCandidates = new List<string>();
+        try
+        {
+            var bridge = await DiscoveryService.GetActiveBridgeUrlAsync(forceRefresh: false);
+            if (!string.IsNullOrWhiteSpace(bridge))
+            {
+                fallbackCandidates.Add(bridge);
+            }
+        }
+        catch { }
+        fallbackCandidates.Add("obxodka.one");
+
+        foreach (var fbHost in fallbackCandidates.Distinct())
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(1500);
+                var addrs = await Dns.GetHostAddressesAsync(fbHost, cts.Token);
+                if (addrs.Any(a => a.AddressFamily == AddressFamily.InterNetwork))
+                {
+                    using var client = new TcpClient();
+                    await client.ConnectAsync(fbHost, 443, cts.Token).AsTask();
+                    reachableServers.Add(new VpnServerDto(fbHost, 443, "Auto", true, 50, null));
+                    break;
+                }
+            }
+            catch { }
+        }
+
+        return reachableServers.Count > 0 ? reachableServers : servers;
     }
 
     private void StartGraphAnimation()
@@ -907,21 +1111,35 @@ public sealed partial class VpnView : ContentView
             canvas.DrawCircle(lastPt.X, lastPt.Y, 2.5f, dotSolidPaint);
         }
 
-        DrawStream(true, t_skStrokeUpPaint, t_skGraphUpFill, t_skGraphUp);
-        DrawStream(false, t_skStrokeDownPaint, t_skGraphDownFill, t_skGraphDown);
-    }
+        var skPrimaryBright = GetSkiaThemeColor("PrimaryBright", t_skGraphUp);
+        var skAccent = GetSkiaThemeColor("Accent", t_skGraphDown);
+        var skGraphUpFill = skPrimaryBright.WithAlpha(55);
+        var skGraphDownFill = skAccent.WithAlpha(75);
 
-    public static string FormatBytes(double bytes)
-    {
-        int i;
-        var d = bytes;
-        for (i = 0; i < t_suffixes.Length && bytes >= 1024; i++, bytes /= 1024)
+        using var strokeUpPaint = new SKPaint
         {
-            d = bytes / 1024.0;
-        }
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            Color = skPrimaryBright,
+            StrokeWidth = 2.5f,
+            StrokeCap = SKStrokeCap.Round,
+            StrokeJoin = SKStrokeJoin.Round
+        };
+        using var strokeDownPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            Color = skAccent,
+            StrokeWidth = 2.5f,
+            StrokeCap = SKStrokeCap.Round,
+            StrokeJoin = SKStrokeJoin.Round
+        };
 
-        return $"{d:0.##} {t_suffixes[i]}";
+        DrawStream(true, strokeUpPaint, skGraphUpFill, skPrimaryBright);
+        DrawStream(false, strokeDownPaint, skGraphDownFill, skAccent);
     }
+
+    public static string FormatBytes(double bytes) => FormatHelper.FormatBytes(bytes);
 
     private void StartLoaderAnimation()
     {
@@ -1042,8 +1260,10 @@ public sealed partial class VpnView : ContentView
         var cy = e.Info.Height / 2f;
         var r = Math.Min(cx, cy) - 4f;
 
-        var colorPurple = _isErrorState ? SKColors.DarkRed : t_skPurple;
-        var colorCyan = _isErrorState ? SKColors.Red : t_skCyan;
+        var skPrimary = GetSkiaThemeColor("Primary", t_skPurple);
+        var skAccent = GetSkiaThemeColor("Accent", t_skCyan);
+        var colorPurple = _isErrorState ? SKColors.DarkRed : skPrimary;
+        var colorCyan = _isErrorState ? SKColors.Red : skAccent;
 
         using var glowPaint = new SKPaint
         {
@@ -1079,6 +1299,727 @@ public sealed partial class VpnView : ContentView
             canvas.DrawPath(path, polyPaint);
             canvas.Restore();
         }
+    }
+
+    private static SKColor GetSkiaThemeColor(string key, SKColor fallback) =>
+        Application.Current?.Resources.TryGetValue(key, out var val) == true && val is Color c
+            ? new SKColor((byte)(c.Red * 255), (byte)(c.Green * 255), (byte)(c.Blue * 255), (byte)(c.Alpha * 255))
+            : fallback;
+
+    private sealed partial class ButtonAnimatedClip : IDisposable
+    {
+        private readonly List<SKBitmap> _frames = [];
+        private readonly List<int> _durations = [];
+        private int _currentFrameIndex;
+        private int _elapsedMs;
+
+        public int FrameCount => _frames.Count;
+        public SKBitmap? CurrentBitmap => _frames.Count > 0 ? _frames[_currentFrameIndex] : null;
+
+        public static ButtonAnimatedClip? Load(string path, int maxFrames = 180, CancellationToken ct = default)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                {
+                    return null;
+                }
+
+                using var stream = File.OpenRead(path);
+                using var codec = SKCodec.Create(stream);
+                if (codec == null)
+                {
+                    var staticBmp = SKBitmap.Decode(path);
+                    if (staticBmp == null)
+                    {
+                        return null;
+                    }
+
+                    var staticClip = new ButtonAnimatedClip();
+                    staticClip._frames.Add(staticBmp);
+                    staticClip._durations.Add(1000);
+                    return staticClip;
+                }
+
+                var count = codec.FrameCount;
+                var clip = new ButtonAnimatedClip();
+                var frameInfos = codec.FrameInfo;
+
+                var step = count > maxFrames ? (int)Math.Ceiling((double)count / maxFrames) : 1;
+
+                for (var i = 0; i < count; i += step)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        clip.Dispose();
+                        return null;
+                    }
+
+                    var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+                    var bmp = new SKBitmap(info);
+                    var opts = new SKCodecOptions(i);
+                    var res = codec.GetPixels(info, bmp.GetPixels(), opts);
+                    if (res is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
+                    {
+                        bmp.Dispose();
+                        continue;
+                    }
+
+                    var dur = frameInfos != null && frameInfos.Length > i ? frameInfos[i].Duration : 16;
+                    if (dur <= 0)
+                    {
+                        dur = 16;
+                    }
+
+                    dur *= step;
+
+                    clip._frames.Add(bmp);
+                    clip._durations.Add(dur);
+                }
+
+                if (clip._frames.Count == 0)
+                {
+                    clip.Dispose();
+                    return null;
+                }
+
+                return clip;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[AnimButton] Load failed for {path}: {ex.Message}");
+                return null;
+            }
+        }
+
+        public void Advance(int stepMs)
+        {
+            if (_frames.Count <= 1)
+            {
+                return;
+            }
+
+            _elapsedMs += stepMs;
+            while (_durations.Count > _currentFrameIndex && _elapsedMs >= _durations[_currentFrameIndex])
+            {
+                _elapsedMs -= _durations[_currentFrameIndex];
+                _currentFrameIndex = (_currentFrameIndex + 1) % _frames.Count;
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var f in _frames)
+            {
+                f.Dispose();
+            }
+            _frames.Clear();
+            _durations.Clear();
+        }
+    }
+
+    private void OnCustomButtonAnimatedCanvasPaint(object? sender, SKPaintSurfaceEventArgs e)
+    {
+        var canvas = e.Surface.Canvas;
+        canvas.Clear(SKColors.Transparent);
+
+        var current = _buttonAnimatedCurrent;
+        var bmp = current?.CurrentBitmap;
+        if (bmp is null)
+        {
+            return;
+        }
+
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+        };
+
+        var info = e.Info;
+        var src = new SKRect(0, 0, bmp.Width, bmp.Height);
+        var dst = new SKRect(0, 0, info.Width, info.Height);
+        canvas.DrawBitmap(bmp, src, dst, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+    }
+
+    public void OnWindowFocusChanged(bool isFocused)
+    {
+        _isWindowFocused = isFocused;
+        if (!isFocused)
+        {
+            StopButtonAnimation();
+        }
+        else
+        {
+            if (CustomButtonAnimatedCanvas.IsVisible && _buttonAnimatedCurrent is not null)
+            {
+                StartButtonAnimation();
+            }
+        }
+    }
+
+    private void StartButtonAnimation()
+    {
+        if (!_isWindowFocused)
+        {
+            return;
+        }
+
+        if (_buttonAnimationTimer is not null)
+        {
+            return;
+        }
+
+        _buttonAnimationTimer = Dispatcher.CreateTimer();
+        _buttonAnimationTimer.Interval = TimeSpan.FromMilliseconds(16);
+#pragma warning disable IDE0058
+        _buttonAnimationTimer.Tick += (_, _) =>
+        {
+            _buttonAnimatedCurrent?.Advance(16);
+            CustomButtonAnimatedCanvas.InvalidateSurface();
+        };
+#pragma warning restore IDE0058
+        _buttonAnimationTimer.Start();
+    }
+
+    private void StopButtonAnimation()
+    {
+        _buttonAnimationTimer?.Stop();
+        _buttonAnimationTimer = null;
+    }
+
+    private void DisposeAnimatedButtonResources()
+    {
+        _buttonAnimCts?.Cancel();
+        _buttonAnimCts?.Dispose();
+        _buttonAnimCts = null;
+        StopButtonAnimation();
+        _buttonAnimatedCurrent = null;
+        _buttonAnimatedIdle?.Dispose();
+        _buttonAnimatedIdle = null;
+        _buttonAnimatedConnecting?.Dispose();
+        _buttonAnimatedConnecting = null;
+        _buttonAnimatedActive?.Dispose();
+        _buttonAnimatedActive = null;
+        _buttonAnimatedError?.Dispose();
+        _buttonAnimatedError = null;
+    }
+
+    private string? GetButtonImagePathForState(AppVpnState state)
+    {
+        return state switch
+        {
+            AppVpnState.Connected => _buttonImageActivePath ?? _buttonImageIdlePath,
+            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonImageConnectingPath ?? _buttonImageIdlePath,
+            AppVpnState.Error => _buttonImageErrorPath ?? _buttonImageIdlePath,
+            AppVpnState.Disconnected => _buttonImageIdlePath,
+            _ => _buttonImageIdlePath
+        };
+    }
+
+    private ButtonAnimatedClip? GetButtonAnimatedClipForState(AppVpnState state)
+    {
+        return state switch
+        {
+            AppVpnState.Connected => _buttonAnimatedActive,
+            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonAnimatedConnecting,
+            AppVpnState.Error => _buttonAnimatedError,
+            AppVpnState.Disconnected => _buttonAnimatedIdle,
+            _ => null
+        };
+    }
+
+    public void ApplyThemeButton(
+        string? imageIdlePath,
+        string? imageConnectingPath = null,
+        string? imageActivePath = null,
+        string? imageErrorPath = null,
+        string? videoIdlePath = null,
+        string? videoConnectingPath = null,
+        string? videoActivePath = null,
+        string? videoErrorPath = null)
+    {
+        _buttonImageIdlePath = imageIdlePath;
+        _buttonImageConnectingPath = imageConnectingPath;
+        _buttonImageActivePath = imageActivePath;
+        _buttonImageErrorPath = imageErrorPath;
+
+        var hasCustom = !string.IsNullOrEmpty(imageIdlePath) ||
+                        !string.IsNullOrEmpty(imageConnectingPath) ||
+                        !string.IsNullOrEmpty(imageActivePath) ||
+                        !string.IsNullOrEmpty(imageErrorPath);
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            DefaultButtonContent.IsVisible = !hasCustom;
+            CustomButtonImage.IsVisible = hasCustom;
+
+            if (hasCustom)
+            {
+                ConnectButtonCore.BackgroundColor = Colors.Transparent;
+                ConnectButtonCore.Stroke = Colors.Transparent;
+
+                var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
+                var initialPath = GetButtonImagePathForState(currentState);
+                if (!string.IsNullOrEmpty(initialPath) && File.Exists(initialPath))
+                {
+                    CustomButtonImage.Source = ImageSource.FromFile(initialPath);
+                }
+            }
+            else
+            {
+                ResetThemeButtonInternal();
+            }
+        });
+
+        var idleCandidate = videoIdlePath ?? (IsPotentialAnimatedFile(imageIdlePath) ? imageIdlePath : null);
+        var connCandidate = videoConnectingPath ?? (IsPotentialAnimatedFile(imageConnectingPath) ? imageConnectingPath : null);
+        var activeCandidate = videoActivePath ?? (IsPotentialAnimatedFile(imageActivePath) ? imageActivePath : null);
+        var errorCandidate = videoErrorPath ?? (IsPotentialAnimatedFile(imageErrorPath) ? imageErrorPath : null);
+
+        var hasAnyAnim = !string.IsNullOrEmpty(idleCandidate) ||
+                         !string.IsNullOrEmpty(connCandidate) ||
+                         !string.IsNullOrEmpty(activeCandidate) ||
+                         !string.IsNullOrEmpty(errorCandidate);
+
+        if (!hasAnyAnim)
+        {
+            DisposeAnimatedButtonResources();
+            MainThread.BeginInvokeOnMainThread(() => CustomButtonAnimatedCanvas.IsVisible = false);
+            return;
+        }
+
+        _buttonAnimCts?.Cancel();
+        _buttonAnimCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _buttonAnimCts = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var idleClip = !string.IsNullOrEmpty(idleCandidate) && File.Exists(idleCandidate)
+                    ? ButtonAnimatedClip.Load(idleCandidate, 180, token)
+                    : null;
+                if (token.IsCancellationRequested)
+                {
+                    idleClip?.Dispose();
+                    return;
+                }
+
+                var connClip = !string.IsNullOrEmpty(connCandidate) && File.Exists(connCandidate)
+                    ? ButtonAnimatedClip.Load(connCandidate, 180, token)
+                    : null;
+                if (token.IsCancellationRequested)
+                {
+                    idleClip?.Dispose();
+                    connClip?.Dispose();
+                    return;
+                }
+
+                var activeClip = !string.IsNullOrEmpty(activeCandidate) && File.Exists(activeCandidate)
+                    ? ButtonAnimatedClip.Load(activeCandidate, 180, token)
+                    : null;
+                if (token.IsCancellationRequested)
+                {
+                    idleClip?.Dispose();
+                    connClip?.Dispose();
+                    activeClip?.Dispose();
+                    return;
+                }
+
+                var errorClip = !string.IsNullOrEmpty(errorCandidate) && File.Exists(errorCandidate)
+                    ? ButtonAnimatedClip.Load(errorCandidate, 180, token)
+                    : null;
+                if (token.IsCancellationRequested)
+                {
+                    idleClip?.Dispose();
+                    connClip?.Dispose();
+                    activeClip?.Dispose();
+                    errorClip?.Dispose();
+                    return;
+                }
+
+                var hasLoadedAnim = idleClip != null || connClip != null || activeClip != null || errorClip != null;
+                if (!hasLoadedAnim || token.IsCancellationRequested)
+                {
+                    idleClip?.Dispose();
+                    connClip?.Dispose();
+                    activeClip?.Dispose();
+                    errorClip?.Dispose();
+                    return;
+                }
+
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        idleClip?.Dispose();
+                        connClip?.Dispose();
+                        activeClip?.Dispose();
+                        errorClip?.Dispose();
+                        return;
+                    }
+
+                    StopButtonAnimation();
+                    _buttonAnimatedIdle?.Dispose();
+                    _buttonAnimatedConnecting?.Dispose();
+                    _buttonAnimatedActive?.Dispose();
+                    _buttonAnimatedError?.Dispose();
+
+                    _buttonAnimatedIdle = idleClip;
+                    _buttonAnimatedConnecting = connClip;
+                    _buttonAnimatedActive = activeClip;
+                    _buttonAnimatedError = errorClip;
+
+                    var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
+                    await UpdateCustomButtonStateAsync(currentState);
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[VpnView] Async button animation load error: {ex.Message}");
+            }
+        }, token);
+    }
+
+    private static bool IsPotentialAnimatedFile(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        var ext = Path.GetExtension(path);
+        return ext.Equals(".webp", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".apng", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void ResetThemeButton()
+    {
+        _buttonImageIdlePath = null;
+        _buttonImageConnectingPath = null;
+        _buttonImageActivePath = null;
+        _buttonImageErrorPath = null;
+        DisposeAnimatedButtonResources();
+        MainThread.BeginInvokeOnMainThread(ResetThemeButtonInternal);
+    }
+
+    private void ResetThemeButtonInternal()
+    {
+        CustomButtonImage.IsVisible = false;
+        CustomButtonImage.Source = null;
+        CustomButtonAnimatedCanvas.IsVisible = false;
+        DefaultButtonContent.IsVisible = true;
+        ConnectButtonCore.ClearValue(BackgroundColorProperty);
+        ConnectButtonCore.ClearValue(Border.StrokeProperty);
+        ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+        ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+    }
+
+    private async Task UpdateCustomButtonStateAsync(AppVpnState state)
+    {
+        var targetClip = GetButtonAnimatedClipForState(state);
+        var targetImagePath = GetButtonImagePathForState(state);
+
+        if (targetClip != null)
+        {
+            _buttonAnimatedCurrent = targetClip;
+            CustomButtonImage.IsVisible = false;
+            CustomButtonAnimatedCanvas.IsVisible = true;
+            DefaultButtonContent.IsVisible = false;
+            ConnectButtonCore.BackgroundColor = Colors.Transparent;
+            ConnectButtonCore.Stroke = Colors.Transparent;
+            StartButtonAnimation();
+            CustomButtonAnimatedCanvas.InvalidateSurface();
+            return;
+        }
+
+        StopButtonAnimation();
+        _buttonAnimatedCurrent = null;
+        CustomButtonAnimatedCanvas.IsVisible = false;
+
+        if (!string.IsNullOrEmpty(targetImagePath) && File.Exists(targetImagePath))
+        {
+            DefaultButtonContent.IsVisible = false;
+            ConnectButtonCore.BackgroundColor = Colors.Transparent;
+            ConnectButtonCore.Stroke = Colors.Transparent;
+
+            if (CustomButtonImage.IsVisible)
+            {
+#pragma warning disable IDE0058
+                await CustomButtonImage.FadeToAsync(0, 90, Easing.CubicOut);
+                CustomButtonImage.Source = ImageSource.FromFile(targetImagePath);
+                CustomButtonImage.Scale = 0.92;
+                var fadeIn = CustomButtonImage.FadeToAsync(1, 130, Easing.CubicIn);
+                var scaleIn = CustomButtonImage.ScaleToAsync(1.0, 200, Easing.SpringOut);
+                await Task.WhenAll(fadeIn, scaleIn);
+#pragma warning restore IDE0058
+            }
+            else
+            {
+                CustomButtonImage.Opacity = 1;
+                CustomButtonImage.Scale = 1.0;
+                CustomButtonImage.Source = ImageSource.FromFile(targetImagePath);
+                CustomButtonImage.IsVisible = true;
+            }
+            return;
+        }
+
+        CustomButtonImage.IsVisible = false;
+        CustomButtonImage.Source = null;
+        DefaultButtonContent.IsVisible = true;
+    }
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = GetAppColor("BgSurface", Color.FromArgb("#161622"));
+        var bgElevated = GetAppColor("BgElevated", Color.FromArgb("#202030"));
+
+        CardIp.BackgroundColor = bgSurface;
+        Card2.BackgroundColor = bgSurface;
+        Card5.BackgroundColor = bgSurface;
+        Card6.BackgroundColor = bgSurface;
+        Card1Wrapper.BackgroundColor = bgSurface;
+        RayIndicatorBadge.BackgroundColor = bgElevated;
+    }
+
+    private double _lastAllocatedW = -1;
+    private double _lastAllocatedH = -1;
+    private double _currentTopInset;
+
+    public void SetHeaderTopInset(double top)
+    {
+        _currentTopInset = top;
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
+        {
+            RootLayoutGrid.Padding = new Thickness(8, Math.Max(top + 4, 8), 8, 0);
+        }
+
+        if (_lastAllocatedW > 0 && _lastAllocatedH > 0)
+        {
+            ApplyDynamicLayout(_lastAllocatedW, _lastAllocatedH);
+        }
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        if (Math.Abs(_lastAllocatedW - width) > 1 || Math.Abs(_lastAllocatedH - height) > 1)
+        {
+            _lastAllocatedW = width;
+            _lastAllocatedH = height;
+            ApplyDynamicLayout(width, height);
+        }
+    }
+
+    private void ApplyDynamicLayout(double width, double height)
+    {
+        var availWidth = width - (RootLayoutGrid?.Padding.HorizontalThickness ?? 0);
+        if (availWidth > 0)
+        {
+            ApplyCardWidth(availWidth);
+        }
+
+        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
+        var isWide = AdaptiveLayoutHelper.IsWideLayout(width, isDesktopOrTablet);
+
+        if (ContentGrid is not null)
+        {
+            if (isWide)
+            {
+                if (ContentGrid.ColumnDefinitions.Count != 2)
+                {
+                    ContentGrid.ColumnDefinitions.Clear();
+                    ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(5, GridUnitType.Star)));
+                    ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(4, GridUnitType.Star)));
+                    ContentGrid.RowDefinitions.Clear();
+                    ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+                    ContentGrid.ColumnSpacing = 28;
+                    ContentGrid.RowSpacing = 0;
+                    Grid.SetColumn(Card1Wrapper, 0);
+                    Grid.SetRow(Card1Wrapper, 0);
+                    Grid.SetColumn(TopCardsGrid, 1);
+                    Grid.SetRow(TopCardsGrid, 0);
+                    TopCardsGrid.RowDefinitions.Clear();
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(new GridLength(2, GridUnitType.Star)));
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+                }
+
+                Card1ContentGrid.Padding = new Thickness(28, 32);
+                GraphContainer.IsVisible = true;
+                GraphContainer.HeightRequest = -1;
+                Card5.HeightRequest = -1;
+                Card6.HeightRequest = -1;
+                ButtonContainerGrid.WidthRequest = 280;
+                ButtonContainerGrid.HeightRequest = 280;
+                ButtonOuterRing.WidthRequest = 260;
+                ButtonOuterRing.HeightRequest = 260;
+                ButtonOuterRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(130) };
+                ButtonMiddleRing.WidthRequest = 224;
+                ButtonMiddleRing.HeightRequest = 224;
+                ButtonMiddleRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(112) };
+                ConnectButtonCore.WidthRequest = 180;
+                ConnectButtonCore.HeightRequest = 180;
+                ConnectButtonCore.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(90) };
+                ConnectIcon.IconSize = 44;
+                ConnectButtonText.FontSize = 15;
+                TrafficGraphCanvas.InvalidateSurface();
+                return;
+            }
+            else
+            {
+                if (ContentGrid.ColumnDefinitions.Count != 1)
+                {
+                    ContentGrid.ColumnDefinitions.Clear();
+                    ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                    ContentGrid.RowDefinitions.Clear();
+                    ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                    ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+                    ContentGrid.ColumnSpacing = 0;
+                    ContentGrid.RowSpacing = 10;
+                    Grid.SetColumn(TopCardsGrid, 0);
+                    Grid.SetRow(TopCardsGrid, 0);
+                    Grid.SetColumn(Card1Wrapper, 0);
+                    Grid.SetRow(Card1Wrapper, 1);
+                    TopCardsGrid.RowDefinitions.Clear();
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                }
+            }
+        }
+
+        var (buttonSize, graphHeight, _) = AdaptiveLayoutHelper.CalculateVpnViewDimensions(
+            width,
+            height,
+            _currentTopInset,
+            isDesktopOrTablet);
+
+        var isShortScreen = AdaptiveLayoutHelper.IsShortScreen(height);
+        if (isShortScreen)
+        {
+            Card1ContentGrid.Padding = new Thickness(12, 6, 12, 16);
+            TopCardsGrid.RowSpacing = 6;
+            if (ContentGrid is { } cgShort)
+            {
+                cgShort.RowSpacing = 6;
+            }
+            Card5.HeightRequest = 48;
+            Card6.HeightRequest = 48;
+            GraphContainer.IsVisible = false;
+            GraphContainer.HeightRequest = 0;
+        }
+        else
+        {
+            Card1ContentGrid.Padding = new Thickness(16, 10, 16, 24);
+            TopCardsGrid.RowSpacing = 10;
+            if (ContentGrid is { } cgNormal)
+            {
+                cgNormal.RowSpacing = 10;
+            }
+            Card5.HeightRequest = 64;
+            Card6.HeightRequest = 64;
+            GraphContainer.IsVisible = true;
+            GraphContainer.HeightRequest = graphHeight;
+        }
+
+        ButtonContainerGrid.WidthRequest = buttonSize;
+        ButtonContainerGrid.HeightRequest = buttonSize;
+
+        var outerRingSize = Math.Round(buttonSize * 0.935);
+        ButtonOuterRing.WidthRequest = outerRingSize;
+        ButtonOuterRing.HeightRequest = outerRingSize;
+        ButtonOuterRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(outerRingSize / 2.0) };
+
+        var middleRingSize = Math.Round(buttonSize * 0.828);
+        ButtonMiddleRing.WidthRequest = middleRingSize;
+        ButtonMiddleRing.HeightRequest = middleRingSize;
+        ButtonMiddleRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(middleRingSize / 2.0) };
+
+        var coreSize = Math.Round(buttonSize * 0.707);
+        ConnectButtonCore.WidthRequest = coreSize;
+        ConnectButtonCore.HeightRequest = coreSize;
+        ConnectButtonCore.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(coreSize / 2.0) };
+
+        ConnectIcon.IconSize = (int)Math.Max(22, Math.Round(buttonSize * 0.165));
+        ConnectButtonText.FontSize = Math.Max(10, Math.Round(buttonSize * 0.058));
+
+        GraphContainer.HeightRequest = graphHeight;
+        TrafficGraphCanvas.InvalidateSurface();
+    }
+
+    public void OnThemeChanged()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            LoaderCanvas?.InvalidateSurface();
+            TrafficGraphCanvas?.InvalidateSurface();
+            UpdateRayIndicator();
+
+            UpdateCardOpacity();
+
+            var borderSubtle = GetAppColor("BorderSubtle", Color.FromArgb("#282838"));
+            var borderMedium = GetAppColor("BorderMedium", Color.FromArgb("#363650"));
+
+            CardIp.Stroke = borderSubtle;
+            Card2.Stroke = borderSubtle;
+            Card5.Stroke = borderSubtle;
+            Card6.Stroke = borderSubtle;
+            Card1Wrapper.Stroke = borderSubtle;
+            RayIndicatorBadge.Stroke = borderMedium;
+
+            var hasCustom = !string.IsNullOrEmpty(_buttonImageIdlePath) ||
+                            !string.IsNullOrEmpty(_buttonImageConnectingPath) ||
+                            !string.IsNullOrEmpty(_buttonImageActivePath) ||
+                            !string.IsNullOrEmpty(_buttonImageErrorPath) ||
+                            _buttonAnimatedCurrent != null;
+
+            if (hasCustom)
+            {
+                ConnectButtonCore.BackgroundColor = Colors.Transparent;
+                ConnectButtonCore.Stroke = Colors.Transparent;
+                return;
+            }
+
+            if (_vpnService.CurrentState == AppVpnState.Disconnected)
+            {
+                _ = UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                ConnectButtonCore.ClearValue(BackgroundColorProperty);
+                ConnectButtonCore.ClearValue(Border.StrokeProperty);
+                ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+                ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+            }
+            else if (_vpnService.CurrentState == AppVpnState.Connected)
+            {
+                _ = UIAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                var accentColor = GetAppColor("Accent", t_cyanAccent);
+                ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
+                ConnectButtonCore.Stroke = accentColor;
+            }
+        });
+    }
+
+    private static Color GetAppColor(string key, Color fallback)
+    {
+        try
+        {
+            if (Application.Current?.Resources != null &&
+                Application.Current.Resources.TryGetValue(key, out var val) &&
+                val is Color color)
+            {
+                return color;
+            }
+        }
+        catch { }
+        return fallback;
     }
 
     private static SKPath MakePolygon(float cx, float cy, float r, int sides)

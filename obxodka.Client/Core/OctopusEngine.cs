@@ -22,6 +22,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public bool IsConnected => _transport is { IsConnected: true };
     public string AssignedIp { get; private set; } = "10.8.0.2";
     public string AssignedIpV6 { get; private set; } = "fd00::2";
+    public string? PublicWanIp { get; set; }
 
     public event Action<byte[], int>? OnPacketReceived;
     public event Action? OnConnectionDropped;
@@ -36,6 +37,36 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public long TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
     public string ActiveProtocol { get; private set; } = "AUTO";
+
+    private long _trafficStartTicks = Environment.TickCount64;
+
+    public void ResetTrafficCounters()
+    {
+        _ = Interlocked.Exchange(ref _totalBytesSent, 0);
+        _ = Interlocked.Exchange(ref _totalBytesReceived, 0);
+        Volatile.Write(ref _trafficStartTicks, Environment.TickCount64);
+    }
+
+    private double _smoothedPing;
+
+    private void ReportPing(long rawRtt)
+    {
+        if (rawRtt <= 0)
+        {
+            return;
+        }
+        _ = Interlocked.Add(ref _totalBytesReceived, 9);
+        if (_smoothedPing <= 0)
+        {
+            _smoothedPing = rawRtt;
+        }
+        else
+        {
+            var alpha = rawRtt > _smoothedPing * 2.0 ? 0.05 : 0.25;
+            _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
+        }
+        OnPingUpdated?.Invoke((long)Math.Round(_smoothedPing));
+    }
 
     public async Task ConnectAsync(string serverIp, int serverPort)
     {
@@ -97,8 +128,8 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 ]
                 :
                 [
-                    ("FECHSUE", () => new FechsueTransport()),
-                    ("HTTP2", () => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort))
+                    ("HTTP2", () => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort)),
+                    ("FECHSUE", () => new FechsueTransport(activeRays: ActiveRays))
                 ];
 
             Exception? lastError = null;
@@ -114,14 +145,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 {
                     Debug.WriteLine($"[AUTO PROTOCOL] Probing {pName}...");
                     using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-                    probeCts.CancelAfter(TimeSpan.FromSeconds(3));
+                    probeCts.CancelAfter(TimeSpan.FromSeconds(pName == "FECHSUE" ? 3 : 8));
 
                     probeTransport.OnPacketReceived += (pkt, len) =>
                     {
                         _ = Interlocked.Add(ref _totalBytesReceived, len);
                         OnPacketReceived?.Invoke(pkt, len);
                     };
-                    probeTransport.OnPingUpdated += ping => OnPingUpdated?.Invoke(ping);
+                    probeTransport.OnPingUpdated += ReportPing;
                     probeTransport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
 
                     var (ip, ip6) = await probeTransport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", probeCts.Token);
@@ -147,7 +178,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             IVpnTransport transport = protocolMode switch
             {
-                "FECHSUE" when meshRelay == null => new FechsueTransport(),
+                "FECHSUE" when meshRelay == null => new FechsueTransport(activeRays: ActiveRays),
                 "HTTP2" or "HTTP3" or "GRPC" or _ => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort, meshRelay: meshRelay)
             };
 
@@ -158,7 +189,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 _ = Interlocked.Add(ref _totalBytesReceived, len);
                 OnPacketReceived?.Invoke(pkt, len);
             };
-            transport.OnPingUpdated += ping => OnPingUpdated?.Invoke(ping);
+            transport.OnPingUpdated += ReportPing;
             transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
 
             var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
@@ -174,31 +205,267 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         await ConnectAsync(serverIp, serverPort);
     }
 
+    public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default)
+    {
+        if (!IsConnected || _transport is null)
+        {
+            Debug.WriteLine("[VERIFY] Verification skipped: transport is not connected.");
+            return false;
+        }
+
+        var initialReceived = TotalBytesReceived;
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts?.Token ?? CancellationToken.None);
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnPacket(byte[] pkt, int len)
+        {
+            if (len > 0)
+            {
+                Debug.WriteLine($"[VERIFY] Inbound packet acknowledged ({len} bytes)! Downlink confirmed.");
+                _ = tcs.TrySetResult(true);
+            }
+        }
+
+        void OnPing(long rtt)
+        {
+            Debug.WriteLine($"[VERIFY] Ping probe acknowledged (RTT={rtt}ms)! Downlink confirmed.");
+            _ = tcs.TrySetResult(true);
+        }
+
+        OnPacketReceived += OnPacket;
+        OnPingUpdated += OnPing;
+
+        Debug.WriteLine($"[VERIFY-START] Verifying downlink. Timeout={timeout.TotalMilliseconds}ms, InitialRX={initialReceived}");
+
+        try
+        {
+            async Task SendProbesAsync()
+            {
+                try
+                {
+                    Debug.WriteLine("[VERIFY-PROBE] Dispatching internal Ping probe (0x99)...");
+                    await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[VERIFY-PROBE-ERR] Ping probe failed: {ex.Message}");
+                }
+
+                try
+                {
+                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1") is { } pIcmpGw)
+                    {
+                        _ = SendPacketAsync(pIcmpGw);
+                    }
+                    if (BuildIcmpProbePacket(AssignedIp, "8.8.8.8") is { } pIcmpExt)
+                    {
+                        _ = SendPacketAsync(pIcmpExt);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, "77.88.8.8") is { } pYandex)
+                    {
+                        _ = SendPacketAsync(pYandex);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, "1.1.1.1") is { } p1)
+                    {
+                        _ = SendPacketAsync(p1);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, "8.8.8.8") is { } p8)
+                    {
+                        _ = SendPacketAsync(p8);
+                    }
+                    Debug.WriteLine($"[VERIFY-PROBES-SENT] Probes dispatched. Current TX={TotalBytesSent}B, RX={TotalBytesReceived}B");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[VERIFY-PROBE-ERR] Packet probes failed: {ex.Message}");
+                }
+            }
+
+            _ = Task.Run(SendProbesAsync, linkedCts.Token);
+
+            var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < deadline && !linkedCts.IsCancellationRequested)
+            {
+                if (TotalBytesReceived > initialReceived)
+                {
+                    Debug.WriteLine($"[VERIFY-SUCCESS] Received bytes increased: {TotalBytesReceived - initialReceived} B (TotalRX={TotalBytesReceived})");
+                    return true;
+                }
+
+                var delayTask = Task.Delay(350, linkedCts.Token);
+                var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
+                if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
+                {
+                    Debug.WriteLine($"[VERIFY-SUCCESS] Probe event completed! TotalBytesReceived={TotalBytesReceived}");
+                    return true;
+                }
+
+                _ = Task.Run(SendProbesAsync, linkedCts.Token);
+            }
+
+            var success = TotalBytesReceived > initialReceived;
+            Debug.WriteLine($"[VERIFY-DONE] Completed. Result={success}, InitialRX={initialReceived}, CurrentRX={TotalBytesReceived}");
+            return success;
+        }
+        catch (OperationCanceledException)
+        {
+            var success = TotalBytesReceived > initialReceived;
+            Debug.WriteLine($"[VERIFY-CANCEL] Canceled. Result={success}");
+            return success;
+        }
+        finally
+        {
+            OnPacketReceived -= OnPacket;
+            OnPingUpdated -= OnPing;
+        }
+    }
+
+    private static byte[]? BuildIcmpProbePacket(string assignedIp, string targetIp = "100.64.0.1")
+    {
+        if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork ||
+            !IPAddress.TryParse(targetIp, out var dstIp) || dstIp.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return null;
+        }
+
+        const int totalLen = 28;
+        var packet = new byte[totalLen];
+
+        packet[0] = 0x45;
+        packet[1] = 0x00;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2, 2), totalLen);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(4, 2), 0x7788);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(6, 2), 0x4000);
+        packet[8] = 64;
+        packet[9] = 1; // ICMP
+        srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
+        dstIp.GetAddressBytes().CopyTo(packet.AsSpan(16, 4));
+
+        var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
+
+        // ICMP Echo Request (Type 8, Code 0)
+        packet[20] = 8;
+        packet[21] = 0;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(24, 2), 0x1337);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(26, 2), 1);
+
+        var icmpChecksum = ComputeIpChecksum(packet.AsSpan(20, 8));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), icmpChecksum);
+
+        return packet;
+    }
+
+    private static byte[]? BuildDnsProbePacket(string assignedIp, string targetDnsIp = "1.1.1.1")
+    {
+        if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork ||
+            !IPAddress.TryParse(targetDnsIp, out var dstIp) || dstIp.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return null;
+        }
+
+        byte[] dns = [
+            0x1A, 0x2B, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03, 0x64, 0x6e, 0x73, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x00,
+            0x00, 0x01, 0x00, 0x01
+        ];
+
+        var udpLen = 8 + dns.Length;
+        var totalLen = 20 + udpLen;
+        var packet = new byte[totalLen];
+
+        packet[0] = 0x45;
+        packet[1] = 0x00;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2, 2), (ushort)totalLen);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(4, 2), 0x5432);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(6, 2), 0x4000);
+        packet[8] = 64;
+        packet[9] = 17;
+        srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
+        dstIp.GetAddressBytes().CopyTo(packet.AsSpan(16, 4));
+
+        var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
+
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(20, 2), 53535);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), 53);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(24, 2), (ushort)udpLen);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(26, 2), 0);
+
+        dns.CopyTo(packet.AsSpan(28));
+        return packet;
+    }
+
+    private static ushort ComputeIpChecksum(ReadOnlySpan<byte> header)
+    {
+        uint sum = 0;
+        for (var i = 0; i < header.Length; i += 2)
+        {
+            if (i == 10)
+            {
+                continue;
+            }
+            sum += BinaryPrimitives.ReadUInt16BigEndian(header.Slice(i, 2));
+        }
+        while ((sum >> 16) != 0)
+        {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+        return (ushort)~sum;
+    }
+
     private void StartTrafficMonitor()
     {
+        var token = _cts?.Token ?? CancellationToken.None;
+        if (token == CancellationToken.None)
+        {
+            return;
+        }
+
         _ = Task.Run(async () =>
         {
             long lastSent = 0;
             long lastReceived = 0;
             var deadTicks = 0;
+            long heartbeatCount = 0;
+            Volatile.Write(ref _trafficStartTicks, Environment.TickCount64);
 
-            void OnPing(long _) => deadTicks = 0;
+            void OnPing(long _) => Volatile.Write(ref deadTicks, 0);
             OnPingUpdated += OnPing;
 
             try
             {
-                while (_cts is { Token.IsCancellationRequested: false })
+                while (!token.IsCancellationRequested)
                 {
                     var currentSent = TotalBytesSent;
                     var currentReceived = TotalBytesReceived;
                     OnTrafficUpdated?.Invoke(currentSent, currentReceived);
 
+                    heartbeatCount++;
+                    if (heartbeatCount % 5 == 0) // Every 1000ms
+                    {
+                        var startTicks = Volatile.Read(ref _trafficStartTicks);
+                        var elapsedMs = Environment.TickCount64 - startTicks;
+                        Debug.WriteLine($"[MONITOR-HEARTBEAT] TX={currentSent}B, RX={currentReceived}B, DeadTicks={deadTicks}, Elapsed={elapsedMs}ms, Proto={ActiveProtocol}");
+                    }
+
                     if (currentSent > lastSent && currentReceived == lastReceived)
                     {
                         deadTicks++;
-                        if (deadTicks >= 300)
+                        var startTicks = Volatile.Read(ref _trafficStartTicks);
+                        var elapsedMs = Environment.TickCount64 - startTicks;
+
+                        // Safety margin: do not declare a blackhole during first 60 seconds of connection
+                        var isInitialBlackhole = elapsedMs is >= 60000 and < 180000 && currentSent > 50000 && currentReceived == 0;
+
+                        var isDead = (isInitialBlackhole && deadTicks >= 100) ||
+                                     (elapsedMs >= 60000 && currentSent > 100000 && currentReceived == 0 && deadTicks >= 150) ||
+                                     deadTicks >= 200;
+
+                        if (isDead)
                         {
-                            Debug.WriteLine("[ENGINE] Dead connection detected (60s without RX/Ping while TX).");
+                            Debug.WriteLine($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, DeadTicks={deadTicks}, ElapsedMs={elapsedMs}");
                             OnDeadConnectionDetected?.Invoke();
                             break;
                         }
@@ -207,29 +474,37 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     {
                         deadTicks = 0;
                     }
+                    else if (currentSent == lastSent && deadTicks > 0)
+                    {
+                        deadTicks--;
+                    }
 
                     lastSent = currentSent;
                     lastReceived = currentReceived;
-                    await Task.Delay(200, _cts.Token);
+                    await Task.Delay(200, token);
                 }
             }
             catch (OperationCanceledException) { }
+            catch (ObjectDisposedException) { }
             finally
             {
                 OnPingUpdated -= OnPing;
+                Debug.WriteLine("[MONITOR] Traffic monitor thread terminated.");
             }
-        });
+        }, token);
     }
 
     public Task SendPacketAsync(byte[] packet)
     {
-        if (!IsConnected || _transport is null)
+        if (!IsConnected || _transport is null || packet.Length == 0)
         {
             return Task.CompletedTask;
         }
 
+        var poolBuf = ArrayPool<byte>.Shared.Rent(packet.Length);
+        Buffer.BlockCopy(packet, 0, poolBuf, 0, packet.Length);
         _ = Interlocked.Add(ref _totalBytesSent, packet.Length);
-        _transport.SendPacketFromPool(packet, packet.Length);
+        _transport.SendPacketFromPool(poolBuf, packet.Length);
         return Task.CompletedTask;
     }
 
@@ -248,6 +523,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _smoothedPing = 0;
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;

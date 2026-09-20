@@ -1,4 +1,4 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 public static class Obfuscator
 {
@@ -101,7 +101,23 @@ public static class Obfuscator
         byte[] headerBuffer,
         CancellationToken ct)
     {
-        await stream.ReadExactlyAsync(headerBuffer.AsMemory(0, 8), ct).ConfigureAwait(false);
+        try
+        {
+            await stream.ReadExactlyAsync(headerBuffer.AsMemory(0, 8), ct).ConfigureAwait(false);
+        }
+        catch (EndOfStreamException)
+        {
+            return (null, 0);
+        }
+        catch (OperationCanceledException)
+        {
+            return (null, 0);
+        }
+        catch (IOException)
+        {
+            return (null, 0);
+        }
+
         var totalLen = BinaryPrimitives.ReadInt32LittleEndian(headerBuffer.AsSpan(0, 4));
         var realLen = BinaryPrimitives.ReadInt32LittleEndian(headerBuffer.AsSpan(4, 4));
 

@@ -1,0 +1,514 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.ThemeStoreView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+
+    <Grid
+        x:Name="RootLayout"
+        Padding="{OnIdiom Desktop='32,28',
+                          Phone='16,10,16,0',
+                          Default='16,20'}"
+        RowDefinitions="Auto, *"
+        RowSpacing="16"
+        SafeAreaEdges="None">
+
+        <Grid
+            Grid.Row="0"
+            Margin="{OnIdiom Phone='0,8,0,0',
+                             Default='0'}"
+            ColumnDefinitions="Auto, *, Auto"
+            ColumnSpacing="10"
+            VerticalOptions="Center">
+            <Border
+                x:Name="BtnBack"
+                Grid.Column="0"
+                Padding="{OnIdiom Phone='0',
+                                  Default='12,0'}"
+                HeightRequest="40"
+                Style="{StaticResource NeoCard}"
+                VerticalOptions="Center"
+                WidthRequest="{OnIdiom Phone=40,
+                                       Default=-1}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnBackClicked" />
+                </Border.GestureRecognizers>
+                <HorizontalStackLayout
+                    HorizontalOptions="Center"
+                    Spacing="8"
+                    VerticalOptions="Center">
+                    <mi:MauiIcon
+                        Icon="{mi:Fluent Icon=ArrowLeft24}"
+                        IconColor="{DynamicResource TextPrimary}"
+                        IconSize="18"
+                        VerticalOptions="Center" />
+                    <Label
+                        x:Name="BtnBackText"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="13"
+                        Text="Назад"
+                        TextColor="{DynamicResource TextPrimary}"
+                        VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+
+            <Grid
+                Grid.Column="1"
+                ColumnDefinitions="Auto, *"
+                ColumnSpacing="10"
+                VerticalOptions="Center">
+                <Border
+                    x:Name="HeaderIconBadge"
+                    Grid.Column="0"
+                    BackgroundColor="{DynamicResource PrimaryDim}"
+                    HeightRequest="36"
+                    StrokeShape="RoundRectangle 18"
+                    StrokeThickness="0"
+                    VerticalOptions="Center"
+                    WidthRequest="36">
+                    <mi:MauiIcon
+                        x:Name="HeaderIcon"
+                        HorizontalOptions="Center"
+                        Icon="{mi:Fluent Icon=Color24}"
+                        IconColor="{DynamicResource Primary}"
+                        IconSize="20"
+                        VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label
+                        FontFamily="{DynamicResource AppFontTitle}"
+                        FontSize="{OnIdiom Desktop=20,
+                                           Phone=16,
+                                           Default=18}"
+                        LineBreakMode="TailTruncation"
+                        Text="Темы оформления"
+                        VerticalOptions="Center" />
+                    <Label
+                        FontSize="11"
+                        IsVisible="{OnIdiom Desktop=True,
+                                            Default=False}"
+                        LineBreakMode="TailTruncation"
+                        Style="{StaticResource LabelMuted}"
+                        Text="Кастомизация приложения и живые темы" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Border
+                x:Name="BtnResetTheme"
+                Grid.Column="2"
+                Padding="{OnIdiom Phone='0',
+                                  Default='12,0'}"
+                HeightRequest="40"
+                Style="{StaticResource NeoCard}"
+                VerticalOptions="Center"
+                WidthRequest="{OnIdiom Phone=40,
+                                       Default=-1}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnResetThemeClicked" />
+                </Border.GestureRecognizers>
+                <HorizontalStackLayout
+                    HorizontalOptions="Center"
+                    Spacing="6"
+                    VerticalOptions="Center">
+                    <mi:MauiIcon
+                        Icon="{mi:Fluent Icon=ArrowReset24}"
+                        IconColor="{DynamicResource TextMuted}"
+                        IconSize="17"
+                        VerticalOptions="Center" />
+                    <Label
+                        x:Name="BtnResetText"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="12"
+                        Text="Сброс темы"
+                        TextColor="{DynamicResource TextMuted}"
+                        VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+        </Grid>
+
+        <ScrollView
+            x:Name="ThemeScrollView"
+            Grid.Row="1"
+            HorizontalOptions="Fill"
+            HorizontalScrollBarVisibility="Never"
+            VerticalScrollBarVisibility="Never">
+            <VerticalStackLayout
+                x:Name="ThemeCardsStack"
+                Padding="{OnIdiom Phone='0,0,0,120',
+                                  Default='0,0,0,24'}"
+                HorizontalOptions="Start"
+                Spacing="16">
+
+                <Border
+                    x:Name="CardSearch"
+                    Padding="14,6"
+                    Style="{StaticResource NeoCard}">
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Search24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="18"
+                            VerticalOptions="Center" />
+                        <Entry
+                            x:Name="SearchEntry"
+                            Grid.Column="1"
+                            BackgroundColor="Transparent"
+                            FontSize="13"
+                            Placeholder="Поиск тем (сакура, neon, cyberpunk, dark)..."
+                            PlaceholderColor="{DynamicResource TextMuted}"
+                            TextChanged="OnSearchTextChanged"
+                            TextColor="{DynamicResource TextPrimary}" />
+                        <Border
+                            x:Name="BtnClearSearch"
+                            Grid.Column="2"
+                            Padding="4"
+                            BackgroundColor="Transparent"
+                            HeightRequest="30"
+                            IsVisible="False"
+                            StrokeThickness="0"
+                            VerticalOptions="Center"
+                            WidthRequest="30">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnClearSearchClicked" />
+                            </Border.GestureRecognizers>
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=Dismiss24}"
+                                IconColor="{DynamicResource TextMuted}"
+                                IconSize="16" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Grid
+                    x:Name="TabsGrid"
+                    ColumnDefinitions="*, *, Auto"
+                    ColumnSpacing="10">
+                    <Border
+                        x:Name="BtnTabCommunity"
+                        Grid.Column="0"
+                        BackgroundColor="{DynamicResource Primary}"
+                        HeightRequest="42"
+                        StrokeShape="RoundRectangle 12"
+                        StrokeThickness="0">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnTabCommunityClicked" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout
+                            HorizontalOptions="Center"
+                            Spacing="8"
+                            VerticalOptions="Center">
+                            <mi:MauiIcon
+                                x:Name="IconTabCommunity"
+                                Icon="{mi:Fluent Icon=Globe24}"
+                                IconColor="{DynamicResource TextOnPrimary}"
+                                IconSize="18"
+                                VerticalOptions="Center" />
+                            <Label
+                                x:Name="LabelTabCommunity"
+                                FontFamily="{DynamicResource AppFontBold}"
+                                FontSize="13"
+                                Text="Сообщество"
+                                TextColor="{DynamicResource TextOnPrimary}"
+                                VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <Border
+                        x:Name="BtnTabInstalled"
+                        Grid.Column="1"
+                        HeightRequest="42"
+                        StrokeShape="RoundRectangle 12"
+                        Style="{StaticResource NeoCard}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnTabInstalledClicked" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout
+                            HorizontalOptions="Center"
+                            Spacing="8"
+                            VerticalOptions="Center">
+                            <mi:MauiIcon
+                                x:Name="IconTabInstalled"
+                                Icon="{mi:Fluent Icon=Folder24}"
+                                IconColor="{DynamicResource TextMuted}"
+                                IconSize="18"
+                                VerticalOptions="Center" />
+                            <Label
+                                x:Name="LabelTabInstalled"
+                                FontFamily="{DynamicResource AppFontBold}"
+                                FontSize="13"
+                                Text="Установленные"
+                                TextColor="{DynamicResource TextMuted}"
+                                VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <Border
+                        x:Name="BtnSync"
+                        Grid.Column="2"
+                        HeightRequest="42"
+                        StrokeShape="RoundRectangle 12"
+                        Style="{StaticResource NeoCard}"
+                        ToolTipProperties.Text="Синхронизировать с GitHub"
+                        WidthRequest="42">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSyncClickedAsync" />
+                        </Border.GestureRecognizers>
+                        <mi:MauiIcon
+                            x:Name="IconSync"
+                            HorizontalOptions="Center"
+                            Icon="{mi:Fluent Icon=ArrowSync24}"
+                            IconColor="{DynamicResource TextPrimary}"
+                            IconSize="18"
+                            VerticalOptions="Center" />
+                    </Border>
+                </Grid>
+
+                <Border
+                    x:Name="CardVfxSettings"
+                    Padding="18,14"
+                    Style="{StaticResource NeoCard}">
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <Border
+                                x:Name="BadgeSounds"
+                                Grid.Column="0"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                HeightRequest="36"
+                                StrokeShape="RoundRectangle 18"
+                                StrokeThickness="0"
+                                VerticalOptions="Center"
+                                WidthRequest="36">
+                                <mi:MauiIcon
+                                    x:Name="IconSounds"
+                                    HorizontalOptions="Center"
+                                    Icon="{mi:Fluent Icon=Speaker224}"
+                                    IconColor="{DynamicResource Primary}"
+                                    IconSize="18"
+                                    VerticalOptions="Center" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="14"
+                                    Text="Звуковые эффекты темы"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Label
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Воспроизведение звуков клика и подключения к туннелю" />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="SwitchSounds"
+                                Grid.Column="2"
+                                Toggled="OnSoundsToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+
+                        <BoxView
+                            x:Name="SepVfx1"
+                            HeightRequest="1"
+                            Color="{DynamicResource BorderSubtle}" />
+
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <Border
+                                x:Name="BadgeParticles"
+                                Grid.Column="0"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                HeightRequest="36"
+                                StrokeShape="RoundRectangle 18"
+                                StrokeThickness="0"
+                                VerticalOptions="Center"
+                                WidthRequest="36">
+                                <mi:MauiIcon
+                                    x:Name="IconParticles"
+                                    HorizontalOptions="Center"
+                                    Icon="{mi:Fluent Icon=Sparkle24}"
+                                    IconColor="{DynamicResource Accent}"
+                                    IconSize="18"
+                                    VerticalOptions="Center" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="14"
+                                    Text="Живая анимация и частицы"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Label
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Анимированные частицы (лепестки сакуры, снежинки, звёзды)" />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="SwitchParticles"
+                                Grid.Column="2"
+                                Toggled="OnParticlesToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+
+                        <BoxView
+                            x:Name="SepVfx2"
+                            HeightRequest="1"
+                            Color="{DynamicResource BorderSubtle}" />
+
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <Border
+                                x:Name="BadgeVideo"
+                                Grid.Column="0"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                HeightRequest="36"
+                                StrokeShape="RoundRectangle 18"
+                                StrokeThickness="0"
+                                VerticalOptions="Center"
+                                WidthRequest="36">
+                                <mi:MauiIcon
+                                    x:Name="IconVideo"
+                                    HorizontalOptions="Center"
+                                    Icon="{mi:Fluent Icon=Video24}"
+                                    IconColor="{DynamicResource Primary}"
+                                    IconSize="18"
+                                    VerticalOptions="Center" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="14"
+                                    Text="Видео-фон темы"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Label
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Воспроизводить живой видео-ролик на фоне (вместо картинки)" />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="SwitchVideoBackground"
+                                Grid.Column="2"
+                                Toggled="OnVideoBackgroundToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+
+                        <BoxView
+                            x:Name="SepVfx3"
+                            HeightRequest="1"
+                            Color="{DynamicResource BorderSubtle}" />
+
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <Border
+                                x:Name="BadgeAlwaysPlay"
+                                Grid.Column="0"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                HeightRequest="36"
+                                StrokeShape="RoundRectangle 18"
+                                StrokeThickness="0"
+                                VerticalOptions="Center"
+                                WidthRequest="36">
+                                <mi:MauiIcon
+                                    x:Name="IconAlwaysPlay"
+                                    HorizontalOptions="Center"
+                                    Icon="{mi:Fluent Icon=Flash24}"
+                                    IconColor="{DynamicResource Accent}"
+                                    IconSize="18"
+                                    VerticalOptions="Center" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="14"
+                                    Text="Всегда активные эффекты и видео"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Label
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Не ставить видео и эффекты на паузу при потере фокуса или сворачивании окна" />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="SwitchAlwaysPlayVideo"
+                                Grid.Column="2"
+                                Toggled="OnAlwaysPlayVideoToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+
+                        <BoxView
+                            x:Name="SepVfx4"
+                            HeightRequest="1"
+                            Color="{DynamicResource BorderSubtle}" />
+
+                        <VerticalStackLayout Spacing="8">
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <Border
+                                    x:Name="BadgeOpacity"
+                                    Grid.Column="0"
+                                    BackgroundColor="{DynamicResource PrimaryDim}"
+                                    HeightRequest="36"
+                                    StrokeShape="RoundRectangle 18"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center"
+                                    WidthRequest="36">
+                                    <mi:MauiIcon
+                                        x:Name="IconOpacity"
+                                        HorizontalOptions="Center"
+                                        Icon="{mi:Fluent Icon=Color24}"
+                                        IconColor="{DynamicResource Primary}"
+                                        IconSize="18"
+                                        VerticalOptions="Center" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        Text="Прозрачность карточек"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Регулировка прозрачности интерфейса, чтобы видеть фон темы" />
+                                </VerticalStackLayout>
+                                <Label
+                                    x:Name="LabelCardOpacityValue"
+                                    Grid.Column="2"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="14"
+                                    HorizontalOptions="End"
+                                    Text="85%"
+                                    TextColor="{DynamicResource Primary}"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                            <Slider
+                                x:Name="SliderCardOpacity"
+                                Margin="48,0,0,0"
+                                Maximum="1.0"
+                                MaximumTrackColor="{DynamicResource BorderSubtle}"
+                                Minimum="0.2"
+                                MinimumTrackColor="{DynamicResource Primary}"
+                                ThumbColor="{DynamicResource Primary}"
+                                ValueChanged="OnCardOpacityChanged" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <ActivityIndicator
+                    x:Name="CatalogLoadingIndicator"
+                    HorizontalOptions="Center"
+                    IsRunning="True"
+                    IsVisible="True"
+                    Color="{DynamicResource Primary}" />
+
+                <Label
+                    x:Name="LabelStatus"
+                    Margin="0,8"
+                    FontSize="13"
+                    HorizontalOptions="Center"
+                    HorizontalTextAlignment="Center"
+                    IsVisible="False"
+                    Style="{StaticResource LabelMuted}" />
+
+                <VerticalStackLayout
+                    x:Name="ThemesContainer"
+                    HorizontalOptions="Start"
+                    Spacing="14" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentView>

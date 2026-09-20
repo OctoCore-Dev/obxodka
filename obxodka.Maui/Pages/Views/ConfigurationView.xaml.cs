@@ -2,19 +2,30 @@ namespace obxodka.Views;
 
 public sealed partial class ConfigurationView : ContentView, IDisposable
 {
-    private static readonly Color t_inactiveStroke = Color.FromArgb("#1AFFFFFF");
-    private static readonly Color t_activeStroke = Color.FromArgb("#0078D4");
-    private static readonly Color t_purpleStroke = Color.FromArgb("#A855F7");
-    private static readonly Color t_cyanColor = Color.FromArgb("#00E5FF");
-    private static readonly Color t_emeraldColor = Color.FromArgb("#10B981");
-    private static readonly Color t_errorRedColor = Color.FromArgb("#EF4444");
+    private static Color InactiveStroke => (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+        ? bsc
+        : Color.FromArgb("#1AFFFFFF");
+    private static Color ActiveStroke => (Application.Current?.Resources.TryGetValue("Primary", out var p) == true && p is Color pc)
+        ? pc
+        : Color.FromArgb("#0078D4");
+    private static Color PurpleStroke => (Application.Current?.Resources.TryGetValue("Purple", out var p) == true && p is Color pc)
+        ? pc
+        : Color.FromArgb("#A855F7");
+    private static Color CyanColor => (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac)
+        ? ac
+        : Color.FromArgb("#00E5FF");
+    private static Color EmeraldColor => (Application.Current?.Resources.TryGetValue("Success", out var s) == true && s is Color sc)
+        ? sc
+        : Color.FromArgb("#10B981");
+    private static Color ErrorRedColor => (Application.Current?.Resources.TryGetValue("Error", out var er) == true && er is Color erc)
+        ? erc
+        : Color.FromArgb("#EF4444");
 
     private static readonly string[] t_pingEndpoints =
     [
         "https://ya.ru/favicon.ico",
         "https://1.1.1.1/",
-        "https://www.google.com/generate_204",
-        "https://obxodka.one/favicon.ico"
+        "https://www.google.com/generate_204"
     ];
 
     private static readonly string[] t_downloadCandidates =
@@ -30,21 +41,13 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     private bool _isUpdating;
     private bool _isTestingSpeed;
     private CancellationTokenSource? _speedTestCts;
+#if WINDOWS
+    private readonly Action? _windowActivatedHandler;
+#endif
 
     public ConfigurationView()
     {
         InitializeComponent();
-
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
-        {
-            var content = Content;
-            Content = new ScrollView
-            {
-                Orientation = ScrollOrientation.Vertical,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
-                Content = content
-            };
-        }
 
         var defaultRays = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 2 : 8;
         _currentMode = Preferences.Get("BatteryMode", defaultRays);
@@ -55,10 +58,73 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         QuickProtocolSwitchToggle.IsToggled = Preferences.Get("QuickProtocolSwitch", true);
 #if WINDOWS
         RunOnStartupToggle.IsToggled = Preferences.Get("RunOnStartup", false);
+        _windowActivatedHandler = () =>
+        {
+            if (IsVisible)
+            {
+                _ = SyncWindowsStartupStateAsync();
+            }
+        };
+        App.WindowActivated += _windowActivatedHandler;
+        _ = SyncWindowsStartupStateAsync();
 #endif
 
         UpdateSelectionUI(_currentMode, _protocolMode);
         UpdateLockState();
+
+        ConfigScrollView.SizeChanged += (s, e) =>
+        {
+            if (ConfigScrollView.Width > 0)
+            {
+                ApplyCardWidth(ConfigScrollView.Width);
+            }
+        };
+    }
+
+    public void ForceLayoutWidth()
+    {
+        if (ConfigScrollView.Width > 0)
+        {
+            ApplyCardWidth(ConfigScrollView.Width);
+        }
+        else if (Width > 0 && RootLayoutGrid is not null)
+        {
+            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (avail > 0)
+            {
+                ApplyCardWidth(avail);
+            }
+        }
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width > 0 && RootLayoutGrid is not null)
+        {
+            var availableWidth = width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (availableWidth > 0)
+            {
+                ApplyCardWidth(availableWidth);
+            }
+        }
+    }
+
+    private void ApplyCardWidth(double targetWidth)
+    {
+        if (targetWidth <= 0 || MainContentGrid is null)
+        {
+            return;
+        }
+
+        var safeWidth = Math.Min(targetWidth - 6, 950);
+        if (safeWidth <= 0)
+        {
+            return;
+        }
+
+        MainContentGrid.WidthRequest = safeWidth;
+        MainContentGrid.MaximumWidthRequest = safeWidth;
     }
 
     private void OnAutoReconnectToggled(object? sender, ToggledEventArgs e) =>
@@ -75,43 +141,179 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
     private void OnRunOnStartupToggled(object? sender, ToggledEventArgs e)
     {
+        if (_isUpdating)
+        {
+            return;
+        }
+
         Preferences.Set("RunOnStartup", e.Value);
 #if WINDOWS
         if (OperatingSystem.IsWindows())
         {
-            SetWindowsStartupTask(e.Value);
+            _ = SetWindowsStartupTaskAsync(e.Value);
         }
 #endif
     }
 
 #if WINDOWS
-    [SupportedOSPlatform("windows")]
-    private static void SetWindowsStartupTask(bool enable)
+    private static bool HasPackageIdentity()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = Windows.ApplicationModel.Package.Current.Id;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> CheckWindowsStartupStateAsync()
     {
         try
         {
-            var exePath = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(exePath))
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763) && HasPackageIdentity())
             {
-                return;
+                var startupTask = await Windows.ApplicationModel.StartupTask.GetAsync("ObxodkaStartup");
+                return startupTask.State is Windows.ApplicationModel.StartupTaskState.Enabled
+                                       or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false);
+                return key?.GetValue("Obxodka") != null;
             }
 
-            var args = enable
-                ? $"/create /tn \"ObxodkaVpnStartup\" /tr \"\\\"{exePath}\\\" --hidden\" /sc onlogon /rl highest /f"
-                : "/delete /tn \"ObxodkaVpnStartup\" /f";
-
-            var psi = new ProcessStartInfo("schtasks", args)
-            {
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                Verb = "runas"
-            };
-
-            Process.Start(psi)?.WaitForExit();
+            return Preferences.Get("RunOnStartup", false);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to change scheduled task: {ex.Message}");
+            Debug.WriteLine($"[STARTUP] Check failed: {ex.Message}");
+            return Preferences.Get("RunOnStartup", false);
+        }
+    }
+
+    private async Task SyncWindowsStartupStateAsync()
+    {
+        try
+        {
+            var isEnabled = await CheckWindowsStartupStateAsync();
+            Preferences.Set("RunOnStartup", isEnabled);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _isUpdating = true;
+                RunOnStartupToggle.IsToggled = isEnabled;
+                _isUpdating = false;
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[STARTUP SYNC ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task SetWindowsStartupTaskAsync(bool enable)
+    {
+        try
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    if (OperatingSystem.IsWindows())
+                    {
+                        using var proc = Process.Start(new ProcessStartInfo("schtasks", "/delete /tn \"ObxodkaVpnStartup\" /f")
+                        {
+                            UseShellExecute = true,
+                            WindowStyle = ProcessWindowStyle.Hidden
+                        });
+                        proc?.WaitForExit();
+                    }
+                }
+                catch { }
+            });
+
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763) && HasPackageIdentity())
+            {
+                var startupTask = await Windows.ApplicationModel.StartupTask.GetAsync("ObxodkaStartup");
+                if (enable)
+                {
+                    if (startupTask.State == Windows.ApplicationModel.StartupTaskState.DisabledByUser)
+                    {
+                        _ = await Launcher.OpenAsync(new Uri("ms-settings:startupapps"));
+
+                        await Task.Delay(1000);
+                        var recheck = await Windows.ApplicationModel.StartupTask.GetAsync("ObxodkaStartup");
+                        var isEnabled = recheck.State is Windows.ApplicationModel.StartupTaskState.Enabled
+                                                      or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
+                        Preferences.Set("RunOnStartup", isEnabled);
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            _isUpdating = true;
+                            RunOnStartupToggle.IsToggled = isEnabled;
+                            _isUpdating = false;
+                        });
+                        return;
+                    }
+
+                    var state = await startupTask.RequestEnableAsync();
+                    var success = state is Windows.ApplicationModel.StartupTaskState.Enabled
+                                        or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
+                    Preferences.Set("RunOnStartup", success);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        _isUpdating = true;
+                        RunOnStartupToggle.IsToggled = success;
+                        _isUpdating = false;
+                    });
+                }
+                else
+                {
+                    if (startupTask.State is Windows.ApplicationModel.StartupTaskState.Enabled
+                                          or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy)
+                    {
+                        startupTask.Disable();
+                    }
+                    Preferences.Set("RunOnStartup", false);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        _isUpdating = true;
+                        RunOnStartupToggle.IsToggled = false;
+                        _isUpdating = false;
+                    });
+                }
+            }
+            else
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+                if (key != null)
+                {
+                    if (enable)
+                    {
+                        var exePath = Environment.ProcessPath;
+                        if (!string.IsNullOrEmpty(exePath))
+                        {
+                            key.SetValue("Obxodka", $"\"{exePath}\"");
+                            Preferences.Set("RunOnStartup", true);
+                        }
+                    }
+                    else
+                    {
+                        key.DeleteValue("Obxodka", false);
+                        Preferences.Set("RunOnStartup", false);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[STARTUP ERROR] {ex.Message}");
         }
     }
 #endif
@@ -126,7 +328,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         KillSwitchToggle.IsToggled = Preferences.Get("KillSwitch", false);
         QuickProtocolSwitchToggle.IsToggled = Preferences.Get("QuickProtocolSwitch", true);
 #if WINDOWS
-        RunOnStartupToggle.IsToggled = Preferences.Get("RunOnStartup", false);
+        _ = SyncWindowsStartupStateAsync();
 #endif
 
         UpdateSelectionUI(_currentMode, _protocolMode);
@@ -138,42 +340,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         OnAppearing();
         Opacity = 1;
         TranslationY = 0;
-        await UIAnimations.PlayEntranceCascadeAsync(
-            60,
-            400,
-            RaysHeaderGrid,
-            EcoButton,
-            BalancedButton,
-            TurboButton,
-            ProtocolHeaderLabel,
-            AutoButton,
-            FechsueButton,
-            Http3Button,
-            Http2Button,
-            SecurityHeaderGrid,
-            AutoReconnectCard,
-            KillSwitchCard,
-            QuickProtocolSwitchCard,
-#if WINDOWS
-            RunOnStartupCard,
-#endif
-            SpeedTestCard);
-    }
-
-    private async void OnPointerEnteredAsync(object? sender, PointerEventArgs e)
-    {
-        if (sender is VisualElement ve && ve.IsEnabled)
-        {
-            _ = await ve.ScaleToAsync(1.02, 120, Easing.CubicOut);
-        }
-    }
-
-    private async void OnPointerExitedAsync(object? sender, PointerEventArgs e)
-    {
-        if (sender is VisualElement ve && ve.IsEnabled)
-        {
-            _ = await ve.ScaleToAsync(1.0, 120, Easing.CubicIn);
-        }
+        await this.PlayCardsEntranceAsync(30, 240);
     }
 
     private void UpdateLockState()
@@ -186,19 +353,19 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         {
             LockWarningLabel.IsVisible = true;
             LockWarningLabel.Text = "Отключите VPN, чтобы изменить";
-            LockWarningLabel.TextColor = t_errorRedColor;
+            LockWarningLabel.TextColor = ErrorRedColor;
         }
         else if (isVpnRunning && isHotSwap)
         {
             LockWarningLabel.IsVisible = true;
             LockWarningLabel.Text = "Горячая смена (Hot-Swap) активна";
-            LockWarningLabel.TextColor = t_cyanColor;
+            LockWarningLabel.TextColor = CyanColor;
         }
         else if (isFechsue)
         {
             LockWarningLabel.IsVisible = true;
             LockWarningLabel.Text = "FECHSUE работает на 1 супер-потоке";
-            LockWarningLabel.TextColor = t_purpleStroke;
+            LockWarningLabel.TextColor = PurpleStroke;
         }
         else
         {
@@ -344,13 +511,13 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
     private void UpdateSelectionUI(int mode, string protocol)
     {
-        AutoButton.Stroke = t_inactiveStroke;
-        EcoButton.Stroke = t_inactiveStroke;
-        BalancedButton.Stroke = t_inactiveStroke;
-        TurboButton.Stroke = t_inactiveStroke;
-        Http2Button.Stroke = t_inactiveStroke;
-        Http3Button.Stroke = t_inactiveStroke;
-        FechsueButton.Stroke = t_inactiveStroke;
+        AutoButton.Stroke = InactiveStroke;
+        EcoButton.Stroke = InactiveStroke;
+        BalancedButton.Stroke = InactiveStroke;
+        TurboButton.Stroke = InactiveStroke;
+        Http2Button.Stroke = InactiveStroke;
+        Http3Button.Stroke = InactiveStroke;
+        FechsueButton.Stroke = InactiveStroke;
 
         var raysText = protocol == "FECHSUE"
             ? "1 Супер-Луч"
@@ -366,45 +533,81 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         {
             if (mode == 1)
             {
-                EcoButton.Stroke = t_activeStroke;
+                EcoButton.Stroke = ActiveStroke;
             }
             else if (mode == 2)
             {
-                BalancedButton.Stroke = t_activeStroke;
+                BalancedButton.Stroke = ActiveStroke;
             }
             else if (mode == 8)
             {
-                TurboButton.Stroke = t_activeStroke;
+                TurboButton.Stroke = ActiveStroke;
             }
         }
 
         var protocolText = protocol switch
         {
             "AUTO" => "AUTO (Умный)",
-            "FECHSUE" => "FECHSUE (ГигаТуннель)",
+            "FECHSUE" => "FHARCSUE (Мульти-пинговый Watchdog)",
             "HTTP3" => "HTTP/3 QUIC",
             _ => "HTTP/2 TCP"
         };
 
         if (protocol == "AUTO")
         {
-            AutoButton.Stroke = t_cyanColor;
+            AutoButton.Stroke = CyanColor;
         }
         else if (protocol == "FECHSUE")
         {
-            FechsueButton.Stroke = t_purpleStroke;
+            FechsueButton.Stroke = PurpleStroke;
         }
         else if (protocol == "HTTP3")
         {
-            Http3Button.Stroke = t_activeStroke;
+            Http3Button.Stroke = ActiveStroke;
         }
         else
         {
-            Http2Button.Stroke = t_activeStroke;
+            Http2Button.Stroke = ActiveStroke;
         }
 
         CurrentSelectionLabel.Text = $"[ {raysText} / {protocolText} ]";
     }
+
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        EcoButton.BackgroundColor = bgSurface;
+        BalancedButton.BackgroundColor = bgSurface;
+        TurboButton.BackgroundColor = bgSurface;
+        AutoButton.BackgroundColor = bgSurface;
+        Http2Button.BackgroundColor = bgSurface;
+        Http3Button.BackgroundColor = bgSurface;
+        FechsueButton.BackgroundColor = bgSurface;
+        AutoReconnectCard.BackgroundColor = bgSurface;
+        KillSwitchCard.BackgroundColor = bgSurface;
+        QuickProtocolSwitchCard.BackgroundColor = bgSurface;
+        RunOnStartupCard.BackgroundColor = bgSurface;
+        SpeedTestCard.BackgroundColor = bgSurface;
+        ThemesSettingsCard.BackgroundColor = bgSurface;
+    }
+
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
+        {
+            RootLayoutGrid.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
+        }
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateSelectionUI(_currentMode, _protocolMode);
+        });
 
     private async void OnRunSpeedTestClickedAsync(object? sender, EventArgs e)
     {
@@ -425,7 +628,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
         SpeedTestBtnText.Text = "СТОП";
         SpeedTestResultLabel.Text = "Подключение и замер пинга...";
-        SpeedTestResultLabel.TextColor = t_cyanColor;
+        SpeedTestResultLabel.TextColor = CyanColor;
 
         _ = Task.Run(async () =>
         {
@@ -596,7 +799,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
                             SpeedTestResultLabel.Text = $"{currentMbps:F1} Мбит/с ({currentInstantMBs:F1} МБ/с) [{remaining}с]";
-                            SpeedTestResultLabel.TextColor = t_cyanColor;
+                            SpeedTestResultLabel.TextColor = CyanColor;
                         });
                     }
                 }
@@ -618,7 +821,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
                 {
                     var pingText = pingMs > 0 ? $" • {pingMs} ms" : "";
                     SpeedTestResultLabel.Text = $"{avgMbps:F1} Мбит/с ({avgSpeedMBs:F1} МБ/с){pingText} (Пик: {peakMbps:F1} Мбит/с)";
-                    SpeedTestResultLabel.TextColor = t_emeraldColor;
+                    SpeedTestResultLabel.TextColor = EmeraldColor;
                 });
             }, token);
         }
@@ -631,7 +834,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 SpeedTestResultLabel.Text = "Сбой замера (проверьте сеть)";
-                SpeedTestResultLabel.TextColor = t_errorRedColor;
+                SpeedTestResultLabel.TextColor = ErrorRedColor;
             });
         }
         finally
@@ -644,8 +847,26 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         }
     }
 
+    public event EventHandler? ThemesRequested;
+
+    private void OnThemesSettingsTapped(object? sender, EventArgs e)
+    {
+        if (ThemesSettingsCard is not null)
+        {
+            _ = ThemesSettingsCard.BounceClickAsync();
+        }
+
+        ThemesRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     public void Dispose()
     {
+#if WINDOWS
+        if (_windowActivatedHandler != null)
+        {
+            App.WindowActivated -= _windowActivatedHandler;
+        }
+#endif
         _speedTestCts?.Cancel();
         _speedTestCts?.Dispose();
         GC.SuppressFinalize(this);

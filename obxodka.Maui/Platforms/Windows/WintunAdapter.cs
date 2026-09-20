@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-
 namespace obxodka.Platforms.Windows;
 
 [SupportedOSPlatform("windows10.0.19041.0")]
@@ -53,7 +51,11 @@ internal sealed partial class WintunAdapter : IDisposable
     private static partial void WintunSendPacket(IntPtr session, IntPtr packet);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+    private static partial uint WaitForMultipleObjects(uint nCount, [In] IntPtr[] lpHandles, [MarshalAs(UnmanagedType.Bool)] bool bWaitAll, uint dwMilliseconds);
+
+    private readonly Lock _syncLock = new();
+    private volatile bool _isDisposed;
+    private readonly ManualResetEvent _stopEvent = new(false);
 
     private IntPtr _adapter;
     private IntPtr _session;
@@ -77,24 +79,57 @@ internal sealed partial class WintunAdapter : IDisposable
 
     public void StartSession(uint capacity = 0x4000000)
     {
-        _session = WintunStartSession(_adapter, capacity);
-        if (_session == IntPtr.Zero)
+        lock (_syncLock)
         {
-            throw new InvalidOperationException("Не удалось запустить Wintun сессию.");
+            _session = WintunStartSession(_adapter, capacity);
+            if (_session == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("Не удалось запустить Wintun сессию.");
+            }
         }
     }
 
     public int ReceiveBatch(PacketBatch outBatch, CancellationToken ct)
     {
-        var waitEvent = WintunGetReadWaitEvent(_session);
+        if (_isDisposed)
+        {
+            return 0;
+        }
+
+        IntPtr waitEvent;
+        lock (_syncLock)
+        {
+            if (_isDisposed || _session == IntPtr.Zero)
+            {
+                return 0;
+            }
+            waitEvent = WintunGetReadWaitEvent(_session);
+        }
+
+        if (waitEvent == IntPtr.Zero)
+        {
+            return 0;
+        }
+
+        var handles = new[] { waitEvent, _stopEvent.SafeWaitHandle.DangerousGetHandle() };
         outBatch.Clear();
         const int maxPacketSize = 65535;
 
-        while (!ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested && !_isDisposed)
         {
-            while (true)
+            while (!_isDisposed)
             {
-                var ptr = WintunReceivePacket(_session, out var size);
+                IntPtr ptr;
+                uint size;
+                lock (_syncLock)
+                {
+                    if (_isDisposed || _session == IntPtr.Zero)
+                    {
+                        break;
+                    }
+                    ptr = WintunReceivePacket(_session, out size);
+                }
+
                 if (ptr == IntPtr.Zero)
                 {
                     break;
@@ -102,13 +137,25 @@ internal sealed partial class WintunAdapter : IDisposable
 
                 if (size > maxPacketSize)
                 {
-                    WintunReleaseReceivePacket(_session, ptr);
+                    lock (_syncLock)
+                    {
+                        if (!_isDisposed && _session != IntPtr.Zero)
+                        {
+                            WintunReleaseReceivePacket(_session, ptr);
+                        }
+                    }
                     continue;
                 }
 
                 var buf = ArrayPool<byte>.Shared.Rent((int)size);
                 Marshal.Copy(ptr, buf, 0, (int)size);
-                WintunReleaseReceivePacket(_session, ptr);
+                lock (_syncLock)
+                {
+                    if (!_isDisposed && _session != IntPtr.Zero)
+                    {
+                        WintunReleaseReceivePacket(_session, ptr);
+                    }
+                }
                 outBatch.Add(buf, (int)size);
 
                 if (outBatch.Count >= 256)
@@ -117,40 +164,90 @@ internal sealed partial class WintunAdapter : IDisposable
                 }
             }
 
-            if (outBatch.Count > 0)
+            if (outBatch.Count > 0 || _isDisposed || ct.IsCancellationRequested)
             {
                 return outBatch.Count;
             }
 
-            _ = WaitForSingleObject(waitEvent, 200);
+            var waitResult = WaitForMultipleObjects(2, handles, false, 200);
+            if (waitResult != 0 || _isDisposed)
+            {
+                break;
+            }
         }
 
-        return 0;
+        return outBatch.Count;
     }
 
     public (byte[]? buffer, int length) ReceivePacket(CancellationToken ct)
     {
-        var waitEvent = WintunGetReadWaitEvent(_session);
+        if (_isDisposed)
+        {
+            return (null, 0);
+        }
+
+        IntPtr waitEvent;
+        lock (_syncLock)
+        {
+            if (_isDisposed || _session == IntPtr.Zero)
+            {
+                return (null, 0);
+            }
+            waitEvent = WintunGetReadWaitEvent(_session);
+        }
+
+        if (waitEvent == IntPtr.Zero)
+        {
+            return (null, 0);
+        }
+
+        var handles = new[] { waitEvent, _stopEvent.SafeWaitHandle.DangerousGetHandle() };
         const int maxPacketSize = 65535;
 
-        while (!ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested && !_isDisposed)
         {
-            var ptr = WintunReceivePacket(_session, out var size);
+            IntPtr ptr;
+            uint size;
+            lock (_syncLock)
+            {
+                if (_isDisposed || _session == IntPtr.Zero)
+                {
+                    return (null, 0);
+                }
+                ptr = WintunReceivePacket(_session, out size);
+            }
+
             if (ptr != IntPtr.Zero)
             {
                 if (size > maxPacketSize)
                 {
-                    WintunReleaseReceivePacket(_session, ptr);
+                    lock (_syncLock)
+                    {
+                        if (!_isDisposed && _session != IntPtr.Zero)
+                        {
+                            WintunReleaseReceivePacket(_session, ptr);
+                        }
+                    }
                     continue;
                 }
 
                 var data = ArrayPool<byte>.Shared.Rent((int)size);
                 Marshal.Copy(ptr, data, 0, (int)size);
-                WintunReleaseReceivePacket(_session, ptr);
+                lock (_syncLock)
+                {
+                    if (!_isDisposed && _session != IntPtr.Zero)
+                    {
+                        WintunReleaseReceivePacket(_session, ptr);
+                    }
+                }
                 return (data, (int)size);
             }
 
-            _ = WaitForSingleObject(waitEvent, 200);
+            var waitResult = WaitForMultipleObjects(2, handles, false, 200);
+            if (waitResult != 0 || _isDisposed)
+            {
+                break;
+            }
         }
 
         return (null, 0);
@@ -160,32 +257,74 @@ internal sealed partial class WintunAdapter : IDisposable
 
     public void SendPacket(byte[] data, int length)
     {
-        if (_session == IntPtr.Zero)
+        if (_isDisposed)
         {
             return;
         }
 
-        var ptr = WintunAllocateSendPacket(_session, (uint)length);
-        if (ptr != IntPtr.Zero)
+        lock (_syncLock)
         {
-            Marshal.Copy(data, 0, ptr, length);
-            WintunSendPacket(_session, ptr);
+            if (_isDisposed || _session == IntPtr.Zero)
+            {
+                return;
+            }
+
+            var ptr = WintunAllocateSendPacket(_session, (uint)length);
+            if (ptr != IntPtr.Zero)
+            {
+                Marshal.Copy(data, 0, ptr, length);
+                WintunSendPacket(_session, ptr);
+            }
         }
     }
 
     public void Dispose()
     {
-        if (_session != IntPtr.Zero)
+        lock (_syncLock)
         {
-            WintunEndSession(_session);
-            _session = IntPtr.Zero;
+            if (_isDisposed)
+            {
+                return;
+            }
+            _isDisposed = true;
         }
 
-        if (_adapter != IntPtr.Zero)
+        try
         {
-            WintunCloseAdapter(_adapter);
-            _adapter = IntPtr.Zero;
+            _ = _stopEvent.Set();
         }
+        catch { }
+
+        Thread.Sleep(30);
+
+        lock (_syncLock)
+        {
+            if (_session != IntPtr.Zero)
+            {
+                try
+                {
+                    WintunEndSession(_session);
+                }
+                catch { }
+                _session = IntPtr.Zero;
+            }
+
+            if (_adapter != IntPtr.Zero)
+            {
+                try
+                {
+                    WintunCloseAdapter(_adapter);
+                }
+                catch { }
+                _adapter = IntPtr.Zero;
+            }
+        }
+
+        try
+        {
+            _stopEvent.Dispose();
+        }
+        catch { }
     }
 }
 

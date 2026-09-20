@@ -13,7 +13,7 @@ public class TrafficGraphMathTests
     [InlineData(5368709120, "5 GB")]
     public void FormatBytesFormatsProperUnits(double bytes, string expected)
     {
-        var result = VpnView.FormatBytes(bytes);
+        var result = FormatHelper.FormatBytes(bytes);
         Assert.Equal(expected, result);
     }
 

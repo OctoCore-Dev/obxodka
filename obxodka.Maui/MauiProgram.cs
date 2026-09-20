@@ -1,11 +1,9 @@
-using obxodka.Client.Platforms;
-using obxodka.Maui.Services;
 #if WINDOWS
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
-using WinRT.Interop;
-using obxodka.Platforms.Windows;
 using obxodka.Maui.Platforms.Windows.Services;
+using obxodka.Platforms.Windows;
+using WinRT.Interop;
 #elif ANDROID
 using obxodka.Maui.Platforms.Android.Services;
 #endif
@@ -26,6 +24,7 @@ internal static partial class MauiProgram
             .UseMauiApp<App>()
             .UseFluentMauiIcons()
             .UseMauiCommunityToolkit()
+            .UseMauiCommunityToolkitMediaElement(isAndroidForegroundServiceEnabled: false)
             .UseSkiaSharp()
             .ConfigureFonts(fonts =>
             {
@@ -68,6 +67,7 @@ internal static partial class MauiProgram
         });
 
         builder.Services.AddSingleton<AuthManager>();
+        builder.Services.AddSingleton<ThemeManager>();
 
 #if WINDOWS
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
@@ -138,6 +138,14 @@ internal static partial class MauiProgram
 #endif
         });
 
+        Microsoft.Maui.Handlers.SwitchHandler.Mapper.AppendToMapping("CleanSwitch", (handler, _) =>
+        {
+#if WINDOWS
+            handler.PlatformView.OnContent = null;
+            handler.PlatformView.OffContent = null;
+#endif
+        });
+
 #if WINDOWS
         Microsoft.Maui.Handlers.ScrollViewHandler.Mapper.AppendToMapping("FixHorizontalOverflow", (handler, view) =>
         {
@@ -167,6 +175,7 @@ internal static partial class MauiProgram
         window.ExtendsContentIntoTitleBar = true;
 
         var handle = WindowNative.GetWindowHandle(window);
+        App.MainWindowHandle = handle;
         var id = Win32Interop.GetWindowIdFromWindow(handle);
         var appWindow = AppWindow.GetFromWindowId(id);
         if (appWindow is null)

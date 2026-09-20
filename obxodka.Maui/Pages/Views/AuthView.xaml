@@ -27,8 +27,9 @@
                 <Label
                     x:Name="TitleLabelLogin"
                     CharacterSpacing="2.5"
+                    FontFamily="{DynamicResource AppFontBold}"
+                    FontSize="28"
                     HorizontalOptions="Center"
-                    Style="{StaticResource TitleLarge}"
                     Text="ОБХОДКА VPN" />
             </VerticalStackLayout>
 
@@ -36,7 +37,7 @@
                 x:Name="FormContainer"
                 Padding="28,24"
                 HorizontalOptions="Center"
-                Style="{StaticResource NeoPanel}"
+                Style="{StaticResource NeoCard}"
                 WidthRequest="{OnIdiom Phone=340,
                                        Default=400}">
 
@@ -78,11 +79,10 @@
                                         AutomationId="AuthGetCodeButton"
                                         BackgroundColor="Transparent"
                                         Clicked="OnGetCodeClickedAsync"
-                                        FontFamily="RobotoMedium"
+                                        FontFamily="{DynamicResource AppFontMedium}"
                                         FontSize="14"
                                         Text="Получить код"
-                                        TextColor="{AppThemeBinding Light=#333333,
-                                                                    Dark=#E5E5E5}" />
+                                        TextColor="{DynamicResource TextPrimary}" />
                                     <ActivityIndicator
                                         x:Name="GetCodeLoader"
                                         HeightRequest="24"
@@ -91,8 +91,7 @@
                                         IsVisible="False"
                                         VerticalOptions="Center"
                                         WidthRequest="24"
-                                        Color="{AppThemeBinding Light=#333333,
-                                                                Dark=#E5E5E5}" />
+                                        Color="{DynamicResource TextPrimary}" />
                                 </Grid>
                             </Border>
                         </VerticalStackLayout>
@@ -134,11 +133,10 @@
                                         AutomationId="AuthVerifyCodeButton"
                                         BackgroundColor="Transparent"
                                         Clicked="OnVerifyCodeClickedAsync"
-                                        FontFamily="RobotoMedium"
+                                        FontFamily="{DynamicResource AppFontMedium}"
                                         FontSize="14"
                                         Text="Войти"
-                                        TextColor="{AppThemeBinding Light=#333333,
-                                                                    Dark=#E5E5E5}" />
+                                        TextColor="{DynamicResource TextPrimary}" />
                                     <ActivityIndicator
                                         x:Name="VerifyCodeLoader"
                                         HeightRequest="24"
@@ -147,19 +145,14 @@
                                         IsVisible="False"
                                         VerticalOptions="Center"
                                         WidthRequest="24"
-                                        Color="{AppThemeBinding Light=#333333,
-                                                                Dark=#E5E5E5}" />
+                                        Color="{DynamicResource TextPrimary}" />
                                 </Grid>
                             </Border>
 
                             <Button
-                                BackgroundColor="Transparent"
                                 Clicked="OnBackToEmailClickedAsync"
-                                FontFamily="RobotoMedium"
-                                FontSize="12"
-                                Text="Изменить Email"
-                                TextColor="{AppThemeBinding Light=#666666,
-                                                            Dark=#AAAAAA}" />
+                                Style="{StaticResource BtnGhost}"
+                                Text="Изменить Email" />
                         </VerticalStackLayout>
                     </Grid>
                 </VerticalStackLayout>

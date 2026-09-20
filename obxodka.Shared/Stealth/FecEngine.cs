@@ -1,4 +1,4 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 public sealed class FecEngine
 {

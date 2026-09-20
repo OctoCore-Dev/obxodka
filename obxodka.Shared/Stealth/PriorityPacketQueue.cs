@@ -1,4 +1,4 @@
-namespace obxodka.Stealth;
+namespace obxodka.Shared.Stealth;
 
 [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "Specialized network priority packet queue")]
 public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
@@ -32,18 +32,23 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
     public async ValueTask<(byte[] buffer, int length)> DequeueAsync(CancellationToken ct)
     {
-        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
-
-        if (_high.TryDequeue(out var highItem))
+        while (!ct.IsCancellationRequested)
         {
-            _ = Interlocked.Decrement(ref _count);
-            return highItem;
-        }
+            await _semaphore.WaitAsync(ct).ConfigureAwait(false);
 
-        if (_low.TryDequeue(out var lowItem))
-        {
-            _ = Interlocked.Decrement(ref _count);
-            return lowItem;
+            if (_high.TryDequeue(out var highItem))
+            {
+                _ = Interlocked.Decrement(ref _count);
+                return highItem;
+            }
+
+            if (_low.TryDequeue(out var lowItem))
+            {
+                _ = Interlocked.Decrement(ref _count);
+                return lowItem;
+            }
+
+            _ = _semaphore.Release();
         }
 
         return ([], 0);
@@ -64,10 +69,23 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 _ = Interlocked.Decrement(ref _count);
                 return true;
             }
+
+            _ = _semaphore.Release();
         }
 
         item = default;
         return false;
+    }
+
+    public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
+    {
+        while (TryDequeue(out var item))
+        {
+            if (item.buffer != null && item.buffer.Length > 0)
+            {
+                returnBuffer?.Invoke(item.buffer);
+            }
+        }
     }
 
     public int Count => Volatile.Read(ref _count);
@@ -79,21 +97,40 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             return true;
         }
 
-        if (length < 20)
+        var offset = 0;
+        var innerLen = length;
+
+        if (length >= 17 && packet.Length >= length)
+        {
+            var totalLen = BinaryPrimitives.ReadInt32LittleEndian(packet.AsSpan(0, 4));
+            var realLen = BinaryPrimitives.ReadInt32LittleEndian(packet.AsSpan(4, 4));
+            if (totalLen == length && realLen > 0 && realLen <= length - 8)
+            {
+                offset = 8;
+                innerLen = realLen;
+            }
+        }
+
+        if (innerLen == 9 && packet[offset] == 0x99)
         {
             return true;
         }
 
-        var version = packet[0] >> 4;
+        if (innerLen < 20)
+        {
+            return true;
+        }
+
+        var version = packet[offset] >> 4;
         if (version == 4)
         {
-            var ihl = (packet[0] & 0x0F) * 4;
-            if (length < ihl)
+            var ihl = (packet[offset] & 0x0F) * 4;
+            if (innerLen < ihl)
             {
                 return false;
             }
 
-            var protocol = packet[9];
+            var protocol = packet[offset + 9];
             if (protocol is 17 or 1)
             {
                 return true;
@@ -101,24 +138,24 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
             if (protocol == 6)
             {
-                if (length < ihl + 20)
+                if (innerLen < ihl + 20)
                 {
                     return false;
                 }
 
-                var dataOffset = (packet[ihl + 12] >> 4) * 4;
-                var payloadLength = length - ihl - dataOffset;
+                var dataOffset = (packet[offset + ihl + 12] >> 4) * 4;
+                var payloadLength = innerLen - ihl - dataOffset;
                 return payloadLength <= 0;
             }
         }
         else if (version == 6)
         {
-            if (length < 40)
+            if (innerLen < 40)
             {
                 return false;
             }
 
-            var nextHeader = packet[6];
+            var nextHeader = packet[offset + 6];
             if (nextHeader is 17 or 58)
             {
                 return true;
@@ -126,13 +163,13 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
             if (nextHeader == 6)
             {
-                if (length < 60)
+                if (innerLen < 60)
                 {
                     return false;
                 }
 
-                var dataOffset = (packet[40 + 12] >> 4) * 4;
-                var payloadLength = length - 40 - dataOffset;
+                var dataOffset = (packet[offset + 40 + 12] >> 4) * 4;
+                var payloadLength = innerLen - 40 - dataOffset;
                 return payloadLength <= 0;
             }
         }

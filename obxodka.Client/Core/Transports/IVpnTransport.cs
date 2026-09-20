@@ -12,5 +12,6 @@ public interface IVpnTransport : IDisposable, IAsyncDisposable
     public Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct);
     public void SendPacketFromPool(byte[] packet, int length);
     public Task SendDisconnectSignalAsync();
+    public Task SendPingProbeAsync();
     public void ProtectSockets(Action<Socket> protectAction);
 }

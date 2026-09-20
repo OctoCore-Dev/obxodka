@@ -55,6 +55,12 @@ indent_size = 2
 indent_size = 2
 dotnet_diagnostic.NU1605.severity = error
 dotnet_diagnostic.NU1507.severity = error
+build_check.BC0102.severity = none
+dotnet_diagnostic.BC0102.severity = none
+build_check.BC0201.severity = none
+dotnet_diagnostic.BC0201.severity = none
+build_check.BC0202.severity = none
+dotnet_diagnostic.BC0202.severity = none
 
 [**Pages/**.cs]
 dotnet_diagnostic.IDE0040.severity = error
@@ -249,6 +255,8 @@ dotnet_analyzer_diagnostic.category-Security.severity = error
 
 dotnet_diagnostic.CA1822.severity = error   # Метод не использует this — сделай static
 dotnet_diagnostic.CA1062.severity = none    # Validate parameter (слишком шумно с nullable)
+dotnet_diagnostic.CA1716.severity = none    # Identifiers should not match VB keywords (obxodka.Shared)
+dotnet_diagnostic.CA1016.severity = none    # Mark assemblies with assembly version
 dotnet_diagnostic.CA1805.severity = error   # Не инициализируй до default value
 dotnet_diagnostic.CA1854.severity = error   # Prefer TryGetValue over ContainsKey+indexer
 dotnet_diagnostic.CA1860.severity = error   # Prefer Count > 0 over Any()

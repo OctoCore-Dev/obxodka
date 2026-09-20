@@ -26,11 +26,13 @@ public sealed class AndroidConnectivityService(Context context) : IConnectivityS
             var capabilities = _connectivityManager.GetNetworkCapabilities(network);
             return capabilities is null
                 ? AppNetworkAccess.Unknown
-                : capabilities.HasTransport(TransportType.Wifi) ||
-                  capabilities.HasTransport(TransportType.Cellular) ||
-                  capabilities.HasTransport(TransportType.Ethernet)
-                ? AppNetworkAccess.Internet
-                : AppNetworkAccess.Local;
+                : capabilities.HasCapability(NetCapability.Internet) ||
+                   capabilities.HasTransport(TransportType.Vpn) ||
+                   capabilities.HasTransport(TransportType.Wifi) ||
+                   capabilities.HasTransport(TransportType.Cellular) ||
+                   capabilities.HasTransport(TransportType.Ethernet)
+                    ? AppNetworkAccess.Internet
+                    : AppNetworkAccess.Local;
         }
     }
 

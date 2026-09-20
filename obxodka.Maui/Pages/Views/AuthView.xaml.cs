@@ -16,6 +16,18 @@ public sealed partial class AuthView : ContentView
     public Task PlayEntranceAnimationAsync() =>
         UIAnimations.PlayEntranceFadeScaleAsync(FormContainer);
 
+    public void UpdateCardOpacity()
+    {
+        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+            ? bgColor
+            : Color.FromArgb("#161622");
+
+        FormContainer.BackgroundColor = bgSurface;
+    }
+
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
+
     private async void OnGetCodeClickedAsync(object? sender, EventArgs? e)
     {
         EmailEntry.Unfocus();
@@ -118,6 +130,7 @@ public sealed partial class AuthView : ContentView
             JwtToken = data.Token,
             VpnConfig = data.VpnConfig,
             SubscriptionUntil = data.SubscriptionUntil,
+            BalanceSeconds = data.BalanceSeconds,
             IsLoggedIn = true
         });
 

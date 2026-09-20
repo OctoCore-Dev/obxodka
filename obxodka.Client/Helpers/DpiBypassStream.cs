@@ -1,9 +1,12 @@
 namespace obxodka.Helpers;
 
-public sealed partial class DpiBypassStream(Stream innerStream) : Stream
+public sealed partial class DpiBypassStream(Stream innerStream, int splitPosition = 2, int delayMs = 25) : Stream
 {
     private readonly Stream _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
     private bool _firstWrite = true;
+
+    public int SplitPosition { get; } = Math.Max(1, splitPosition);
+    public int DelayMs { get; } = Math.Max(0, delayMs);
 
     public override bool CanRead => _innerStream.CanRead;
     public override bool CanSeek => _innerStream.CanSeek;
@@ -30,11 +33,17 @@ public sealed partial class DpiBypassStream(Stream innerStream) : Stream
 
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        if (_firstWrite && buffer.Length > 5)
+        if (_firstWrite && buffer.Length > SplitPosition)
         {
             _firstWrite = false;
-            _innerStream.Write(buffer[..5]);
-            _innerStream.Write(buffer[5..]);
+            _innerStream.Write(buffer[..SplitPosition]);
+            _innerStream.Flush();
+            if (DelayMs > 0)
+            {
+                Thread.Sleep(DelayMs);
+            }
+            _innerStream.Write(buffer[SplitPosition..]);
+            _innerStream.Flush();
         }
         else
         {
@@ -47,12 +56,17 @@ public sealed partial class DpiBypassStream(Stream innerStream) : Stream
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (_firstWrite && buffer.Length > 5)
+        if (_firstWrite && buffer.Length > SplitPosition)
         {
             _firstWrite = false;
-            await _innerStream.WriteAsync(buffer[..5], cancellationToken).ConfigureAwait(false);
-            await Task.Delay(10, cancellationToken).ConfigureAwait(false);
-            await _innerStream.WriteAsync(buffer[5..], cancellationToken).ConfigureAwait(false);
+            await _innerStream.WriteAsync(buffer[..SplitPosition], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            if (DelayMs > 0)
+            {
+                await Task.Delay(DelayMs, cancellationToken).ConfigureAwait(false);
+            }
+            await _innerStream.WriteAsync(buffer[SplitPosition..], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         else
         {
