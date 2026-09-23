@@ -1,5 +1,5 @@
-using Uri = System.Uri;
 using obxodka.Core.Models;
+using Uri = System.Uri;
 
 namespace obxodka.Platforms.Windows;
 
@@ -89,7 +89,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 if (_fallbackServers.Count > 1)
                 {
-                    var gw = await GetDefaultGatewayAsync();
+                    var gw = GetDefaultGateway();
                     for (var i = 0; i < _fallbackServers.Count; i++)
                     {
                         var nextIdx = (_currentServerIndex + 1 + i) % _fallbackServers.Count;
@@ -179,7 +179,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                     try
                     {
-                        var gw = await GetDefaultGatewayAsync();
+                        var gw = GetDefaultGateway();
                         if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(_currentServerIp))
                         {
                             _ = await RunCmdAsync("route", $"delete {_currentServerIp} mask 255.255.255.255");
@@ -731,7 +731,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return ("", 0);
     }
 
-    private static async Task<(string Gateway, int InterfaceIndex)> GetDefaultGatewayInfoAsync(string? targetIp = null)
+    private static (string Gateway, int InterfaceIndex) GetDefaultGatewayInfo(string? targetIp = null)
     {
         var win32Route = QueryBestRouteWin32(targetIp);
         if (win32Route.InterfaceIndex > 0)
@@ -760,15 +760,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private static async Task<string> GetDefaultGatewayAsync(string? targetIp = null)
+    private static string GetDefaultGateway(string? targetIp = null)
     {
-        var (gw, _) = await GetDefaultGatewayInfoAsync(targetIp);
+        var (gw, _) = GetDefaultGatewayInfo(targetIp);
         return gw;
     }
 
     private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
     {
-        var (gw, physicalIfIndex) = await GetDefaultGatewayInfoAsync(serverIp);
+        var (gw, physicalIfIndex) = GetDefaultGatewayInfo(serverIp);
         Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, PhysicalIfIndex: {physicalIfIndex}, Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
 
         if (enable && !string.IsNullOrEmpty(adapterName))

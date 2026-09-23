@@ -24,7 +24,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     private static readonly string[] t_pingEndpoints =
     [
         "https://ya.ru/favicon.ico",
-        "https://1.1.1.1/",
+        "https://77.88.8.8/",
         "https://www.google.com/generate_204"
     ];
 
@@ -32,7 +32,6 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     [
         "https://speedtest.selectel.ru/100MB",
         "https://mirror.yandex.ru/debian/ls-lR.gz",
-        "https://speed.cloudflare.com/__down?bytes=50000000",
         "https://proof.ovh.net/files/100Mb.dat"
     ];
 

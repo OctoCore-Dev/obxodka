@@ -100,10 +100,10 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             var dohOk = await CheckDohConnectivityAsync(ct).ConfigureAwait(false);
             if (!dohOk)
             {
-                return (DiagnosticStatus.Warning, $"Системный DNS OK ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms), но DoH (1.1.1.1) заблокирован");
+                return (DiagnosticStatus.Warning, $"Системный DNS OK ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms), но DoH (dns.google) заблокирован");
             }
 
-            return (DiagnosticStatus.Passed, $"Системный DNS ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms) и DoH (1.1.1.1) доступны");
+            return (DiagnosticStatus.Passed, $"Системный DNS ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms) и DoH (dns.google) доступны");
         }, onStepCompleted);
 
         var tcp443Ok = false;
@@ -246,7 +246,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, "https://1.1.1.1/dns-query?name=cloudflare.com&type=A");
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://dns.google/resolve?name=google.com&type=A");
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/dns-json"));
             using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
             return resp.IsSuccessStatusCode;

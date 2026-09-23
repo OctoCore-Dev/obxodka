@@ -745,23 +745,13 @@ public sealed partial class VpnView : ContentView
 
             if (!success || servers is null || servers.Count == 0)
             {
-                StopLoaderAnimation();
-                ConnectButtonCore.IsEnabled = true;
-                IpAddressLabel.Text = "IP: не назначен";
-                await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
-                await _parent.DisplayAlertAsync("Ошибка", errorMsg ?? "Не удалось получить список нод", "OK");
-                return;
+                servers = [new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 10, "8C4D558DD38236249DA05CA9FD59658C0CAC305E")];
             }
 
             var candidateServers = await ProbeBestServerAsync(servers);
             if (candidateServers.Count == 0)
             {
-                StopLoaderAnimation();
-                ConnectButtonCore.IsEnabled = true;
-                IpAddressLabel.Text = "IP: не назначен";
-                await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
-                await _parent.DisplayAlertAsync("Ошибка", "Доступные сервера не отвечают. Проверьте интернет-соединение.", "OK");
-                return;
+                candidateServers = servers;
             }
 
             var targetServer = candidateServers[0];
@@ -806,7 +796,7 @@ public sealed partial class VpnView : ContentView
             var reachable = false;
             try
             {
-                using var cts = new CancellationTokenSource(1500);
+                using var cts = new CancellationTokenSource(3000);
                 var host = server.Ip;
                 var port = server.Port > 0 ? server.Port : 443;
 
@@ -856,25 +846,31 @@ public sealed partial class VpnView : ContentView
         }
         catch { }
         fallbackCandidates.Add("obxodka.one");
+        fallbackCandidates.Add("45.63.117.29");
 
         foreach (var fbHost in fallbackCandidates.Distinct())
         {
             try
             {
-                using var cts = new CancellationTokenSource(1500);
+                using var cts = new CancellationTokenSource(3000);
                 var addrs = await Dns.GetHostAddressesAsync(fbHost, cts.Token);
                 if (addrs.Any(a => a.AddressFamily == AddressFamily.InterNetwork))
                 {
                     using var client = new TcpClient();
                     await client.ConnectAsync(fbHost, 443, cts.Token).AsTask();
-                    reachableServers.Add(new VpnServerDto(fbHost, 443, "Auto", true, 50, null));
+                    var certHash = fbHost == "45.63.117.29" ? "8C4D558DD38236249DA05CA9FD59658C0CAC305E" : null;
+                    reachableServers.Add(new VpnServerDto(fbHost, 443, "Auto", true, 50, certHash));
                     break;
                 }
             }
             catch { }
         }
 
-        return reachableServers.Count > 0 ? reachableServers : servers;
+        return reachableServers.Count > 0
+            ? reachableServers
+            : servers.Count > 0
+                ? servers
+                : [new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 10, "8C4D558DD38236249DA05CA9FD59658C0CAC305E")];
     }
 
     private void StartGraphAnimation()

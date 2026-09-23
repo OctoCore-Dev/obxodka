@@ -12,6 +12,12 @@ public static class AppConfig
             var savedBridge = Preferences.Default.Get("cached_bridge_host", string.Empty);
             if (!string.IsNullOrWhiteSpace(savedBridge))
             {
+                if (savedBridge.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase))
+                {
+                    Preferences.Default.Remove("cached_bridge_host");
+                    return DefaultApiBaseUrl;
+                }
+
                 if (IPAddress.TryParse(savedBridge, out _))
                 {
                     return $"https://{savedBridge}/";
