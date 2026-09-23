@@ -667,36 +667,107 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return await tcs.Task;
     }
 
-    private static async Task<string> GetDefaultGatewayAsync()
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MIB_IPFORWARDROW
+    {
+        public uint DwForwardDest;
+        public uint DwForwardMask;
+        public uint DwForwardPolicy;
+        public uint DwForwardNextHop;
+        public uint DwForwardIfIndex;
+        public uint DwForwardType;
+        public uint DwForwardProto;
+        public uint DwForwardAge;
+        public uint DwForwardNextHopAS;
+        public uint DwForwardMetric1;
+        public uint DwForwardMetric2;
+        public uint DwForwardMetric3;
+        public uint DwForwardMetric4;
+        public uint DwForwardMetric5;
+    }
+
+    [LibraryImport("iphlpapi.dll", SetLastError = true)]
+    private static partial int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
+
+    private static (string Gateway, int InterfaceIndex) QueryBestRouteWin32(string? targetIp)
     {
         try
         {
-            var (_, output) = await RunCmdAsync("powershell", "-NoProfile -Command \"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop\"");
-            var gw = output.Trim();
-            if (string.IsNullOrEmpty(gw))
+            var ipStr = !string.IsNullOrEmpty(targetIp) && IPAddress.TryParse(targetIp, out _) ? targetIp : "8.8.8.8";
+            var ip = IPAddress.Parse(ipStr);
+            var destUint = MemoryMarshal.Read<uint>(ip.GetAddressBytes());
+            if (GetBestRoute(destUint, 0, out var row) == 0)
             {
-                var card = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n =>
-                    n.OperationalStatus == OperationalStatus.Up &&
-                    n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                    !n.Name.Contains("Obxodka") &&
-                    !n.Name.Contains("Radmin") &&
-                    n.GetIPProperties().GatewayAddresses.Count != 0);
+                var ifIndex = (int)row.DwForwardIfIndex;
+                var gwUint = row.DwForwardNextHop;
+                if (gwUint != 0)
+                {
+                    var gwBytes = BitConverter.GetBytes(gwUint);
+                    var gwIp = new IPAddress(gwBytes).ToString();
+                    if (gwIp != "0.0.0.0")
+                    {
+                        return (gwIp, ifIndex);
+                    }
+                }
 
-                return card?.GetIPProperties().GatewayAddresses.FirstOrDefault()?.Address.ToString() ?? "";
+                foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    var ipProps = card.GetIPProperties();
+                    if (ipProps.GetIPv4Properties()?.Index == ifIndex)
+                    {
+                        var gw = ipProps.GatewayAddresses
+                            .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any))?
+                            .Address.ToString();
+                        return (gw ?? "", ifIndex);
+                    }
+                }
+
+                return ("", ifIndex);
             }
+        }
+        catch { }
+        return ("", 0);
+    }
 
-            return gw;
+    private static async Task<(string Gateway, int InterfaceIndex)> GetDefaultGatewayInfoAsync(string? targetIp = null)
+    {
+        var win32Route = QueryBestRouteWin32(targetIp);
+        if (win32Route.InterfaceIndex > 0)
+        {
+            Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
+            return win32Route;
+        }
+
+        try
+        {
+            var card = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n =>
+                n.OperationalStatus == OperationalStatus.Up &&
+                n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                !n.Name.Contains("Obxodka") &&
+                !n.Name.Contains("Wintun") &&
+                !n.Name.Contains("Radmin") &&
+                n.GetIPProperties().GatewayAddresses.Count != 0);
+
+            var gw = card?.GetIPProperties().GatewayAddresses.FirstOrDefault()?.Address.ToString() ?? "";
+            var ifIndex = card?.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+            return (gw, ifIndex);
         }
         catch
         {
-            return "";
+            return ("", 0);
         }
+    }
+
+    private static async Task<string> GetDefaultGatewayAsync(string? targetIp = null)
+    {
+        var (gw, _) = await GetDefaultGatewayInfoAsync(targetIp);
+        return gw;
     }
 
     private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
     {
-        var gw = await GetDefaultGatewayAsync();
-        Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
+        var (gw, physicalIfIndex) = await GetDefaultGatewayInfoAsync(serverIp);
+        Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, PhysicalIfIndex: {physicalIfIndex}, Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
 
         if (enable && !string.IsNullOrEmpty(adapterName))
         {
@@ -719,11 +790,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 ifIndex = output.Trim();
             }
 
-            if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(serverIp))
+            var nextHop = !string.IsNullOrEmpty(gw) ? gw : "0.0.0.0";
+            var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
+            if (!string.IsNullOrEmpty(serverIp))
             {
                 _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
-                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1");
+                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
                 Debug.WriteLine($"[ROUTE] Add Server Route: ExitCode {exitCode}, Output: {output}");
+                if (exitCode != 0 && physicalIfIndex > 0)
+                {
+                    _ = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1");
+                }
             }
 
             if (!string.IsNullOrEmpty(ifIndex))
