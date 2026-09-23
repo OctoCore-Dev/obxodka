@@ -71,7 +71,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     public async Task<DiagnosticReport> RunFullDiagnosticsAsync(
         string serverHost = "45.63.117.29",
         int serverPort = 443,
-        int udpPort = 6767,
+        int udpPort = FechsueTransport.FechsueServerPort,
         Action<DiagnosticStepResult>? onStepCompleted = null,
         CancellationToken ct = default)
     {
@@ -158,7 +158,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
 
         // 5. L4 UDP Probe (Port 6767 vs 443)
         var udp6767Ok = false;
-        await RunStepAsync(report, "5. UDP 6767 (FECHSUE)", async () =>
+        await RunStepAsync(report, $"5. UDP {udpPort} (FECHSUE)", async () =>
         {
             udp6767Ok = await TestUdpReachabilityAsync(serverHost, udpPort, ct).ConfigureAwait(false);
             if (udp6767Ok)

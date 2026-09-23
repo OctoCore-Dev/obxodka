@@ -76,7 +76,7 @@ public class NetworkDiagnosticsTests
         var report = await diagService.RunFullDiagnosticsAsync(
             serverHost: "127.0.0.1",
             serverPort: 443,
-            udpPort: 6767,
+            udpPort: FechsueTransport.FechsueServerPort,
             onStepCompleted: s => completedSteps.Add(s),
             ct: cts.Token);
 
@@ -99,7 +99,7 @@ public class NetworkDiagnosticsTests
         var report = await diagService.RunFullDiagnosticsAsync(
             serverHost: "45.63.117.29",
             serverPort: 443,
-            udpPort: 6767,
+            udpPort: FechsueTransport.FechsueServerPort,
             ct: cts.Token);
 
         Assert.NotNull(report);
