@@ -13,7 +13,7 @@ public sealed partial class GrpcTransport(
 {
     private readonly bool _useHttp3 = useHttp3;
     private readonly int _activeRays = Math.Clamp(activeRays, 1, PacketRouter.MaxRays);
-    private readonly X509Certificate2? _clientCert = clientCert;
+    private readonly string? _certThumbprint = clientCert?.Thumbprint;
     private readonly string? _jwtToken = jwtToken;
     private readonly int _serverPort = serverPort > 0 ? serverPort : 443;
     private readonly MeshRelayInfo? _meshRelay = meshRelay;
@@ -54,6 +54,16 @@ public sealed partial class GrpcTransport(
         try
         {
             using var cert2 = certificate as X509Certificate2 ?? new X509Certificate2(certificate);
+
+            var nowUtc = DateTime.UtcNow;
+            var notBeforeUtc = cert2.NotBefore.ToUniversalTime();
+            var notAfterUtc = cert2.NotAfter.ToUniversalTime();
+
+            if (nowUtc < notBeforeUtc - TimeSpan.FromDays(1) || nowUtc > notAfterUtc)
+            {
+                return false;
+            }
+
             var expectedPin = !string.IsNullOrWhiteSpace(dynamicPinningHash)
                 ? dynamicPinningHash
                 : OctopusEngine.DynamicSslPublicKeyHash;
@@ -76,9 +86,68 @@ public sealed partial class GrpcTransport(
                         return true;
                     }
                 }
+            }
 
-                // If the certificate is issued by a publicly trusted CA (e.g. Let's Encrypt on obxodka.one), accept it
-                if (errors == SslPolicyErrors.None && chain is not null)
+            // Check if this is a certificate for obxodka.one (Subject CN or SAN)
+            var isObxodkaDomain = cert2.Subject.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase);
+            if (!isObxodkaDomain)
+            {
+                foreach (var ext in cert2.Extensions)
+                {
+                    if (ext is X509SubjectAlternativeNameExtension sanExt)
+                    {
+                        foreach (var dns in sanExt.EnumerateDnsNames())
+                        {
+                            if (dns.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+                                dns.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase))
+                            {
+                                isObxodkaDomain = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isObxodkaDomain)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            if (isObxodkaDomain)
+            {
+                // For obxodka.one certificates, ignore RemoteCertificateNameMismatch caused by connecting by IP / SNI masking
+                var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
+                if (nonNameErrors == SslPolicyErrors.None)
+                {
+                    using var verifyChain = new X509Chain();
+                    verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    if (verifyChain.Build(cert2))
+                    {
+                        return true;
+                    }
+
+                    if (chain is not null)
+                    {
+                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                        if (chain.Build(cert2))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // If no pinning errors and standard public trust without any policy errors
+            if (errors == SslPolicyErrors.None && string.IsNullOrWhiteSpace(expectedPin))
+            {
+                using var verifyChain = new X509Chain();
+                verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                if (verifyChain.Build(cert2))
+                {
+                    return true;
+                }
+
+                if (chain is not null)
                 {
                     chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                     if (chain.Build(cert2))
@@ -86,35 +155,16 @@ public sealed partial class GrpcTransport(
                         return true;
                     }
                 }
-
-                Debug.WriteLine($"[CERT PINNING MISMATCH] Expected: {expectedPin}, Actual: {hash}");
-                return false;
             }
 
-            var nowUtc = DateTime.UtcNow;
-            var notBeforeUtc = cert2.NotBefore.ToUniversalTime();
-            var notAfterUtc = cert2.NotAfter.ToUniversalTime();
-
-            if (nowUtc < notBeforeUtc - TimeSpan.FromDays(1) || nowUtc > notAfterUtc)
+            if (!string.IsNullOrWhiteSpace(expectedPin))
             {
-                return false;
+                var pubKey = cert2.GetPublicKey();
+                var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
+                Debug.WriteLine($"[CERT PINNING MISMATCH] Expected: {expectedPin}, Actual: {hash}, Errors: {errors}");
             }
 
-            if (errors != SslPolicyErrors.None)
-            {
-                return false;
-            }
-
-            if (chain is not null)
-            {
-                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                if (!chain.Build(cert2))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return false;
         }
         catch
         {
@@ -160,7 +210,6 @@ public sealed partial class GrpcTransport(
                         TargetHost = targetHost,
                         ApplicationProtocols = [SslApplicationProtocol.Http2],
                         EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
-                        ClientCertificates = _clientCert != null ? [_clientCert] : null,
                         RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
                             ValidateServerCertificate(certificate, chain, errors)
                     }
@@ -203,7 +252,7 @@ public sealed partial class GrpcTransport(
                             Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {connectTarget}...");
                             await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
                             Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {connectTarget}!");
-                            return new NetworkStream(socket, ownsSocket: true);
+                            return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25);
                         }
                         catch (Exception ex)
                         {
@@ -237,8 +286,38 @@ public sealed partial class GrpcTransport(
                 Debug.WriteLine($"[GRPC-INIT] Creating channel for ray #{i} -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
                 _grpcChannels[i] = GrpcChannel.ForAddress($"https://{channelHost}:{serverPort}", channelOptions);
                 _txChannels[i] = new PriorityPacketQueue(i <= 1 ? 2000 : 1500);
-                await ConnectRayAsync(i, isNewConnection: i == 0);
-                _ = TxLoopAsync(i, _txChannels[i]!, _cts.Token);
+            }
+
+            // Ray 0 connects first to establish session and obtain IP assignment
+            await ConnectRayAsync(0, isNewConnection: true).ConfigureAwait(false);
+            _ = TxLoopAsync(0, _txChannels[0]!, _cts.Token);
+
+            if (_activeRays > 1)
+            {
+                var secondaryRayTasks = new Task[_activeRays - 1];
+                for (var i = 1; i < _activeRays; i++)
+                {
+                    var rayIndex = i;
+                    secondaryRayTasks[i - 1] = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ConnectRayAsync(rayIndex, isNewConnection: false).ConfigureAwait(false);
+                            _ = TxLoopAsync(rayIndex, _txChannels[rayIndex]!, _cts.Token);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[GRPC-RAY #{rayIndex} WARN] Secondary ray failed: {ex.Message}");
+                        }
+                    }, _cts.Token);
+                }
+
+                // Await secondary rays concurrently with 3.5s timeout
+                try
+                {
+                    _ = await Task.WhenAny(Task.WhenAll(secondaryRayTasks), Task.Delay(3500, _cts.Token)).ConfigureAwait(false);
+                }
+                catch { }
             }
         }
         catch (OperationCanceledException)
@@ -315,7 +394,7 @@ public sealed partial class GrpcTransport(
         var client = new TunnelService.TunnelServiceClient(_grpcChannels[rayIndex]);
         var headers = new Metadata();
 
-        var authThumb = !string.IsNullOrEmpty(_thumbprint) ? _thumbprint : _clientCert?.Thumbprint ?? "";
+        var authThumb = !string.IsNullOrEmpty(_thumbprint) ? _thumbprint : _certThumbprint ?? "";
         if (!string.IsNullOrEmpty(authThumb))
         {
             headers.Add("X-Obxodka-Auth", authThumb);
@@ -632,7 +711,6 @@ public sealed partial class GrpcTransport(
         }
         catch { }
         _cts = null;
-        _clientCert?.Dispose();
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {

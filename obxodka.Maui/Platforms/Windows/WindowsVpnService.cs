@@ -31,10 +31,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
     private long _vpnRxPacketsCount;
 
-    private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
-        Channel.CreateUnbounded<(byte[] buffer, int length)>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
-
     public WindowsVpnService()
     {
         AppDomain.CurrentDomain.ProcessExit += (_, _) => StopVpnAsync().GetAwaiter().GetResult();
@@ -422,7 +418,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
                             try
                             {
-                                await SetWindowsRoutesAsync(_adapter.Name, targetIp, true).WaitAsync(TimeSpan.FromSeconds(8));
+                                await SetWindowsRoutesAsync(_adapter.Name, targetIp, ip, true).WaitAsync(TimeSpan.FromSeconds(8));
                             }
                             catch (Exception ex)
                             {
@@ -431,7 +427,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                             try
                             {
-                                await EnableDnsLeakProtectionAsync(_adapter.Name).WaitAsync(TimeSpan.FromSeconds(5));
+                                await EnableDnsLeakProtectionAsync(_adapter.Name, ip).WaitAsync(TimeSpan.FromSeconds(5));
                             }
                             catch (Exception ex)
                             {
@@ -622,58 +618,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         };
         txThread.Start();
 
-        var rxThread = new Thread(() =>
-        {
-            Thread.CurrentThread.Priority = ThreadPriority.Highest;
-            Thread.CurrentThread.Name = "Wintun-Downloader";
-            var reader = _downstreamChannel.Reader;
-            long wintunPktsWritten = 0;
-            long wintunBytesWritten = 0;
-            Debug.WriteLine("[WINTUN-RX] Downloader thread started.");
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    while (reader.TryRead(out var item))
-                    {
-                        wintunPktsWritten++;
-                        wintunBytesWritten += item.length;
-                        if (wintunPktsWritten <= 15 || wintunPktsWritten % 200 == 0)
-                        {
-                            Debug.WriteLine($"[WINTUN-RX-PKT #{wintunPktsWritten}] Writing {item.length}B to Wintun. Total={wintunBytesWritten}B");
-                        }
-                        _adapter?.SendPacket(item.buffer, item.length);
-                        ArrayPool<byte>.Shared.Return(item.buffer);
-                    }
-
-                    if (reader.WaitToReadAsync(ct).AsTask().Result)
-                    {
-                        continue;
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                Debug.WriteLine("[WINTUN-RX] Cancelled.");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[WINTUN-RX-ERR] {ex.GetType().Name}: {ex.Message}");
-            }
-            finally
-            {
-                Debug.WriteLine($"[WINTUN-RX-EXIT] Exited. Stats: {wintunPktsWritten} pkts, {wintunBytesWritten} bytes.");
-                while (reader.TryRead(out var item))
-                {
-                    ArrayPool<byte>.Shared.Return(item.buffer);
-                }
-            }
-        })
-        {
-            IsBackground = true
-        };
-        rxThread.Start();
-
         try
         {
             await tcs.Task;
@@ -691,7 +635,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             Debug.WriteLine($"[VPN-RX-PACKET #{count}] Inbound packet from engine: {length} bytes");
         }
-        _ = _downstreamChannel.Writer.TryWrite((data, length));
+        _adapter?.SendPacket(data, length);
+        ArrayPool<byte>.Shared.Return(data);
     }
 
     private void UpdateState(AppVpnState state)
@@ -818,20 +763,20 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     [StructLayout(LayoutKind.Sequential)]
     private struct MIB_IPFORWARDROW
     {
-        public uint dwForwardDest;
-        public uint dwForwardMask;
-        public uint dwForwardPolicy;
-        public uint dwForwardNextHop;
-        public uint dwForwardIfIndex;
-        public uint dwForwardType;
-        public uint dwForwardProto;
-        public uint dwForwardAge;
-        public uint dwForwardNextHopAS;
-        public uint dwForwardMetric1;
-        public uint dwForwardMetric2;
-        public uint dwForwardMetric3;
-        public uint dwForwardMetric4;
-        public uint dwForwardMetric5;
+        public uint DwForwardDest;
+        public uint DwForwardMask;
+        public uint DwForwardPolicy;
+        public uint DwForwardNextHop;
+        public uint DwForwardIfIndex;
+        public uint DwForwardType;
+        public uint DwForwardProto;
+        public uint DwForwardAge;
+        public uint DwForwardNextHopAS;
+        public uint DwForwardMetric1;
+        public uint DwForwardMetric2;
+        public uint DwForwardMetric3;
+        public uint DwForwardMetric4;
+        public uint DwForwardMetric5;
     }
 
     [LibraryImport("iphlpapi.dll", SetLastError = true)]
@@ -846,8 +791,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var destUint = MemoryMarshal.Read<uint>(ip.GetAddressBytes());
             if (GetBestRoute(destUint, 0, out var row) == 0)
             {
-                var ifIndex = (int)row.dwForwardIfIndex;
-                var gwUint = row.dwForwardNextHop;
+                var ifIndex = (int)row.DwForwardIfIndex;
+                var gwUint = row.DwForwardNextHop;
                 var foundGw = "";
                 if (gwUint != 0)
                 {
@@ -1043,10 +988,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return [.. result.Distinct()];
     }
 
-    private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, bool enable)
+    private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
     {
         var (gw, physicalIfIndex, localIfIp) = await GetDefaultGatewayInfoAsync(serverIp);
-        Debug.WriteLine($"[ROUTE] Default Gateway: '{gw}', PhysicalIfIndex: {physicalIfIndex}, LocalIfIp: '{localIfIp}', Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
+        Debug.WriteLine($"[ROUTE] Default Gateway: '{gw}', PhysicalIfIndex: {physicalIfIndex}, LocalIfIp: '{localIfIp}', Name: {adapterName}, ServerIP: {serverIp}, AssignedIP: {assignedIp}, Enable: {enable}");
 
         if (enable && !string.IsNullOrEmpty(adapterName))
         {
@@ -1133,8 +1078,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (!string.IsNullOrEmpty(ifIndex))
             {
                 await Task.Delay(100);
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}", timeoutMs: 2000);
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 0.0.0.0 metric 1 if {ifIndex}", timeoutMs: 2000);
+                var routeGw = !string.IsNullOrEmpty(assignedIp) ? assignedIp : "0.0.0.0";
+                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {routeGw} metric 1 if {ifIndex}", timeoutMs: 2000);
+                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {routeGw} metric 1 if {ifIndex}", timeoutMs: 2000);
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
             }
             else
@@ -1215,7 +1161,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 }
 
                 await DisableDnsLeakProtectionAsync();
-                await SetWindowsRoutesAsync(adapterName, serverIp, false);
+                await SetWindowsRoutesAsync(adapterName, serverIp, "", false);
                 await CleanupStaleRoutesAsync();
                 await RestoreOriginalNetworkSettingsAsync();
                 await OctopusEngine.Current.DisposeAsync();
@@ -1278,7 +1224,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         catch { }
     }
 
-    private static async Task EnableDnsLeakProtectionAsync(string adapterName)
+    private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
     {
         try
         {
@@ -1286,13 +1232,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
-            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 0.0.0.0 metric 1{ifArg}");
+            var routeGw = !string.IsNullOrEmpty(assignedIp) ? assignedIp : "0.0.0.0";
+            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
 
             var psScript = @"
                 $ErrorActionPreference = 'SilentlyContinue';
+                try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','1.0.0.1' -Comment 'ObxodkaVPN' -ErrorAction SilentlyContinue | Out-Null } catch { };
                 try { Set-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient' -Name 'DisableSmartNameResolution' -Value 1 -Type DWord -Force | Out-Null } catch { };
                 Clear-DnsClientCache | Out-Null;
             ";
@@ -1321,7 +1269,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var psScript = @"
                 $ErrorActionPreference = 'SilentlyContinue';
                 try { Get-NetFirewallRule -DisplayName 'Obxodka_Block_DNS_*' | Remove-NetFirewallRule | Out-Null } catch { };
-                try { Get-DnsClientNrptRule | Where-Object { $_.Namespace -eq '.' } | Remove-DnsClientNrptRule -Force | Out-Null } catch { };
+                try { Get-DnsClientNrptRule | Where-Object { $_.Comment -eq 'ObxodkaVPN' -or $_.Namespace -eq '.' } | Remove-DnsClientNrptRule -Force | Out-Null } catch { };
                 try { Remove-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient' -Name 'DisableSmartNameResolution' } catch { };
                 Clear-DnsClientCache | Out-Null;
             ";
