@@ -385,3 +385,5 @@ deploy_android.ps1
 # Keep publish profiles in git (override *.pubxml exclusion on line 188)
 !**/PublishProfiles/*.pubxml
 
+
+.vscode/
