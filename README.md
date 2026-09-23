@@ -140,12 +140,12 @@ sequenceDiagram
 ## 🎨 Галерея интерфейса
 
 <p align="center">
-  <img src="Resources/Images/Previews/vpn_on_dark.png" width="48%" alt="Dark Theme" style="border-radius: 12px; margin-right: 2%;" />
-  <img src="Resources/Images/Previews/vpn_on_light.png" width="48%" alt="Light Theme" style="border-radius: 12px;" />
+  <img src=".github/assets/previews/vpn_on_dark.png" width="48%" alt="Dark Theme" style="border-radius: 12px; margin-right: 2%;" />
+  <img src=".github/assets/previews/vpn_on_light.png" width="48%" alt="Light Theme" style="border-radius: 12px;" />
 </p>
 <p align="center">
-  <img src="Resources/Images/Previews/vpn_off_dark.png" width="48%" alt="Disconnected" style="border-radius: 12px; margin-right: 2%;" />
-  <img src="Resources/Images/Previews/login.png" width="48%" alt="Login Screen" style="border-radius: 12px;" />
+  <img src=".github/assets/previews/vpn_off_dark.png" width="48%" alt="Disconnected" style="border-radius: 12px; margin-right: 2%;" />
+  <img src=".github/assets/previews/login.png" width="48%" alt="Login Screen" style="border-radius: 12px;" />
 </p>
 
 ---
