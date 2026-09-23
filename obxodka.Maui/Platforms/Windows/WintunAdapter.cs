@@ -23,13 +23,16 @@ internal sealed partial class WintunAdapter : IDisposable
         });
     }
 
-    [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
     private static partial IntPtr WintunCreateAdapter(string pool, string name, ref Guid requestedGuid, [MarshalAs(UnmanagedType.Bool)] out bool rebootRequired);
+
+    [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial IntPtr WintunOpenAdapter(string pool, string name);
 
     [LibraryImport(DllName)]
     private static partial void WintunCloseAdapter(IntPtr adapter);
 
-    [LibraryImport(DllName)]
+    [LibraryImport(DllName, SetLastError = true)]
     private static partial IntPtr WintunStartSession(IntPtr adapter, uint capacity);
 
     [LibraryImport(DllName)]
@@ -73,7 +76,13 @@ internal sealed partial class WintunAdapter : IDisposable
 
         if (_adapter == IntPtr.Zero)
         {
-            throw new InvalidOperationException("Не удалось создать адаптер Wintun. ЗАПУСТИТЕ ПРОГРАММУ ОТ ИМЕНИ АДМИНИСТРАТОРА!");
+            _adapter = WintunOpenAdapter(pool, name);
+        }
+
+        if (_adapter == IntPtr.Zero)
+        {
+            var err = Marshal.GetLastPInvokeError();
+            throw new InvalidOperationException($"Не удалось создать или открыть адаптер Wintun (Код Win32: {err}). Убедитесь, что запущен только один экземпляр программы и есть права администратора.");
         }
     }
 
@@ -84,7 +93,8 @@ internal sealed partial class WintunAdapter : IDisposable
             _session = WintunStartSession(_adapter, capacity);
             if (_session == IntPtr.Zero)
             {
-                throw new InvalidOperationException("Не удалось запустить Wintun сессию.");
+                var err = Marshal.GetLastPInvokeError();
+                throw new InvalidOperationException($"Не удалось запустить Wintun сессию (Код Win32: {err}).");
             }
         }
     }
