@@ -79,7 +79,6 @@ public class SslCertificateValidationTests
         var req = new CertificateRequest("cn=obxodka.one", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var selfSignedObxodkaCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
 
-        // Self-signed certificate is not in trusted root store, so chain.Build should fail and return false
         var result = GrpcTransport.ValidateServerCertificate(selfSignedObxodkaCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: "DIFFERENT_HASH==");
         Assert.False(result);
     }
@@ -139,3 +138,4 @@ public class SslCertificateValidationTests
         }
     }
 }
+

@@ -107,4 +107,9 @@ public class NetworkDiagnosticsTests
         var formatted = report.ToFormattedText();
         Assert.Contains("ОБХОДКА: ПОЛНЫЙ ОТЧЁТ ДИАГНОСТИКИ СЕТИ ТЕСТЕРА", formatted);
     }
+
+    [Fact]
+    public void DiagnosticsPortMatchesFechsueTransportServerPort() =>
+        Assert.Equal(443, FechsueTransport.FechsueServerPort);
 }
+

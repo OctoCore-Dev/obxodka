@@ -1,11 +1,5 @@
 namespace obxodka.Stealth;
 
-/// <summary>
-/// [EXPERIMENTAL / RESEARCH]
-/// Генератор синтетического TLS ClientHello с профилем Chrome 120 (GREASE, ALPN h2/http1.1, JA3/JA4 extensions).
-/// Используется для валидационных тестов структуры TLS wire-fingerprint.
-/// В боевом gRPC-транспорте рукопожатие выполняется SslStream с сегментацией через DpiBypassStream.
-/// </summary>
 public static class ClientHelloBuilder
 {
     private static readonly Random t_random = Random.Shared;

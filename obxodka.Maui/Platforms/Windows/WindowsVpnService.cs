@@ -1,4 +1,5 @@
 using Uri = System.Uri;
+using obxodka.Core.Models;
 
 namespace obxodka.Platforms.Windows;
 
@@ -25,6 +26,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
+    public static SplitTunnelPolicy SplitTunnelPolicy { get; } = new();
 
     private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
         Channel.CreateUnbounded<(byte[] buffer, int length)>(
@@ -809,6 +811,23 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
                 var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
+
+                if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw))
+                {
+                    foreach (var bypassIp in SplitTunnelPolicy.CustomBypassIps)
+                    {
+                        if (IPAddress.TryParse(bypassIp, out _))
+                        {
+                            _ = await RunCmdAsync("route", $"add {bypassIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
+                            SplitTunnelPolicy.RecordBypassRoute(bypassIp, "Пользовательское исключение");
+                        }
+                    }
+
+                    if (SplitTunnelPolicy.BypassRemoteManagement)
+                    {
+                        await ApplyRemoteManagementBypassRoutesAsync(nextHop, physIfArg);
+                    }
+                }
             }
             else
             {
@@ -827,6 +846,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
             }
+
+            foreach (var route in SplitTunnelPolicy.ActiveBypassRoutes)
+            {
+                deleteTasks.Add(RunCmdAsync("route", $"delete {route.DestinationIp} mask 255.255.255.255"));
+            }
+            SplitTunnelPolicy.ClearActiveRoutes();
 
             if (!string.IsNullOrEmpty(adapterName))
             {
@@ -849,6 +874,68 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 Debug.WriteLine($"[ROUTE DELETE TIMEOUT/ERROR] {ex.Message}");
             }
+        }
+    }
+
+    private static async Task ApplyRemoteManagementBypassRoutesAsync(string nextHop, string physIfArg)
+    {
+        try
+        {
+            var running = Process.GetProcesses().Any(p =>
+            {
+                try
+                {
+                    var n = p.ProcessName;
+                    return n.Contains("AnyDesk", StringComparison.OrdinalIgnoreCase) ||
+                           n.Contains("TeamViewer", StringComparison.OrdinalIgnoreCase) ||
+                           n.Contains("RustDesk", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { return false; }
+                finally { p.Dispose(); }
+            });
+
+            if (!running)
+            {
+                return;
+            }
+
+            var (code, output) = await RunCmdAsync("netstat", "-n -p tcp");
+            if (code == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                var lines = output.Split('\n');
+                foreach (var line in lines)
+                {
+                    if (!line.Contains("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (line.Contains(":7070 ") || line.Contains(":5938 ") || line.Contains(":3389 ") || line.Contains(":21116 "))
+                    {
+                        var parts = line.Split([' '], StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 3)
+                        {
+                            var foreignAddr = parts[2];
+                            var colonIdx = foreignAddr.LastIndexOf(':');
+                            if (colonIdx > 0)
+                            {
+                                var remoteIp = foreignAddr[..colonIdx];
+                                if (IPAddress.TryParse(remoteIp, out var parsedIp) &&
+                                    !IPAddress.IsLoopback(parsedIp) &&
+                                    parsedIp.AddressFamily == AddressFamily.InterNetwork)
+                                {
+                                    _ = await RunCmdAsync("route", $"add {remoteIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
+                                    SplitTunnelPolicy.RecordBypassRoute(remoteIp, "Сессия удалённого доступа");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SPLIT-TUNNEL WARN] Remote management bypass check: {ex.Message}");
         }
     }
 

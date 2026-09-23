@@ -1,10 +1,5 @@
 namespace obxodka.Stealth;
 
-/// <summary>
-/// [EXPERIMENTAL / RESEARCH]
-/// Прототип формирования QUIC Initial фреймов по RFC 9000 для исследовательских тестов мимикрии.
-/// В боевом режиме FechsueTransport использует защищенный AES-256-GCM транспорт с прямой коррекцией ошибок (FEC).
-/// </summary>
 public static class QuicInitialBuilder
 {
     public const uint QuicVersion1 = 0x00000001;

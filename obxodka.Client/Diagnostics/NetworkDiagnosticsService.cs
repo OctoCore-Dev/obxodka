@@ -77,14 +77,12 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     {
         var report = new DiagnosticReport();
 
-        // 1. Local Network and Environment Check
         await RunStepAsync(report, "1. Локальная сеть и адаптер", () =>
         {
             InspectLocalEnvironment(report);
             return (DiagnosticStatus.Passed, $"Интерфейс: {report.PrimaryInterfaceName}, MTU: {report.PrimaryInterfaceMtu}, Gateway: {report.DefaultGateway}");
         }, onStepCompleted);
 
-        // 2. DNS Resolution (System DNS vs DoH)
         await RunStepAsync(report, "2. Системный DNS и DoH", async () =>
         {
             var systemDnsSw = Stopwatch.StartNew();
@@ -108,7 +106,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             return (DiagnosticStatus.Passed, $"Системный DNS ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms) и DoH (1.1.1.1) доступны");
         }, onStepCompleted);
 
-        // 3. L4 TCP 443 Connect Probe
         var tcp443Ok = false;
         await RunStepAsync(report, "3. Доступность TCP 443", async () =>
         {
@@ -119,11 +116,11 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 await socket.ConnectAsync(serverHost, serverPort, ct).ConfigureAwait(false);
                 connectSw.Stop();
                 tcp443Ok = true;
-                return (DiagnosticStatus.Passed, $"TCP 3-Way Handshake успешен (RTT: {connectSw.ElapsedMilliseconds} ms)");
+                return (DiagnosticStatus.Passed, $"TCP 3-Way Handshake успешен для {serverHost}:{serverPort} (RTT: {connectSw.ElapsedMilliseconds} ms)");
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
-                return (DiagnosticStatus.Failed, "ТСПУ сбросил TCP SYN на порт 443 (TCP RST)");
+                return (DiagnosticStatus.Failed, $"ТСПУ сбросил TCP SYN на {serverHost}:{serverPort} (TCP RST)");
             }
             catch (Exception ex)
             {
@@ -131,7 +128,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             }
         }, onStepCompleted);
 
-        // 4. TLS Handshake & DPI / ТСПУ Detection
         var directTlsPassed = false;
         var splitTlsPassed = false;
 
@@ -156,19 +152,17 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             report.Steps.Add(new DiagnosticStepResult("4. Проверка TLS и ТСПУ", DiagnosticStatus.Skipped, "Пропущен, так как TCP 443 недоступен", TimeSpan.Zero));
         }
 
-        // 5. L4 UDP Probe (Port 6767 vs 443)
         var udp6767Ok = false;
         await RunStepAsync(report, $"5. UDP {udpPort} (FECHSUE)", async () =>
         {
             udp6767Ok = await TestUdpReachabilityAsync(serverHost, udpPort, ct).ConfigureAwait(false);
             if (udp6767Ok)
             {
-                return (DiagnosticStatus.Passed, $"Порт {udpPort} UDP отвечает");
+                return (DiagnosticStatus.Passed, $"Порт {serverHost}:{udpPort} UDP отвечает");
             }
-            return (DiagnosticStatus.Failed, $"Порт {udpPort} UDP заблокирован или сброшен провайдером (Таймаут)");
+            return (DiagnosticStatus.Failed, $"Порт {serverHost}:{udpPort} UDP заблокирован или сброшен провайдером (Таймаут)");
         }, onStepCompleted);
 
-        // 6. Path MTU Verification
         await RunStepAsync(report, "6. Определение безопасного MTU", () =>
         {
             var recommendedMtu = 1280;
@@ -179,7 +173,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             return (DiagnosticStatus.Passed, $"Рекомендуемый безопасный MTU туннеля: {recommendedMtu} байт (Физический: {report.PrimaryInterfaceMtu})");
         }, onStepCompleted);
 
-        // Synthesis & Verdict
         SynthesizeVerdict(report, directTlsPassed, splitTlsPassed, udp6767Ok, tcp443Ok);
         return report;
     }
@@ -320,7 +313,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
 
             _ = await udp.SendToAsync(dummyPacket, SocketFlags.None, ep, ct).ConfigureAwait(false);
 
-            // If no ICMP Port Unreachable within 300ms, considered not immediately rejected
             await Task.Delay(300, ct).ConfigureAwait(false);
             return true;
         }
@@ -399,3 +391,4 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         Action<DiagnosticStepResult>? onStepCompleted) =>
         RunStepAsync(report, stepName, () => Task.FromResult(action()), onStepCompleted);
 }
+
