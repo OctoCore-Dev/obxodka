@@ -1,3 +1,5 @@
+namespace obxodka.Stealth;
+
 /// <summary>
 /// [EXPERIMENTAL / RESEARCH]
 /// Генератор синтетического TLS ClientHello с профилем Chrome 120 (GREASE, ALPN h2/http1.1, JA3/JA4 extensions).

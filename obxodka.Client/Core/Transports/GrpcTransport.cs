@@ -185,7 +185,9 @@ public sealed partial class GrpcTransport(
                 !string.IsNullOrWhiteSpace(apiUri.Host) &&
                 !IPAddress.TryParse(apiUri.Host, out _))
             {
-                defaultSni = apiUri.Host;
+                defaultSni = apiUri.Host.EndsWith("obxodka.one", StringComparison.OrdinalIgnoreCase)
+                    ? "obxodka.one"
+                    : apiUri.Host;
             }
         }
         catch { }

@@ -1,3 +1,5 @@
+namespace obxodka.Stealth;
+
 /// <summary>
 /// [EXPERIMENTAL / RESEARCH]
 /// Прототип формирования QUIC Initial фреймов по RFC 9000 для исследовательских тестов мимикрии.
