@@ -84,7 +84,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         var certBytes = Convert.FromBase64String(session.VpnConfig);
         try
         {
-            _clientCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.DefaultKeySet);
+            _clientCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
         }
         catch
         {

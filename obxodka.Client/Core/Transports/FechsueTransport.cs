@@ -3,7 +3,7 @@ namespace obxodka.Core.Transports;
 public sealed partial class FechsueTransport : IVpnTransport
 {
     public const int DefaultParallelStreams = 1;
-    public const int FechsueServerPort = 6767;
+    public const int FechsueServerPort = 443;
 
     public string ProtocolName => "FECHSUE";
     public string Thumbprint { get; private set; } = string.Empty;
@@ -162,7 +162,7 @@ public sealed partial class FechsueTransport : IVpnTransport
             if (timeoutTask != ipTcs.Task)
             {
                 Debug.WriteLine($"[FECHSUE TIMEOUT] Server {_serverEp} did not reply to UDP auth handshake!");
-                throw new TimeoutException("Сервер FECHSUE не ответил на авторизационное рукопожатие (порт 6767 UDP).");
+                throw new TimeoutException($"Сервер FECHSUE не ответил на авторизационное рукопожатие (порт {FechsueServerPort} UDP).");
             }
         }
 

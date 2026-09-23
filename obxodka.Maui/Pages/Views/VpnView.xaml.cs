@@ -422,26 +422,37 @@ public sealed partial class VpnView : ContentView
             return "Не удалось установить соединение с сервером.";
         }
 
-        if (rawError.Contains("50052") || rawError.Contains("50051") || rawError.Contains("Unavailable") ||
-            rawError.Contains("SocketException") || rawError.Contains("не получен нужный отклик") ||
-            rawError.Contains("от другого компьютера за требуемое время"))
+        if (rawError.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("Unauthenticated", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("Device revoked", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("Missing certificate", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("401") ||
+            rawError.Contains("Old certificate", StringComparison.OrdinalIgnoreCase))
         {
-            return "Сервер временно недоступен по выбранному протоколу или порт блокируется сетью.\n\nРекомендуем переключиться на протокол FECHSUE или режим AUTO.";
+            return "Срок действия ключа истёк или устройство не авторизовано. Пожалуйста, выполните повторный вход в аккаунт.";
         }
 
-        if (rawError.Contains("SSL") || rawError.Contains("Certificate") || rawError.Contains("PINNING MISMATCH"))
+        if (rawError.Contains("PINNING MISMATCH", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("RemoteCertificateNameMismatch", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("RemoteCertificateChainErrors", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("The remote certificate is invalid", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("RemoteCertificateValidationCallback", StringComparison.OrdinalIgnoreCase))
         {
-            return "Ошибка проверки сертификата безопасности сервера. Пожалуйста, обновите список серверов или войдите заново.";
+            return "Ошибка проверки сертификата безопасности сервера. Пожалуйста, обновите список серверов или обратитесь в поддержку.";
         }
 
-        if (rawError.Contains("No such host is known") || rawError.Contains("NameResolutionFailure"))
+        if (rawError.Contains("50052") || rawError.Contains("50051") || rawError.Contains("Unavailable", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("SocketException", StringComparison.OrdinalIgnoreCase) || rawError.Contains("не получен нужный отклик", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("от другого компьютера за требуемое время", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("GOAWAY", StringComparison.OrdinalIgnoreCase) || rawError.Contains("The SSL connection could not be established", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("reset by peer", StringComparison.OrdinalIgnoreCase) || rawError.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Сервер временно недоступен по выбранному протоколу или связь была прервана сетью.\n\nРекомендуем переключиться на протокол FECHSUE или режим AUTO.";
+        }
+
+        if (rawError.Contains("No such host is known", StringComparison.OrdinalIgnoreCase) || rawError.Contains("NameResolutionFailure", StringComparison.OrdinalIgnoreCase))
         {
             return "Не удалось найти сервер. Проверьте подключение вашего устройства к интернету.";
-        }
-
-        if (rawError.Contains("Unauthorized") || rawError.Contains("401") || rawError.Contains("Old certificate"))
-        {
-            return "Срок действия ключа истёк. Пожалуйста, выполните повторный вход в аккаунт.";
         }
 
         var firstLine = rawError.Split(t_errorSeparators, StringSplitOptions.RemoveEmptyEntries)[0].Trim();
