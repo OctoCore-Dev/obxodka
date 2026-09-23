@@ -97,40 +97,21 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             return true;
         }
 
-        var offset = 0;
-        var innerLen = length;
-
-        if (length >= 17 && packet.Length >= length)
-        {
-            var totalLen = BinaryPrimitives.ReadInt32LittleEndian(packet.AsSpan(0, 4));
-            var realLen = BinaryPrimitives.ReadInt32LittleEndian(packet.AsSpan(4, 4));
-            if (totalLen == length && realLen > 0 && realLen <= length - 8)
-            {
-                offset = 8;
-                innerLen = realLen;
-            }
-        }
-
-        if (innerLen == 9 && packet[offset] == 0x99)
+        if (length < 20)
         {
             return true;
         }
 
-        if (innerLen < 20)
-        {
-            return true;
-        }
-
-        var version = packet[offset] >> 4;
+        var version = packet[0] >> 4;
         if (version == 4)
         {
-            var ihl = (packet[offset] & 0x0F) * 4;
-            if (innerLen < ihl)
+            var ihl = (packet[0] & 0x0F) * 4;
+            if (length < ihl)
             {
                 return false;
             }
 
-            var protocol = packet[offset + 9];
+            var protocol = packet[9];
             if (protocol is 17 or 1)
             {
                 return true;
@@ -138,24 +119,24 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
             if (protocol == 6)
             {
-                if (innerLen < ihl + 20)
+                if (length < ihl + 20)
                 {
                     return false;
                 }
 
-                var dataOffset = (packet[offset + ihl + 12] >> 4) * 4;
-                var payloadLength = innerLen - ihl - dataOffset;
+                var dataOffset = (packet[ihl + 12] >> 4) * 4;
+                var payloadLength = length - ihl - dataOffset;
                 return payloadLength <= 0;
             }
         }
         else if (version == 6)
         {
-            if (innerLen < 40)
+            if (length < 40)
             {
                 return false;
             }
 
-            var nextHeader = packet[offset + 6];
+            var nextHeader = packet[6];
             if (nextHeader is 17 or 58)
             {
                 return true;
@@ -163,13 +144,13 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
             if (nextHeader == 6)
             {
-                if (innerLen < 60)
+                if (length < 60)
                 {
                     return false;
                 }
 
-                var dataOffset = (packet[offset + 40 + 12] >> 4) * 4;
-                var payloadLength = innerLen - 40 - dataOffset;
+                var dataOffset = (packet[40 + 12] >> 4) * 4;
+                var payloadLength = length - 40 - dataOffset;
                 return payloadLength <= 0;
             }
         }

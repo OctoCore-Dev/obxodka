@@ -1,0 +1,96 @@
+name: CI (Develop Tests & Cross-Platform Validation)
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================
+  # 🧪 ЭТАП 1: МОДУЛЬНЫЕ ТЕСТЫ (xUnit)
+  # ==========================================
+  run-tests:
+    name: 🧪 Automated Unit Tests
+    runs-on: windows-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 🌐 Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 📦 Install MAUI Windows Workload
+        run: dotnet workload install maui-windows
+
+      - name: 🚀 Run Client Tests
+        run: dotnet test obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+  # ==========================================
+  # 🤖 ЭТАП 2: СБОРКА И ПРОВЕРКА ANDROID
+  # ==========================================
+  build-android:
+    name: 🤖 Android Build Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ☕ Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '17'
+
+      - name: 🌐 Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 📦 Install MAUI Android Workload
+        run: dotnet workload install maui-android
+
+      - name: 🔨 Compile Android MAUI App
+        run: dotnet build obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release
+
+  # ==========================================
+  # 🪟 ЭТАП 3: СБОРКА И ПРОВЕРКА WINDOWS & AVALONIA
+  # ==========================================
+  build-windows:
+    name: 🪟 Windows & Avalonia Build Validation
+    runs-on: windows-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 🌐 Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 📦 Install MAUI Windows Workload
+        run: dotnet workload install maui-windows
+
+      - name: 🔨 Compile Windows MAUI App
+        run: dotnet build obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
+
+      - name: 🔨 Compile Avalonia App
+        run: dotnet build obxodka.Avalonia/obxodka.Avalonia.csproj -c Release
