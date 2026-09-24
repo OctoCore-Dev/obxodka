@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.ConfigurationView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -315,7 +315,7 @@
                                     FontSize="{OnIdiom Desktop=12,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
-                                    Text="FHARCSUE" />
+                                    Text="FECHSUE" />
                                 <Label
                                     FontSize="{OnIdiom Desktop=10,
                                                        Default=12}"

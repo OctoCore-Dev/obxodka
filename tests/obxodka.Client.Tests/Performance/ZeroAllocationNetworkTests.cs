@@ -47,6 +47,30 @@ public class ZeroAllocationNetworkTests : IDisposable
     }
 
     [Fact]
+    public void PacketRouterGetRaysSpanHasZeroAllocations()
+    {
+        ReadOnlySpan<byte> packet =
+        [
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0xb1, 0xe6,
+            0xc0, 0xa8, 0x01, 0x0a, 0x68, 0x15, 0x2d, 0x02, 0xd4, 0x31, 0x01, 0xbb,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x72, 0x10,
+            0x00, 0x00, 0x00, 0x00
+        ];
+
+        PacketRouter.GetRays(packet, 8, out _, out _);
+
+        var allocBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 5000; i++)
+        {
+            PacketRouter.GetRays(packet, 8, out var r1, out var r2);
+            _ = r1 + r2;
+        }
+        var allocAfter = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(0, allocAfter - allocBefore);
+    }
+
+    [Fact]
     public void PacketDeduplicatorHasZeroAllocations()
     {
         var deduplicator = new PacketDeduplicator();

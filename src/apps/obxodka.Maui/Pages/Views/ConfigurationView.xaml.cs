@@ -547,7 +547,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         var protocolText = protocol switch
         {
             "AUTO" => "AUTO (Умный)",
-            "FECHSUE" => "FHARCSUE (Мульти-пинговый Watchdog)",
+            "FECHSUE" => "FECHSUE (Мульти-пинговый Watchdog)",
             "HTTP3" => "HTTP/3 QUIC",
             _ => "HTTP/2 TCP"
         };

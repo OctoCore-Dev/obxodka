@@ -58,9 +58,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             _smoothedPing = rawRtt;
         }
+        else if (rawRtt < _smoothedPing)
+        {
+            var alpha = 0.55;
+            _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
+        }
         else
         {
-            var alpha = rawRtt > _smoothedPing * 2.0 ? 0.05 : 0.25;
+            var alpha = rawRtt > _smoothedPing * 1.5 ? 0.05 : 0.20;
             _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
         }
         OnPingUpdated?.Invoke((long)Math.Round(_smoothedPing));

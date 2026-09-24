@@ -241,9 +241,16 @@ public sealed partial class GrpcTransport(
                         };
                         try
                         {
-                            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
+                            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0xB8);
                         }
-                        catch { }
+                        catch
+                        {
+                            try
+                            {
+                                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
+                            }
+                            catch { }
+                        }
                         OnSocketCreated?.Invoke(socket);
                         try
                         {

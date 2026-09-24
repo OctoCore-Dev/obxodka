@@ -423,14 +423,18 @@ public static class FechsueCodec
         out byte[]? payload,
         out int realLength)
     {
-        var span = buffer.AsSpan(0, totalLength);
+        if (TryUnpack(buffer, totalLength, crypto, out sessionId, out payload, out realLength))
+        {
+            return true;
+        }
+
         var maxDecoded = EntropyShaper.GetMaxDecodedLength(totalLength);
         if (maxDecoded >= Overhead)
         {
             var tempBuf = ArrayPool<byte>.Shared.Rent(maxDecoded);
             try
             {
-                if (EntropyShaper.TryDecode(span, tempBuf, out var decodedLen) && decodedLen >= Overhead)
+                if (EntropyShaper.TryDecode(buffer.AsSpan(0, totalLength), tempBuf, out var decodedLen) && decodedLen >= Overhead)
                 {
                     return TryUnpack(tempBuf, decodedLen, crypto, out sessionId, out payload, out realLength);
                 }
@@ -441,7 +445,10 @@ public static class FechsueCodec
             }
         }
 
-        return TryUnpack(buffer, totalLength, crypto, out sessionId, out payload, out realLength);
+        sessionId = 0;
+        payload = null;
+        realLength = 0;
+        return false;
     }
 
     public const byte FrameTypeRaw = 0x00;

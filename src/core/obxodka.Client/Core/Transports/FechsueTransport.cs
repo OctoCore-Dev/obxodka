@@ -39,7 +39,7 @@ public sealed partial class FechsueTransport : IVpnTransport
     private volatile bool _isConnected;
     private volatile bool _serverUsesSessionMasking;
     public bool IsConnected => _isConnected && _sockets[0] is not null;
-    public bool EnableEntropyShaping { get; set; } = true;
+    public bool EnableEntropyShaping { get; set; }
 
     public static Action<Socket>? OnSocketCreated { get; set; }
 
@@ -86,9 +86,16 @@ public sealed partial class FechsueTransport : IVpnTransport
             };
             try
             {
-                sock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
+                sock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0xB8);
             }
-            catch { }
+            catch
+            {
+                try
+                {
+                    sock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
+                }
+                catch { }
+            }
 
             OnSocketCreated?.Invoke(sock);
             if (OperatingSystem.IsWindows())
@@ -201,7 +208,8 @@ public sealed partial class FechsueTransport : IVpnTransport
             int totalLen;
             lock (txLock)
             {
-                packed = EnableEntropyShaping
+                var shouldShape = EnableEntropyShaping && length <= 850;
+                packed = shouldShape
                     ? FechsueCodec.PackShaped(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
                     : FechsueCodec.Pack(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
             }
@@ -233,7 +241,8 @@ public sealed partial class FechsueTransport : IVpnTransport
                     int secLen;
                     lock (sLock)
                     {
-                        secPacked = EnableEntropyShaping
+                        var shouldShapeSec = EnableEntropyShaping && length <= 850;
+                        secPacked = shouldShapeSec
                             ? FechsueCodec.PackShaped(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking)
                             : FechsueCodec.Pack(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking);
                     }
@@ -267,7 +276,8 @@ public sealed partial class FechsueTransport : IVpnTransport
 
         lock (txLock)
         {
-            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, length, _sessionId, crypto, _serverUsesSessionMasking, shapeEntropy: EnableEntropyShaping);
+            var shouldShapeBulk = EnableEntropyShaping && length <= 850;
+            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, length, _sessionId, crypto, _serverUsesSessionMasking, shapeEntropy: shouldShapeBulk);
         }
         ArrayPool<byte>.Shared.Return(packet);
 
@@ -355,12 +365,6 @@ public sealed partial class FechsueTransport : IVpnTransport
         {
             try
             {
-                var streamIdx = realLen >= 10 ? payload[1] : (byte)0;
-                if (ParallelStreams > 1 && streamIdx != 0)
-                {
-                    return;
-                }
-
                 var ticksOffset = realLen >= 10 ? 2 : 1;
                 var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(ticksOffset, 8));
                 var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;

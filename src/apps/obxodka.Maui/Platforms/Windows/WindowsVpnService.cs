@@ -1021,12 +1021,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             try
             {
-                _ = await RunCmdAsync("netsh", "int tcp set global autotuninglevel=normal");
-                _ = await RunCmdAsync("netsh", "int tcp set global ecncapability=disabled");
+                _ = await RunCmdAsync("netsh", "int tcp set global autotuninglevel=experimental");
+                _ = await RunCmdAsync("netsh", "int tcp set global ecncapability=enabled");
                 _ = await RunCmdAsync("netsh", "int tcp set global rss=enabled");
+                _ = await RunCmdAsync("netsh", "int tcp set global rsc=enabled");
                 _ = await RunCmdAsync("netsh", "int tcp set global fastopen=enabled");
                 _ = await RunCmdAsync("netsh", "int tcp set global timestamps=allowed");
+                _ = await RunCmdAsync("netsh", "int tcp set global nonsackrttresiliency=disabled");
                 _ = await RunCmdAsync("netsh", "int tcp set heuristics disabled");
+                _ = await RunCmdAsync("netsh", "int tcp set supplemental template=internet congestionprovider=ctcp");
                 Debug.WriteLine("[BOOST] Windows Network Stack accelerated safely to high performance.");
             }
             catch { }
