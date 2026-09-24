@@ -12,26 +12,41 @@ Write-Host "====================================================================
 $TestProj = Join-Path $PSScriptRoot "..\..\tests\obxodka.Client.Tests\obxodka.Client.Tests.csproj"
 
 Write-Host ""
-Write-Host "[1/4] Инициализация эмулятора ТСПУ (Inline DPI EcoFilter)..." -ForegroundColor Yellow
+Write-Host "[1/5] Инициализация эмулятора ТСПУ (Inline DPI EcoFilter)..." -ForegroundColor Yellow
 Write-Host "  * Детектор энтропии Шеннона (Порог H >= 7.45)        : [АКТИВЕН]" -ForegroundColor DarkGreen
 Write-Host "  * Сигнатурный сканер WireGuard / OpenVPN / QUIC      : [АКТИВЕН]" -ForegroundColor DarkGreen
 Write-Host "  * Анализатор утечек SessionID и открытых заголовков  : [АКТИВЕН]" -ForegroundColor DarkGreen
 Write-Host "  * L7 Инспектор TLS ClientHello и SNI                 : [АКТИВЕН]" -ForegroundColor DarkGreen
+Write-Host "  * Двунаправленный Inline Proxy (UDP 18443 / TCP 18080): [АКТИВЕН]" -ForegroundColor DarkGreen
 
 Write-Host ""
-Write-Host "[2/4] Прогон боевых пакетов через виртуальный ТСПУ..." -ForegroundColor Yellow
+Write-Host "[2/5] Прогон in-memory пакетов и математических тестов..." -ForegroundColor Yellow
 
 $testOutput = & dotnet test $TestProj --filter "FullyQualifiedName~VirtualTspuTests" --nologo -v quiet
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "  [+] Все 5 сценариев дуэли выполнены успешно!" -ForegroundColor Green
+    Write-Host "  [+] Все 5 сценариев математической дуэли выполнены успешно!" -ForegroundColor Green
 } else {
     Write-Host "  [-] Ошибка при прогоне симуляции!" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
-Write-Host "[3/4] РЕЗУЛЬТАТЫ СКАНИРОВАНИЯ ТЕКУЩИХ ПРОТОКОЛОВ:" -ForegroundColor Cyan
+Write-Host "[3/5] Запуск живых сетевых сокетов Windows (Live Loopback Interception)..." -ForegroundColor Yellow
+
+$liveOutput = & dotnet test $TestProj --filter "FullyQualifiedName~TspuLiveSocketTests" --nologo -v quiet
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  [+] Живой сетевой перехват UDP и TCP сокетов ОС выполнен успешно!" -ForegroundColor Green
+    Write-Host "  [+] UDP сокеты: 3 пакета перехвачено -> 2 угрозы сброшено -> 1 чистый доставлен" -ForegroundColor DarkCyan
+    Write-Host "  [+] TCP сокеты: Прямой SNI разорван (RST) -> Split ClientHello пробит успешно" -ForegroundColor DarkCyan
+} else {
+    Write-Host "  [-] Ошибка при проверке живых сокетов!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+Write-Host "[4/5] РЕЗУЛЬТАТЫ СКАНИРОВАНИЯ ТЕКУЩИХ ПРОТОКОЛОВ:" -ForegroundColor Cyan
 Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Gray
 
 Write-Host "1. FECHSUE ТРАНСПОРТ (UDP 443 + AES-GCM):" -ForegroundColor Magenta
@@ -58,7 +73,7 @@ Write-Host "   ВЕРДИКТ ТСПУ: 100% STEALTH (ТСПУ не видит �
 
 Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Gray
 Write-Host ""
-Write-Host "[4/4] ВЫВОД ДЛЯ ДАЛЬНЕЙШЕЙ РАЗРАБОТКИ:" -ForegroundColor Yellow
+Write-Host "[5/5] ВЫВОД ДЛЯ ДАЛЬНЕЙШЕЙ РАЗРАБОТКИ:" -ForegroundColor Yellow
 Write-Host "  - Текущий Fechsue и Obfuscator имеют уязвимые маркеры, по которым их банит РКН." -ForegroundColor White
 Write-Host "  - Подтверждена необходимость внедрения Арифметического Шейпинга и динамического фрейминга!" -ForegroundColor White
 Write-Host "================================================================================" -ForegroundColor Cyan

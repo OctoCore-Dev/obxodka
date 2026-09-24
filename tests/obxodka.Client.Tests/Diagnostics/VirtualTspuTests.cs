@@ -106,9 +106,10 @@ public class VirtualTspuTests
         for (var i = 0; i < 10; i++)
         {
             var packet = new byte[128];
+            var offset = i * 7 % 16;
             for (var j = 0; j < packet.Length; j++)
             {
-                packet[j] = (byte)(j % 32 + i * 7 % 16);
+                packet[j] = (byte)(j % 32 + offset);
             }
             naturalPackets.Add(packet);
         }
