@@ -42,6 +42,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     {
         _ = Interlocked.Exchange(ref _totalBytesSent, 0);
         _ = Interlocked.Exchange(ref _totalBytesReceived, 0);
+        _smoothedPing = 0;
     }
 
     private double _smoothedPing;
@@ -52,6 +53,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             return;
         }
+        _ = Interlocked.Add(ref _totalBytesReceived, 9);
         if (_smoothedPing <= 0)
         {
             _smoothedPing = rawRtt;
@@ -227,24 +229,33 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         try
         {
-            _ = Task.Run(async () =>
+            async Task SendProbesAsync()
             {
                 try
                 {
                     await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
                 }
                 catch { }
-            }, linkedCts.Token);
 
-            try
-            {
-                var probePkt = BuildDnsProbePacket(AssignedIp);
-                if (probePkt is not null)
+                try
                 {
-                    _ = SendPacketAsync(probePkt);
+                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1") is { } pIcmp)
+                    {
+                        _ = SendPacketAsync(pIcmp);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
+                    {
+                        _ = SendPacketAsync(p1);
+                    }
+                    if (BuildDnsProbePacket(AssignedIp, 8) is { } p8)
+                    {
+                        _ = SendPacketAsync(p8);
+                    }
                 }
+                catch { }
             }
-            catch { }
+
+            _ = Task.Run(SendProbesAsync, linkedCts.Token);
 
             var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
             while (Stopwatch.GetTimestamp() < deadline && !linkedCts.IsCancellationRequested)
@@ -254,18 +265,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     return true;
                 }
 
-                var delayTask = Task.Delay(200, linkedCts.Token);
+                var delayTask = Task.Delay(250, linkedCts.Token);
                 var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {
                     return true;
                 }
 
-                try
-                {
-                    await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
-                }
-                catch { }
+                _ = Task.Run(SendProbesAsync, linkedCts.Token);
             }
 
             return TotalBytesReceived > initialReceived;
@@ -281,7 +288,43 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
     }
 
-    private static byte[]? BuildDnsProbePacket(string assignedIp)
+    private static byte[]? BuildIcmpProbePacket(string assignedIp, string targetIp = "100.64.0.1")
+    {
+        if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork ||
+            !IPAddress.TryParse(targetIp, out var dstIp) || dstIp.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return null;
+        }
+
+        const int totalLen = 28;
+        var packet = new byte[totalLen];
+
+        packet[0] = 0x45;
+        packet[1] = 0x00;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2, 2), totalLen);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(4, 2), 0x7788);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(6, 2), 0x4000);
+        packet[8] = 64;
+        packet[9] = 1;
+        srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
+        dstIp.GetAddressBytes().CopyTo(packet.AsSpan(16, 4));
+
+        var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
+
+        packet[20] = 8;
+        packet[21] = 0;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(24, 2), 0x1337);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(26, 2), 1);
+
+        var icmpChecksum = ComputeIpChecksum(packet.AsSpan(20, 8));
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), icmpChecksum);
+
+        return packet;
+    }
+
+    private static byte[]? BuildDnsProbePacket(string assignedIp, byte dstOctet = 1)
     {
         if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork)
         {
@@ -306,10 +349,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         packet[8] = 64;
         packet[9] = 17;
         srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
-        packet[16] = 1;
-        packet[17] = 1;
-        packet[18] = 1;
-        packet[19] = 1;
+        packet[16] = dstOctet == 8 ? (byte)8 : (byte)1;
+        packet[17] = dstOctet == 8 ? (byte)8 : (byte)1;
+        packet[18] = dstOctet == 8 ? (byte)8 : (byte)1;
+        packet[19] = dstOctet == 8 ? (byte)8 : (byte)1;
 
         var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);

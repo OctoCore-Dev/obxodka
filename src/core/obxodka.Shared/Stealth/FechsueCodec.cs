@@ -271,13 +271,13 @@ public static class FechsueCodec
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] Pack(
-        byte[] payload,
-        int length,
+        ReadOnlySpan<byte> payload,
         uint sessionId,
         AesGcm crypto,
         out int totalLength,
         bool maskSessionId = true)
     {
+        var length = payload.Length;
         totalLength = HeaderSize + length + TagSize;
         var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
 
@@ -302,20 +302,29 @@ public static class FechsueCodec
         var ciphertext = buffer.AsSpan(HeaderSize, length);
         var tag = buffer.AsSpan(HeaderSize + length, TagSize);
 
-        crypto.Encrypt(nonce, payload.AsSpan(0, length), ciphertext, tag, associatedData);
+        crypto.Encrypt(nonce, payload, ciphertext, tag, associatedData);
         return buffer;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] PackShaped(
+    public static byte[] Pack(
         byte[] payload,
         int length,
         uint sessionId,
         AesGcm crypto,
         out int totalLength,
+        bool maskSessionId = true) =>
+        Pack(payload.AsSpan(0, length), sessionId, crypto, out totalLength, maskSessionId);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackShaped(
+        ReadOnlySpan<byte> payload,
+        uint sessionId,
+        AesGcm crypto,
+        out int totalLength,
         bool maskSessionId = true)
     {
-        var rawBuf = Pack(payload, length, sessionId, crypto, out var rawLen, maskSessionId);
+        var rawBuf = Pack(payload, sessionId, crypto, out var rawLen, maskSessionId);
         var maxNeeded = EntropyShaper.GetMaxEncodedLength(rawLen);
         var shapedBuf = ArrayPool<byte>.Shared.Rent(maxNeeded);
         if (EntropyShaper.TryEncode(rawBuf.AsSpan(0, rawLen), shapedBuf, out var written))
@@ -328,6 +337,16 @@ public static class FechsueCodec
         totalLength = rawLen;
         return rawBuf;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackShaped(
+        byte[] payload,
+        int length,
+        uint sessionId,
+        AesGcm crypto,
+        out int totalLength,
+        bool maskSessionId = true) =>
+        PackShaped(payload.AsSpan(0, length), sessionId, crypto, out totalLength, maskSessionId);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] PackEncryptedDisc(uint sessionId, AesGcm crypto, out int totalLength, bool maskSessionId = true)

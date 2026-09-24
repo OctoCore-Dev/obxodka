@@ -477,29 +477,28 @@ public sealed partial class FechsueTransport : IVpnTransport
         thread.Start();
     }
 
-    public Task SendPingProbeAsync()
+    private void SendStreamPingProbe(byte streamIndex)
     {
         try
         {
-            if (_sockets[0] is { } sock0 && _txCryptos[0] is { } crypto0)
+            if (_sockets[streamIndex] is { } sock && _txCryptos[streamIndex] is { } crypto)
             {
-                var packet = ArrayPool<byte>.Shared.Rent(10);
+                Span<byte> packet = stackalloc byte[10];
                 packet[0] = 0x99;
-                packet[1] = 0;
-                BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(2, 8), Stopwatch.GetTimestamp());
+                packet[1] = streamIndex;
+                BinaryPrimitives.WriteInt64LittleEndian(packet.Slice(2, 8), Stopwatch.GetTimestamp());
 
                 byte[] packed;
                 int totalLen;
-                lock (_txLocks[0])
+                lock (_txLocks[streamIndex])
                 {
                     packed = EnableEntropyShaping
-                        ? FechsueCodec.PackShaped(packet, 10, _sessionId, crypto0, out totalLen, _serverUsesSessionMasking)
-                        : FechsueCodec.Pack(packet, 10, _sessionId, crypto0, out totalLen, _serverUsesSessionMasking);
+                        ? FechsueCodec.PackShaped(packet, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
+                        : FechsueCodec.Pack(packet, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
                 }
-                ArrayPool<byte>.Shared.Return(packet);
                 try
                 {
-                    _ = sock0.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
+                    _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
                 }
                 catch
                 {
@@ -507,7 +506,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                     {
                         if (_serverEp != null)
                         {
-                            _ = sock0.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
+                            _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
                         }
                     }
                     catch { }
@@ -519,6 +518,11 @@ public sealed partial class FechsueTransport : IVpnTransport
             }
         }
         catch { }
+    }
+
+    public Task SendPingProbeAsync()
+    {
+        SendStreamPingProbe(0);
         return Task.CompletedTask;
     }
 
@@ -536,42 +540,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                 {
                     for (byte i = 1; i < ParallelStreams; i++)
                     {
-                        if (_sockets[i] is { } sock && _txCryptos[i] is { } crypto)
-                        {
-                            var packet = ArrayPool<byte>.Shared.Rent(10);
-                            packet[0] = 0x99;
-                            packet[1] = i;
-                            BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(2, 8), Stopwatch.GetTimestamp());
-
-                            byte[] packed;
-                            int totalLen;
-                            lock (_txLocks[i])
-                            {
-                                packed = EnableEntropyShaping
-                                    ? FechsueCodec.PackShaped(packet, 10, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
-                                    : FechsueCodec.Pack(packet, 10, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
-                            }
-                            ArrayPool<byte>.Shared.Return(packet);
-                            try
-                            {
-                                _ = sock.Send(packed.AsSpan(0, totalLen), SocketFlags.None);
-                            }
-                            catch
-                            {
-                                try
-                                {
-                                    if (_serverEp != null)
-                                    {
-                                        _ = sock.SendTo(packed.AsSpan(0, totalLen), SocketFlags.None, _serverEp);
-                                    }
-                                }
-                                catch { }
-                            }
-                            finally
-                            {
-                                ArrayPool<byte>.Shared.Return(packed);
-                            }
-                        }
+                        SendStreamPingProbe(i);
                     }
                 }
 

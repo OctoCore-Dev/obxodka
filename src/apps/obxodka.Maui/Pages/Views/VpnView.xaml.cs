@@ -459,6 +459,14 @@ public sealed partial class VpnView : ContentView
         return firstLine.Length > 120 ? firstLine[..120] + "..." : firstLine;
     }
 
+    private void ResetPingIndicators()
+    {
+        PingValueLabel.Text = "-- ms";
+        PingDot.Color = t_grayDot;
+        PingBadge.Stroke = t_grayStroke;
+        PingValueLabel.TextColor = t_grayText;
+    }
+
     private void HandlePingUpdated(long rtt)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -488,10 +496,7 @@ public sealed partial class VpnView : ContentView
             }
             else
             {
-                PingValueLabel.Text = "-- ms";
-                PingDot.Color = t_grayDot;
-                PingBadge.Stroke = t_grayStroke;
-                PingValueLabel.TextColor = t_grayText;
+                ResetPingIndicators();
             }
         });
     }
@@ -508,6 +513,7 @@ public sealed partial class VpnView : ContentView
                     _isErrorState = false;
                     StopLoaderAnimation();
                     StopGraphAnimation();
+                    ResetPingIndicators();
                     OuterAura.IsVisible = true;
                     IpAddressLabel.Text = "IP: не назначен";
                     ConnectButtonCore.IsEnabled = true;
@@ -532,6 +538,7 @@ public sealed partial class VpnView : ContentView
                     _isErrorState = true;
                     StopLoaderAnimation();
                     StopGraphAnimation();
+                    ResetPingIndicators();
                     OuterAura.IsVisible = true;
                     IpAddressLabel.Text = "IP: не назначен";
                     ConnectButtonCore.IsEnabled = true;
@@ -542,6 +549,7 @@ public sealed partial class VpnView : ContentView
                 case AppVpnState.Connecting:
                 case AppVpnState.Reconnecting:
                     _isErrorState = false;
+                    ResetPingIndicators();
                     StartLoaderAnimation();
                     ConnectButtonCore.IsEnabled = false;
                     IpAddressLabel.Text = "IP: получение...";
@@ -550,6 +558,7 @@ public sealed partial class VpnView : ContentView
 
                 case AppVpnState.Disconnecting:
                     StopGraphAnimation();
+                    ResetPingIndicators();
                     ConnectButtonCore.IsEnabled = false;
                     IpAddressLabel.Text = "IP: отключение...";
                     StatusLabel.Text = "Отключение...";

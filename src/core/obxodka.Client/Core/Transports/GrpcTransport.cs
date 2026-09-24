@@ -352,15 +352,15 @@ public sealed partial class GrpcTransport(
         {
             var ts = Stopwatch.GetTimestamp();
             var targetRays = _activeRays;
+            Span<byte> packet = stackalloc byte[9];
+            packet[0] = 0x99;
+            BinaryPrimitives.WriteInt64LittleEndian(packet.Slice(1, 8), ts);
+
             for (var r = 0; r < targetRays; r++)
             {
                 if (_txChannels[r] is { } ch && _tunnelStreams[r] != null)
                 {
-                    var packet = ArrayPool<byte>.Shared.Rent(9);
-                    packet[0] = 0x99;
-                    BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), ts);
-                    var packed = Obfuscator.Pack(packet, 9, out var totalLength, _serverUsesObfsMasking);
-                    ArrayPool<byte>.Shared.Return(packet);
+                    var packed = Obfuscator.Pack(packet, out var totalLength, _serverUsesObfsMasking);
                     if (!ch.TryEnqueue(packed, totalLength))
                     {
                         ArrayPool<byte>.Shared.Return(packed);

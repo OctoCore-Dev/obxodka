@@ -48,8 +48,9 @@ public static class Obfuscator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] Pack(byte[] packet, int packetLength, out int totalLength, bool maskHeaders = true)
+    public static byte[] Pack(ReadOnlySpan<byte> packet, out int totalLength, bool maskHeaders = true)
     {
+        var packetLength = packet.Length;
         var paddingLen = packetLength == 9 && packet[0] == 0x99
             ? 0
             : packetLength >= 20 && (((packet[0] >> 4) == 4 && (packet[9] == 17 || packet[9] == 1)) || ((packet[0] >> 4) == 6 && (packet[6] == 17 || packet[6] == 58)))
@@ -71,37 +72,30 @@ public static class Obfuscator
             BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
         }
 
-        unsafe
-        {
-            fixed (byte* src = packet, dst = buffer)
-            {
-                Unsafe.CopyBlockUnaligned(dst + 8, src, (uint)packetLength);
-            }
-        }
+        packet.CopyTo(buffer.AsSpan(8, packetLength));
 
         if (paddingLen > 0)
         {
             var noiseOffset = Random.Shared.Next(0, t_noiseBuf.Length - paddingLen);
-            unsafe
-            {
-                fixed (byte* noise = t_noiseBuf, dst = buffer)
-                {
-                    Unsafe.CopyBlockUnaligned(dst + 8 + packetLength, noise + noiseOffset, (uint)paddingLen);
-                }
-            }
+            t_noiseBuf.AsSpan(noiseOffset, paddingLen).CopyTo(buffer.AsSpan(8 + packetLength, paddingLen));
         }
 
         return buffer;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] PackSmart(byte[] packet, int packetLength, out int totalLength, bool isProxied, bool maskHeaders = true)
+    public static byte[] Pack(byte[] packet, int packetLength, out int totalLength, bool maskHeaders = true) =>
+        Pack(packet.AsSpan(0, packetLength), out totalLength, maskHeaders);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackSmart(ReadOnlySpan<byte> packet, out int totalLength, bool isProxied, bool maskHeaders = true)
     {
         if (!isProxied)
         {
-            return Pack(packet, packetLength, out totalLength, maskHeaders);
+            return Pack(packet, out totalLength, maskHeaders);
         }
 
+        var packetLength = packet.Length;
         totalLength = 4 + 4 + packetLength;
         var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
         if (maskHeaders)
@@ -115,16 +109,13 @@ public static class Obfuscator
             BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
         }
 
-        unsafe
-        {
-            fixed (byte* src = packet, dst = buffer)
-            {
-                Unsafe.CopyBlockUnaligned(dst + 8, src, (uint)packetLength);
-            }
-        }
-
+        packet.CopyTo(buffer.AsSpan(8, packetLength));
         return buffer;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackSmart(byte[] packet, int packetLength, out int totalLength, bool isProxied, bool maskHeaders = true) =>
+        PackSmart(packet.AsSpan(0, packetLength), out totalLength, isProxied, maskHeaders);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryUnpack(
