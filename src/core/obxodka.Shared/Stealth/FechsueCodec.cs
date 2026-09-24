@@ -340,6 +340,16 @@ public static class FechsueCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackEncryptedDiscShaped(uint sessionId, AesGcm crypto, out int totalLength, bool maskSessionId = true)
+    {
+        var closeFrame = new byte[8];
+        closeFrame[0] = 0x1C;
+        closeFrame[1] = 0x00;
+        Random.Shared.NextBytes(closeFrame.AsSpan(2, 6));
+        return PackShaped(closeFrame, closeFrame.Length, sessionId, crypto, out totalLength, maskSessionId);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsDisconnectPayload(ReadOnlySpan<byte> payload) =>
         payload.Length > 0 && (payload[0] is 0x1C or 0xFE || (payload.Length >= 4 && payload[..4].SequenceEqual("DISC"u8)));
 
