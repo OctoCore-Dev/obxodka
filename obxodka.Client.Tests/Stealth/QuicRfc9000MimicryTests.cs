@@ -6,7 +6,7 @@ namespace obxodka.Client.Tests.Stealth;
 public class QuicRfc9000MimicryTests
 {
     [Fact]
-    public void PackAuthGeneratesValidRfc9000QuicInitialHeader()
+    public void PackAuthGeneratesQuicCamouflageHeader()
     {
         var thumbprint = "TEST_THUMBPRINT_A1B2C3D4E5";
         byte streamIndex = 2;
@@ -15,7 +15,7 @@ public class QuicRfc9000MimicryTests
 
         try
         {
-            Assert.True(totalLen >= FechsueCodec.QuicMinInitialSize, "Initial datagram must be >= 1200 bytes for RFC 9000 compliance");
+            Assert.True(totalLen >= FechsueCodec.QuicMinInitialSize, "Initial datagram must be >= 1200 bytes for QUIC camouflage layout");
             Assert.Equal(FechsueCodec.QuicLongHeaderInitial, buf[0]);
 
             var version = BinaryPrimitives.ReadUInt32BigEndian(buf.AsSpan(1, 4));

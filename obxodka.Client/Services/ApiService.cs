@@ -38,6 +38,41 @@ public sealed class ApiService(HttpClient client)
         DefaultRequestVersion = new Version(2, 0)
     });
 
+    private static readonly Lazy<HttpClient> t_fallbackDirectDpi = new(() =>
+    {
+        var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                TargetHost = "obxodka.one",
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
+                    GrpcTransport.ValidateServerCertificate(cert, chain, errors)
+            },
+            ConnectCallback = async (_, cToken) =>
+            {
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse("45.63.117.29"), 443), cToken).ConfigureAwait(false);
+                    return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            }
+        };
+        return new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(8),
+            DefaultRequestVersion = new Version(1, 1)
+        };
+    });
+
     private static async ValueTask PrepareRequestAsync(HttpRequestMessage request, bool includeAuth = true)
     {
         if (includeAuth)
@@ -180,6 +215,51 @@ public sealed class ApiService(HttpClient client)
             {
                 Debug.WriteLine($"[API] Fallback to DefaultApiBaseUrl also failed: {ex.Message}");
             }
+        }
+
+        try
+        {
+            var directUrl = $"https://obxodka.one/{url.TrimStart('/')}";
+            using var request = new HttpRequestMessage(method, directUrl);
+            request.Headers.Host = "obxodka.one";
+            if (body is not null && requestInfo is not null)
+            {
+                request.Content = JsonContent.Create(body, requestInfo);
+            }
+
+            await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
+            var response = await t_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                try
+                {
+                    MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+                }
+                catch { }
+
+                return (false, null, "Сессия истекла или устройство было удалено.");
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+                if (responseInfo is not null)
+                {
+                    return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                }
+
+                return (true, null, null);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            lastEx = ex;
+            Debug.WriteLine($"[API DIRECT DPI ERROR] {method} {url}: {ex.Message}");
         }
 
         var baseEx = lastEx?.GetBaseException();

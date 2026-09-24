@@ -47,7 +47,7 @@ public class ApiErrorHandlerTests
     [Fact]
     public void ParseJsonErrorMessage()
     {
-        var rawJson = /*lang=json,strict*/ "{\"message\":\"Слишком много попыток. Попробуйте через минуту.\"}";
+        var rawJson = "{\"message\":\"Слишком много попыток. Попробуйте через минуту.\"}";
         var result = ApiErrorHandler.ParseGeneralError(rawJson);
         Assert.Equal("Слишком много попыток. Попробуйте через минуту.", result);
     }
@@ -59,3 +59,4 @@ public class ApiErrorHandlerTests
         Assert.Equal("Запасное сообщение", result);
     }
 }
+

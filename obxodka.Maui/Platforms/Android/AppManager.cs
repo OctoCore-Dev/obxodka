@@ -161,28 +161,28 @@ public sealed class AppManager : IAppManager
     private static readonly HashSet<string> t_defaultCloakedPackages =
     [
         with(StringComparer.OrdinalIgnoreCase),
-        "ru.sberbankmobile",           // Сбербанк Онлайн
-        "com.idamob.tinkoff.android",   // Т-Банк (Тинькофф)
-        "ru.vtb24.mobilebanking",       // ВТБ
-        "ru.alfabank.mobile.android",   // Альфа-Банк
-        "ru.raiffeisennews",           // Райффайзен
-        "ru.gosuslugi.online",          // Госуслуги
-        "ru.gosuslugi.pos",             // Госуслуги Решаем вместе
-        "ru.yandex.yandexnavi",         // Яндекс Навигатор
-        "ru.yandex.taxi",               // Яндекс Go / Такси
-        "ru.yandex.searchplugin",       // Яндекс с Алисой
-        "ru.yandex.market",             // Яндекс Маркет
-        "com.vkontakte.android",        // ВКонтакте
-        "com.vk.im",                    // VK Мессенджер
-        "ru.mail.mailapp",              // Почта Mail.ru
-        "com.wildberries.work",         // Wildberries
+        "ru.sberbankmobile",
+        "com.idamob.tinkoff.android",
+        "ru.vtb24.mobilebanking",
+        "ru.alfabank.mobile.android",
+        "ru.raiffeisennews",
+        "ru.gosuslugi.online",
+        "ru.gosuslugi.pos",
+        "ru.yandex.yandexnavi",
+        "ru.yandex.taxi",
+        "ru.yandex.searchplugin",
+        "ru.yandex.market",
+        "com.vkontakte.android",
+        "com.vk.im",
+        "ru.mail.mailapp",
+        "com.wildberries.work",
         "com.wildberries.wbdeti",
-        "ru.ozon.app.android",          // Ozon
-        "com.avito.android",            // Авито
-        "ru.nspk.mirpay",               // Mir Pay
-        "ru.samokat.app",               // Самокат
-        "ru.magnit.app",                // Магнит
-        "ru.x5.app"                     // Пятёрочка
+        "ru.ozon.app.android",
+        "com.avito.android",
+        "ru.nspk.mirpay",
+        "ru.samokat.app",
+        "ru.magnit.app",
+        "ru.x5.app"
     ];
 
     public List<string> GetBypassedPackages()

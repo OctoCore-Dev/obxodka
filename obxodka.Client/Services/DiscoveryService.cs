@@ -8,13 +8,13 @@ public sealed class DiscoveryService
     {
         UseProxy = false
     };
-    private static readonly HttpClient t_httpClient = new(t_handler) { Timeout = TimeSpan.FromSeconds(7) };
+    private static readonly HttpClient t_httpClient = new(t_handler) { Timeout = TimeSpan.FromSeconds(2) };
     private static HydraConfig? t_cachedConfig;
     private static readonly SemaphoreSlim t_fetchLock = new(1, 1);
 
     private static async Task<bool> IsHostResolvableAsync(string host, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(host))
+        if (string.IsNullOrWhiteSpace(host) || host.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -27,7 +27,7 @@ public sealed class DiscoveryService
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2.5));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2.0));
             var addresses = await Dns.GetHostAddressesAsync(host, timeoutCts.Token).ConfigureAwait(false);
             return addresses.Any(a => a.AddressFamily == AddressFamily.InterNetwork);
         }
@@ -44,7 +44,7 @@ public sealed class DiscoveryService
             if (t_cachedConfig is { ActiveBridge: { Length: > 0 } cachedBridge })
             {
                 var cachedHost = new Uri(cachedBridge).Host;
-                if (await IsHostResolvableAsync(cachedHost, ct).ConfigureAwait(false))
+                if (!cachedHost.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase) && await IsHostResolvableAsync(cachedHost, ct).ConfigureAwait(false))
                 {
                     return cachedHost;
                 }
@@ -57,7 +57,7 @@ public sealed class DiscoveryService
                 var savedBridge = Preferences.Default.Get("cached_bridge_host", string.Empty);
                 if (!string.IsNullOrWhiteSpace(savedBridge))
                 {
-                    if (await IsHostResolvableAsync(savedBridge, ct).ConfigureAwait(false))
+                    if (!savedBridge.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase) && await IsHostResolvableAsync(savedBridge, ct).ConfigureAwait(false))
                     {
                         return savedBridge;
                     }
@@ -74,7 +74,7 @@ public sealed class DiscoveryService
             if (!forceRefresh && t_cachedConfig is { ActiveBridge: { Length: > 0 } readyBridge })
             {
                 var readyHost = new Uri(readyBridge).Host;
-                if (await IsHostResolvableAsync(readyHost, ct).ConfigureAwait(false))
+                if (!readyHost.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase) && await IsHostResolvableAsync(readyHost, ct).ConfigureAwait(false))
                 {
                     return readyHost;
                 }
@@ -123,7 +123,9 @@ public sealed class DiscoveryService
         try
         {
             var fallbackBridge = Preferences.Default.Get("cached_bridge_host", string.Empty);
-            if (!string.IsNullOrWhiteSpace(fallbackBridge) && await IsHostResolvableAsync(fallbackBridge, ct).ConfigureAwait(false))
+            if (!string.IsNullOrWhiteSpace(fallbackBridge) &&
+                !fallbackBridge.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase) &&
+                await IsHostResolvableAsync(fallbackBridge, ct).ConfigureAwait(false))
             {
                 return fallbackBridge;
             }

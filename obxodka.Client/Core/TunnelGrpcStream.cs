@@ -59,22 +59,18 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled || cancellationToken.IsCancellationRequested || _cts.IsCancellationRequested)
             {
-                Debug.WriteLine($"[GRPC STREAM READ] Canceled (StatusCode={ex.StatusCode})");
                 return 0;
             }
             catch (OperationCanceledException)
             {
-                Debug.WriteLine("[GRPC STREAM READ] OperationCanceledException");
                 return 0;
             }
             catch (ObjectDisposedException)
             {
-                Debug.WriteLine("[GRPC STREAM READ] ObjectDisposedException");
                 return 0;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[GRPC STREAM READ ERROR] {ex.GetType().Name}: {ex.Message}");
                 Shared.Logging.AppLogger.LogError($"[GRPC STREAM READ] {ex.Message}", ex);
                 return 0;
             }
@@ -100,29 +96,19 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled || cancellationToken.IsCancellationRequested || _cts.IsCancellationRequested)
         {
-            Debug.WriteLine($"[GRPC STREAM WRITE] Canceled (StatusCode={ex.StatusCode})");
+
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("[GRPC STREAM WRITE] OperationCanceledException");
+
         }
         catch (ObjectDisposedException)
         {
-            Debug.WriteLine("[GRPC STREAM WRITE] ObjectDisposedException");
+
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GRPC STREAM WRITE ERROR] {ex.GetType().Name}: {ex.Message}");
             Shared.Logging.AppLogger.LogError($"[GRPC STREAM WRITE] {ex.Message}", ex);
-            try
-            {
-                _cts.Cancel();
-            }
-            catch
-            {
-            }
-
-            throw;
         }
     }
 

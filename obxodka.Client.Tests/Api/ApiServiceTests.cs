@@ -80,7 +80,7 @@ public partial class ApiServiceTests : IDisposable
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.BadRequest,
-                Content = new StringContent(/*lang=json,strict*/ "{\"message\":\"Некорректный email.\"}", Encoding.UTF8, "application/json")
+                Content = new StringContent("{\"message\":\"Некорректный email.\"}", Encoding.UTF8, "application/json")
             });
 
         var (success, error) = await _apiService.RequestCodeAsync(request);
@@ -93,7 +93,7 @@ public partial class ApiServiceTests : IDisposable
     public async Task VerifyCodeAsyncWhenValidReturnsLoginResponseAsync()
     {
         var request = new EmailVerifyRequest("test@example.com", "123456", "test_hwid", "MyPhone");
-        var rawJson = /*lang=json,strict*/ "{\"token\":\"jwt_token_sample\",\"vpnConfig\":\"vpn_config_data\",\"certThumbprint\":\"CERT_123\",\"balanceSeconds\":3600,\"email\":\"test@example.com\"}";
+        var rawJson = "{\"token\":\"jwt_token_sample\",\"vpnConfig\":\"vpn_config_data\",\"certThumbprint\":\"CERT_123\",\"balanceSeconds\":3600,\"email\":\"test@example.com\"}";
 
         _ = _httpMessageHandlerMock
             .Protected()
@@ -123,3 +123,4 @@ public partial class ApiServiceTests : IDisposable
         GC.SuppressFinalize(this);
     }
 }
+

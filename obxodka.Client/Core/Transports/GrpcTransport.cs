@@ -88,7 +88,6 @@ public sealed partial class GrpcTransport(
                 }
             }
 
-            // Check if this is a certificate for obxodka.one (Subject CN or SAN)
             var isObxodkaDomain = cert2.Subject.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase);
             if (!isObxodkaDomain)
             {
@@ -115,7 +114,7 @@ public sealed partial class GrpcTransport(
 
             if (isObxodkaDomain)
             {
-                // For obxodka.one certificates, ignore RemoteCertificateNameMismatch caused by connecting by IP / SNI masking
+
                 var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
                 if (nonNameErrors == SslPolicyErrors.None)
                 {
@@ -137,7 +136,6 @@ public sealed partial class GrpcTransport(
                 }
             }
 
-            // If no pinning errors and standard public trust without any policy errors
             if (errors == SslPolicyErrors.None && string.IsNullOrWhiteSpace(expectedPin))
             {
                 using var verifyChain = new X509Chain();
@@ -185,7 +183,9 @@ public sealed partial class GrpcTransport(
                 !string.IsNullOrWhiteSpace(apiUri.Host) &&
                 !IPAddress.TryParse(apiUri.Host, out _))
             {
-                defaultSni = apiUri.Host;
+                defaultSni = apiUri.Host.EndsWith("obxodka.one", StringComparison.OrdinalIgnoreCase)
+                    ? "obxodka.one"
+                    : apiUri.Host;
             }
         }
         catch { }
@@ -288,7 +288,6 @@ public sealed partial class GrpcTransport(
                 _txChannels[i] = new PriorityPacketQueue(i <= 1 ? 2000 : 1500);
             }
 
-            // Ray 0 connects first to establish session and obtain IP assignment
             await ConnectRayAsync(0, isNewConnection: true).ConfigureAwait(false);
             _ = TxLoopAsync(0, _txChannels[0]!, _cts.Token);
 
@@ -312,7 +311,6 @@ public sealed partial class GrpcTransport(
                     }, _cts.Token);
                 }
 
-                // Await secondary rays concurrently with 3.5s timeout
                 try
                 {
                     _ = await Task.WhenAny(Task.WhenAll(secondaryRayTasks), Task.Delay(3500, _cts.Token)).ConfigureAwait(false);
@@ -740,3 +738,4 @@ public sealed partial class GrpcTransport(
         GC.SuppressFinalize(this);
     }
 }
+

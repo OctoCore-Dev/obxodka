@@ -1,3 +1,4 @@
+using obxodka.Core.Models;
 using Uri = System.Uri;
 
 namespace obxodka.Platforms.Windows;
@@ -18,10 +19,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     public event Action<string>? OnForceLogoutRequested;
 
     private string _currentServerIp = "";
-    private uint _currentServerIpUint;
-    private uint _localGatewayIpUint;
-    private static uint t_publicWanIpUint;
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, string> t_bypassedManagementIps = new();
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
     private static bool t_networkSettingsBoosted;
@@ -29,7 +26,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
-    private long _vpnRxPacketsCount;
+    public static SplitTunnelPolicy SplitTunnelPolicy { get; } = new();
+
+    private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
+        Channel.CreateUnbounded<(byte[] buffer, int length)>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
     public WindowsVpnService()
     {
@@ -46,18 +47,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _ = await RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
         await DisableDnsLeakProtectionAsync();
-    }
-
-    private async Task SyncAdapterIpAsync()
-    {
-        if (_adapter != null)
-        {
-            var ip = OctopusEngine.Current.AssignedIp;
-            if (!string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out _))
-            {
-                await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0");
-            }
-        }
     }
 
     private void HandleDeadConnection()
@@ -88,7 +77,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     try
                     {
                         await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
-                        await SyncAdapterIpAsync();
                         UpdateState(AppVpnState.Connected);
                         OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено!");
                         return;
@@ -101,7 +89,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 if (_fallbackServers.Count > 1)
                 {
-                    var (gw, physicalIfIndex, _) = await GetDefaultGatewayInfoAsync();
+                    var gw = GetDefaultGateway();
                     for (var i = 0; i < _fallbackServers.Count; i++)
                     {
                         var nextIdx = (_currentServerIndex + 1 + i) % _fallbackServers.Count;
@@ -123,10 +111,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         _currentServerIp = newIp;
                         _currentServerPort = newPort;
 
-                        _currentServerIpUint = IPAddress.TryParse(newIp, out var parsedNewIp) && parsedNewIp.AddressFamily == AddressFamily.InterNetwork
-                            ? BitConverter.ToUInt32(parsedNewIp.GetAddressBytes(), 0)
-                            : 0;
-
                         if (!string.IsNullOrWhiteSpace(nextServer.CertHash))
                         {
                             OctopusEngine.DynamicSslPublicKeyHash = nextServer.CertHash;
@@ -135,24 +119,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         OnLogUpdated?.Invoke($"[SMART CONNECT] Переключение на резервный узел: {newIp}...");
                         try
                         {
-                            if (!string.IsNullOrEmpty(oldIp))
+                            if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(oldIp))
                             {
                                 _ = await RunCmdAsync("route", $"delete {oldIp} mask 255.255.255.255");
-                            }
-                            var (gwNext, ifIdxNext, localIpNext) = await GetDefaultGatewayInfoAsync(newIp);
-                            var nextHop = !string.IsNullOrEmpty(gwNext) && gwNext != "0.0.0.0"
-                                ? gwNext
-                                : (!string.IsNullOrEmpty(localIpNext) ? localIpNext : "0.0.0.0");
-                            var ifParam = ifIdxNext > 0 ? $" if {ifIdxNext}" : "";
-                            _ = await RunCmdAsync("route", $"add {newIp} mask 255.255.255.255 {nextHop} metric 1{ifParam}");
-                            if (ifIdxNext > 0)
-                            {
-                                var psNextHop = !string.IsNullOrEmpty(gwNext) && gwNext != "0.0.0.0" ? $"-NextHop '{gwNext}'" : "";
-                                _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"try {{ New-NetRoute -DestinationPrefix '{newIp}/32' -InterfaceIndex {ifIdxNext} {psNextHop} -RouteMetric 1 -PolicyStore ActiveStore -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}\"", timeoutMs: 3000);
+                                _ = await RunCmdAsync("route", $"add {newIp} mask 255.255.255.255 {gw} metric 1");
                             }
 
                             await OctopusEngine.Current.ReconnectAsync(newIp, newPort);
-                            await SyncAdapterIpAsync();
                             UpdateState(AppVpnState.Connected);
                             OnLogUpdated?.Invoke("[SMART CONNECT] Подключение успешно переведено на новый узел!");
                             return;
@@ -206,26 +179,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                     try
                     {
-                        var (gw, physicalIfIndex, localIfIp) = await GetDefaultGatewayInfoAsync(_currentServerIp);
-                        var nextHop = !string.IsNullOrEmpty(gw) && gw != "0.0.0.0"
-                            ? gw
-                            : (!string.IsNullOrEmpty(localIfIp) ? localIfIp : "0.0.0.0");
-                        if (!string.IsNullOrEmpty(_currentServerIp))
+                        var gw = GetDefaultGateway();
+                        if (!string.IsNullOrEmpty(gw) && !string.IsNullOrEmpty(_currentServerIp))
                         {
                             _ = await RunCmdAsync("route", $"delete {_currentServerIp} mask 255.255.255.255");
-                            var ifParam = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
-                            _ = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {nextHop} metric 1{ifParam}");
-                            if (physicalIfIndex > 0)
-                            {
-                                var psNextHop = !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" ? $"-NextHop '{gw}'" : "";
-                                _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"try {{ New-NetRoute -DestinationPrefix '{_currentServerIp}/32' -InterfaceIndex {physicalIfIndex} {psNextHop} -RouteMetric 1 -PolicyStore ActiveStore -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}\"", timeoutMs: 3000);
-                            }
+                            _ = await RunCmdAsync("route", $"add {_currentServerIp} mask 255.255.255.255 {gw} metric 1");
                             await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
-                            await SyncAdapterIpAsync();
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
-                            if (verified || OctopusEngine.Current.IsConnected)
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(2500));
+                            if (verified)
                             {
-                                Debug.WriteLine($"[RECONNECT] Reconnected! verified={verified}, isConnected={OctopusEngine.Current.IsConnected}");
                                 UpdateState(AppVpnState.Connected);
                                 return;
                             }
@@ -359,10 +321,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     _currentServerIndex = idx;
                     targetIp = candidateIp;
 
-                    _currentServerIpUint = IPAddress.TryParse(candidateIp, out var parsedCandidateIp) && parsedCandidateIp.AddressFamily == AddressFamily.InterNetwork
-                        ? BitConverter.ToUInt32(parsedCandidateIp.GetAddressBytes(), 0)
-                        : 0;
-
                     if (!string.IsNullOrWhiteSpace(s.CertHash))
                     {
                         OctopusEngine.DynamicSslPublicKeyHash = s.CertHash;
@@ -409,58 +367,34 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke("Применение настроек сети...");
                             await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0");
 
-                            var (defaultGw, _, _) = await GetDefaultGatewayInfoAsync(targetIp);
-                            if (IPAddress.TryParse(defaultGw, out var parsedGw) && parsedGw.AddressFamily == AddressFamily.InterNetwork)
-                            {
-                                _localGatewayIpUint = BitConverter.ToUInt32(parsedGw.GetAddressBytes(), 0);
-                            }
-
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
-                            try
-                            {
-                                await SetWindowsRoutesAsync(_adapter.Name, targetIp, ip, true).WaitAsync(TimeSpan.FromSeconds(8));
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ROUTE ERROR] {ex.Message}");
-                            }
-
-                            try
-                            {
-                                await EnableDnsLeakProtectionAsync(_adapter.Name, ip).WaitAsync(TimeSpan.FromSeconds(5));
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[DNS LEAK ERROR] {ex.Message}");
-                            }
-
-                            try
-                            {
-                                await ApplyExtremeNetworkBoostAsync().WaitAsync(TimeSpan.FromSeconds(5));
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[BOOST ERROR] {ex.Message}");
-                            }
+                            await SetWindowsRoutesAsync(_adapter.Name, targetIp, ip, true);
+                            await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
+                            await ApplyExtremeNetworkBoostAsync();
 
                             OctopusEngine.Current.ResetTrafficCounters();
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
-                            OnLogUpdated?.Invoke($"Проверка соединения с сервером (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000), _cts.Token);
+                            OnLogUpdated?.Invoke("Проверка сквозного прохождения пакетов (RX)...");
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(2500), _cts.Token);
                             if (verified)
                             {
-                                OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
-                            }
-                            else
-                            {
-                                Debug.WriteLine($"[VPN-CONNECT] Downlink probe did not get immediate echo (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B), but tunnel is connected and routes are active. Transitioning to Connected state.");
-                                OnLogUpdated?.Invoke($"Туннель запущен ({OctopusEngine.Current.ActiveProtocol}). Ожидание сетевого трафика...");
+                                OnLogUpdated?.Invoke("Связь подтверждена! Защищенное соединение установлено.");
+                                UpdateState(AppVpnState.Connected);
+                                connected = true;
+                                return;
                             }
 
-                            UpdateState(AppVpnState.Connected);
-                            connected = true;
-                            return;
+                            OnLogUpdated?.Invoke("Входящие пакеты не поступают (0 RX). Быстрое переподключение...");
+                            _cts?.Cancel();
+                            await Task.Delay(60);
+                            try
+                            {
+                                _adapter?.Dispose();
+                                _adapter = null;
+                            }
+                            catch { }
+                            await OctopusEngine.Current.DisposeAsync();
                         }
                         catch (UnauthorizedAccessException ex)
                         {
@@ -543,9 +477,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
             Thread.CurrentThread.Name = "Wintun-UploadReader";
             var batch = new PacketBatch();
-            long wintunPktsRead = 0;
-            long wintunBytesRead = 0;
-            Debug.WriteLine("[WINTUN-TX] Upload reader thread started.");
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -553,7 +484,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var adapter = _adapter;
                     if (adapter is null)
                     {
-                        Debug.WriteLine("[WINTUN-TX] Adapter is null! Exiting loop.");
                         break;
                     }
 
@@ -561,32 +491,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     for (var i = 0; i < count; i++)
                     {
                         var (buf, len) = batch[i];
-                        wintunPktsRead++;
-                        wintunBytesRead += len;
-
-                        if (wintunPktsRead <= 15 || wintunPktsRead % 200 == 0)
-                        {
-                            var version = len >= 20 ? (buf[0] >> 4) : 0;
-                            var destStr = version == 4 && len >= 20
-                                ? $"{buf[16]}.{buf[17]}.{buf[18]}.{buf[19]}"
-                                : "unknown";
-                            Debug.WriteLine($"[WINTUN-TX-PKT #{wintunPktsRead}] Read {len}B -> dest {destStr}. Total={wintunBytesRead}B");
-                        }
-
-                        // Anti-loopback protection: Never send packets destined for the VPN server, local gateway, public WAN IP, or active remote management sessions back into the tunnel!
-                        if (len >= 20 && (buf[0] >> 4) == 4)
-                        {
-                            var destIp = MemoryMarshal.Read<uint>(buf.AsSpan(16, 4));
-                            if ((_currentServerIpUint != 0 && destIp == _currentServerIpUint) ||
-                                (_localGatewayIpUint != 0 && destIp == _localGatewayIpUint) ||
-                                (t_publicWanIpUint != 0 && destIp == t_publicWanIpUint) ||
-                                t_bypassedManagementIps.ContainsKey(destIp))
-                            {
-                                ArrayPool<byte>.Shared.Return(buf);
-                                continue;
-                            }
-                        }
-
                         var sinkholeResp = DnsAdBlocker.ProcessPacket(buf, len);
                         if (sinkholeResp is not null)
                         {
@@ -599,17 +503,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
             }
-            catch (OperationCanceledException)
-            {
-                Debug.WriteLine("[WINTUN-TX] Cancelled.");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[WINTUN-TX-ERR] {ex.GetType().Name}: {ex.Message}");
-            }
+            catch { }
             finally
             {
-                Debug.WriteLine($"[WINTUN-TX-EXIT] Exited. Stats: {wintunPktsRead} pkts, {wintunBytesRead} bytes.");
                 _ = tcs.TrySetResult();
             }
         })
@@ -617,6 +513,41 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             IsBackground = true
         };
         txThread.Start();
+
+        var rxThread = new Thread(() =>
+        {
+            Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            Thread.CurrentThread.Name = "Wintun-Downloader";
+            var reader = _downstreamChannel.Reader;
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    while (reader.TryRead(out var item))
+                    {
+                        _adapter?.SendPacket(item.buffer, item.length);
+                        ArrayPool<byte>.Shared.Return(item.buffer);
+                    }
+
+                    if (reader.WaitToReadAsync(ct).AsTask().Result)
+                    {
+                        continue;
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                while (reader.TryRead(out var item))
+                {
+                    ArrayPool<byte>.Shared.Return(item.buffer);
+                }
+            }
+        })
+        {
+            IsBackground = true
+        };
+        rxThread.Start();
 
         try
         {
@@ -628,16 +559,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private void HandlePacketFromVpn(byte[] data, int length)
-    {
-        var count = Interlocked.Increment(ref _vpnRxPacketsCount);
-        if (count <= 15 || count % 200 == 0)
-        {
-            Debug.WriteLine($"[VPN-RX-PACKET #{count}] Inbound packet from engine: {length} bytes");
-        }
-        _adapter?.SendPacket(data, length);
-        ArrayPool<byte>.Shared.Return(data);
-    }
+    private void HandlePacketFromVpn(byte[] data, int length) =>
+        _downstreamChannel.Writer.TryWrite((data, length));
 
     private void UpdateState(AppVpnState state)
     {
@@ -673,7 +596,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static 1.1.1.1 primary");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" 1.0.0.1 index=2");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1280 store=active");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1360 store=active");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
                 Debug.WriteLine("[NET CONFIG] Configured adapter via netsh successfully.");
                 return;
@@ -690,7 +613,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ exit 1; }}
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes 1280 -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes 1360 -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
             ";
@@ -709,55 +632,41 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         throw new InvalidOperationException($"Не удалось настроить адаптер '{adapterName}'. Ошибка PS: {lastError}");
     }
 
-    private static async Task<(int exitCode, string output)> RunCmdAsync(string fileName, string args, int timeoutMs = 5000)
+    private static async Task<(int exitCode, string output)> RunCmdAsync(string fileName, string args)
     {
-        try
+        var tcs = new TaskCompletionSource<(int, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = Task.Run(() =>
         {
-            var psi = new ProcessStartInfo(fileName, args)
-            {
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false
-            };
-
-            using var proc = Process.Start(psi);
-            if (proc is null)
-            {
-                return (-1, $"Failed to start {fileName}");
-            }
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
-
-            // CRITICAL: Read stdout and stderr concurrently to prevent anonymous pipe buffer deadlock!
-            var stdTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
-            var errTask = proc.StandardError.ReadToEndAsync(cts.Token);
-
             try
             {
-                await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-                var std = await stdTask.ConfigureAwait(false);
-                var err = await errTask.ConfigureAwait(false);
-
-                return (proc.ExitCode, string.IsNullOrWhiteSpace(err) ? std : err);
-            }
-            catch (OperationCanceledException)
-            {
-                try
+                var psi = new ProcessStartInfo(fileName, args)
                 {
-                    proc.Kill(entireProcessTree: true);
-                }
-                catch { }
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false
+                };
 
-                Debug.WriteLine($"[RunCmdAsync] Command '{fileName} {args}' timed out after {timeoutMs}ms and was killed.");
-                return (-1, "Command timed out");
+                using var proc = Process.Start(psi);
+                if (proc is null)
+                {
+                    tcs.SetResult((-1, "Failed to start cmd.exe"));
+                    return;
+                }
+
+                var err = proc.StandardError.ReadToEnd();
+                var std = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit();
+                tcs.SetResult((proc.ExitCode, string.IsNullOrWhiteSpace(err) ? std : err));
             }
-        }
-        catch (Exception ex)
-        {
-            return (-1, ex.Message);
-        }
+            catch (Exception ex)
+            {
+                tcs.SetResult((-1, ex.Message));
+            }
+        });
+
+        return await tcs.Task;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -782,7 +691,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     [LibraryImport("iphlpapi.dll", SetLastError = true)]
     private static partial int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
 
-    private static (string Gateway, int InterfaceIndex, string LocalIp) QueryBestRouteWin32(string? targetIp)
+    private static (string Gateway, int InterfaceIndex) QueryBestRouteWin32(string? targetIp)
     {
         try
         {
@@ -793,205 +702,74 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 var ifIndex = (int)row.DwForwardIfIndex;
                 var gwUint = row.DwForwardNextHop;
-                var foundGw = "";
                 if (gwUint != 0)
                 {
                     var gwBytes = BitConverter.GetBytes(gwUint);
                     var gwIp = new IPAddress(gwBytes).ToString();
                     if (gwIp != "0.0.0.0")
                     {
-                        foundGw = gwIp;
+                        return (gwIp, ifIndex);
                     }
                 }
 
-                var localIp = "";
                 foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
                 {
                     var ipProps = card.GetIPProperties();
                     if (ipProps.GetIPv4Properties()?.Index == ifIndex)
                     {
-                        if (string.IsNullOrEmpty(foundGw))
-                        {
-                            foundGw = ipProps.GatewayAddresses
-                                .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any))?
-                                .Address.ToString() ?? "";
-                        }
-                        localIp = ipProps.UnicastAddresses
-                            .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(u.Address))?
-                            .Address.ToString() ?? "";
-                        break;
+                        var gw = ipProps.GatewayAddresses
+                            .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any))?
+                            .Address.ToString();
+                        return (gw ?? "", ifIndex);
                     }
                 }
 
-                return (foundGw, ifIndex, localIp);
+                return ("", ifIndex);
             }
         }
         catch { }
-        return ("", 0, "");
+        return ("", 0);
     }
 
-    private static async Task<(string Gateway, int InterfaceIndex, string LocalIp)> GetDefaultGatewayInfoAsync(string? targetIp = null)
+    private static (string Gateway, int InterfaceIndex) GetDefaultGatewayInfo(string? targetIp = null)
     {
         var win32Route = QueryBestRouteWin32(targetIp);
         if (win32Route.InterfaceIndex > 0)
         {
-            Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}, LocalIP: '{win32Route.LocalIp}'");
+            Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
             return win32Route;
         }
 
         try
         {
-            var (_, output) = await RunCmdAsync("powershell",
-                "-NoProfile -Command \"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop + '|' + (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).InterfaceIndex\"", timeoutMs: 3000);
-            var line = output.Trim();
-            if (!string.IsNullOrEmpty(line) && line.Contains('|'))
-            {
-                var parts = line.Split('|');
-                if (parts.Length == 2 && IPAddress.TryParse(parts[0], out _))
-                {
-                    _ = int.TryParse(parts[1], out var ifIndex);
-                    var localIp = "";
-                    foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
-                    {
-                        var ipProps = card.GetIPProperties();
-                        if (ipProps.GetIPv4Properties()?.Index == ifIndex)
-                        {
-                            localIp = ipProps.UnicastAddresses
-                                .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(u.Address))?
-                                .Address.ToString() ?? "";
-                            break;
-                        }
-                    }
-                    return (parts[0], ifIndex, localIp);
-                }
-            }
+            var card = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n =>
+                n.OperationalStatus == OperationalStatus.Up &&
+                n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                !n.Name.Contains("Obxodka") &&
+                !n.Name.Contains("Wintun") &&
+                !n.Name.Contains("Radmin") &&
+                n.GetIPProperties().GatewayAddresses.Count != 0);
 
-            foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (card.OperationalStatus != OperationalStatus.Up ||
-                    card.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                    card.NetworkInterfaceType == NetworkInterfaceType.Tunnel ||
-                    card.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
-                    card.Description.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
-                    card.Description.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
-                    card.Description.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                    card.Description.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                    card.Description.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
-                    card.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
-                    card.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
-                    card.Name.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
-                    card.Name.Contains("Radmin", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var ipProps = card.GetIPProperties();
-                var gw = ipProps.GatewayAddresses
-                    .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any))?
-                    .Address.ToString();
-
-                var ifIdx = 0;
-                try
-                {
-                    ifIdx = ipProps.GetIPv4Properties()?.Index ?? 0;
-                }
-                catch { }
-
-                var localIp = ipProps.UnicastAddresses
-                    .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(u.Address))?
-                    .Address.ToString() ?? "";
-
-                if (!string.IsNullOrEmpty(gw))
-                {
-                    return (gw, ifIdx, localIp);
-                }
-                else if (ifIdx > 0 && !string.IsNullOrEmpty(localIp))
-                {
-                    return ("", ifIdx, localIp);
-                }
-            }
-
-            return ("", 0, "");
+            var gw = card?.GetIPProperties().GatewayAddresses.FirstOrDefault()?.Address.ToString() ?? "";
+            var ifIndex = card?.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+            return (gw, ifIndex);
         }
         catch
         {
-            return ("", 0, "");
+            return ("", 0);
         }
     }
 
-    private static async Task<List<string>> DetectRemoteManagementIpsAsync()
+    private static string GetDefaultGateway(string? targetIp = null)
     {
-        var result = new List<string>();
-        try
-        {
-            var remoteProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "AnyDesk", "TeamViewer", "RustDesk", "mstsc", "vncserver", "tv_w32", "tv_x64"
-            };
-
-            var targetPids = new HashSet<int>();
-            foreach (var proc in Process.GetProcesses())
-            {
-                try
-                {
-                    if (remoteProcessNames.Contains(proc.ProcessName))
-                    {
-                        _ = targetPids.Add(proc.Id);
-                    }
-                }
-                catch { }
-            }
-
-            var (_, output) = await RunCmdAsync("netstat", "-ano -p tcp", timeoutMs: 3000);
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                var lines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
-                foreach (var rawLine in lines)
-                {
-                    var parts = rawLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length >= 5 && parts[0].Equals("TCP", StringComparison.OrdinalIgnoreCase) &&
-                        parts[3].Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var foreignEp = parts[2];
-                        var lastColon = foreignEp.LastIndexOf(':');
-                        if (lastColon <= 0)
-                        {
-                            continue;
-                        }
-
-                        var foreignIp = foreignEp[..lastColon];
-                        var portStr = foreignEp[(lastColon + 1)..];
-
-                        if (!int.TryParse(parts[4], out var pid))
-                        {
-                            continue;
-                        }
-                        _ = int.TryParse(portStr, out var port);
-
-                        if (targetPids.Contains(pid) || port is 6568 or 7070 or 3389)
-                        {
-                            if (IPAddress.TryParse(foreignIp, out var parsed) &&
-                                parsed.AddressFamily == AddressFamily.InterNetwork &&
-                                !IPAddress.IsLoopback(parsed))
-                            {
-                                result.Add(foreignIp);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[DETECT REMOTE IP ERROR] {ex.Message}");
-        }
-        return [.. result.Distinct()];
+        var (gw, _) = GetDefaultGatewayInfo(targetIp);
+        return gw;
     }
 
     private static async Task SetWindowsRoutesAsync(string adapterName, string serverIp, string assignedIp, bool enable)
     {
-        var (gw, physicalIfIndex, localIfIp) = await GetDefaultGatewayInfoAsync(serverIp);
-        Debug.WriteLine($"[ROUTE] Default Gateway: '{gw}', PhysicalIfIndex: {physicalIfIndex}, LocalIfIp: '{localIfIp}', Name: {adapterName}, ServerIP: {serverIp}, AssignedIP: {assignedIp}, Enable: {enable}");
+        var (gw, physicalIfIndex) = GetDefaultGatewayInfo(serverIp);
+        Debug.WriteLine($"[ROUTE] Default Gateway: {gw}, PhysicalIfIndex: {physicalIfIndex}, Name: {adapterName}, ServerIP: {serverIp}, Enable: {enable}");
 
         if (enable && !string.IsNullOrEmpty(adapterName))
         {
@@ -1010,78 +788,46 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (string.IsNullOrEmpty(ifIndex))
             {
                 var (_, output) = await RunCmdAsync("powershell",
-                    $"-NoProfile -Command \"(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like '*{adapterName}*' -or $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*Wintun*' }} | Select-Object -First 1).ifIndex\"", timeoutMs: 3000);
+                    $"-NoProfile -Command \"(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like '*{adapterName}*' -or $_.InterfaceDescription -like '*Wintun*' -or $_.Name -like '*Wintun*' }} | Select-Object -First 1).ifIndex\"");
                 ifIndex = output.Trim();
             }
 
+            var nextHop = !string.IsNullOrEmpty(gw) ? gw : "0.0.0.0";
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
-            var nextHop = !string.IsNullOrEmpty(gw) && gw != "0.0.0.0"
-                ? gw
-                : (!string.IsNullOrEmpty(localIfIp) ? localIfIp : "0.0.0.0");
-
             if (!string.IsNullOrEmpty(serverIp))
             {
-                _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255", timeoutMs: 2000);
-                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}", timeoutMs: 2000);
+                _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
+                var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
                 Debug.WriteLine($"[ROUTE] Add Server Route: ExitCode {exitCode}, Output: {output}");
-                if (exitCode != 0)
+                if (exitCode != 0 && physicalIfIndex > 0)
                 {
-                    var (r2Exit, r2Out) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1", timeoutMs: 2000);
-                    Debug.WriteLine($"[ROUTE] Add Server Route Retry: ExitCode {r2Exit}, Output: {r2Out}");
-                }
-
-                if (physicalIfIndex > 0)
-                {
-                    var psNextHop = !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" ? $"-NextHop '{gw}'" : "";
-                    var psRouteCmd = $"try {{ Remove-NetRoute -DestinationPrefix '{serverIp}/32' -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}; try {{ New-NetRoute -DestinationPrefix '{serverIp}/32' -InterfaceIndex {physicalIfIndex} {psNextHop} -RouteMetric 1 -PolicyStore ActiveStore -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}";
-                    _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psRouteCmd}\"", timeoutMs: 3000);
-                }
-            }
-
-            // 1. Bypass client's detected Public WAN IP (anti-hairpinning protection)
-            var wanIp = OctopusEngine.Current.PublicWanIp;
-            if (!string.IsNullOrEmpty(wanIp) && IPAddress.TryParse(wanIp, out var parsedWan) && parsedWan.AddressFamily == AddressFamily.InterNetwork)
-            {
-                t_publicWanIpUint = MemoryMarshal.Read<uint>(parsedWan.GetAddressBytes());
-                if (!string.IsNullOrEmpty(gw) && t_bypassedManagementIps.TryAdd(t_publicWanIpUint, wanIp))
-                {
-                    _ = await RunCmdAsync("route", $"add {wanIp} mask 255.255.255.255 {gw} metric 1{physIfArg}", timeoutMs: 2000);
-                    Debug.WriteLine($"[ROUTE] Bypassed Client Public WAN IP: {wanIp} via {gw}{physIfArg}");
-                }
-            }
-
-            // 2. Bypass active Remote Desktop / Management sessions (AnyDesk, TeamViewer, RustDesk, RDP)
-            if (!string.IsNullOrEmpty(gw))
-            {
-                try
-                {
-                    var remoteIps = await DetectRemoteManagementIpsAsync().WaitAsync(TimeSpan.FromSeconds(3));
-                    foreach (var rIp in remoteIps)
-                    {
-                        if (IPAddress.TryParse(rIp, out var parsedRemote) && parsedRemote.AddressFamily == AddressFamily.InterNetwork)
-                        {
-                            var rUint = MemoryMarshal.Read<uint>(parsedRemote.GetAddressBytes());
-                            if (t_bypassedManagementIps.TryAdd(rUint, rIp))
-                            {
-                                _ = await RunCmdAsync("route", $"add {rIp} mask 255.255.255.255 {gw} metric 1{physIfArg}", timeoutMs: 2000);
-                                Debug.WriteLine($"[ROUTE] Bypassed Remote Management session IP: {rIp} via {gw}{physIfArg}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[ROUTE REMOTE DETECT TIMEOUT/ERROR] {ex.Message}");
+                    _ = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1");
                 }
             }
 
             if (!string.IsNullOrEmpty(ifIndex))
             {
-                await Task.Delay(100);
-                var routeGw = !string.IsNullOrEmpty(assignedIp) ? assignedIp : "0.0.0.0";
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {routeGw} metric 1 if {ifIndex}", timeoutMs: 2000);
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {routeGw} metric 1 if {ifIndex}", timeoutMs: 2000);
+                await Task.Delay(200);
+                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
+                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
+
+                if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw))
+                {
+                    foreach (var bypassIp in SplitTunnelPolicy.CustomBypassIps)
+                    {
+                        if (IPAddress.TryParse(bypassIp, out _))
+                        {
+                            _ = await RunCmdAsync("route", $"add {bypassIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
+                            SplitTunnelPolicy.RecordBypassRoute(bypassIp, "Пользовательское исключение");
+                        }
+                    }
+
+                    if (SplitTunnelPolicy.BypassRemoteManagement)
+                    {
+                        await ApplyRemoteManagementBypassRoutesAsync(nextHop, physIfArg);
+                    }
+                }
             }
             else
             {
@@ -1101,12 +847,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
             }
 
-            foreach (var rIp in t_bypassedManagementIps.Values)
+            foreach (var route in SplitTunnelPolicy.ActiveBypassRoutes)
             {
-                deleteTasks.Add(RunCmdAsync("route", $"delete {rIp} mask 255.255.255.255"));
+                deleteTasks.Add(RunCmdAsync("route", $"delete {route.DestinationIp} mask 255.255.255.255"));
             }
-            t_bypassedManagementIps.Clear();
-            t_publicWanIpUint = 0;
+            SplitTunnelPolicy.ClearActiveRoutes();
 
             if (!string.IsNullOrEmpty(adapterName))
             {
@@ -1129,6 +874,68 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 Debug.WriteLine($"[ROUTE DELETE TIMEOUT/ERROR] {ex.Message}");
             }
+        }
+    }
+
+    private static async Task ApplyRemoteManagementBypassRoutesAsync(string nextHop, string physIfArg)
+    {
+        try
+        {
+            var running = Process.GetProcesses().Any(p =>
+            {
+                try
+                {
+                    var n = p.ProcessName;
+                    return n.Contains("AnyDesk", StringComparison.OrdinalIgnoreCase) ||
+                           n.Contains("TeamViewer", StringComparison.OrdinalIgnoreCase) ||
+                           n.Contains("RustDesk", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { return false; }
+                finally { p.Dispose(); }
+            });
+
+            if (!running)
+            {
+                return;
+            }
+
+            var (code, output) = await RunCmdAsync("netstat", "-n -p tcp");
+            if (code == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                var lines = output.Split('\n');
+                foreach (var line in lines)
+                {
+                    if (!line.Contains("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (line.Contains(":7070 ") || line.Contains(":5938 ") || line.Contains(":3389 ") || line.Contains(":21116 "))
+                    {
+                        var parts = line.Split([' '], StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 3)
+                        {
+                            var foreignAddr = parts[2];
+                            var colonIdx = foreignAddr.LastIndexOf(':');
+                            if (colonIdx > 0)
+                            {
+                                var remoteIp = foreignAddr[..colonIdx];
+                                if (IPAddress.TryParse(remoteIp, out var parsedIp) &&
+                                    !IPAddress.IsLoopback(parsedIp) &&
+                                    parsedIp.AddressFamily == AddressFamily.InterNetwork)
+                                {
+                                    _ = await RunCmdAsync("route", $"add {remoteIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
+                                    SplitTunnelPolicy.RecordBypassRoute(remoteIp, "Сессия удалённого доступа");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SPLIT-TUNNEL WARN] Remote management bypass check: {ex.Message}");
         }
     }
 
@@ -1172,10 +979,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 Debug.WriteLine($"[STOP ERROR] {ex.Message}");
             }
 
-            _currentServerIpUint = 0;
-            _localGatewayIpUint = 0;
-            t_publicWanIpUint = 0;
-            t_bypassedManagementIps.Clear();
             UpdateState(AppVpnState.Disconnected);
         }
         finally
@@ -1232,15 +1035,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
-            var routeGw = !string.IsNullOrEmpty(assignedIp) ? assignedIp : "0.0.0.0";
-            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 {routeGw} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
+            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
 
             var psScript = @"
                 $ErrorActionPreference = 'SilentlyContinue';
-                try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','1.0.0.1' -Comment 'ObxodkaVPN' -ErrorAction SilentlyContinue | Out-Null } catch { };
                 try { Set-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient' -Name 'DisableSmartNameResolution' -Value 1 -Type DWord -Force | Out-Null } catch { };
                 Clear-DnsClientCache | Out-Null;
             ";
@@ -1269,7 +1070,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var psScript = @"
                 $ErrorActionPreference = 'SilentlyContinue';
                 try { Get-NetFirewallRule -DisplayName 'Obxodka_Block_DNS_*' | Remove-NetFirewallRule | Out-Null } catch { };
-                try { Get-DnsClientNrptRule | Where-Object { $_.Comment -eq 'ObxodkaVPN' -or $_.Namespace -eq '.' } | Remove-DnsClientNrptRule -Force | Out-Null } catch { };
+                try { Get-DnsClientNrptRule | Where-Object { $_.Namespace -eq '.' } | Remove-DnsClientNrptRule -Force | Out-Null } catch { };
                 try { Remove-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient' -Name 'DisableSmartNameResolution' } catch { };
                 Clear-DnsClientCache | Out-Null;
             ";
