@@ -25,8 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj" />
-    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Client\obxodka.Client.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj" />
   </ItemGroup>
 
 </Project>

@@ -16,12 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
-    <ProjectReference Include="..\obxodka.Core\obxodka.Core.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Core\obxodka.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\obxodka.Client\Core\DnsAdBlocker.cs" Link="DnsAdBlocker.cs" />
+    <Compile Include="..\..\src\core\obxodka.Client\Core\DnsAdBlocker.cs" Link="DnsAdBlocker.cs" />
   </ItemGroup>
 
 </Project>

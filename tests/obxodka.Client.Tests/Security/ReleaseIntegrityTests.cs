@@ -67,7 +67,7 @@ public class ReleaseIntegrityTests
     public void SmartProguardDependencyAuditMustProtectAllReferencedLibraries()
     {
         var root = FindRepoRoot();
-        var csprojPath = Path.Combine(root, "obxodka.Maui", "obxodka.Maui.csproj");
+        var csprojPath = Path.Combine(root, "src", "apps", "obxodka.Maui", "obxodka.Maui.csproj");
         Assert.True(File.Exists(csprojPath), $"File not found: {csprojPath}");
 
         var doc = XDocument.Load(csprojPath);
@@ -77,7 +77,7 @@ public class ReleaseIntegrityTests
             .Cast<string>()
             .ToList();
 
-        var proguardCfgPath = Path.Combine(root, "obxodka.Maui", "Platforms", "Android", "proguard.cfg");
+        var proguardCfgPath = Path.Combine(root, "src", "apps", "obxodka.Maui", "Platforms", "Android", "proguard.cfg");
         Assert.True(File.Exists(proguardCfgPath), $"[R8 GUARD]: proguard.cfg missing at {proguardCfgPath}");
 
         var rulesText = File.ReadAllText(proguardCfgPath);
@@ -103,7 +103,7 @@ public class ReleaseIntegrityTests
     public void SmartAndroidManifestPermissionsGuardRejectsUnauthorizedForegroundServices()
     {
         var root = FindRepoRoot();
-        var manifestPath = Path.Combine(root, "obxodka.Maui", "Platforms", "Android", "AndroidManifest.xml");
+        var manifestPath = Path.Combine(root, "src", "apps", "obxodka.Maui", "Platforms", "Android", "AndroidManifest.xml");
         Assert.True(File.Exists(manifestPath), $"File not found: {manifestPath}");
 
         var doc = XDocument.Load(manifestPath);
@@ -131,7 +131,7 @@ public class ReleaseIntegrityTests
     public void SmartWhatsNewCharacterLimitValidationMustNotExceedGooglePlayQuota()
     {
         var root = FindRepoRoot();
-        var whatsNewDir = Path.Combine(root, "distribution", "whatsnew");
+        var whatsNewDir = Path.Combine(root, "packaging", "whatsnew");
         Assert.True(Directory.Exists(whatsNewDir), $"whatsnew directory not found at {whatsNewDir}");
 
         var ruFile = Path.Combine(whatsNewDir, "whatsnew-ru-RU");

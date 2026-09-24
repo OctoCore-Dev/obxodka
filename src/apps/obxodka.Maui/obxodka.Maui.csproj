@@ -125,9 +125,9 @@
     </ItemGroup>
 
 	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
-	  <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj" />
-	  <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
-	  <ProjectReference Include="..\obxodka.Core\obxodka.Core.csproj" />
+	  <ProjectReference Include="..\..\core\obxodka.Client\obxodka.Client.csproj" />
+	  <ProjectReference Include="..\..\core\obxodka.Shared\obxodka.Shared.csproj" />
+	  <ProjectReference Include="..\..\core\obxodka.Core\obxodka.Core.csproj" />
 	</ItemGroup>
 
 	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />

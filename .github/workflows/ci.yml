@@ -36,7 +36,7 @@ jobs:
         run: dotnet workload install maui-windows
 
       - name: 🚀 Run Client Tests
-        run: dotnet test obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=normal"
+        run: dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=normal"
 
   # ==========================================
   # 🤖 ЭТАП 2: СБОРКА И ПРОВЕРКА ANDROID
@@ -66,7 +66,7 @@ jobs:
         run: dotnet workload install maui-android
 
       - name: 🔨 Compile Android MAUI App
-        run: dotnet build obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release
+        run: dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release
 
   # ==========================================
   # 🪟 ЭТАП 3: СБОРКА И ПРОВЕРКА WINDOWS & AVALONIA
@@ -90,7 +90,7 @@ jobs:
         run: dotnet workload install maui-windows
 
       - name: 🔨 Compile Windows MAUI App
-        run: dotnet build obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
+        run: dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
 
       - name: 🔨 Compile Avalonia App
-        run: dotnet build obxodka.Avalonia/obxodka.Avalonia.csproj -c Release
+        run: dotnet build src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj -c Release
