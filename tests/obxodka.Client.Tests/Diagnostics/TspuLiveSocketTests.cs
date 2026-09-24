@@ -1,10 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
-using obxodka.Client.Diagnostics;
-using obxodka.Helpers;
-using obxodka.Shared.Stealth;
-using Xunit;
-
 namespace obxodka.Client.Tests.Diagnostics;
 
 [Trait("Category", "Integration")]

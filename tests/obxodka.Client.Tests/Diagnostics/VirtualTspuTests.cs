@@ -1,9 +1,3 @@
-using System.Security.Cryptography;
-using obxodka.Client.Diagnostics;
-using obxodka.Helpers;
-using obxodka.Shared.Stealth;
-using Xunit;
-
 namespace obxodka.Client.Tests.Diagnostics;
 
 [Trait("Category", "Unit")]
@@ -109,7 +103,7 @@ public class VirtualTspuTests
             var offset = i * 7 % 16;
             for (var j = 0; j < packet.Length; j++)
             {
-                packet[j] = (byte)(j % 32 + offset);
+                packet[j] = (byte)((j % 32) + offset);
             }
             naturalPackets.Add(packet);
         }
