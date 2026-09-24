@@ -625,10 +625,9 @@ public sealed partial class FechsueTransport : IVpnTransport
             {
                 for (var attempt = 0; attempt < 3; attempt++)
                 {
-                    int len;
-                    var discPacket = EnableEntropyShaping
-                        ? FechsueCodec.PackEncryptedDiscShaped(_sessionId, crypto, out len, _serverUsesSessionMasking)
-                        : FechsueCodec.PackEncryptedDisc(_sessionId, crypto, out len, _serverUsesSessionMasking);
+                    var (discPacket, len) = EnableEntropyShaping
+                        ? (FechsueCodec.PackEncryptedDiscShaped(_sessionId, crypto, out var sLen, _serverUsesSessionMasking), sLen)
+                        : (FechsueCodec.PackEncryptedDisc(_sessionId, crypto, out var uLen, _serverUsesSessionMasking), uLen);
                     try
                     {
                         if (_sockets[0] is { } sock)
