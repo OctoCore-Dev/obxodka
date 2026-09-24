@@ -169,17 +169,24 @@ if ($tempZip -ne $PackagePath -and (Test-Path $tempZip)) {
 # 5. Update submission package metadata
 Log-Info "Updating submission packages list with $($pkgItem.Name)..."
 $updatedPackages = @()
+$matchedExisting = $false
 if ($subData.applicationPackages) {
     foreach ($pkg in $subData.applicationPackages) {
-        if ($pkg.fileName -ne $pkgItem.Name) {
+        if ($pkg.fileName -eq $pkgItem.Name) {
+            $pkg.fileStatus = "PendingUpload"
+            $updatedPackages += $pkg
+            $matchedExisting = $true
+        } else {
             $pkg.fileStatus = "PendingDelete"
             $updatedPackages += $pkg
         }
     }
 }
-$updatedPackages += @{
-    fileName   = $pkgItem.Name
-    fileStatus = "PendingUpload"
+if (-not $matchedExisting) {
+    $updatedPackages += @{
+        fileName   = $pkgItem.Name
+        fileStatus = "PendingUpload"
+    }
 }
 $subData.applicationPackages = $updatedPackages
 
