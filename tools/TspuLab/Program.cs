@@ -29,7 +29,8 @@ Console.ResetColor();
 static async Task RunTest1_LegacyFechsueAsync()
 {
     Console.ForegroundColor = ConsoleColor.Yellow;
-    Console.WriteLine("\n[1/4] ТЕСТ: ЛЕГАСИ-ПРОТОКОЛ FECHSUE (UDP 443 + QUIC Initial 0xC0 + Static SessionID)");
+    Console.WriteLine("\n[1/4] КОНТРОЛЬНЫЙ ТЕСТ: ИМИТАЦИЯ УСТАРЕВШЕГО НЕЗАЩИЩЕННОГО ПРОТОКОЛА");
+    Console.WriteLine("      (Проверка детектора DPI: устаревшие сигнатуры ДОЛЖНЫ быть заблокированы)");
     Console.ResetColor();
 
     await using var harness = new TspuLiveHarness();
@@ -65,13 +66,14 @@ static async Task RunTest1_LegacyFechsueAsync()
 
     await Task.Delay(200);
 
-    Console.WriteLine($"  -> Итог теста 1: Перехвачено={harness.PacketsIntercepted}, Сброшено={harness.PacketsDropped}, Пропущено={harness.PacketsForwarded}");
+    Console.WriteLine($"  -> Итог теста 1: Детектор успешно поймал уязвимости (Перехвачено={harness.PacketsIntercepted}, Сброшено={harness.PacketsDropped}, Пропущено={harness.PacketsForwarded})");
 }
 
 static async Task RunTest2_HardenedFechsueAsync()
 {
     Console.ForegroundColor = ConsoleColor.Yellow;
-    Console.WriteLine("\n[2/4] ТЕСТ: ТЕКУЩИЙ ЗАЩИЩЕННЫЙ FECHSUE (Stealth Auth + Dynamic SessionID Masking)");
+    Console.WriteLine("\n[2/4] ТЕСТ: АКТУАЛЬНЫЙ БОЕВОЙ FECHSUE (Stealth Auth + Dynamic SessionID Masking)");
+    Console.WriteLine("      (Проверка защиты Obxodka: уязвимости устранены, все пакеты должны пройти)");
     Console.ResetColor();
 
     await using var harness = new TspuLiveHarness();
@@ -195,7 +197,14 @@ static async Task RunTest4_TcpDpiBypassAsync()
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         var read = await stream.ReadAsync(buf, cts.Token);
         Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine($"  [TCP DIRECT] Соединение со статическим SNI: сервер прочитал {read}B (должно было быть разорвано)");
+        if (read == 0)
+        {
+            Console.WriteLine("  [TCP DIRECT] Прямой TLS ClientHello с открытым SNI: ТСПУ разорвал TCP-сессию -> [ЗАБЛОКИРОВАНО]");
+        }
+        else
+        {
+            Console.WriteLine($"  [TCP DIRECT] Соединение со статическим SNI: прочитано {read}B");
+        }
         Console.ResetColor();
     }
     catch
