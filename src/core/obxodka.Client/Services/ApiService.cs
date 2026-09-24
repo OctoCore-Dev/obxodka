@@ -87,6 +87,30 @@ public sealed class ApiService(HttpClient client)
         request.Headers.Add("X-Device-Hwid", DeviceHelper.GetHwid());
     }
 
+    public static SocketsHttpHandler CreateDefaultHandler() => new()
+    {
+        UseProxy = false,
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
+        },
+        ConnectCallback = async (context, cToken) =>
+        {
+            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                await socket.ConnectAsync(context.DnsEndPoint, cToken).ConfigureAwait(false);
+                return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+    };
+
     private async Task<(bool Success, TResponse? Data, string? Error)> SendRequestAsync<TRequest, TResponse>(
         HttpMethod method,
         string url,
@@ -104,7 +128,7 @@ public sealed class ApiService(HttpClient client)
         }
 
         var fullUrl = AppConfig.ApiUrl(url);
-        HttpClient[] clientsToTry = [client, t_fallbackNative.Value, t_fallbackTls12.Value, t_fallbackHttp2.Value];
+        HttpClient[] clientsToTry = [client, t_fallbackDirectDpi.Value, t_fallbackNative.Value, t_fallbackTls12.Value, t_fallbackHttp2.Value];
         Exception? lastEx = null;
 
         foreach (var currentClient in clientsToTry)

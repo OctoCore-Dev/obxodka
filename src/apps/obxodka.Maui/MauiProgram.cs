@@ -56,15 +56,7 @@ internal static partial class MauiProgram
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestVersion = new Version(1, 1);
             client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-        {
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
-            },
-            UseProxy = false
-        });
+        }).ConfigurePrimaryHttpMessageHandler(ApiService.CreateDefaultHandler);
 
         builder.Services.AddSingleton<AuthManager>();
         builder.Services.AddSingleton<ThemeManager>();

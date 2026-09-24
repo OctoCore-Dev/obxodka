@@ -491,7 +491,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             {
                 try
                 {
-                    var (success, servers, _) = await new ApiService(new HttpClient()).GetServersAsync();
+                    var (success, servers, _) = await new ApiService(new HttpClient(ApiService.CreateDefaultHandler())).GetServersAsync();
                     if (success && servers is { Count: > 0 })
                     {
                         await OctopusEngine.Current.ReconnectAsync(servers[0].Ip, servers[0].Port);

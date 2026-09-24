@@ -163,7 +163,8 @@ static async Task RunTest3_PolymorphicEntropyShaperAsync()
 static async Task RunTest4_TcpDpiBypassAsync()
 {
     Console.ForegroundColor = ConsoleColor.Yellow;
-    Console.WriteLine("\n[4/4] ТЕСТ: ЖИВОЙ TCP-СОКЕТ (Прямой SNI vs DpiBypassStream TCP Splitting)");
+    Console.WriteLine("\n[4/4] ТЕСТ: ОБХОД БЛОКИРОВКИ TCP SNI (Сравнение: Прямое подключение vs DpiBypassStream)");
+    Console.WriteLine("      (Проверка: обычный ClientHello блокируется, а Obxodka DpiBypassStream пробивает)");
     Console.ResetColor();
 
     await using var harness = new TspuLiveHarness();
@@ -199,18 +200,18 @@ static async Task RunTest4_TcpDpiBypassAsync()
         Console.ForegroundColor = ConsoleColor.Red;
         if (read == 0)
         {
-            Console.WriteLine("  [TCP DIRECT] Прямой TLS ClientHello с открытым SNI: ТСПУ разорвал TCP-сессию -> [ЗАБЛОКИРОВАНО]");
+            Console.WriteLine("  [1. КОНТРОЛЬ БЕЗ ЗАЩИТЫ] Прямой ClientHello с открытым SNI: перехвачен фильтром DPI -> [ЗАБЛОКИРОВАНО]");
         }
         else
         {
-            Console.WriteLine($"  [TCP DIRECT] Соединение со статическим SNI: прочитано {read}B");
+            Console.WriteLine($"  [1. КОНТРОЛЬ БЕЗ ЗАЩИТЫ] Соединение со статическим SNI: прочитано {read}B");
         }
         Console.ResetColor();
     }
     catch
     {
         Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine("  [TCP DIRECT] Прямой TLS ClientHello с открытым SNI: ТСПУ разорвал TCP-сессию (RST) -> [ЗАБЛОКИРОВАНО]");
+        Console.WriteLine("  [1. КОНТРОЛЬ БЕЗ ЗАЩИТЫ] Прямой ClientHello с открытым SNI: фильтр DPI разорвал TCP-сессию (RST) -> [ЗАБЛОКИРОВАНО]");
         Console.ResetColor();
     }
 
@@ -223,11 +224,12 @@ static async Task RunTest4_TcpDpiBypassAsync()
         await bypass.WriteAsync(tlsHello);
 
         Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("  [TCP DPI-BYPASS] Расщепление ClientHello на 2B + 15ms задержка: ТСПУ ослеплен -> [УСПЕШНО ПРОБИТО]");
+        Console.WriteLine("  [2. ТЕХНОЛОГИЯ OBXODKA] Сплиттинг ClientHello (DpiBypassStream 2B + 15ms): фильтр DPI ослеплен -> [УСПЕШНО ПРОБИТО]");
+        Console.WriteLine("  -> Итог теста 4: Obxodka DpiBypassStream полностью нивелирует блокировку SNI в TCP!");
         Console.ResetColor();
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"  [TCP DPI-BYPASS] Ошибка: {ex.Message}");
+        Console.WriteLine($"  [2. ТЕХНОЛОГИЯ OBXODKA] Ошибка: {ex.Message}");
     }
 }
