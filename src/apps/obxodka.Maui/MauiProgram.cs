@@ -227,8 +227,9 @@ internal static partial class MauiProgram
             try
             {
                 var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
-                vpnService?.StopVpnAsync().GetAwaiter().GetResult();
-                OctopusEngine.StopRelayAsync().GetAwaiter().GetResult();
+                var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
+                var relayTask = OctopusEngine.StopRelayAsync();
+                _ = Task.WaitAll([stopTask, relayTask], TimeSpan.FromSeconds(2));
             }
             catch { }
 
@@ -240,8 +241,9 @@ internal static partial class MauiProgram
             try
             {
                 var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
-                vpnService?.StopVpnAsync().GetAwaiter().GetResult();
-                OctopusEngine.StopRelayAsync().GetAwaiter().GetResult();
+                var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
+                var relayTask = OctopusEngine.StopRelayAsync();
+                _ = Task.WaitAll([stopTask, relayTask], TimeSpan.FromSeconds(2));
             }
             catch { }
 

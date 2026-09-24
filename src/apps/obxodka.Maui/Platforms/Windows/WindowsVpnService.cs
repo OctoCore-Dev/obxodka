@@ -34,7 +34,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     public WindowsVpnService()
     {
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => StopVpnAsync().GetAwaiter().GetResult();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+            }
+            catch { }
+        };
         OctopusEngine.OnCertificateRevoked += (msg) => OnForceLogoutRequested?.Invoke(msg);
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
         OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
@@ -367,13 +374,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke("Применение настроек сети...");
                             await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0");
 
+                            OctopusEngine.Current.ResetTrafficCounters();
+                            _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
+
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
                             await SetWindowsRoutesAsync(_adapter.Name, targetIp, ip, true);
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
-                            await ApplyExtremeNetworkBoostAsync();
-
-                            OctopusEngine.Current.ResetTrafficCounters();
-                            _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
+                            ApplyExtremeNetworkBoost();
 
                             OnLogUpdated?.Invoke("Проверка сквозного прохождения пакетов (RX)...");
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(2500), _cts.Token);
@@ -632,41 +639,60 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         throw new InvalidOperationException($"Не удалось настроить адаптер '{adapterName}'. Ошибка PS: {lastError}");
     }
 
-    private static async Task<(int exitCode, string output)> RunCmdAsync(string fileName, string args)
+    private static async Task<(int exitCode, string output)> RunCmdAsync(
+        string fileName,
+        string args,
+        int timeoutMs = 4000,
+        CancellationToken ct = default)
     {
-        var tcs = new TaskCompletionSource<(int, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = Task.Run(() =>
+        try
         {
-            try
+            using var proc = new Process
             {
-                var psi = new ProcessStartInfo(fileName, args)
+                StartInfo = new ProcessStartInfo(fileName, args)
                 {
                     CreateNoWindow = true,
                     WindowStyle = ProcessWindowStyle.Hidden,
                     RedirectStandardError = true,
                     RedirectStandardOutput = true,
                     UseShellExecute = false
-                };
-
-                using var proc = Process.Start(psi);
-                if (proc is null)
-                {
-                    tcs.SetResult((-1, "Failed to start cmd.exe"));
-                    return;
                 }
+            };
 
-                var err = proc.StandardError.ReadToEnd();
-                var std = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit();
-                tcs.SetResult((proc.ExitCode, string.IsNullOrWhiteSpace(err) ? std : err));
-            }
-            catch (Exception ex)
+            if (!proc.Start())
             {
-                tcs.SetResult((-1, ex.Message));
+                return (-1, "Failed to start process");
             }
-        });
 
-        return await tcs.Task;
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linkedCts.CancelAfter(timeoutMs);
+
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(linkedCts.Token);
+            var stderrTask = proc.StandardError.ReadToEndAsync(linkedCts.Token);
+
+            try
+            {
+                await proc.WaitForExitAsync(linkedCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch { }
+
+                return (-1, "Command timed out or cancelled");
+            }
+
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            return (proc.ExitCode, string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+        }
+        catch (Exception ex)
+        {
+            return (-1, ex.Message);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -855,15 +881,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             if (!string.IsNullOrEmpty(adapterName))
             {
-                var psDelV6 = $@"
-                    $idx = (Get-NetAdapter -Name '{adapterName}' -ErrorAction SilentlyContinue | Select-Object -First 1).ifIndex;
-                    if ($idx) {{
-                        try {{ Remove-NetRoute -InterfaceIndex $idx -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
-                        try {{ Remove-NetRoute -InterfaceIndex $idx -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
-                    }}
-                    Write-Output 'OK'
-                ";
-                deleteTasks.Add(RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psDelV6.Replace("\n", " ").Replace("\r", "")}\""));
+                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
+                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
             }
 
             try
@@ -941,12 +960,16 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     public async Task StopVpnAsync()
     {
-        await _vpnGate.WaitAsync();
+        _isExplicitlyStopped = true;
+        _cts?.Cancel();
+        UpdateState(AppVpnState.Disconnecting);
+
+        if (!await _vpnGate.WaitAsync(3000))
+        {
+            Debug.WriteLine("[WARN] StopVpnAsync timed out waiting for gate lock.");
+        }
         try
         {
-            _isExplicitlyStopped = true;
-            UpdateState(AppVpnState.Disconnecting);
-            _cts?.Cancel();
             OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");
 
             var adapterToDispose = _adapter;
@@ -983,27 +1006,31 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
         finally
         {
-            _ = _vpnGate.Release();
+            try
+            {
+                _ = _vpnGate.Release();
+            }
+            catch { }
         }
     }
 
-    private static async Task ApplyExtremeNetworkBoostAsync()
+    private static void ApplyExtremeNetworkBoost()
     {
-        try
+        t_networkSettingsBoosted = true;
+        _ = Task.Run(async () =>
         {
-            t_networkSettingsBoosted = true;
-            var psBoost = @"
-                netsh int tcp set global autotuninglevel=normal | Out-Null;
-                netsh int tcp set global ecncapability=disabled | Out-Null;
-                netsh int tcp set global rss=enabled | Out-Null;
-                netsh int tcp set global fastopen=enabled | Out-Null;
-                netsh int tcp set global timestamps=allowed | Out-Null;
-                netsh int tcp set heuristics disabled | Out-Null;
-            ";
-            _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psBoost.Replace("\r", "").Replace("\n", " ")}\"");
-            Debug.WriteLine("[BOOST] Windows Network Stack accelerated safely to high performance.");
-        }
-        catch { }
+            try
+            {
+                _ = await RunCmdAsync("netsh", "int tcp set global autotuninglevel=normal");
+                _ = await RunCmdAsync("netsh", "int tcp set global ecncapability=disabled");
+                _ = await RunCmdAsync("netsh", "int tcp set global rss=enabled");
+                _ = await RunCmdAsync("netsh", "int tcp set global fastopen=enabled");
+                _ = await RunCmdAsync("netsh", "int tcp set global timestamps=allowed");
+                _ = await RunCmdAsync("netsh", "int tcp set heuristics disabled");
+                Debug.WriteLine("[BOOST] Windows Network Stack accelerated safely to high performance.");
+            }
+            catch { }
+        });
     }
 
     private static async Task RestoreOriginalNetworkSettingsAsync()
@@ -1016,12 +1043,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         t_networkSettingsBoosted = false;
         try
         {
-            var psRestore = @"
-                netsh int tcp set global autotuninglevel=normal | Out-Null;
-                netsh int tcp set global ecncapability=disabled | Out-Null;
-                netsh int tcp set heuristics default | Out-Null;
-            ";
-            _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psRestore.Replace("\r", "").Replace("\n", " ")}\"");
+            _ = await RunCmdAsync("netsh", "int tcp set global autotuninglevel=normal");
+            _ = await RunCmdAsync("netsh", "int tcp set global ecncapability=disabled");
+            _ = await RunCmdAsync("netsh", "int tcp set heuristics default");
             Debug.WriteLine("[BOOST] Windows Network Stack restored to default.");
         }
         catch { }
@@ -1040,12 +1064,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
             _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
 
-            var psScript = @"
-                $ErrorActionPreference = 'SilentlyContinue';
-                try { Set-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient' -Name 'DisableSmartNameResolution' -Value 1 -Type DWord -Force | Out-Null } catch { };
-                Clear-DnsClientCache | Out-Null;
-            ";
-            _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\r", "").Replace("\n", " ")}\"");
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient");
+                key?.SetValue("DisableSmartNameResolution", 1, Microsoft.Win32.RegistryValueKind.DWord);
+            }
+            catch { }
+
             _ = await RunCmdAsync("ipconfig", "/flushdns");
 
             Debug.WriteLine("[DNS-LEAK] DNS leak protection activated.");
@@ -1067,14 +1092,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             _ = await RunCmdAsync("route", "delete 8.8.8.8 mask 255.255.255.255");
             _ = await RunCmdAsync("route", "delete 8.8.4.4 mask 255.255.255.255");
 
-            var psScript = @"
-                $ErrorActionPreference = 'SilentlyContinue';
-                try { Get-NetFirewallRule -DisplayName 'Obxodka_Block_DNS_*' | Remove-NetFirewallRule | Out-Null } catch { };
-                try { Get-DnsClientNrptRule | Where-Object { $_.Namespace -eq '.' } | Remove-DnsClientNrptRule -Force | Out-Null } catch { };
-                try { Remove-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient' -Name 'DisableSmartNameResolution' } catch { };
-                Clear-DnsClientCache | Out-Null;
-            ";
-            _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\r", "").Replace("\n", " ")}\"");
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
+                key?.DeleteValue("DisableSmartNameResolution", false);
+            }
+            catch { }
+
             _ = await RunCmdAsync("ipconfig", "/flushdns");
 
             Debug.WriteLine("[DNS-LEAK] DNS leak protection deactivated.");
