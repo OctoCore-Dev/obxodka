@@ -52,6 +52,25 @@ public static class FechsueCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackStealthAuth(string thumbprint, byte streamIndex, out int totalLength)
+    {
+        var tpBytes = Encoding.UTF8.GetBytes(thumbprint);
+        var hash = SHA256.HashData(tpBytes);
+        var sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(0, 4));
+
+        totalLength = 17 + tpBytes.Length;
+        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
+
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(0, 4), sessionId ^ StealthAuthMask);
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(4, 4), sessionId);
+        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), DateTime.UtcNow.Ticks);
+        buf[16] = streamIndex;
+        tpBytes.CopyTo(buf.AsSpan(17, tpBytes.Length));
+
+        return buf;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryUnpackAuth(ReadOnlySpan<byte> buffer, out string thumbprint, out uint sessionId, out byte streamIndex)
     {
         thumbprint = string.Empty;
@@ -154,6 +173,25 @@ public static class FechsueCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackStealthDisc(string thumbprint, out int totalLength)
+    {
+        var tpBytes = Encoding.UTF8.GetBytes(thumbprint);
+        var hash = SHA256.HashData(tpBytes);
+        var sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(0, 4));
+
+        totalLength = 17 + tpBytes.Length;
+        var buf = ArrayPool<byte>.Shared.Rent(totalLength);
+
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(0, 4), sessionId ^ StealthDiscMask);
+        BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(4, 4), sessionId);
+        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), DateTime.UtcNow.Ticks);
+        buf[16] = 0xFF;
+        tpBytes.CopyTo(buf.AsSpan(17, tpBytes.Length));
+
+        return buf;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryUnpackDisc(ReadOnlySpan<byte> buffer, out string thumbprint, out uint sessionId)
     {
         thumbprint = string.Empty;
@@ -228,7 +266,8 @@ public static class FechsueCodec
         int length,
         uint sessionId,
         AesGcm crypto,
-        out int totalLength)
+        out int totalLength,
+        bool maskSessionId = true)
     {
         totalLength = HeaderSize + length + TagSize;
         var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
@@ -238,7 +277,15 @@ public static class FechsueCodec
         BinaryPrimitives.WriteUInt64LittleEndian(nonce[..8], counter);
         BinaryPrimitives.WriteUInt32LittleEndian(nonce[8..12], sessionId);
 
-        BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(12, 4), sessionId);
+        if (maskSessionId)
+        {
+            var nonceMask = BinaryPrimitives.ReadUInt32LittleEndian(nonce[..4]);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(12, 4), sessionId ^ nonceMask);
+        }
+        else
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(12, 4), sessionId);
+        }
 
         var associatedData = buffer.AsSpan(12, 4);
         var ciphertext = buffer.AsSpan(HeaderSize, length);
@@ -249,13 +296,13 @@ public static class FechsueCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] PackEncryptedDisc(uint sessionId, AesGcm crypto, out int totalLength)
+    public static byte[] PackEncryptedDisc(uint sessionId, AesGcm crypto, out int totalLength, bool maskSessionId = true)
     {
         var closeFrame = new byte[8];
         closeFrame[0] = 0x1C;
         closeFrame[1] = 0x00;
         Random.Shared.NextBytes(closeFrame.AsSpan(2, 6));
-        return Pack(closeFrame, closeFrame.Length, sessionId, crypto, out totalLength);
+        return Pack(closeFrame, closeFrame.Length, sessionId, crypto, out totalLength, maskSessionId);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -281,7 +328,9 @@ public static class FechsueCodec
         }
 
         var nonce = buffer.AsSpan(0, 12);
-        sessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(12, 4));
+        var nonceMask = BinaryPrimitives.ReadUInt32LittleEndian(nonce[..4]);
+        var rawSessionId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(12, 4));
+        sessionId = rawSessionId ^ nonceMask;
         realLength = totalLength - Overhead;
 
         var associatedData = buffer.AsSpan(12, 4);
@@ -316,7 +365,8 @@ public static class FechsueCodec
         byte groupSize,
         uint sessionId,
         AesGcm crypto,
-        out int totalLength)
+        out int totalLength,
+        bool maskSessionId = true)
     {
         var headerOffset = 5;
         var rawLength = headerOffset + length;
@@ -327,7 +377,7 @@ public static class FechsueCodec
         rawBuf[4] = groupSize;
         Buffer.BlockCopy(payload, 0, rawBuf, headerOffset, length);
 
-        var packed = Pack(rawBuf, rawLength, sessionId, crypto, out totalLength);
+        var packed = Pack(rawBuf, rawLength, sessionId, crypto, out totalLength, maskSessionId);
         ArrayPool<byte>.Shared.Return(rawBuf);
         return packed;
     }
@@ -340,7 +390,8 @@ public static class FechsueCodec
         byte groupSize,
         uint sessionId,
         AesGcm crypto,
-        out int totalLength)
+        out int totalLength,
+        bool maskSessionId = true)
     {
         var headerOffset = 6;
         var rawLength = headerOffset + parityLength;
@@ -351,7 +402,7 @@ public static class FechsueCodec
         BinaryPrimitives.WriteUInt16LittleEndian(rawBuf.AsSpan(4, 2), (ushort)parityLength);
         Buffer.BlockCopy(parityPayload, 0, rawBuf, headerOffset, parityLength);
 
-        var packed = Pack(rawBuf, rawLength, sessionId, crypto, out totalLength);
+        var packed = Pack(rawBuf, rawLength, sessionId, crypto, out totalLength, maskSessionId);
         ArrayPool<byte>.Shared.Return(rawBuf);
         return packed;
     }
@@ -369,7 +420,8 @@ public static class FechsueCodec
             byte[] rawPacket,
             int rawLength,
             uint sessionId,
-            AesGcm crypto)
+            AesGcm crypto,
+            bool maskSessionId = true)
         {
             lock (_lock)
             {
@@ -398,7 +450,7 @@ public static class FechsueCodec
                     _parityAccumulator[i] ^= rawPacket[i];
                 }
 
-                var dataPacked = PackFecData(rawPacket, rawLength, groupId, index, gSize, sessionId, crypto, out var dataLen);
+                var dataPacked = PackFecData(rawPacket, rawLength, groupId, index, gSize, sessionId, crypto, out var dataLen, maskSessionId);
 
                 byte[]? parityPacked = null;
                 var parityLen = 0;
@@ -406,7 +458,7 @@ public static class FechsueCodec
                 _currentIndex++;
                 if (_currentIndex >= _groupSize)
                 {
-                    parityPacked = PackFecParity(_parityAccumulator, _maxPacketLengthInGroup, groupId, gSize, sessionId, crypto, out parityLen);
+                    parityPacked = PackFecParity(_parityAccumulator, _maxPacketLengthInGroup, groupId, gSize, sessionId, crypto, out parityLen, maskSessionId);
                     _currentIndex = 0;
                     _currentGroupId++;
                 }

@@ -12,9 +12,10 @@ public class ObfuscatorTests
         Assert.NotNull(packed);
         Assert.True(totalLen >= 8 + rawData.Length);
 
-        var extractedTotalLen = BinaryPrimitives.ReadInt32LittleEndian(packed.AsSpan(0, 4));
-        var extractedPacketLen = BinaryPrimitives.ReadInt32LittleEndian(packed.AsSpan(4, 4));
+        Assert.NotEqual(totalLen, BinaryPrimitives.ReadInt32LittleEndian(packed.AsSpan(0, 4)));
+        var okDecode = Obfuscator.TryDecodeLengths(packed.AsSpan(0, 8), out var extractedTotalLen, out var extractedPacketLen);
 
+        Assert.True(okDecode);
         Assert.Equal(totalLen, extractedTotalLen);
         Assert.Equal(rawData.Length, extractedPacketLen);
 

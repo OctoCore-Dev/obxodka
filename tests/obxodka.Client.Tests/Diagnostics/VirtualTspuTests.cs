@@ -34,7 +34,7 @@ public class VirtualTspuTests
         {
             var dummyPayload = new byte[512];
             Random.Shared.NextBytes(dummyPayload);
-            var encrypted = FechsueCodec.Pack(dummyPayload, dummyPayload.Length, 0x12345678, aes, out var encLen);
+            var encrypted = FechsueCodec.Pack(dummyPayload, dummyPayload.Length, 0x12345678, aes, out var encLen, maskSessionId: false);
             packets.Add(encrypted.AsMemory(0, encLen));
         }
 
@@ -53,10 +53,42 @@ public class VirtualTspuTests
         var rawPacket = new byte[256];
         Random.Shared.NextBytes(rawPacket);
 
-        var packed = Obfuscator.Pack(rawPacket, rawPacket.Length, out var totalLen);
+        var packed = Obfuscator.Pack(rawPacket, rawPacket.Length, out var totalLen, maskHeaders: false);
         var audit = tspu.InspectPacket(0, packed.AsSpan(0, totalLen), isUdp: false);
 
         Assert.True(audit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
+    }
+
+    [Fact]
+    public void HardenedProtocolsEvadeVirtualTspuDpi()
+    {
+        var tspu = new VirtualTspuEngine();
+        var stealthAuth = FechsueCodec.PackStealthAuth("aabbccddeeff00112233445566778899aabbccdd", 0, out var authLen);
+
+        var auditAuth = tspu.InspectPacket(0, stealthAuth.AsSpan(0, authLen), isUdp: true);
+        Assert.False(auditAuth.DetectedThreats.HasFlag(TspuThreat.QuicInitialThrottled));
+
+        var key = new byte[32];
+        Random.Shared.NextBytes(key);
+        using var aes = new AesGcm(key, 16);
+
+        var packets = new List<ReadOnlyMemory<byte>>();
+        for (var i = 0; i < 5; i++)
+        {
+            var dummyPayload = new byte[512];
+            Random.Shared.NextBytes(dummyPayload);
+            var encrypted = FechsueCodec.Pack(dummyPayload, dummyPayload.Length, 0x12345678, aes, out var encLen, maskSessionId: true);
+            packets.Add(encrypted.AsMemory(0, encLen));
+        }
+
+        var report = tspu.AnalyzeStream(packets, isUdp: true);
+        Assert.False(report.TotalFlags.HasFlag(TspuThreat.FechsueStaticSessionLeak));
+
+        var rawData = new byte[256];
+        Random.Shared.NextBytes(rawData);
+        var maskedObfs = Obfuscator.Pack(rawData, rawData.Length, out var obfsLen, maskHeaders: true);
+        var obfsAudit = tspu.InspectPacket(0, maskedObfs.AsSpan(0, obfsLen), isUdp: false);
+        Assert.False(obfsAudit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
     }
 
     [Fact]

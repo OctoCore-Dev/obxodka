@@ -4,10 +4,51 @@ public static class Obfuscator
 {
     private static readonly byte[] t_noiseBuf = GC.AllocateUninitializedArray<byte>(4096, pinned: true);
 
+    public const int ObfsHeaderMask = 0x5A3C96E7;
+    public const int ObfsPayloadMask = 0x5A3C96E8;
+
     static Obfuscator() => Random.Shared.NextBytes(t_noiseBuf);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] Pack(byte[] packet, int packetLength, out int totalLength)
+    public static bool TryDecodeLengths(ReadOnlySpan<byte> header, out int totalLen, out int realLen) =>
+        TryDecodeLengths(header, out totalLen, out realLen, out _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeLengths(ReadOnlySpan<byte> header, out int totalLen, out int realLen, out bool isMasked)
+    {
+        totalLen = 0;
+        realLen = 0;
+        isMasked = false;
+        if (header.Length < 8)
+        {
+            return false;
+        }
+
+        var maskedTotal = BinaryPrimitives.ReadInt32LittleEndian(header[..4]) ^ ObfsHeaderMask;
+        var maskedReal = BinaryPrimitives.ReadInt32LittleEndian(header.Slice(4, 4)) ^ ObfsPayloadMask;
+        if (maskedTotal is >= 8 and <= 1048576 && maskedReal >= 0 && maskedReal <= maskedTotal - 8)
+        {
+            totalLen = maskedTotal;
+            realLen = maskedReal;
+            isMasked = true;
+            return true;
+        }
+
+        var legacyTotal = BinaryPrimitives.ReadInt32LittleEndian(header[..4]);
+        var legacyReal = BinaryPrimitives.ReadInt32LittleEndian(header.Slice(4, 4));
+        if (legacyTotal is >= 8 and <= 1048576 && legacyReal >= 0 && legacyReal <= legacyTotal - 8)
+        {
+            totalLen = legacyTotal;
+            realLen = legacyReal;
+            isMasked = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] Pack(byte[] packet, int packetLength, out int totalLength, bool maskHeaders = true)
     {
         var paddingLen = packetLength == 9 && packet[0] == 0x99
             ? 0
@@ -19,8 +60,16 @@ public static class Obfuscator
 
         totalLength = 4 + 4 + packetLength + paddingLen;
         var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength);
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
+        if (maskHeaders)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength ^ ObfsHeaderMask);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength ^ ObfsPayloadMask);
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
+        }
 
         unsafe
         {
@@ -46,17 +95,25 @@ public static class Obfuscator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte[] PackSmart(byte[] packet, int packetLength, out int totalLength, bool isProxied)
+    public static byte[] PackSmart(byte[] packet, int packetLength, out int totalLength, bool isProxied, bool maskHeaders = true)
     {
         if (!isProxied)
         {
-            return Pack(packet, packetLength, out totalLength);
+            return Pack(packet, packetLength, out totalLength, maskHeaders);
         }
 
         totalLength = 4 + 4 + packetLength;
         var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength);
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
+        if (maskHeaders)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength ^ ObfsHeaderMask);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength ^ ObfsPayloadMask);
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
+        }
 
         unsafe
         {
@@ -78,15 +135,7 @@ public static class Obfuscator
         realLength = 0;
         payload = default;
 
-        if (frame.Length < 8)
-        {
-            return false;
-        }
-
-        var totalLen = BinaryPrimitives.ReadInt32LittleEndian(frame[..4]);
-        realLength = BinaryPrimitives.ReadInt32LittleEndian(frame.Slice(4, 4));
-
-        if (totalLen < 8 || realLength < 0 || realLength > totalLen - 8 || frame.Length < totalLen)
+        if (!TryDecodeLengths(frame, out var totalLen, out realLength) || frame.Length < totalLen)
         {
             realLength = 0;
             return false;
@@ -101,29 +150,35 @@ public static class Obfuscator
         byte[] headerBuffer,
         CancellationToken ct)
     {
+        var (packet, length, _) = await ReadMaskedPacketAsync(stream, headerBuffer, ct).ConfigureAwait(false);
+        return (packet, length);
+    }
+
+    public static async ValueTask<(byte[]? packet, int length, bool isMasked)> ReadMaskedPacketAsync(
+        Stream stream,
+        byte[] headerBuffer,
+        CancellationToken ct)
+    {
         try
         {
             await stream.ReadExactlyAsync(headerBuffer.AsMemory(0, 8), ct).ConfigureAwait(false);
         }
         catch (EndOfStreamException)
         {
-            return (null, 0);
+            return (null, 0, false);
         }
         catch (OperationCanceledException)
         {
-            return (null, 0);
+            return (null, 0, false);
         }
         catch (IOException)
         {
-            return (null, 0);
+            return (null, 0, false);
         }
 
-        var totalLen = BinaryPrimitives.ReadInt32LittleEndian(headerBuffer.AsSpan(0, 4));
-        var realLen = BinaryPrimitives.ReadInt32LittleEndian(headerBuffer.AsSpan(4, 4));
-
-        if (totalLen is <= 0 or > 1048576 || realLen < 0 || realLen > totalLen - 8)
+        if (!TryDecodeLengths(headerBuffer.AsSpan(0, 8), out var totalLen, out var realLen, out var isMasked))
         {
-            return (null, 0);
+            return (null, 0, false);
         }
 
         var packet = ArrayPool<byte>.Shared.Rent(realLen);
@@ -144,7 +199,7 @@ public static class Obfuscator
                 }
             }
 
-            return (packet, realLen);
+            return (packet, realLen, isMasked);
         }
         catch
         {

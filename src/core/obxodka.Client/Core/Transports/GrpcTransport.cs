@@ -26,6 +26,7 @@ public sealed partial class GrpcTransport(
     private readonly PacketDeduplicator _deduplicator = new();
     private CancellationTokenSource? _cts;
     private TaskCompletionSource<(string, string)>? _ipTcs;
+    private volatile bool _serverUsesObfsMasking;
 
     public string ProtocolName => _useHttp3 ? "HTTP3" : "HTTP2";
     public bool IsConnected => Array.Exists(_grpcChannels, c => c is not null);
@@ -358,7 +359,7 @@ public sealed partial class GrpcTransport(
                     var packet = ArrayPool<byte>.Shared.Rent(9);
                     packet[0] = 0x99;
                     BinaryPrimitives.WriteInt64LittleEndian(packet.AsSpan(1, 8), ts);
-                    var packed = Obfuscator.Pack(packet, 9, out var totalLength);
+                    var packed = Obfuscator.Pack(packet, 9, out var totalLength, _serverUsesObfsMasking);
                     ArrayPool<byte>.Shared.Return(packet);
                     if (!ch.TryEnqueue(packed, totalLength))
                     {
@@ -513,12 +514,14 @@ public sealed partial class GrpcTransport(
                     break;
                 }
 
-                var (packet, realLen) = await Obfuscator.ReadPacketAsync(stream, header, ct).ConfigureAwait(false);
+                var (packet, realLen, isMasked) = await Obfuscator.ReadMaskedPacketAsync(stream, header, ct).ConfigureAwait(false);
                 if (packet is null)
                 {
                     Debug.WriteLine($"[GRPC-RX-EOF #{rayIndex}] Stream closed (null packet read).");
                     break;
                 }
+
+                _serverUsesObfsMasking = isMasked;
 
                 if (realLen > 0)
                 {
@@ -620,7 +623,7 @@ public sealed partial class GrpcTransport(
             return;
         }
 
-        var packed = Obfuscator.Pack(packet, length, out var totalLength);
+        var packed = Obfuscator.Pack(packet, length, out var totalLength, _serverUsesObfsMasking);
         ArrayPool<byte>.Shared.Return(packet);
 
         byte[]? dup = null;
@@ -650,7 +653,7 @@ public sealed partial class GrpcTransport(
     {
         try
         {
-            var discPkt = Obfuscator.Pack("DISC"u8.ToArray(), 4, out var len);
+            var discPkt = Obfuscator.Pack("DISC"u8.ToArray(), 4, out var len, _serverUsesObfsMasking);
             for (var i = 0; i < _activeRays; i++)
             {
                 if (_tunnelStreams[i] is { } stream)
