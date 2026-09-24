@@ -40,6 +40,10 @@ public sealed partial class FechsueTransport : IVpnTransport
     private volatile bool _serverUsesSessionMasking;
     public bool IsConnected => _isConnected && _sockets[0] is not null;
     public bool EnableEntropyShaping { get; set; }
+    public bool EnablePortHopping { get; set; } = true;
+    public int PortHoppingMinSeconds { get; set; } = 30;
+    public int PortHoppingMaxSeconds { get; set; } = 60;
+    private ChameleonState? _chameleon;
 
     public static Action<Socket>? OnSocketCreated { get; set; }
 
@@ -65,6 +69,7 @@ public sealed partial class FechsueTransport : IVpnTransport
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(thumbprint));
         _key = hash;
         _sessionId = BinaryPrimitives.ReadUInt32LittleEndian(hash);
+        _chameleon = new ChameleonState(_sessionId);
         for (var i = 0; i < ParallelStreams; i++)
         {
             _txCryptos[i] = new AesGcm(_key, 16);
@@ -176,6 +181,10 @@ public sealed partial class FechsueTransport : IVpnTransport
         }
 
         _ = PingLoopAsync(_cts.Token);
+        if (EnablePortHopping)
+        {
+            _ = RunPortHoppingLoopAsync(_cts.Token);
+        }
 
         _isConnected = true;
         return await ipTcs.Task;
@@ -319,7 +328,7 @@ public sealed partial class FechsueTransport : IVpnTransport
         return Task.CompletedTask;
     }
 
-    private void HandleDecryptedPacket(byte[] payload, int realLen, TaskCompletionSource<(string, string)> ipTcs)
+    private void HandleDecryptedPacket(byte[] payload, int realLen, TaskCompletionSource<(string, string)>? ipTcs)
     {
         Volatile.Write(ref _lastRxTicks, DateTime.UtcNow.Ticks);
 
@@ -353,7 +362,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                 if (!string.IsNullOrEmpty(ip))
                 {
                     Debug.WriteLine($"[FECHSUE-AUTH] Handshake SUCCESS -> Assigned IP: {ip}, IPv6: {ip6}");
-                    _ = ipTcs.TrySetResult((ip, ip6));
+                    _ = ipTcs?.TrySetResult((ip, ip6));
                 }
             }
             finally
@@ -392,7 +401,7 @@ public sealed partial class FechsueTransport : IVpnTransport
         }
     }
 
-    private void StartReceiveThread(Socket sock, AesGcm rxCrypto, TaskCompletionSource<(string, string)> ipTcs, byte streamId, CancellationToken ct)
+    private void StartReceiveThread(Socket sock, AesGcm rxCrypto, TaskCompletionSource<(string, string)>? ipTcs, byte streamId, CancellationToken ct)
     {
         var thread = new Thread(() =>
         {
@@ -479,6 +488,104 @@ public sealed partial class FechsueTransport : IVpnTransport
             IsBackground = true
         };
         thread.Start();
+    }
+
+    private async Task RunPortHoppingLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var delaySec = _chameleon?.NextHopIntervalSeconds(PortHoppingMinSeconds, PortHoppingMaxSeconds) ?? 45;
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(delaySec), ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            if (!_isConnected || _serverEp == null)
+            {
+                continue;
+            }
+
+            try
+            {
+                for (byte i = 0; i < ParallelStreams; i++)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    var newSock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+                    {
+                        ReceiveBufferSize = 16777216,
+                        SendBufferSize = 16777216
+                    };
+
+                    try
+                    {
+                        newSock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0xB8);
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            newSock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
+                        }
+                        catch { }
+                    }
+
+                    OnSocketCreated?.Invoke(newSock);
+                    if (OperatingSystem.IsWindows())
+                    {
+                        try
+                        {
+                            const int sioUdpConnReset = -1744830452;
+                            _ = newSock.IOControl((IOControlCode)sioUdpConnReset, [0, 0, 0, 0], null);
+                        }
+                        catch { }
+                    }
+
+                    newSock.Connect(_serverEp);
+
+                    var crypto = _rxCryptos[i];
+                    if (crypto != null)
+                    {
+                        StartReceiveThread(newSock, crypto, null, i, ct);
+                    }
+
+                    var authPacket = FechsueCodec.PackStealthAuth(Thumbprint, i, out var authLen);
+                    try
+                    {
+                        _ = newSock.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(authPacket);
+                    }
+
+                    var oldSock = Interlocked.Exchange(ref _sockets[i], newSock);
+                    if (oldSock != null)
+                    {
+                        _ = Task.Delay(1000, CancellationToken.None).ContinueWith(_ =>
+                        {
+                            try
+                            {
+                                oldSock.Dispose();
+                            }
+                            catch
+                            {
+                            }
+                        }, TaskScheduler.Default);
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
     }
 
     private void SendStreamPingProbe(byte streamIndex)

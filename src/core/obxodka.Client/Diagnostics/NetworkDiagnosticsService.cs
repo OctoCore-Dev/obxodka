@@ -22,6 +22,9 @@ public sealed class DiagnosticReport
     public int PrimaryInterfaceMtu { get; set; } = 1500;
     public string DefaultGateway { get; set; } = "None";
     public string DetectedManagementSoftware { get; set; } = "None";
+    public int TspuHopDistance { get; set; } = -1;
+    public string RstAnalysis { get; set; } = "None";
+    public string CanaryEchoDetails { get; set; } = string.Empty;
     public List<DiagnosticStepResult> Steps { get; } = [];
     public string RecommendedProtocol { get; set; } = "AUTO";
     public string SummaryVerdict { get; set; } = string.Empty;
@@ -37,6 +40,14 @@ public sealed class DiagnosticReport
         _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Основной сетевой адаптер: {PrimaryInterfaceName} (MTU: {PrimaryInterfaceMtu})");
         _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Шлюз по умолчанию:     {DefaultGateway}");
         _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Удалённый доступ:      {DetectedManagementSoftware}");
+        if (TspuHopDistance > 0)
+        {
+            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Дистанция до ТСПУ:     {TspuHopDistance} хопов (TTL-триангуляция)");
+        }
+        if (!string.IsNullOrEmpty(CanaryEchoDetails))
+        {
+            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Канареечное эхо:       {CanaryEchoDetails}");
+        }
         _ = sb.AppendLine("--------------------------------------------------------------------------------");
         _ = sb.AppendLine("ЭТАПЫ ПРОВЕРКИ:");
         _ = sb.AppendLine("--------------------------------------------------------------------------------");
@@ -171,6 +182,22 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 recommendedMtu = Math.Min(recommendedMtu, report.PrimaryInterfaceMtu - 80);
             }
             return (DiagnosticStatus.Passed, $"Рекомендуемый безопасный MTU туннеля: {recommendedMtu} байт (Физический: {report.PrimaryInterfaceMtu})");
+        }, onStepCompleted);
+
+        await RunStepAsync(report, "7. TTL-триангуляция ТСПУ", async () =>
+        {
+            var (hop, details) = await InSituDiagnosticsEngine.MapTspuHopDistanceAsync(serverHost, serverPort, 12, ct).ConfigureAwait(false);
+            report.TspuHopDistance = hop;
+            var status = hop > 0 ? DiagnosticStatus.Warning : DiagnosticStatus.Passed;
+            return (status, details);
+        }, onStepCompleted);
+
+        await RunStepAsync(report, "8. Канареечное эхо (Anycast Canary)", async () =>
+        {
+            var (allPassed, details) = await InSituDiagnosticsEngine.TestCanaryEchoAsync(_httpClient, ct).ConfigureAwait(false);
+            report.CanaryEchoDetails = details;
+            var status = allPassed ? DiagnosticStatus.Passed : DiagnosticStatus.Warning;
+            return (status, details);
         }, onStepCompleted);
 
         SynthesizeVerdict(report, directTlsPassed, splitTlsPassed, udp6767Ok, tcp443Ok);
@@ -354,6 +381,11 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             _ = sb.AppendLine("ВНИМАНИЕ: Блокировка как прямого, так и расщепленного TLS.");
             _ = sb.AppendLine("Рекомендуется переключение на Mesh Relay или Cloudflare Bridge.");
             report.RecommendedProtocol = "MESH_RELAY / BRIDGE";
+        }
+
+        if (report.TspuHopDistance > 0)
+        {
+            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"ТСПУ ЛОКАЛИЗОВАН: Дистанция до инспектора составляет {report.TspuHopDistance} хопов (активирован режим опережающего TCP Desync TTL={report.TspuHopDistance}).");
         }
 
         report.SummaryVerdict = sb.ToString().TrimEnd();

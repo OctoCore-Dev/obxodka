@@ -1,12 +1,28 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Net.Sockets;
+using obxodka.Shared.Stealth;
+
 namespace obxodka.Helpers;
 
-public sealed partial class DpiBypassStream(Stream innerStream, int splitPosition = 2, int delayMs = 25) : Stream
+public sealed partial class DpiBypassStream(
+    Stream innerStream,
+    int splitPosition = 2,
+    int delayMs = 25,
+    ChameleonState? chameleon = null,
+    Socket? socket = null,
+    bool enableTtlDesync = false,
+    int desyncTtl = TcpDesyncHelper.DefaultDesyncTtl) : Stream
 {
     private readonly Stream _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
+    private readonly ChameleonState? _chameleon = chameleon;
+    [SuppressMessage("Usage", "CA2213:DisposableFieldsShouldBeDisposed", Justification = "Socket lifecycle is managed by caller or inner NetworkStream.")]
+    private readonly Socket? _socket = socket;
     private bool _firstWrite = true;
 
     public int SplitPosition { get; } = Math.Max(1, splitPosition);
     public int DelayMs { get; } = Math.Max(0, delayMs);
+    public bool EnableTtlDesync { get; } = enableTtlDesync;
+    public int DesyncTtl { get; } = Math.Clamp(desyncTtl, 1, 255);
 
     public override bool CanRead => _innerStream.CanRead;
     public override bool CanSeek => _innerStream.CanSeek;
@@ -33,16 +49,30 @@ public sealed partial class DpiBypassStream(Stream innerStream, int splitPositio
 
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        if (_firstWrite && buffer.Length > SplitPosition)
+        var effectiveSplit = _chameleon?.NextSplitPosition(1, 2) ?? SplitPosition;
+        if (_firstWrite && buffer.Length > effectiveSplit)
         {
             _firstWrite = false;
-            _innerStream.Write(buffer[..SplitPosition]);
-            _innerStream.Flush();
-            if (DelayMs > 0)
+            var effectiveDelay = _chameleon?.NextDelayMs(15, 25) ?? DelayMs;
+
+            if (EnableTtlDesync && _socket != null)
             {
-                Thread.Sleep(DelayMs);
+                _ = TcpDesyncHelper.TrySetSocketTtl(_socket, DesyncTtl);
             }
-            _innerStream.Write(buffer[SplitPosition..]);
+
+            _innerStream.Write(buffer[..effectiveSplit]);
+            _innerStream.Flush();
+
+            if (EnableTtlDesync && _socket != null)
+            {
+                _ = TcpDesyncHelper.TrySetSocketTtl(_socket, TcpDesyncHelper.DefaultRealTtl);
+            }
+
+            if (effectiveDelay > 0)
+            {
+                Thread.Sleep(effectiveDelay);
+            }
+            _innerStream.Write(buffer[effectiveSplit..]);
             _innerStream.Flush();
         }
         else
@@ -56,16 +86,30 @@ public sealed partial class DpiBypassStream(Stream innerStream, int splitPositio
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (_firstWrite && buffer.Length > SplitPosition)
+        var effectiveSplit = _chameleon?.NextSplitPosition(1, 2) ?? SplitPosition;
+        if (_firstWrite && buffer.Length > effectiveSplit)
         {
             _firstWrite = false;
-            await _innerStream.WriteAsync(buffer[..SplitPosition], cancellationToken).ConfigureAwait(false);
-            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            if (DelayMs > 0)
+            var effectiveDelay = _chameleon?.NextDelayMs(15, 25) ?? DelayMs;
+
+            if (EnableTtlDesync && _socket != null)
             {
-                await Task.Delay(DelayMs, cancellationToken).ConfigureAwait(false);
+                _ = TcpDesyncHelper.TrySetSocketTtl(_socket, DesyncTtl);
             }
-            await _innerStream.WriteAsync(buffer[SplitPosition..], cancellationToken).ConfigureAwait(false);
+
+            await _innerStream.WriteAsync(buffer[..effectiveSplit], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+            if (EnableTtlDesync && _socket != null)
+            {
+                _ = TcpDesyncHelper.TrySetSocketTtl(_socket, TcpDesyncHelper.DefaultRealTtl);
+            }
+
+            if (effectiveDelay > 0)
+            {
+                await Task.Delay(effectiveDelay, cancellationToken).ConfigureAwait(false);
+            }
+            await _innerStream.WriteAsync(buffer[effectiveSplit..], cancellationToken).ConfigureAwait(false);
             await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         else
