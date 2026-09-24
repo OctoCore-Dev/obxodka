@@ -39,6 +39,7 @@ public sealed partial class FechsueTransport : IVpnTransport
     private volatile bool _isConnected;
     private volatile bool _serverUsesSessionMasking;
     public bool IsConnected => _isConnected && _sockets[0] is not null;
+    public bool EnableEntropyShaping { get; set; } = true;
 
     public static Action<Socket>? OnSocketCreated { get; set; }
 
@@ -200,7 +201,9 @@ public sealed partial class FechsueTransport : IVpnTransport
             int totalLen;
             lock (txLock)
             {
-                packed = FechsueCodec.Pack(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
+                packed = EnableEntropyShaping
+                    ? FechsueCodec.PackShaped(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
+                    : FechsueCodec.Pack(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
             }
             try
             {
@@ -230,7 +233,9 @@ public sealed partial class FechsueTransport : IVpnTransport
                     int secLen;
                     lock (sLock)
                     {
-                        secPacked = FechsueCodec.Pack(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking);
+                        secPacked = EnableEntropyShaping
+                            ? FechsueCodec.PackShaped(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking)
+                            : FechsueCodec.Pack(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking);
                     }
                     try
                     {
@@ -262,7 +267,7 @@ public sealed partial class FechsueTransport : IVpnTransport
 
         lock (txLock)
         {
-            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, length, _sessionId, crypto, _serverUsesSessionMasking);
+            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, length, _sessionId, crypto, _serverUsesSessionMasking, shapeEntropy: EnableEntropyShaping);
         }
         ArrayPool<byte>.Shared.Return(packet);
 
@@ -401,7 +406,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                         continue;
                     }
 
-                    if (!FechsueCodec.TryUnpack(rxBuffer, len, rxCrypto, out var rxSessionId, out var payload, out var realLen))
+                    if (!FechsueCodec.TryUnpackAuto(rxBuffer, len, rxCrypto, out var rxSessionId, out var payload, out var realLen))
                     {
                         continue;
                     }
@@ -487,7 +492,9 @@ public sealed partial class FechsueTransport : IVpnTransport
                 int totalLen;
                 lock (_txLocks[0])
                 {
-                    packed = FechsueCodec.Pack(packet, 10, _sessionId, crypto0, out totalLen, _serverUsesSessionMasking);
+                    packed = EnableEntropyShaping
+                        ? FechsueCodec.PackShaped(packet, 10, _sessionId, crypto0, out totalLen, _serverUsesSessionMasking)
+                        : FechsueCodec.Pack(packet, 10, _sessionId, crypto0, out totalLen, _serverUsesSessionMasking);
                 }
                 ArrayPool<byte>.Shared.Return(packet);
                 try
@@ -540,7 +547,9 @@ public sealed partial class FechsueTransport : IVpnTransport
                             int totalLen;
                             lock (_txLocks[i])
                             {
-                                packed = FechsueCodec.Pack(packet, 10, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
+                                packed = EnableEntropyShaping
+                                    ? FechsueCodec.PackShaped(packet, 10, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
+                                    : FechsueCodec.Pack(packet, 10, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
                             }
                             ArrayPool<byte>.Shared.Return(packet);
                             try
@@ -573,7 +582,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                     {
                         if (_sockets[i] is { } s)
                         {
-                            var authPacket = FechsueCodec.PackAuth(Thumbprint, i, out var authLen);
+                            var authPacket = FechsueCodec.PackStealthAuth(Thumbprint, i, out var authLen);
                             try
                             {
                                 _ = s.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);

@@ -12,4 +12,7 @@
     <Project Path="tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj" />
     <Project Path="tests/obxodka.Benchmarks/obxodka.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/TspuLab/TspuLab.csproj" />
+  </Folder>
 </Solution>

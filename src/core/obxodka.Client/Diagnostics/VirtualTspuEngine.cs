@@ -24,7 +24,8 @@ public sealed record TspuPacketAudit(
     bool IsUdp,
     double Entropy,
     TspuThreat DetectedThreats,
-    string Details);
+    string Details,
+    string HexDump = "");
 
 public sealed class VirtualTspuReport
 {
@@ -145,7 +146,8 @@ public sealed class VirtualTspuEngine
         }
 
         var details = detailsList.Count > 0 ? string.Join("; ", detailsList) : "Пакет чист";
-        return new TspuPacketAudit(index, packet.Length, isUdp, entropy, threats, details);
+        var hexDump = Convert.ToHexString(packet.Length <= 16 ? packet : packet[..16]);
+        return new TspuPacketAudit(index, packet.Length, isUdp, entropy, threats, details, hexDump);
     }
 
     public VirtualTspuReport AnalyzeStream(IEnumerable<ReadOnlyMemory<byte>> packets, bool isUdp)

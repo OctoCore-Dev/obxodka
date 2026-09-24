@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>obxodka.TspuLab</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\core\obxodka.Client\obxodka.Client.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Core\obxodka.Core.csproj" />
+  </ItemGroup>
+
+</Project>

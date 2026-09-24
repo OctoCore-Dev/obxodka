@@ -261,6 +261,15 @@ public static class FechsueCodec
     private static long t_nonceCounter = Random.Shared.NextInt64();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong SplitMix64(ulong x)
+    {
+        x += 0x9E3779B97F4A7C15UL;
+        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9UL;
+        x = (x ^ (x >> 27)) * 0x94D049BB133111EBUL;
+        return x ^ (x >> 31);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] Pack(
         byte[] payload,
         int length,
@@ -274,8 +283,10 @@ public static class FechsueCodec
 
         var nonce = buffer.AsSpan(0, 12);
         var counter = (ulong)Interlocked.Increment(ref t_nonceCounter);
-        BinaryPrimitives.WriteUInt64LittleEndian(nonce[..8], counter);
-        BinaryPrimitives.WriteUInt32LittleEndian(nonce[8..12], sessionId);
+        var mixed = SplitMix64(counter);
+        BinaryPrimitives.WriteUInt64LittleEndian(nonce[..8], mixed);
+        var mixed2 = (uint)SplitMix64(~counter ^ sessionId);
+        BinaryPrimitives.WriteUInt32LittleEndian(nonce[8..12], mixed2);
 
         if (maskSessionId)
         {
@@ -293,6 +304,29 @@ public static class FechsueCodec
 
         crypto.Encrypt(nonce, payload.AsSpan(0, length), ciphertext, tag, associatedData);
         return buffer;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackShaped(
+        byte[] payload,
+        int length,
+        uint sessionId,
+        AesGcm crypto,
+        out int totalLength,
+        bool maskSessionId = true)
+    {
+        var rawBuf = Pack(payload, length, sessionId, crypto, out var rawLen, maskSessionId);
+        var maxNeeded = EntropyShaper.GetMaxEncodedLength(rawLen);
+        var shapedBuf = ArrayPool<byte>.Shared.Rent(maxNeeded);
+        if (EntropyShaper.TryEncode(rawBuf.AsSpan(0, rawLen), shapedBuf, out var written))
+        {
+            ArrayPool<byte>.Shared.Return(rawBuf);
+            totalLength = written;
+            return shapedBuf;
+        }
+
+        totalLength = rawLen;
+        return rawBuf;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -349,6 +383,36 @@ public static class FechsueCodec
             payload = null;
             return false;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryUnpackAuto(
+        byte[] buffer,
+        int totalLength,
+        AesGcm crypto,
+        out uint sessionId,
+        out byte[]? payload,
+        out int realLength)
+    {
+        var span = buffer.AsSpan(0, totalLength);
+        var maxDecoded = EntropyShaper.GetMaxDecodedLength(totalLength);
+        if (maxDecoded >= Overhead)
+        {
+            var tempBuf = ArrayPool<byte>.Shared.Rent(maxDecoded);
+            try
+            {
+                if (EntropyShaper.TryDecode(span, tempBuf, out var decodedLen) && decodedLen >= Overhead)
+                {
+                    return TryUnpack(tempBuf, decodedLen, crypto, out sessionId, out payload, out realLength);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(tempBuf);
+            }
+        }
+
+        return TryUnpack(buffer, totalLength, crypto, out sessionId, out payload, out realLength);
     }
 
     public const byte FrameTypeRaw = 0x00;
@@ -421,7 +485,8 @@ public static class FechsueCodec
             int rawLength,
             uint sessionId,
             AesGcm crypto,
-            bool maskSessionId = true)
+            bool maskSessionId = true,
+            bool shapeEntropy = false)
         {
             lock (_lock)
             {
@@ -461,6 +526,38 @@ public static class FechsueCodec
                     parityPacked = PackFecParity(_parityAccumulator, _maxPacketLengthInGroup, groupId, gSize, sessionId, crypto, out parityLen, maskSessionId);
                     _currentIndex = 0;
                     _currentGroupId++;
+                }
+
+                if (shapeEntropy)
+                {
+                    var maxNeeded = EntropyShaper.GetMaxEncodedLength(dataLen);
+                    var shaped = ArrayPool<byte>.Shared.Rent(maxNeeded);
+                    if (EntropyShaper.TryEncode(dataPacked.AsSpan(0, dataLen), shaped, out var shapedWritten))
+                    {
+                        ArrayPool<byte>.Shared.Return(dataPacked);
+                        dataPacked = shaped;
+                        dataLen = shapedWritten;
+                    }
+                    else
+                    {
+                        ArrayPool<byte>.Shared.Return(shaped);
+                    }
+
+                    if (parityPacked != null && parityLen > 0)
+                    {
+                        var maxParity = EntropyShaper.GetMaxEncodedLength(parityLen);
+                        var shapedParity = ArrayPool<byte>.Shared.Rent(maxParity);
+                        if (EntropyShaper.TryEncode(parityPacked.AsSpan(0, parityLen), shapedParity, out var parityWritten))
+                        {
+                            ArrayPool<byte>.Shared.Return(parityPacked);
+                            parityPacked = shapedParity;
+                            parityLen = parityWritten;
+                        }
+                        else
+                        {
+                            ArrayPool<byte>.Shared.Return(shapedParity);
+                        }
+                    }
                 }
 
                 return (dataPacked, dataLen, parityPacked, parityLen);

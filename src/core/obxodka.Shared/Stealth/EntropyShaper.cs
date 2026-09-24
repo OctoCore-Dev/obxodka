@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+using System.Security.Cryptography;
 
 namespace obxodka.Shared.Stealth;
 
@@ -33,13 +33,20 @@ public static class EntropyShaper
     {
         bytesWritten = 0;
         var maxNeeded = GetMaxEncodedLength(input.Length);
-        if (output.Length < maxNeeded)
+        if (output.Length < maxNeeded || input.Length > ushort.MaxValue)
         {
             return false;
         }
 
-        BinaryPrimitives.WriteInt32LittleEndian(output[..4], input.Length);
-        var outIdx = 4;
+        var len = (ushort)input.Length;
+        var salt = (byte)Random.Shared.Next(0, 32);
+
+        output[0] = t_symbolMap[len & 0x1F];
+        output[1] = t_symbolMap[(len >> 5) & 0x1F];
+        output[2] = t_symbolMap[(len >> 10) & 0x1F];
+        output[3] = t_symbolMap[(len >> 15) & 0x1F];
+        output[4] = t_symbolMap[salt & 0x1F];
+        var outIdx = 5;
 
         var bitBuffer = 0;
         var bitCount = 0;
@@ -70,13 +77,24 @@ public static class EntropyShaper
     public static bool TryDecode(ReadOnlySpan<byte> input, Span<byte> output, out int bytesWritten)
     {
         bytesWritten = 0;
-        if (input.Length < 4)
+        if (input.Length < 5)
         {
             return false;
         }
 
-        var expectedLen = BinaryPrimitives.ReadInt32LittleEndian(input[..4]);
-        if (expectedLen < 0 || output.Length < expectedLen)
+        var s0 = t_reverseMap[input[0]];
+        var s1 = t_reverseMap[input[1]];
+        var s2 = t_reverseMap[input[2]];
+        var s3 = t_reverseMap[input[3]];
+        var s4 = t_reverseMap[input[4]];
+
+        if (s0 == 0xFF || s1 == 0xFF || s2 == 0xFF || s3 == 0xFF || s4 == 0xFF)
+        {
+            return false;
+        }
+
+        var expectedLen = s0 | (s1 << 5) | (s2 << 10) | (s3 << 15);
+        if (output.Length < expectedLen)
         {
             return false;
         }
@@ -85,7 +103,7 @@ public static class EntropyShaper
         var bitCount = 0;
         var outIdx = 0;
 
-        for (var i = 4; i < input.Length && outIdx < expectedLen; i++)
+        for (var i = 5; i < input.Length && outIdx < expectedLen; i++)
         {
             var symbol = input[i];
             var val = t_reverseMap[symbol];
