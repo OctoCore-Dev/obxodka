@@ -229,6 +229,32 @@ internal static partial class MauiProgram
                 sender.Resize(new Windows.Graphics.SizeInt32(expectedWidth, expectedHeight));
             }
         };
+
+        appWindow.Closing += (_, _) =>
+        {
+            try
+            {
+                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                vpnService?.StopVpnAsync().GetAwaiter().GetResult();
+                OctopusEngine.StopRelayAsync().GetAwaiter().GetResult();
+            }
+            catch { }
+
+            Environment.Exit(0);
+        };
+
+        window.Closed += (_, _) =>
+        {
+            try
+            {
+                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                vpnService?.StopVpnAsync().GetAwaiter().GetResult();
+                OctopusEngine.StopRelayAsync().GetAwaiter().GetResult();
+            }
+            catch { }
+
+            Environment.Exit(0);
+        };
     }
 #endif
 }

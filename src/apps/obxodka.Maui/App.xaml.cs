@@ -134,15 +134,23 @@ internal sealed partial class App : Application
 
         window.Destroying += (_, _) =>
         {
-            var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
-            vpnService?.StopVpnAsync();
-            _ = OctopusEngine.StopRelayAsync();
+            try
+            {
+                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                vpnService?.StopVpnAsync().GetAwaiter().GetResult();
+                OctopusEngine.StopRelayAsync().GetAwaiter().GetResult();
+            }
+            catch { }
+
+            Environment.Exit(0);
         };
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
             try
             {
+                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                vpnService?.StopVpnAsync().GetAwaiter().GetResult();
                 OctopusEngine.StopRelayAsync().GetAwaiter().GetResult();
             }
             catch { }
