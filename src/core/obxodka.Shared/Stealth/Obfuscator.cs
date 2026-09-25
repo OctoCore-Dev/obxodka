@@ -1,0 +1,201 @@
+namespace obxodka.Shared.Stealth;
+
+public static class Obfuscator
+{
+    private static readonly byte[] t_noiseBuf = GC.AllocateUninitializedArray<byte>(4096, pinned: true);
+
+    public const int ObfsHeaderMask = 0x5A3C96E7;
+    public const int ObfsPayloadMask = 0x5A3C96E8;
+
+    static Obfuscator() => Random.Shared.NextBytes(t_noiseBuf);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeLengths(ReadOnlySpan<byte> header, out int totalLen, out int realLen) =>
+        TryDecodeLengths(header, out totalLen, out realLen, out _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeLengths(ReadOnlySpan<byte> header, out int totalLen, out int realLen, out bool isMasked)
+    {
+        totalLen = 0;
+        realLen = 0;
+        isMasked = false;
+        if (header.Length < 8)
+        {
+            return false;
+        }
+
+        var maskedTotal = BinaryPrimitives.ReadInt32LittleEndian(header[..4]) ^ ObfsHeaderMask;
+        var maskedReal = BinaryPrimitives.ReadInt32LittleEndian(header.Slice(4, 4)) ^ ObfsPayloadMask;
+        if (maskedTotal is >= 8 and <= 1048576 && maskedReal >= 0 && maskedReal <= maskedTotal - 8)
+        {
+            totalLen = maskedTotal;
+            realLen = maskedReal;
+            isMasked = true;
+            return true;
+        }
+
+        var legacyTotal = BinaryPrimitives.ReadInt32LittleEndian(header[..4]);
+        var legacyReal = BinaryPrimitives.ReadInt32LittleEndian(header.Slice(4, 4));
+        if (legacyTotal is >= 8 and <= 1048576 && legacyReal >= 0 && legacyReal <= legacyTotal - 8)
+        {
+            totalLen = legacyTotal;
+            realLen = legacyReal;
+            isMasked = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] Pack(ReadOnlySpan<byte> packet, out int totalLength, bool maskHeaders = true)
+    {
+        var packetLength = packet.Length;
+        var paddingLen = packetLength == 9 && packet[0] == 0x99
+            ? 0
+            : packetLength >= 20 && (((packet[0] >> 4) == 4 && (packet[9] == 17 || packet[9] == 1)) || ((packet[0] >> 4) == 6 && (packet[6] == 17 || packet[6] == 58)))
+            ? 0
+            : packetLength > 1100
+                ? Random.Shared.Next(1, 32)
+                : packetLength <= 100 ? Random.Shared.Next(16, 48) : Random.Shared.Next(32, 128);
+
+        totalLength = 4 + 4 + packetLength + paddingLen;
+        var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
+        if (maskHeaders)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength ^ ObfsHeaderMask);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength ^ ObfsPayloadMask);
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
+        }
+
+        packet.CopyTo(buffer.AsSpan(8, packetLength));
+
+        if (paddingLen > 0)
+        {
+            var noiseOffset = Random.Shared.Next(0, t_noiseBuf.Length - paddingLen);
+            t_noiseBuf.AsSpan(noiseOffset, paddingLen).CopyTo(buffer.AsSpan(8 + packetLength, paddingLen));
+        }
+
+        return buffer;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] Pack(byte[] packet, int packetLength, out int totalLength, bool maskHeaders = true) =>
+        Pack(packet.AsSpan(0, packetLength), out totalLength, maskHeaders);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackSmart(ReadOnlySpan<byte> packet, out int totalLength, bool isProxied, bool maskHeaders = true)
+    {
+        if (!isProxied)
+        {
+            return Pack(packet, out totalLength, maskHeaders);
+        }
+
+        var packetLength = packet.Length;
+        totalLength = 4 + 4 + packetLength;
+        var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
+        if (maskHeaders)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength ^ ObfsHeaderMask);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength ^ ObfsPayloadMask);
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), totalLength);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4, 4), packetLength);
+        }
+
+        packet.CopyTo(buffer.AsSpan(8, packetLength));
+        return buffer;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] PackSmart(byte[] packet, int packetLength, out int totalLength, bool isProxied, bool maskHeaders = true) =>
+        PackSmart(packet.AsSpan(0, packetLength), out totalLength, isProxied, maskHeaders);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryUnpack(
+        ReadOnlySpan<byte> frame,
+        out int realLength,
+        out ReadOnlySpan<byte> payload)
+    {
+        realLength = 0;
+        payload = default;
+
+        if (!TryDecodeLengths(frame, out var totalLen, out realLength) || frame.Length < totalLen)
+        {
+            realLength = 0;
+            return false;
+        }
+
+        payload = frame.Slice(8, realLength);
+        return true;
+    }
+
+    public static async ValueTask<(byte[]? packet, int length)> ReadPacketAsync(
+        Stream stream,
+        byte[] headerBuffer,
+        CancellationToken ct)
+    {
+        var (packet, length, _) = await ReadMaskedPacketAsync(stream, headerBuffer, ct).ConfigureAwait(false);
+        return (packet, length);
+    }
+
+    public static async ValueTask<(byte[]? packet, int length, bool isMasked)> ReadMaskedPacketAsync(
+        Stream stream,
+        byte[] headerBuffer,
+        CancellationToken ct)
+    {
+        try
+        {
+            await stream.ReadExactlyAsync(headerBuffer.AsMemory(0, 8), ct).ConfigureAwait(false);
+        }
+        catch (EndOfStreamException)
+        {
+            return (null, 0, false);
+        }
+        catch (OperationCanceledException)
+        {
+            return (null, 0, false);
+        }
+        catch (IOException)
+        {
+            return (null, 0, false);
+        }
+
+        if (!TryDecodeLengths(headerBuffer.AsSpan(0, 8), out var totalLen, out var realLen, out var isMasked))
+        {
+            return (null, 0, false);
+        }
+
+        var packet = ArrayPool<byte>.Shared.Rent(realLen);
+        try
+        {
+            await stream.ReadExactlyAsync(packet.AsMemory(0, realLen), ct).ConfigureAwait(false);
+            var paddingLen = totalLen - 8 - realLen;
+            if (paddingLen > 0)
+            {
+                var trash = ArrayPool<byte>.Shared.Rent(paddingLen);
+                try
+                {
+                    await stream.ReadExactlyAsync(trash.AsMemory(0, paddingLen), ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(trash);
+                }
+            }
+
+            return (packet, realLen, isMasked);
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(packet);
+            throw;
+        }
+    }
+}

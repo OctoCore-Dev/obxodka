@@ -57,7 +57,7 @@ jobs:
 
       - name: 🚀 Run Client Tests (xUnit)
         run: |
-          dotnet test obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=detailed"
+          dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=detailed"
 
   # ==========================================
   # 🤖 ЭТАП 2: СБОРКА И ДЕПЛОЙ ANDROID (GOOGLE PLAY)
@@ -104,12 +104,12 @@ jobs:
 
       - name: 📝 Prepare Release Notes (Commit Message Fallback)
         run: |
-          mkdir -p distribution/whatsnew
-          if [ ! -s distribution/whatsnew/whatsnew-ru-RU ]; then
-            git log -1 --pretty=%B > distribution/whatsnew/whatsnew-ru-RU
+          mkdir -p packaging/whatsnew
+          if [ ! -s packaging/whatsnew/whatsnew-ru-RU ]; then
+            git log -1 --pretty=%B > packaging/whatsnew/whatsnew-ru-RU
           fi
-          if [ ! -s distribution/whatsnew/whatsnew-en-US ]; then
-            git log -1 --pretty=%B > distribution/whatsnew/whatsnew-en-US
+          if [ ! -s packaging/whatsnew/whatsnew-en-US ]; then
+            git log -1 --pretty=%B > packaging/whatsnew/whatsnew-en-US
           fi
 
       - name: 🚀 Publish Android AAB
@@ -124,7 +124,7 @@ jobs:
             EXTRA_ARGS="-p:ApplicationDisplayVersion=$VERSION_NAME -p:Version=$VERSION_NAME"
           fi
 
-          dotnet publish obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
             -p:AndroidKeyStore=true \
             -p:AndroidSigningKeyStore="$HOME/keystore/release.keystore" \
             -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
@@ -135,9 +135,9 @@ jobs:
       - name: 🔍 Locate AAB Package
         id: find-aab
         run: |
-          AAB_FILE=$(find "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
+          AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
           if [ -z "$AAB_FILE" ]; then
-            AAB_FILE=$(find "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
+            AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
           fi
           echo "Found AAB at: $AAB_FILE"
           if [ -z "$AAB_FILE" ]; then
@@ -161,7 +161,7 @@ jobs:
           packageName: com.octocore.obxodka
           releaseFiles: ${{ steps.find-aab.outputs.aab_path }}
           track: ${{ inputs.android_track || 'production' }}
-          whatsNewDirectory: distribution/whatsnew
+          whatsNewDirectory: packaging/whatsnew
           status: 'completed'
 
   # ==========================================
@@ -201,7 +201,7 @@ jobs:
               $extraArgs += "-p:Version=$env:VERSION_NAME"
           }
 
-          dotnet publish obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
             -p:PackageMode=MSIX `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
@@ -214,7 +214,7 @@ jobs:
         id: find-windows-pkg
         shell: pwsh
         run: |
-          $pkg = Get-ChildItem -Path "AppPackages", "bin\Release" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
+          $pkg = Get-ChildItem -Path "src/apps/obxodka.Maui/AppPackages", "AppPackages", "bin\Release", "C:\BuildCache" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
           if (-not $pkg) {
               $pkg = Get-ChildItem -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Where-Object { $_.FullName -notmatch "\\obj\\" } | Select-Object -First 1
           }
@@ -241,7 +241,7 @@ jobs:
           STORE_APP_ID: ${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}
           SELLER_ID: ${{ secrets.SELLER_ID || '94042650' }}
         run: |
-          pwsh scripts/publish_msstore.ps1 -PackagePath "${{ steps.find-windows-pkg.outputs.pkg_path }}"
+          pwsh tools/scripts/publish_msstore.ps1 -PackagePath "${{ steps.find-windows-pkg.outputs.pkg_path }}"
 
 
 
@@ -284,7 +284,7 @@ jobs:
         with:
           tag_name: ${{ steps.release-info.outputs.tag }}
           name: Obxodka ${{ steps.release-info.outputs.version }}
-          body_path: distribution/whatsnew/whatsnew-ru-RU
+          body_path: packaging/whatsnew/whatsnew-ru-RU
           draft: false
           prerelease: false
           files: |

@@ -11,7 +11,7 @@
 # 🐙 Obxodka VPN Client
 
 ### *Продвинутый Stealth VPN-клиент нового поколения для Windows и Android.*
-**Абсолютная свобода в сети • Устойчивость к DPI и ТСПУ • Открытый исходный код**
+**Абсолютная свобода в сети • Устойчивость к DPI и ТСПУ • Source-Available**
 
 <br/>
 
@@ -29,7 +29,7 @@
 [![gRPC Multiplex](https://img.shields.io/badge/Protocol-gRPC_HTTP%2F2-02b875?style=flat-square&logo=grpc)](https://grpc.io/)
 [![Security](https://img.shields.io/badge/Security-mTLS_&_AES--256--GCM-red?style=flat-square&logo=letsencrypt)](https://obxodka.one)
 [![Wintun Layer 3](https://img.shields.io/badge/Kernel_Driver-Wintun-orange?style=flat-square&logo=windows)](https://www.wintun.net/)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-Source--Available-blue?style=flat-square)](LICENSE)
 
 </div>
 
@@ -159,7 +159,7 @@ sequenceDiagram
 - [x] 🛡️ **CI/CD Авто-деплой:** непрерывная сборка и публикация в магазины через GitHub Actions
 - [ ] 🍎 **Разработка клиентов под iOS и macOS**
 - [ ] 🌐 **Режим Mesh-Routing и децентрализованные релейные ноды**
-- [ ] 🛑 **Встроенный AdBlock & Anti-Phishing фильтр на уровне DNS**
+- [x] 🛑 **Встроенный AdBlock & Anti-Phishing фильтр на уровне DNS**
 
 ---
 
@@ -192,10 +192,10 @@ cd obxodka
 dotnet workload install maui-windows maui-android
 
 # 3. Сборка клиента под Windows
-dotnet build obxodka.csproj -f net10.0-windows10.0.19041.0 -c Release
+dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
 
 # 4. Запуск модульных тестов
-dotnet test tests/obxodka.Tests/obxodka.Tests.csproj
+dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
 ```
 </details>
 
@@ -204,16 +204,16 @@ dotnet test tests/obxodka.Tests/obxodka.Tests.csproj
 ## 🤝 Сообщество и контакты
 
 * 🌐 **Официальный сайт:** [obxodka.one](https://obxodka.one)
-* 📐 **Архитектура и протоколы:** [ARCHITECTURE.md](ARCHITECTURE.md)
-* 🔒 **Политика безопасности и криптография:** [SECURITY.md](SECURITY.md)
+* 📐 **Архитектура и протоколы:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+* 🔒 **Политика безопасности и криптография:** [.github/SECURITY.md](.github/SECURITY.md)
 * 💬 **Форум и обсуждения:** [GitHub Discussions](https://github.com/OctoCore-Dev/obxodka/discussions)
 * 🐛 **Сообщить об ошибке:** [GitHub Issues](https://github.com/OctoCore-Dev/obxodka/issues)
 * 📧 **Контакты и поддержка:** [contact@octocore.dev](mailto:contact@octocore.dev)
-* 📜 **Кодекс поведения:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+* 📜 **Кодекс поведения:** [.github/CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md)
 
 
 ---
 
 <p align="center">
-  <sub>Разработано с ❤️ командой <a href="https://github.com/OctoCore-Dev">OctoCore</a>. Лицензия <a href="LICENSE">MIT</a>.</sub>
+  <sub>Разработано с ❤️ командой <a href="https://github.com/OctoCore-Dev">OctoCore</a>. Лицензия <a href="LICENSE">Source-Available (OctoCore)</a>.</sub>
 </p>
