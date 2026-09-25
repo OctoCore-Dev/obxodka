@@ -1869,6 +1869,7 @@ public sealed partial class VpnView : ContentView
                     TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
                 }
 
+                Card1Wrapper.MinimumHeightRequest = -1;
                 Card1ContentGrid.Padding = new Thickness(28, 32);
                 GraphContainer.IsVisible = true;
                 GraphContainer.HeightRequest = -1;
@@ -1922,6 +1923,7 @@ public sealed partial class VpnView : ContentView
         var isShortScreen = AdaptiveLayoutHelper.IsShortScreen(height);
         if (isShortScreen)
         {
+            Card1Wrapper.MinimumHeightRequest = -1;
             Card1ContentGrid.Padding = new Thickness(12, 6, 12, 16);
             TopCardsGrid.RowSpacing = 6;
             if (ContentGrid is { } cgShort)
@@ -1935,7 +1937,7 @@ public sealed partial class VpnView : ContentView
         }
         else
         {
-            Card1ContentGrid.Padding = new Thickness(16, 10, 16, 24);
+            Card1ContentGrid.Padding = new Thickness(16, 14, 16, 26);
             TopCardsGrid.RowSpacing = 10;
             if (ContentGrid is { } cgNormal)
             {
@@ -1945,6 +1947,11 @@ public sealed partial class VpnView : ContentView
             Card6.HeightRequest = 64;
             GraphContainer.IsVisible = true;
             GraphContainer.HeightRequest = graphHeight;
+
+            var topCardsH = TopCardsGrid.Height > 0 ? TopCardsGrid.Height : (48.0 + 48.0 + 64.0 + graphHeight + 30.0);
+            var estimatedAvailableForCard1 = height - _currentTopInset - 100.0 - topCardsH;
+            var targetCard1MinHeight = Math.Clamp(Math.Round(estimatedAvailableForCard1), 340.0, 540.0);
+            Card1Wrapper.MinimumHeightRequest = targetCard1MinHeight;
         }
 
         ButtonContainerGrid.WidthRequest = buttonSize;

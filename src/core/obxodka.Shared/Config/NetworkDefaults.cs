@@ -14,7 +14,8 @@ public static class NetworkDefaults
         "8.8.4.4",
         "9.9.9.9",
         "149.112.112.112",
-        "77.88.8.8"
+        "208.67.222.222",
+        "208.67.220.220"
     ];
 
     public static readonly string PrimaryDns = "1.1.1.1";

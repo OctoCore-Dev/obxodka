@@ -18,6 +18,7 @@ global using CommunityToolkit.Maui.Views;
 global using MauiIcons.Core;
 global using MauiIcons.Fluent;
 global using Microsoft.Maui.LifecycleEvents;
+global using obxodka.Client.Diagnostics;
 global using obxodka.Client.Models;
 global using obxodka.Client.Platforms;
 global using obxodka.Config;

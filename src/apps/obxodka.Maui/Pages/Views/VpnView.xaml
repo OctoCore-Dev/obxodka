@@ -312,6 +312,8 @@
                                        Tablet=0,
                                        Default=1}"
                     Grid.Column="0"
+                    MinimumHeightRequest="{OnIdiom Phone=340,
+                                                   Default=-1}"
                     Style="{StaticResource NeoCard}"
                     VerticalOptions="Fill">
 
@@ -319,12 +321,12 @@
                         x:Name="Card1ContentGrid"
                         Padding="{OnIdiom Desktop='28,32',
                                           Tablet='28,32',
-                                          Phone='16,10,16,92',
+                                          Phone='16,14,16,24',
                                           Default='28,32'}"
                         HorizontalOptions="Center"
                         RowDefinitions="Auto, Auto, Auto"
                         RowSpacing="{OnIdiom Desktop=16,
-                                             Phone=6,
+                                             Phone=10,
                                              Default=16}"
                         VerticalOptions="Center">
 
