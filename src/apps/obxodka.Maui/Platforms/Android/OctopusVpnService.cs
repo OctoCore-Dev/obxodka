@@ -89,6 +89,18 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 System.Diagnostics.Debug.WriteLine($"[GRPC PROTECT ERROR] {ex.Message}");
             }
         };
+        InSituDiagnosticsEngine.OnSocketCreated = sock =>
+        {
+            try
+            {
+                var fd = (int)sock.Handle;
+                _ = Protect(fd);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DIAG PROTECT ERROR] {ex.Message}");
+            }
+        };
     }
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)

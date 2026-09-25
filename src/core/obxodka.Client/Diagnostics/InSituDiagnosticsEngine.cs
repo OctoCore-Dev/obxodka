@@ -14,6 +14,8 @@ public sealed record RstFingerprint(
 
 public static class InSituDiagnosticsEngine
 {
+    public static Action<Socket>? OnSocketCreated { get; set; }
+
     public static async Task<(int hopDistance, string details)> MapTspuHopDistanceAsync(
         string host,
         int port,
@@ -33,6 +35,7 @@ public static class InSituDiagnosticsEngine
                 ReceiveTimeout = 300,
                 SendTimeout = 300
             };
+            OnSocketCreated?.Invoke(socket);
 
             try
             {
