@@ -23,6 +23,7 @@ global using obxodka.Core.Transports;
 global using obxodka.Helpers;
 global using obxodka.Models;
 global using obxodka.Services;
+global using obxodka.Shared.Config;
 global using obxodka.Shared.Stealth;
 global using obxodka.Shared.Themes;
 global using obxodka.Stealth;

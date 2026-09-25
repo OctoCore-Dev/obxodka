@@ -176,7 +176,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
 
         await RunStepAsync(report, "6. Определение безопасного MTU", () =>
         {
-            var recommendedMtu = 1280;
+            var recommendedMtu = NetworkDefaults.DefaultMtu;
             if (report.PrimaryInterfaceMtu < 1400)
             {
                 recommendedMtu = Math.Min(recommendedMtu, report.PrimaryInterfaceMtu - 80);

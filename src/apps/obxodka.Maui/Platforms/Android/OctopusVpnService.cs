@@ -411,7 +411,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             _ = builder
                 .SetSession("Obxodka")
                 .AddAddress(ip, 10)
-                .SetMtu(1280)
+                .SetMtu(NetworkDefaults.DefaultMtu)
                 .SetBlocking(true)
                 .AddRoute("0.0.0.0", 0);
 
@@ -429,10 +429,10 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 }
             }
 
-            _ = builder.AddDnsServer("1.1.1.1");
-            _ = builder.AddDnsServer("1.0.0.1");
-            _ = builder.AddDnsServer("8.8.8.8");
-            _ = builder.AddDnsServer("8.8.4.4");
+            foreach (var dns in NetworkDefaults.TrustedDnsServers)
+            {
+                _ = builder.AddDnsServer(dns);
+            }
 
             var bypassed = new AppManager().GetBypassedPackages();
             foreach (var pkg in bypassed)

@@ -75,7 +75,7 @@
 |   +--------------------------------------------------------------------------------+   |
 |   |                    LinuxTun (libc P/Invoke Zero-Copy I/O)                      |   |
 |   |  - Прямой ввод-вывод: read(fd) / write(fd) через небезопасные указатели        |   |
-|   |  - Виртуальный интерфейс tun0 (MTU 1360, txqueuelen 10000)                    |   |
+|   |  - Виртуальный интерфейс tun0 (MTU 1280, txqueuelen 10000)                    |   |
 |   |  - Ядро Linux: TCP BBR Congestion Control, TCPMSS Clamping                     |   |
 |   |  - Маршрутизация и NAT (iptables MASQUERADE для 100.64.0.0/10 и fd00::/64)     |   |
 |   +---------------------------------------+----------------------------------------+   |
@@ -107,17 +107,21 @@
     route add 128.0.0.0 mask 128.0.0.0 <AssignedIp> metric 1 if <ifIndex>
     ```
   * Добавляется прямой маршрут к шлюзу через физический интерфейс (`Bypass Route`).
-  * **Предотвращение утечек DNS:** Регистрация глобального правила групповой политики NRPT (Name Resolution Policy Table):
-    `Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','1.0.0.1' -Comment 'ObxodkaVPN'`.
+  * **Предотвращение утечек DNS (DNS Leak Protection):**
+    * Установка явных статических хостовых маршрутов `/32` (`255.255.255.255`) ко всем серверам из пула `NetworkDefaults.TrustedDnsServers` (`1.1.1.1`, `1.0.0.1`, `8.8.8.8`, `8.8.4.4`, `9.9.9.9`, `149.112.112.112`, `77.88.8.8`) через виртуальный интерфейс Wintun (`route add <dnsIp> mask 255.255.255.255 <AssignedIp> metric 1 if <ifIndex>`), что гарантирует прохождение всех DNS-запросов строго через шифрованный туннель.
+    * Защита от утечек многоадресного разрешения имён (Smart Multi-Homed Name Resolution): установка ключа реестра `DisableSmartNameResolution = 1` по пути `HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient` (предотвращает параллельную отправку запросов на DNS физических сетевых интерфейсов Windows).
+    * Принудительный сброс системного кэша резолвера `ipconfig /flushdns` при установке и корректном разрыве сессии.
+  * **Жизненный цикл процесса и скрытие UI:** При нажатии пользователем кнопки закрытия окна приложение мгновенно скрывает UI (`ShowWindow SW_HIDE` / `AppWindow.Hide`), а остановка ядра VPN, удаление маршрутов, восстановление реестра и сброс DNS выполняются в фоне (до 5 секунд) без зависания интерфейса и без навязчивого пребывания в системном трее.
   * **Экстремальный разгон TCP (`ApplyExtremeNetworkBoostAsync`):**
     Включение `netsh int tcp set global autotuninglevel=experimental`, `congestionprovider=ctcp`, `ecncapability=enabled`, `fastopen=enabled`.
 
 ### 1.2. Платформенный уровень Android (Android VpnService)
 * **Класс службы (`Platforms/Android/OctopusVpnService.cs`):**
   * Наследует `Android.Net.VpnService`, зарегистрирован с типом Foreground Service `specialUse` (поддержка Android 14+ / API 34+).
-  * Конфигурация TUN: MTU 1350, маршруты `0.0.0.0/0` и `::/0`, DNS `8.8.8.8` / AdGuard DNS.
+  * **Конфигурация TUN:** Универсальный MTU 1280 (`NetworkDefaults.DefaultMtu`), маршруты `0.0.0.0/0` и `::/0`, централизованный доверенный Anycast-пул DNS (`NetworkDefaults.TrustedDnsServers`).
+  * **Централизованные сетевые параметры (`NetworkDefaults.cs`):** Кроссплатформенный модуль конфигурации в `obxodka.Shared`, синхронизирующий универсальный MTU 1280, безопасное сжатие (`ClampMtu(1280, 1420)`), основной и резервный DNS (`1.1.1.1` / `1.0.0.1`), а также умный алгоритм динамической оценки доступности серверов DNS (`GetHealthyDnsServersAsync`) через параллельные UDP-пробы DNS.
   * **Split Tunneling:** Метод `builder.AddDisallowedApplication(pkg)` позволяет исключать выбранные приложения из VPN.
-  * **Защита сокетов:** Защита дескрипторов сокетов через `Protect((int)sock.Handle)` предотвращает зацикливание сетевого ввода-вывода.
+  * **Защита сокетов:** Защита дескрипторов сокетов через `Protect((int)sock.Handle)` (включая диагностические сокеты InSitu через `HookProtection`) предотвращает зацикливание сетевого ввода-вывода.
   * **Энергосбережение и роуминг:** Удержание `WakeLockFlags.Partial` и автоматический реконнект при переключении сетей Wi-Fi ↔ LTE через `ConnectivityManager.NetworkCallback`.
 
 ---
@@ -128,8 +132,8 @@
 * **Стриминг:** Двунаправленный gRPC-стрим `TunnelService.ConnectStream` поверх оптимизированного `SocketsHttpHandler`.
 * **Multi-Ray Routing (`PacketRouter.cs`):**
   * Разделение трафика на 8 параллельных каналов (лучей).
-  * **Realtime / Gaming:** ICMP, DNS, малые UDP-пакеты (до 600 байт), TCP SYN/ACK направляются в `Ray 0` и дублируются в `Ray 1` для компенсации потерь.
-  * **Bulk:** Тяжелый TCP-трафик хэшируется по 4-tuple (`srcIp:srcPort:dstIp:dstPort`) и распределяется по `Ray 2..7`.
+  * **Realtime / Gaming:** Чувствительный к задержкам трафик (ICMP, DNS, малые UDP-пакеты до 600 байт, TCP SYN/ACK) направляется в **Ray 0** и дублируется в **Ray 7** (крайний луч для максимальной надёжности и компенсации джиттера).
+  * **Bulk:** Тяжёлый TCP-трафик хэшируется по 4-tuple (`srcIp:srcPort:dstIp:dstPort`) и распределяется по 6 параллельным лучам **Ray 1..6** (`1 + (absHash % 6)`).
 * **Дедупликация (`PacketDeduplicator.cs`):** Атомарный циклический буфер на 8192 слота отсекает дубликаты на стороне приёма без блокировок потоков.
 
 ### 2.2. FechsueTransport (Stealth UDP + AES-256-GCM + FEC)
@@ -145,8 +149,8 @@
   * Позволяет восстановить 1 потерянный пакет из 4 с нулевой задержкой (0 RTT loss recovery).
 
 ### 2.3. Механизмы обхода DPI и ТСПУ
-1. **TCP Payload Splitting (`DpiBypassStream.cs`):**
-   * Первые 5 байт записи TLS ClientHello отправляются отдельным TCP-сегментом, после чего следует пауза в 10 мс перед отправкой тела ClientHello с SNI.
+1. **TCP Payload Splitting (`DpiBypassStream.cs` & `ChameleonState.cs`):**
+   * Первые 1–2 байта записи TLS ClientHello (`ChameleonState.GetNextSplitSize()`) отправляются отдельным TCP-сегментом, после чего следует адаптивная пауза 15–25 мс (`ChameleonState.GetNextDelayMs()`) перед отправкой тела ClientHello с SNI.
    * Системы DPI, анализирующие первый сегмент соединения, не могут обнаружить SNI и пропускают поток.
 2. **Dynamic Noise Padding (`Obfuscator.cs`):**
    * Добавление случайного мусорного хвоста (от 1 до 128 байт) к каждому пакету разрушает статистические профили распределения длин пакетов.
@@ -162,7 +166,8 @@
 * **Прямой доступ к Linux TUN (`LinuxTun.cs`):**
   * Инициализация `/dev/net/tun` через `ioctl(fd, TUNSETIFF)`.
   * Прямой ввод-вывод на небезопасных указателях `read(fd, byte*, count)` и `write(fd, byte*, count)` в обход абстракций рантайма .NET.
-  * Автоматическая настройка ядра Linux: `sysctl net.ipv4.ip_forward=1`, `iptables MASQUERADE` для подсети `100.64.0.0/10` и `fd00::/64`, `TCPMSS --clamp-mss-to-pmtu`.
+  * Виртуальный интерфейс `tun0` с MTU 1280 (`NetworkDefaults.DefaultMtu`), txqueuelen 10000.
+  * Автоматическая настройка ядра Linux: `sysctl net.ipv4.ip_forward=1`, `iptables MASQUERADE` для подсети `100.64.0.0/10` и `fd00::/64`, `TCPMSS --set-mss 1240` (DefaultMtu - 40) и `--clamp-mss-to-pmtu`.
 * **Фоновые службы и воркеры:**
   * **`TunReaderService`:** Выделенный нативный поток ОС с приоритетом `ThreadPriority.Highest`, непрерывно вычитывающий пакеты из ядра Linux и маршрутизирующий их по сессиям клиентов.
   * **`SyncWorker`:** 10-секундный цикл сбора статистики трафика, сверки с биллингом API и немедленного сброса сессий из чёрного списка (CRL).
@@ -184,7 +189,7 @@
 
 ## 4. Спецификация базы данных (PostgreSQL)
 
-Схема данных включает 8 ключевых таблиц:
+Схема данных включает 9 ключевых таблиц:
 * **`Users`**: Идентификатор, Email, хэш пароля, отпечаток сертификата mTLS, баланс секунд, время подписки, статистика трафика, реферальный код, массив достижений.
 * **`Devices`**: Привязанные устройства (до 4 шт. на аккаунт), HWID, имя, зашифрованный сертификат, дата последней активности.
 * **`Orders`**: Заказы, платежи AnyPay/Google Play, валюта, статус, начисленные часы.
@@ -192,6 +197,7 @@
 * **`Reviews` & `ReviewLikes`**: Отзывы со всех платформ (Web, Google Play, Microsoft Store), рейтинги, версии приложений, древовидные ответы.
 * **`ReferralActivations`**: Реферальная статистика, начисленные бонусные часы.
 * **`AuthCodes`**: Одноразовые коды авторизации (Email OTP) со сроком жизни 10 минут.
+* **`BugReports`**: Диагностические отчёты пользователей, логи исключений, сведения об ОС и версии клиента для оперативного выявления инцидентов.
 
 ---
 

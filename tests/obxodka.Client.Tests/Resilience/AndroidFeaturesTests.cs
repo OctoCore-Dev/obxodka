@@ -53,7 +53,7 @@ public class AndroidFeaturesTests
     [InlineData(1000, 1280)]
     public void SafeMobileMtuClamping(int rawMtu, int expectedSafeMtu)
     {
-        var clamped = Math.Clamp(rawMtu, 1280, 1420);
+        var clamped = NetworkDefaults.ClampMtu(rawMtu);
         Assert.Equal(expectedSafeMtu, clamped);
     }
 

@@ -601,9 +601,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static 1.1.1.1 primary");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" 1.0.0.1 index=2");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1360 store=active");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
                 Debug.WriteLine("[NET CONFIG] Configured adapter via netsh successfully.");
                 return;
@@ -620,8 +620,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ exit 1; }}
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes 1360 -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes {NetworkDefaults.DefaultMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
             ";
             var (exitCode, output) = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\n", " ").Replace("\r", "")}\"");
@@ -1068,10 +1068,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
-            _ = await RunCmdAsync("route", $"add 1.1.1.1 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 1.0.0.1 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.8.8 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
-            _ = await RunCmdAsync("route", $"add 8.8.4.4 mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
+            foreach (var dns in NetworkDefaults.TrustedDnsServers)
+            {
+                _ = await RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {assignedIp} metric 1{ifArg}");
+            }
 
             try
             {
@@ -1096,10 +1096,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             Debug.WriteLine("[DNS-LEAK] Removing DNS leak protection...");
 
-            _ = await RunCmdAsync("route", "delete 1.1.1.1 mask 255.255.255.255");
-            _ = await RunCmdAsync("route", "delete 1.0.0.1 mask 255.255.255.255");
-            _ = await RunCmdAsync("route", "delete 8.8.8.8 mask 255.255.255.255");
-            _ = await RunCmdAsync("route", "delete 8.8.4.4 mask 255.255.255.255");
+            foreach (var dns in NetworkDefaults.TrustedDnsServers)
+            {
+                _ = await RunCmdAsync("route", $"delete {dns} mask 255.255.255.255");
+            }
 
             try
             {

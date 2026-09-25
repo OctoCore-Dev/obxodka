@@ -38,4 +38,5 @@ global using obxodka.Helpers;
 global using obxodka.Models;
 global using obxodka.Models.Responses;
 global using obxodka.Services;
+global using obxodka.Shared.Config;
 global using obxodka.Shared.Stealth;
