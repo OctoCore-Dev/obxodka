@@ -45,7 +45,7 @@ public sealed class ApiService(HttpClient client)
             UseProxy = false,
             SslOptions = new SslClientAuthenticationOptions
             {
-                TargetHost = "obxodka.one",
+                TargetHost = "api.octocore.dev",
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
                 RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
@@ -127,125 +127,99 @@ public sealed class ApiService(HttpClient client)
             return (false, null, "Нет подключения к интернету. Проверьте сеть и повторите попытку.");
         }
 
-        var fullUrl = AppConfig.ApiUrl(url);
-        HttpClient[] clientsToTry = [client, t_fallbackDirectDpi.Value, t_fallbackNative.Value, t_fallbackTls12.Value, t_fallbackHttp2.Value];
-        Exception? lastEx = null;
-
-        foreach (var currentClient in clientsToTry)
+        List<string> candidateDomains = [];
+        if (Uri.TryCreate(AppConfig.ApiBaseUrl, UriKind.Absolute, out var curUri) && !IPAddress.TryParse(curUri.Host, out _))
         {
-            try
+            candidateDomains.Add(AppConfig.ApiBaseUrl);
+        }
+        foreach (var dom in AppConfig.KnownDomainBases)
+        {
+            if (!candidateDomains.Any(d => d.StartsWith(dom, StringComparison.OrdinalIgnoreCase)))
             {
-                using var request = new HttpRequestMessage(method, fullUrl);
-                if (body is not null && requestInfo is not null)
-                {
-                    request.Content = JsonContent.Create(body, requestInfo);
-                }
-
-                await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
-                var response = await currentClient.SendAsync(request, ct).ConfigureAwait(false);
-
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
-                {
-                    try
-                    {
-                        MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
-                    }
-                    catch { }
-
-                    return (false, null, "Сессия истекла или устройство было удалено.");
-                }
-
-                if (response.IsSuccessStatusCode)
-                {
-                    if (responseInfo is not null)
-                    {
-                        return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
-                    }
-
-                    return (true, null, null);
-                }
-
-                var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(rawError))
-                {
-                    var trimmed = rawError.Trim();
-                    if (trimmed.StartsWith('{'))
-                    {
-                        try
-                        {
-                            var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
-                            if (errorObj is { Message: { Length: > 0 } msg })
-                            {
-                                return (false, null, msg);
-                            }
-                        }
-                        catch { }
-                    }
-
-                    return (false, null, trimmed);
-                }
-
-                return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                lastEx = ex;
-                Debug.WriteLine($"[API ERROR] {method} {url} via fallback: {ex.Message}");
+                candidateDomains.Add(dom);
             }
         }
 
-        if (AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
+        HttpClient[] domainClients = [client, t_fallbackNative.Value, t_fallbackTls12.Value, t_fallbackHttp2.Value];
+        Exception? lastEx = null;
+
+        foreach (var baseCandidate in candidateDomains)
         {
-            try
+            var reqUrl = $"{baseCandidate.TrimEnd('/')}/{url.TrimStart('/')}";
+            foreach (var currentClient in domainClients)
             {
-                Debug.WriteLine($"[API] Retrying {method} {url} with DefaultApiBaseUrl {AppConfig.DefaultApiBaseUrl}...");
-                var fallbackUrl = $"{AppConfig.DefaultApiBaseUrl.TrimEnd('/')}/{url.TrimStart('/')}";
-                using var request = new HttpRequestMessage(method, fallbackUrl);
-                if (body is not null && requestInfo is not null)
+                try
                 {
-                    request.Content = JsonContent.Create(body, requestInfo);
-                }
-
-                await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
-                var response = await client.SendAsync(request, ct).ConfigureAwait(false);
-
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
-                {
-                    try
+                    using var request = new HttpRequestMessage(method, reqUrl);
+                    if (body is not null && requestInfo is not null)
                     {
-                        MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
-                    }
-                    catch { }
-
-                    return (false, null, "Сессия истекла или устройство было удалено.");
-                }
-
-                if (response.IsSuccessStatusCode)
-                {
-                    AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-                    if (responseInfo is not null)
-                    {
-                        return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                        request.Content = JsonContent.Create(body, requestInfo);
                     }
 
-                    return (true, null, null);
+                    await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
+                    var response = await currentClient.SendAsync(request, ct).ConfigureAwait(false);
+
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        try
+                        {
+                            MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+                        }
+                        catch { }
+
+                        return (false, null, "Сессия истекла или устройство было удалено.");
+                    }
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        AppConfig.ApiBaseUrl = baseCandidate;
+                        if (responseInfo is not null)
+                        {
+                            return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                        }
+
+                        return (true, null, null);
+                    }
+
+                    var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(rawError))
+                    {
+                        var trimmed = rawError.Trim();
+                        if (trimmed.StartsWith('{'))
+                        {
+                            try
+                            {
+                                var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
+                                if (errorObj is { Message: { Length: > 0 } msg })
+                                {
+                                    return (false, null, msg);
+                                }
+                            }
+                            catch { }
+                        }
+
+                        return (false, null, trimmed);
+                    }
+
+                    return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
                 }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[API] Fallback to DefaultApiBaseUrl also failed: {ex.Message}");
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    lastEx = ex;
+                    Debug.WriteLine($"[API ERROR] {method} {reqUrl}: {ex.Message}");
+                }
             }
         }
 
         try
         {
-            var directUrl = $"https://obxodka.one/{url.TrimStart('/')}";
+            var directUrl = $"https://45.63.117.29/{url.TrimStart('/')}";
             using var request = new HttpRequestMessage(method, directUrl);
-            request.Headers.Host = "obxodka.one";
+            request.Headers.Host = "api.octocore.dev";
             if (body is not null && requestInfo is not null)
             {
                 request.Content = JsonContent.Create(body, requestInfo);
@@ -267,7 +241,6 @@ public sealed class ApiService(HttpClient client)
 
             if (response.IsSuccessStatusCode)
             {
-                AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
                 if (responseInfo is not null)
                 {
                     return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
@@ -275,6 +248,28 @@ public sealed class ApiService(HttpClient client)
 
                 return (true, null, null);
             }
+
+            var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(rawError))
+            {
+                var trimmed = rawError.Trim();
+                if (trimmed.StartsWith('{'))
+                {
+                    try
+                    {
+                        var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
+                        if (errorObj is { Message: { Length: > 0 } msg })
+                        {
+                            return (false, null, msg);
+                        }
+                    }
+                    catch { }
+                }
+
+                return (false, null, trimmed);
+            }
+
+            return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

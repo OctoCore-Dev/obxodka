@@ -337,7 +337,7 @@ public sealed partial class MeshRelayServer(int speedMbps = 10) : IAsyncDisposab
     private async Task UdpRelayLoopAsync(CancellationToken ct)
     {
         var physicalIp = GetPhysicalInterfaceIp();
-        var apiHost = "obxodka.one";
+        var apiHost = "api.octocore.dev";
         if (Uri.TryCreate(AppConfig.DefaultApiBaseUrl, UriKind.Absolute, out var uri))
         {
             apiHost = uri.Host;

@@ -84,7 +84,7 @@ public sealed class DynamicProtocolAndConnectivityTests
     public async Task LiveServerCertificatePinningValidationAsync()
     {
         using var http = new HttpClient();
-        var apiJson = await http.GetStringAsync("https://obxodka.one/api/vpn/cert-hash");
+        var apiJson = await http.GetStringAsync("https://api.octocore.dev/api/vpn/cert-hash");
         using var doc = JsonDocument.Parse(apiJson);
         var expectedHash = doc.RootElement.GetProperty("hash").GetString();
 
@@ -104,7 +104,7 @@ public sealed class DynamicProtocolAndConnectivityTests
     public async Task LiveGrpcTransportConnectionTestAsync()
     {
         using var http = new HttpClient();
-        var apiJson = await http.GetStringAsync("https://obxodka.one/api/vpn/cert-hash");
+        var apiJson = await http.GetStringAsync("https://api.octocore.dev/api/vpn/cert-hash");
         using var doc = JsonDocument.Parse(apiJson);
         var expectedHash = doc.RootElement.GetProperty("hash").GetString();
         OctopusEngine.DynamicSslPublicKeyHash = expectedHash;
@@ -120,7 +120,7 @@ public sealed class DynamicProtocolAndConnectivityTests
     public async Task LiveGrpcEchoTestAsync()
     {
         using var http = new HttpClient();
-        var apiJson = await http.GetStringAsync("https://obxodka.one/api/vpn/cert-hash");
+        var apiJson = await http.GetStringAsync("https://api.octocore.dev/api/vpn/cert-hash");
         using var doc = JsonDocument.Parse(apiJson);
         var expectedHash = doc.RootElement.GetProperty("hash").GetString();
         OctopusEngine.DynamicSslPublicKeyHash = expectedHash;

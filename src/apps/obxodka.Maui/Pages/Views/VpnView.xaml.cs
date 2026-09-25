@@ -754,7 +754,11 @@ public sealed partial class VpnView : ContentView
 
             if (!success || servers is null || servers.Count == 0)
             {
-                servers = [new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 10, "8C4D558DD38236249DA05CA9FD59658C0CAC305E")];
+                servers = [
+                    new VpnServerDto("api.octocore.dev", 443, "Основной узел (Cloudflare)", true, 10, null),
+                    new VpnServerDto("obxodka.one", 443, "Основной узел (Резервный)", true, 15, null),
+                    new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 20, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
+                ];
             }
 
             var candidateServers = await ProbeBestServerAsync(servers);
@@ -850,10 +854,15 @@ public sealed partial class VpnView : ContentView
             var bridge = await DiscoveryService.GetActiveBridgeUrlAsync(forceRefresh: false);
             if (!string.IsNullOrWhiteSpace(bridge))
             {
-                fallbackCandidates.Add(bridge);
+                var bHost = Uri.TryCreate(bridge, UriKind.Absolute, out var bUri) ? bUri.Host : bridge;
+                if (!string.IsNullOrWhiteSpace(bHost))
+                {
+                    fallbackCandidates.Add(bHost);
+                }
             }
         }
         catch { }
+        fallbackCandidates.Add("api.octocore.dev");
         fallbackCandidates.Add("obxodka.one");
         fallbackCandidates.Add("45.63.117.29");
 
@@ -867,7 +876,7 @@ public sealed partial class VpnView : ContentView
                 {
                     using var client = new TcpClient();
                     await client.ConnectAsync(fbHost, 443, cts.Token).AsTask();
-                    var certHash = fbHost == "45.63.117.29" ? "8C4D558DD38236249DA05CA9FD59658C0CAC305E" : null;
+                    var certHash = fbHost == "45.63.117.29" ? "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=" : null;
                     reachableServers.Add(new VpnServerDto(fbHost, 443, "Auto", true, 50, certHash));
                     break;
                 }
@@ -879,7 +888,7 @@ public sealed partial class VpnView : ContentView
             ? reachableServers
             : servers.Count > 0
                 ? servers
-                : [new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 10, "8C4D558DD38236249DA05CA9FD59658C0CAC305E")];
+                : [new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")];
     }
 
     private void StartGraphAnimation()
