@@ -464,7 +464,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         });
 
         await AuthManager.ClearSessionAsync();
-        AppConfig.ApiBaseUrl = "https://obxodka.one/";
+        AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
 
         MainThread.BeginInvokeOnMainThread(() =>
         {

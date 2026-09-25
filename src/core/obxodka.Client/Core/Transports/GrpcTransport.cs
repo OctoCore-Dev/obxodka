@@ -87,10 +87,16 @@ public sealed partial class GrpcTransport(
                         return true;
                     }
                 }
+
+                if (string.Equals(cert2.Thumbprint, expectedPin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
             }
 
-            var isObxodkaDomain = cert2.Subject.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase);
-            if (!isObxodkaDomain)
+            var isTrustedDomain = cert2.Subject.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+                                  cert2.Subject.Contains("octocore.dev", StringComparison.OrdinalIgnoreCase);
+            if (!isTrustedDomain)
             {
                 foreach (var ext in cert2.Extensions)
                 {
@@ -99,21 +105,23 @@ public sealed partial class GrpcTransport(
                         foreach (var dns in sanExt.EnumerateDnsNames())
                         {
                             if (dns.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
-                                dns.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase))
+                                dns.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+                                dns.Equals("octocore.dev", StringComparison.OrdinalIgnoreCase) ||
+                                dns.EndsWith(".octocore.dev", StringComparison.OrdinalIgnoreCase))
                             {
-                                isObxodkaDomain = true;
+                                isTrustedDomain = true;
                                 break;
                             }
                         }
                     }
-                    if (isObxodkaDomain)
+                    if (isTrustedDomain)
                     {
                         break;
                     }
                 }
             }
 
-            if (isObxodkaDomain)
+            if (isTrustedDomain)
             {
 
                 var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
@@ -177,16 +185,14 @@ public sealed partial class GrpcTransport(
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _thumbprint = thumbprint;
         var serverPort = _serverPort;
-        var defaultSni = "obxodka.one";
+        var defaultSni = "api.octocore.dev";
         try
         {
             if (Uri.TryCreate(Config.AppConfig.ApiBaseUrl, UriKind.Absolute, out var apiUri) &&
                 !string.IsNullOrWhiteSpace(apiUri.Host) &&
                 !IPAddress.TryParse(apiUri.Host, out _))
             {
-                defaultSni = apiUri.Host.EndsWith("obxodka.one", StringComparison.OrdinalIgnoreCase)
-                    ? "obxodka.one"
-                    : apiUri.Host;
+                defaultSni = apiUri.Host;
             }
         }
         catch { }

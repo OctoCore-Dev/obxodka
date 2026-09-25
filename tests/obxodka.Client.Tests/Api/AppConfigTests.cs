@@ -12,9 +12,9 @@ public class AppConfigTests
     }
 
     [Theory]
-    [InlineData("api/Auth/me", "https://obxodka.one/api/Auth/me")]
-    [InlineData("/api/Auth/me", "https://obxodka.one/api/Auth/me")]
-    [InlineData("api/payment/generate", "https://obxodka.one/api/payment/generate")]
+    [InlineData("api/Auth/me", "https://api.octocore.dev/api/Auth/me")]
+    [InlineData("/api/Auth/me", "https://api.octocore.dev/api/Auth/me")]
+    [InlineData("api/payment/generate", "https://api.octocore.dev/api/payment/generate")]
     public void ApiUrlFormatsCorrectly(string endpoint, string expected)
     {
         AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;

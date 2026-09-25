@@ -130,7 +130,7 @@ public sealed record LikeResponse(int Likes);
 
 public sealed class HydraConfig
 {
-    public string ActiveBridge { get; set; } = "https://obxodka.one";
+    public string ActiveBridge { get; set; } = "https://api.octocore.dev";
     public DateTime UpdatedAt { get; set; }
 }
 

@@ -134,7 +134,16 @@ public sealed class DiscoveryService
         }
         catch { }
 
-        return "obxodka.one";
+        string[] candidateDomains = ["api.octocore.dev", "obxodka.one"];
+        foreach (var dom in candidateDomains)
+        {
+            if (await IsHostResolvableAsync(dom, ct).ConfigureAwait(false))
+            {
+                return dom;
+            }
+        }
+
+        return "45.63.117.29";
     }
 }
 
