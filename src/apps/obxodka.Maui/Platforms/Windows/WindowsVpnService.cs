@@ -962,6 +962,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         _isExplicitlyStopped = true;
         _cts?.Cancel();
+
+        if (CurrentState == AppVpnState.Disconnected && _adapter == null && !t_networkSettingsBoosted)
+        {
+            await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
+            return;
+        }
+
         UpdateState(AppVpnState.Disconnecting);
 
         if (!await _vpnGate.WaitAsync(3000))
@@ -992,7 +999,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 await DisableDnsLeakProtectionAsync();
                 await SetWindowsRoutesAsync(adapterName, serverIp, "", false);
-                await CleanupStaleRoutesAsync();
                 await RestoreOriginalNetworkSettingsAsync();
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");

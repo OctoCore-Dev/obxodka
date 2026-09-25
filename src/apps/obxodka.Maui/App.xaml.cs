@@ -6,6 +6,34 @@ internal sealed partial class App : Application
     public static event Action? WindowActivated;
     public static event Action? WindowDeactivated;
     public static bool PendingTileAction { get; set; }
+    private static int t_shutdownInitiated;
+    public static bool IsShutdownCompleted { get; private set; }
+
+    public static void InitiateGracefulBackgroundShutdown()
+    {
+        if (Interlocked.Exchange(ref t_shutdownInitiated, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
+                var relayTask = OctopusEngine.StopRelayAsync();
+                await Task.WhenAll(stopTask, relayTask).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
+            catch { }
+            finally
+            {
+                IsShutdownCompleted = true;
+                Environment.Exit(0);
+            }
+        });
+    }
+
 #if WINDOWS
     public static IntPtr MainWindowHandle { get; set; } = IntPtr.Zero;
     private static bool t_isConnectivityHooked;
@@ -132,22 +160,15 @@ internal sealed partial class App : Application
             Connectivity.Current.ConnectivityChanged += (_, e) => _ = e.NetworkAccess != NetworkAccess.Internet ? OctopusEngine.StopRelayAsync() : OctopusEngine.StartRelayIfEnabledAsync();
         }
 
-        window.Destroying += (_, _) =>
-        {
-            try
-            {
-                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
-                var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
-                var relayTask = OctopusEngine.StopRelayAsync();
-                _ = Task.WaitAll([stopTask, relayTask], TimeSpan.FromSeconds(2));
-            }
-            catch { }
-
-            Environment.Exit(0);
-        };
+        window.Destroying += (_, _) => InitiateGracefulBackgroundShutdown();
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
+            if (IsShutdownCompleted)
+            {
+                return;
+            }
+
             try
             {
                 var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();

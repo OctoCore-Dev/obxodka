@@ -1,4 +1,5 @@
 #if WINDOWS
+using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using obxodka.Maui.Platforms.Windows.Services;
@@ -15,6 +16,10 @@ internal static partial class MauiProgram
 #if WINDOWS
     [LibraryImport("user32.dll")]
     private static partial uint GetDpiForWindow(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
 #endif
 
     public static MauiApp CreateMauiApp()
@@ -222,33 +227,20 @@ internal static partial class MauiProgram
             }
         };
 
-        appWindow.Closing += (_, _) =>
+        appWindow.Closing += (sender, args) =>
         {
+            args.Cancel = true;
             try
             {
-                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
-                var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
-                var relayTask = OctopusEngine.StopRelayAsync();
-                _ = Task.WaitAll([stopTask, relayTask], TimeSpan.FromSeconds(2));
+                _ = ShowWindow(handle, 0);
+                sender.Hide();
             }
             catch { }
 
-            Environment.Exit(0);
+            App.InitiateGracefulBackgroundShutdown();
         };
 
-        window.Closed += (_, _) =>
-        {
-            try
-            {
-                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
-                var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
-                var relayTask = OctopusEngine.StopRelayAsync();
-                _ = Task.WaitAll([stopTask, relayTask], TimeSpan.FromSeconds(2));
-            }
-            catch { }
-
-            Environment.Exit(0);
-        };
+        window.Closed += (_, _) => App.InitiateGracefulBackgroundShutdown();
     }
 #endif
 }
