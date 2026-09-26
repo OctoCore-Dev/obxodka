@@ -313,6 +313,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 if (!string.IsNullOrEmpty(activeHost))
                 {
                     AppConfig.ApiBaseUrl = $"https://{activeHost}/";
+                    TabContentVpn.UpdateActiveNode(activeHost);
                     _ = SyncBalanceFromServerAsync();
                 }
             }
@@ -465,6 +466,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         await AuthManager.ClearSessionAsync();
         AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+        TabContentVpn.UpdateActiveNode();
 
         MainThread.BeginInvokeOnMainThread(() =>
         {

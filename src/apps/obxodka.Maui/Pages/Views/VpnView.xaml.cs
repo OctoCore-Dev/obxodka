@@ -39,6 +39,7 @@ public sealed partial class VpnView : ContentView
     private ApiService _apiService = null!;
     private bool _isBusy;
     private bool _isErrorState;
+    private string? _activeConnectedNode;
     private float _loaderAngle;
     private IDispatcherTimer? _loaderTimer;
     private IDispatcherTimer? _graphAnimTimer;
@@ -132,6 +133,7 @@ public sealed partial class VpnView : ContentView
     public void Initialize(MainPage parent, IVpnService vpnService, ApiService apiService)
     {
         UpdateRayIndicator();
+        UpdateActiveNode();
         _parent = parent;
         _vpnService = vpnService;
         _apiService = apiService;
@@ -148,6 +150,9 @@ public sealed partial class VpnView : ContentView
 
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         OctopusEngine.Current.OnTrafficUpdated += OnTrafficUpdated;
+
+        PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
+        PlatformServices.Notification.ReconnectRequested += HandleNotificationReconnect;
     }
 
     public void UnsubscribeEvents()
@@ -161,6 +166,7 @@ public sealed partial class VpnView : ContentView
 
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
+        PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
 
         StopLoaderAnimation();
         StopGraphAnimation();
@@ -347,6 +353,7 @@ public sealed partial class VpnView : ContentView
                     {
                         var candidateServers = await ProbeBestServerAsync(servers);
                         var targetServer = candidateServers.Count > 0 ? candidateServers[0] : servers[0];
+                        UpdateActiveNode(targetServer.Ip);
                         await _vpnService.StopVpnAsync();
                         await Task.Delay(250);
                         await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, candidateServers.Count > 0 ? candidateServers : servers);
@@ -396,6 +403,75 @@ public sealed partial class VpnView : ContentView
     private void HandleVpnLog(string logMsg) =>
         MainThread.BeginInvokeOnMainThread(() => StatusLabel.Text = logMsg);
 
+    private void HandleNotificationReconnect()
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            if (_parent is not null)
+            {
+                await _parent.SwitchTabAsync("vpn");
+            }
+
+            if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
+            {
+                OnConnectClickedAsync(null, EventArgs.Empty);
+            }
+        });
+    }
+
+    public void UpdateActiveNode(string? host = null)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!string.IsNullOrWhiteSpace(host))
+            {
+                _activeConnectedNode = host;
+            }
+
+            var displayHost = _activeConnectedNode;
+
+            if (string.IsNullOrWhiteSpace(displayHost))
+            {
+                displayHost = Uri.TryCreate(AppConfig.ApiBaseUrl, UriKind.Absolute, out var uri)
+                    ? uri.Host
+                    : AppConfig.ApiBaseUrl;
+            }
+
+            if (string.IsNullOrWhiteSpace(displayHost))
+            {
+                displayHost = "api.octocore.dev";
+            }
+
+            NodeHostLabel.Text = displayHost;
+        });
+    }
+
+    private void UpdateIpStatusDisplay(string text, Color textColor, Color iconColor)
+    {
+        IpAddressLabel.Text = text;
+        IpAddressLabel.TextColor = textColor;
+        IpStatusIcon.IconColor = iconColor;
+    }
+
+    private async void OnCardIpTappedAsync(object? sender, EventArgs e)
+    {
+        var ip = OctopusEngine.Current.AssignedIp;
+        if (!string.IsNullOrWhiteSpace(ip) && ip != "0.0.0.0")
+        {
+            await Clipboard.Default.SetTextAsync(ip);
+            var prevText = IpAddressLabel.Text;
+            var prevColor = IpAddressLabel.TextColor;
+            IpAddressLabel.Text = "Скопировано!";
+            IpAddressLabel.TextColor = t_greenText;
+            await Task.Delay(1200);
+            if (OctopusEngine.Current.IsConnected)
+            {
+                IpAddressLabel.Text = OctopusEngine.Current.AssignedIp ?? prevText;
+                IpAddressLabel.TextColor = prevColor;
+            }
+        }
+    }
+
     private void HandleVpnError(string err)
     {
         if (string.IsNullOrWhiteSpace(err) ||
@@ -409,10 +485,17 @@ public sealed partial class VpnView : ContentView
             return;
         }
 
+        PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
+
         var friendlyMessage = FormatUserFriendlyError(err);
 
         MainThread.BeginInvokeOnMainThread(async () =>
-            await _parent.DisplayAlertAsync("Сбой сети", friendlyMessage, "OK"));
+        {
+            if (DeviceInfo.Platform != DevicePlatform.WinUI)
+            {
+                await _parent.DisplayAlertAsync("Сбой сети", friendlyMessage, "OK");
+            }
+        });
     }
 
     private static string FormatUserFriendlyError(string rawError)
@@ -473,7 +556,7 @@ public sealed partial class VpnView : ContentView
         {
             if (OctopusEngine.Current is { IsConnected: true })
             {
-                IpAddressLabel.Text = OctopusEngine.Current.AssignedIp ?? "Подключен";
+                UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? "Подключен", Colors.White, t_cyanAccent);
                 PingValueLabel.Text = $"{rtt} ms";
                 if (rtt < 75)
                 {
@@ -515,7 +598,9 @@ public sealed partial class VpnView : ContentView
                     StopGraphAnimation();
                     ResetPingIndicators();
                     OuterAura.IsVisible = true;
-                    IpAddressLabel.Text = "IP: не назначен";
+                    UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
+                    _activeConnectedNode = null;
+                    UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
                     await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
                     _parent.NotifyVpnDisconnected();
@@ -526,7 +611,8 @@ public sealed partial class VpnView : ContentView
                     _isErrorState = false;
                     StartGraphAnimation();
                     OuterAura.IsVisible = true;
-                    IpAddressLabel.Text = OctopusEngine.Current.AssignedIp ?? "Подключен";
+                    UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? "Подключен", Colors.White, t_cyanAccent);
+                    UpdateActiveNode(_activeConnectedNode);
                     ConnectButtonCore.IsEnabled = true;
                     UpdateRayIndicator();
                     await SetNeonStateAsync("Защищено", "СТОП", AppVpnState.Connected);
@@ -540,8 +626,11 @@ public sealed partial class VpnView : ContentView
                     StopGraphAnimation();
                     ResetPingIndicators();
                     OuterAura.IsVisible = true;
-                    IpAddressLabel.Text = "IP: не назначен";
+                    UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
+                    _activeConnectedNode = null;
+                    UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
+                    PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
                     await SetNeonStateAsync("Ошибка", "ПОВТОРИТЬ", AppVpnState.Error);
                     _parent.NotifyVpnDisconnected();
                     break;
@@ -552,7 +641,7 @@ public sealed partial class VpnView : ContentView
                     ResetPingIndicators();
                     StartLoaderAnimation();
                     ConnectButtonCore.IsEnabled = false;
-                    IpAddressLabel.Text = "IP: получение...";
+                    UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
                     await SetNeonStateAsync("Подключение...", "ЖДИТЕ", state);
                     break;
 
@@ -560,7 +649,7 @@ public sealed partial class VpnView : ContentView
                     StopGraphAnimation();
                     ResetPingIndicators();
                     ConnectButtonCore.IsEnabled = false;
-                    IpAddressLabel.Text = "IP: отключение...";
+                    UpdateIpStatusDisplay("Отключение...", t_grayText, t_grayText);
                     StatusLabel.Text = "Отключение...";
                     ConnectButtonText.Text = "ЖДИТЕ";
                     _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
@@ -725,7 +814,7 @@ public sealed partial class VpnView : ContentView
 
             StartLoaderAnimation();
             ConnectButtonCore.IsEnabled = false;
-            IpAddressLabel.Text = "IP: получение...";
+            UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
             await SetNeonStateAsync("Подключение...", "ЖДИТЕ", AppVpnState.Connecting);
 
             try
@@ -768,6 +857,7 @@ public sealed partial class VpnView : ContentView
             }
 
             var targetServer = candidateServers[0];
+            UpdateActiveNode(targetServer.Ip);
             if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
             {
                 OctopusEngine.DynamicSslPublicKeyHash = targetServer.CertHash;
@@ -788,7 +878,7 @@ public sealed partial class VpnView : ContentView
             Debug.WriteLine($"[VPN CONNECT ERROR] {ex.Message}");
             StopLoaderAnimation();
             ConnectButtonCore.IsEnabled = true;
-            IpAddressLabel.Text = "IP: не назначен";
+            UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
             await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
             var friendlyMsg = ex is SocketException or InvalidOperationException
                 ? ex.Message

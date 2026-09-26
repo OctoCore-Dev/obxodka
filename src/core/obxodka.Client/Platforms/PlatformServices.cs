@@ -8,6 +8,7 @@ public static class PlatformServices
     private static IMainThreadService t_mainThread = new DefaultMainThreadService();
     private static IDeviceInfoService t_deviceInfo = new DefaultDeviceInfoService();
     private static ICertificateAuditService t_certificateAudit = new DefaultCertificateAuditService();
+    private static INotificationService t_notification = new DefaultNotificationService();
 
     public static IPreferencesService Preferences
     {
@@ -45,13 +46,20 @@ public static class PlatformServices
         set => t_certificateAudit = value ?? new DefaultCertificateAuditService();
     }
 
+    public static INotificationService Notification
+    {
+        get => t_notification;
+        set => t_notification = value ?? new DefaultNotificationService();
+    }
+
     public static void Init(
         IPreferencesService? preferences = null,
         ISecureStorageService? secureStorage = null,
         IConnectivityService? connectivity = null,
         IMainThreadService? mainThread = null,
         IDeviceInfoService? deviceInfo = null,
-        ICertificateAuditService? certificateAudit = null)
+        ICertificateAuditService? certificateAudit = null,
+        INotificationService? notification = null)
     {
         if (preferences is not null)
         {
@@ -81,6 +89,11 @@ public static class PlatformServices
         if (certificateAudit is not null)
         {
             t_certificateAudit = certificateAudit;
+        }
+
+        if (notification is not null)
+        {
+            t_notification = notification;
         }
     }
 }
@@ -213,4 +226,17 @@ public sealed class DefaultCertificateAuditService : ICertificateAuditService
     public Task OpenCertificateSettingsAsync() => Task.CompletedTask;
 
     public Task<bool> TryRemoveUserCertificateAsync(string thumbprint) => Task.FromResult(false);
+}
+
+public sealed class DefaultNotificationService : INotificationService
+{
+    public void ShowUnexpectedDisconnectNotification() { }
+
+    public void RequestReconnect() { }
+
+    public event Action? ReconnectRequested
+    {
+        add { }
+        remove { }
+    }
 }

@@ -75,7 +75,8 @@ internal static partial class MauiProgram
                 connectivity: new WindowsConnectivityService(),
                 mainThread: new MauiMainThreadService(),
                 deviceInfo: new WindowsDeviceInfoService(),
-                certificateAudit: new WindowsCertificateAuditService());
+                certificateAudit: new WindowsCertificateAuditService(),
+                notification: new WindowsNotificationService());
 
             builder.Services.AddSingleton<IVpnService, WindowsVpnService>();
             builder.Services.AddSingleton<IAppManager, AppManager>();
