@@ -625,6 +625,7 @@ public sealed partial class VpnView : ContentView
                     _activeConnectedNode = null;
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
+                    PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
                     await SetNeonStateAsync("Ошибка", "ПОВТОРИТЬ", AppVpnState.Error);
                     _parent.NotifyVpnDisconnected();
                     break;

@@ -30,6 +30,32 @@ public sealed partial class WindowsNotificationService : INotificationService
         try
         {
             _ = SetCurrentProcessExplicitAppUserModelID("com.octocore.obxodka");
+
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\AppUserModelId\com.octocore.obxodka");
+            key?.SetValue("DisplayName", "Obxodka", Microsoft.Win32.RegistryValueKind.String);
+            key?.SetValue("ShowInSettings", 1, Microsoft.Win32.RegistryValueKind.DWord);
+            if (Environment.ProcessPath is { } exePath)
+            {
+                key?.SetValue("IconUri", exePath, Microsoft.Win32.RegistryValueKind.String);
+            }
+
+            var programsPath = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+            var shortcutPath = System.IO.Path.Combine(programsPath, "Obxodka.lnk");
+            if (!System.IO.File.Exists(shortcutPath) && Environment.ProcessPath is { } targetExe)
+            {
+                var type = Type.GetTypeFromProgID("WScript.Shell");
+                if (type != null)
+                {
+                    dynamic? shell = Activator.CreateInstance(type);
+                    if (shell != null)
+                    {
+                        var link = shell.CreateShortcut(shortcutPath);
+                        link.TargetPath = targetExe;
+                        link.Save();
+                    }
+                }
+            }
+
             t_aumidConfigured = true;
         }
         catch { }
@@ -38,7 +64,7 @@ public sealed partial class WindowsNotificationService : INotificationService
     public void ShowUnexpectedDisconnectNotification()
     {
         var now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref t_lastNotificationTicks) < 5000)
+        if (now - Interlocked.Read(ref t_lastNotificationTicks) < 3000)
         {
             return;
         }
@@ -49,16 +75,17 @@ public sealed partial class WindowsNotificationService : INotificationService
             EnsureAumid();
 
             var xml = """
-            <toast duration="long">
+            <toast scenario="reminder" duration="long">
                 <visual>
                     <binding template="ToastGeneric">
                         <text>Внезапное отключение</text>
-                        <text>Желаете переподключиться?</text>
+                        <text>Связь с сервером потеряна. Желаете переподключиться?</text>
                     </binding>
                 </visual>
                 <actions>
                     <action content="Переподключиться" arguments="reconnect" activationType="foreground"/>
                 </actions>
+                <audio src="ms-winsoundevent:Notification.Default"/>
             </toast>
             """;
 
