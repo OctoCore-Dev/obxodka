@@ -64,7 +64,7 @@ public sealed partial class FechsueTransport : IVpnTransport
 
     public async Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct)
     {
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _cts = new CancellationTokenSource();
         Thumbprint = thumbprint;
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(thumbprint));
         _key = hash;
@@ -161,7 +161,8 @@ public sealed partial class FechsueTransport : IVpnTransport
                 }
             }
 
-            var completed = await Task.WhenAny(ipTcs.Task, Task.Delay(300, ct));
+            using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
+            var completed = await Task.WhenAny(ipTcs.Task, Task.Delay(300, stepCts.Token));
             if (completed == ipTcs.Task)
             {
                 Debug.WriteLine("[FECHSUE] Auth response received successfully!");
@@ -172,7 +173,8 @@ public sealed partial class FechsueTransport : IVpnTransport
         if (!ipTcs.Task.IsCompleted)
         {
             Debug.WriteLine("[FECHSUE] Initial 20 attempts finished without response. Final 2s timeout wait...");
-            var timeoutTask = await Task.WhenAny(ipTcs.Task, Task.Delay(2000, ct));
+            using var finalCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
+            var timeoutTask = await Task.WhenAny(ipTcs.Task, Task.Delay(2000, finalCts.Token));
             if (timeoutTask != ipTcs.Task)
             {
                 Debug.WriteLine($"[FECHSUE TIMEOUT] Server {_serverEp} did not reply to UDP auth handshake!");
