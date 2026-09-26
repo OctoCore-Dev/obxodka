@@ -56,15 +56,15 @@
                         VerticalOptions="Fill">
                         <Border
                             x:Name="CardIp"
-                            Padding="{OnIdiom Desktop='16',
+                            Padding="{OnIdiom Desktop='16,12',
                                               Phone='14,10',
-                                              Default='16'}"
+                                              Default='16,12'}"
                             Style="{StaticResource NeoCard}"
                             VerticalOptions="Fill">
-                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                            <Grid ColumnDefinitions="Auto, Auto, *, Auto" ColumnSpacing="8">
                                 <HorizontalStackLayout
                                     Grid.Column="0"
-                                    Spacing="8"
+                                    Spacing="6"
                                     VerticalOptions="Center">
                                     <mi:MauiIcon
                                         Icon="{mi:Fluent Icon=Earth24}"
@@ -77,9 +77,37 @@
                                         Text="IP Адрес" />
                                 </HorizontalStackLayout>
 
+                                <Border
+                                    x:Name="NodeBadge"
+                                    Grid.Column="1"
+                                    Margin="{OnIdiom Desktop='6,0,0,0', Phone='2,0,0,0'}"
+                                    Padding="7,2"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    Stroke="{DynamicResource BorderMedium}"
+                                    StrokeShape="RoundRectangle 6"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <mi:MauiIcon
+                                            x:Name="NodeIcon"
+                                            Icon="{mi:Fluent Icon=Server24}"
+                                            IconColor="{DynamicResource Accent}"
+                                            IconSize="11"
+                                            VerticalOptions="Center" />
+                                        <Label
+                                            x:Name="NodeHostLabel"
+                                            FontFamily="{DynamicResource AppFontMedium}"
+                                            FontSize="11"
+                                            LineBreakMode="TailTruncation"
+                                            Text="api.octocore.dev"
+                                            TextColor="{DynamicResource TextSecondary}"
+                                            VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
                                 <Label
                                     x:Name="IpAddressLabel"
-                                    Grid.Column="1"
+                                    Grid.Column="2"
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HorizontalOptions="End"
@@ -91,7 +119,7 @@
 
                                 <Border
                                     x:Name="PingBadge"
-                                    Grid.Column="2"
+                                    Grid.Column="3"
                                     Padding="7,2"
                                     BackgroundColor="{DynamicResource SuccessDim}"
                                     Stroke="{DynamicResource Success}"

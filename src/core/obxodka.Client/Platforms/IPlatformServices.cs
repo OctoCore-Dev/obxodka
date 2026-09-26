@@ -70,6 +70,12 @@ public interface ICertificateAuditService
     public Task<bool> TryRemoveUserCertificateAsync(string thumbprint);
 }
 
+public interface INotificationService
+{
+    public void ShowUnexpectedDisconnectNotification();
+    public event Action? ReconnectRequested;
+}
+
 public sealed record CertificateAuditResult(bool HasUntrustedRoot, string? CertificateName, string? Thumbprint, string? Details);
 
 public sealed class AppConnectivityChangedEventArgs(AppNetworkAccess networkAccess, IEnumerable<AppConnectionProfile> connectionProfiles) : EventArgs
