@@ -127,8 +127,31 @@ public sealed partial class WindowsNotificationService : INotificationService
 
         try
         {
+            if (Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
+            {
+                var notification = new Microsoft.Windows.AppNotifications.Builder.AppNotificationBuilder()
+                    .SetScenario(Microsoft.Windows.AppNotifications.Builder.AppNotificationScenario.Reminder)
+                    .AddText("Внезапное отключение")
+                    .AddText("Связь с сервером потеряна. Желаете переподключиться?")
+                    .AddButton(new Microsoft.Windows.AppNotifications.Builder.AppNotificationButton("Переподключиться")
+                        .AddArgument("action", "reconnect"))
+                    .BuildNotification();
+
+                Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notification);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[APP NOTIFICATION BUILDER ERROR] {ex.Message}");
+        }
+
+        try
+        {
+            EnsureAumid();
+
             var xml = """
-            <toast scenario="reminder" duration="long" launch="action=reconnect" activationType="background">
+            <toast scenario="reminder" duration="long">
                 <visual>
                     <binding template="ToastGeneric">
                         <text>Внезапное отключение</text>
@@ -136,56 +159,29 @@ public sealed partial class WindowsNotificationService : INotificationService
                     </binding>
                 </visual>
                 <actions>
-                    <action content="Переподключиться" arguments="action=reconnect" activationType="background"/>
+                    <action content="Переподключиться" arguments="reconnect" activationType="foreground"/>
                 </actions>
                 <audio src="ms-winsoundevent:Notification.Default"/>
             </toast>
             """;
 
-            if (IsPackaged())
+            var xmlDoc = new global::Windows.Data.Xml.Dom.XmlDocument();
+            xmlDoc.LoadXml(xml);
+            var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
+            AttachToastHandlers(toast);
+            t_activeToast = toast;
+
+            global::Windows.UI.Notifications.ToastNotifier notifier;
+            try
             {
-                try
-                {
-                    if (Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
-                    {
-                        var notif = new Microsoft.Windows.AppNotifications.AppNotification(xml);
-                        Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notif);
-                        return;
-                    }
-                }
-                catch { }
-
-                var xmlDoc = new global::Windows.Data.Xml.Dom.XmlDocument();
-                xmlDoc.LoadXml(xml);
-                var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
-                AttachToastHandlers(toast);
-                t_activeToast = toast;
-
-                var notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
-                notifier.Show(toast);
+                notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("com.octocore.obxodka");
             }
-            else
+            catch
             {
-                EnsureAumid();
-
-                var xmlDoc = new global::Windows.Data.Xml.Dom.XmlDocument();
-                xmlDoc.LoadXml(xml);
-                var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
-                AttachToastHandlers(toast);
-                t_activeToast = toast;
-
-                global::Windows.UI.Notifications.ToastNotifier notifier;
-                try
-                {
-                    notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("com.octocore.obxodka");
-                }
-                catch
-                {
-                    notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
-                }
-
-                notifier.Show(toast);
+                notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
             }
+
+            notifier.Show(toast);
         }
         catch (Exception ex)
         {
