@@ -7,7 +7,6 @@ using Microsoft.Maui.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using obxodka.Client.Platforms;
-using obxodka.Maui.Platforms.Windows.Services;
 
 namespace obxodka.WinUI;
 
@@ -24,8 +23,6 @@ public sealed partial class App : MauiWinUIApplication
 
     public App()
     {
-        WindowsNotificationService.EnsureAppSdkRegistered();
-
         var mainInstance = AppInstance.FindOrRegisterForKey("obxodka_main_instance");
         if (!mainInstance.IsCurrent)
         {
@@ -70,17 +67,8 @@ public sealed partial class App : MauiWinUIApplication
 
         try
         {
-            if (args.Kind == ExtendedActivationKind.AppNotification &&
-                args.Data is Microsoft.Windows.AppNotifications.AppNotificationActivatedEventArgs notifArgs)
-            {
-                if ((notifArgs.Arguments.TryGetValue("action", out var action) && action == "reconnect") ||
-                    notifArgs.Arguments.ContainsKey("reconnect"))
-                {
-                    PlatformServices.Notification.RequestReconnect();
-                }
-            }
-            else if (args.Kind == ExtendedActivationKind.ToastNotification &&
-                     args.Data is Windows.ApplicationModel.Activation.ToastNotificationActivatedEventArgs toastArgs)
+            if (args.Kind == ExtendedActivationKind.ToastNotification &&
+                args.Data is Windows.ApplicationModel.Activation.ToastNotificationActivatedEventArgs toastArgs)
             {
                 if (toastArgs.Argument.Contains("reconnect"))
                 {
@@ -90,7 +78,7 @@ public sealed partial class App : MauiWinUIApplication
             else if (args.Kind == ExtendedActivationKind.Launch &&
                      args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs)
             {
-                if (launchArgs.Arguments.Contains("reconnect"))
+                if (launchArgs.Arguments.Contains("reconnect") || launchArgs.Arguments.Contains("ToastActivated"))
                 {
                     PlatformServices.Notification.RequestReconnect();
                 }

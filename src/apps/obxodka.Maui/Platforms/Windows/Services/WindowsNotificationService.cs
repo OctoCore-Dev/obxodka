@@ -16,51 +16,31 @@ public sealed partial class WindowsNotificationService : INotificationService
 
     private static global::Windows.UI.Notifications.ToastNotification? t_activeToast;
     private static long t_lastNotificationTicks;
+    private static long t_lastReconnectTicks;
     private static bool t_aumidConfigured;
-    private static bool t_appSdkHandlerRegistered;
 
     public event Action? ReconnectRequested;
 
-    public WindowsNotificationService() => EnsureAppSdkRegistered();
-
-    public void RequestReconnect() =>
-        PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
-
-    public static void EnsureAppSdkRegistered()
+    public void RequestReconnect()
     {
-        if (t_appSdkHandlerRegistered)
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref t_lastReconnectTicks) < 2000)
         {
             return;
         }
+        _ = Interlocked.Exchange(ref t_lastReconnectTicks, now);
 
-        try
+        if (App.MainWindowHandle != IntPtr.Zero)
         {
-            if (Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
+            try
             {
-                var manager = Microsoft.Windows.AppNotifications.AppNotificationManager.Default;
-                manager.NotificationInvoked += (sender, args) =>
-                {
-                    if (App.MainWindowHandle != IntPtr.Zero)
-                    {
-                        try
-                        {
-                            _ = ShowWindow(App.MainWindowHandle, 9);
-                            _ = SetForegroundWindow(App.MainWindowHandle);
-                        }
-                        catch { }
-                    }
-
-                    if ((args.Arguments.TryGetValue("action", out var action) && action == "reconnect") ||
-                        args.Arguments.ContainsKey("reconnect"))
-                    {
-                        PlatformServices.Notification.RequestReconnect();
-                    }
-                };
-                manager.Register();
-                t_appSdkHandlerRegistered = true;
+                _ = ShowWindow(App.MainWindowHandle, 9);
+                _ = SetForegroundWindow(App.MainWindowHandle);
             }
+            catch { }
         }
-        catch { }
+
+        PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
     }
 
     private static bool IsPackaged()
@@ -127,29 +107,6 @@ public sealed partial class WindowsNotificationService : INotificationService
 
         try
         {
-            if (Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
-            {
-                var notification = new Microsoft.Windows.AppNotifications.Builder.AppNotificationBuilder()
-                    .SetScenario(Microsoft.Windows.AppNotifications.Builder.AppNotificationScenario.Reminder)
-                    .AddText("Внезапное отключение")
-                    .AddText("Связь с сервером потеряна. Желаете переподключиться?")
-                    .AddButton(new Microsoft.Windows.AppNotifications.Builder.AppNotificationButton("Переподключиться")
-                        .AddArgument("action", "reconnect"))
-                    .BuildNotification();
-
-                Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notification);
-                return;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[APP NOTIFICATION BUILDER ERROR] {ex.Message}");
-        }
-
-        try
-        {
-            EnsureAumid();
-
             var xml = """
             <toast scenario="reminder" duration="long">
                 <visual>
@@ -172,13 +129,21 @@ public sealed partial class WindowsNotificationService : INotificationService
             t_activeToast = toast;
 
             global::Windows.UI.Notifications.ToastNotifier notifier;
-            try
-            {
-                notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("com.octocore.obxodka");
-            }
-            catch
+            if (IsPackaged())
             {
                 notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
+            }
+            else
+            {
+                EnsureAumid();
+                try
+                {
+                    notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("com.octocore.obxodka");
+                }
+                catch
+                {
+                    notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
+                }
             }
 
             notifier.Show(toast);
@@ -193,18 +158,8 @@ public sealed partial class WindowsNotificationService : INotificationService
     {
         toast.Activated += (sender, args) =>
         {
-            if (App.MainWindowHandle != IntPtr.Zero)
-            {
-                try
-                {
-                    _ = ShowWindow(App.MainWindowHandle, 9);
-                    _ = SetForegroundWindow(App.MainWindowHandle);
-                }
-                catch { }
-            }
-
             if (args is global::Windows.UI.Notifications.ToastActivatedEventArgs toastArgs &&
-                (toastArgs.Arguments == "reconnect" || toastArgs.Arguments == "action=reconnect" || toastArgs.Arguments.Contains("reconnect")))
+                (toastArgs.Arguments == "reconnect" || toastArgs.Arguments.Contains("reconnect")))
             {
                 PlatformServices.Notification.RequestReconnect();
             }
