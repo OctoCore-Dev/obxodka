@@ -405,8 +405,13 @@ public sealed partial class VpnView : ContentView
 
     private void HandleNotificationReconnect()
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        MainThread.BeginInvokeOnMainThread(async () =>
         {
+            if (_parent is not null)
+            {
+                await _parent.SwitchTabAsync("vpn");
+            }
+
             if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
             {
                 OnConnectClickedAsync(null, EventArgs.Empty);

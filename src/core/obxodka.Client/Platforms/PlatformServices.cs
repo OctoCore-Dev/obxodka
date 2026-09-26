@@ -232,6 +232,8 @@ public sealed class DefaultNotificationService : INotificationService
 {
     public void ShowUnexpectedDisconnectNotification() { }
 
+    public void RequestReconnect() { }
+
     public event Action? ReconnectRequested
     {
         add { }

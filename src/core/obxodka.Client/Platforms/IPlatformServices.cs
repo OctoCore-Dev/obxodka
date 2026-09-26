@@ -73,6 +73,7 @@ public interface ICertificateAuditService
 public interface INotificationService
 {
     public void ShowUnexpectedDisconnectNotification();
+    public void RequestReconnect();
     public event Action? ReconnectRequested;
 }
 

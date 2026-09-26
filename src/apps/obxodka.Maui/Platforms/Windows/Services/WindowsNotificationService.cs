@@ -21,9 +21,12 @@ public sealed partial class WindowsNotificationService : INotificationService
 
     public event Action? ReconnectRequested;
 
-    public WindowsNotificationService() => RegisterAppSdkNotificationHandler();
+    public WindowsNotificationService() => EnsureAppSdkRegistered();
 
-    private void RegisterAppSdkNotificationHandler()
+    public void RequestReconnect() =>
+        PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
+
+    public static void EnsureAppSdkRegistered()
     {
         if (t_appSdkHandlerRegistered)
         {
@@ -32,9 +35,9 @@ public sealed partial class WindowsNotificationService : INotificationService
 
         try
         {
-            if (global::Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
+            if (Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
             {
-                var manager = global::Microsoft.Windows.AppNotifications.AppNotificationManager.Default;
+                var manager = Microsoft.Windows.AppNotifications.AppNotificationManager.Default;
                 manager.NotificationInvoked += (sender, args) =>
                 {
                     if (App.MainWindowHandle != IntPtr.Zero)
@@ -50,7 +53,7 @@ public sealed partial class WindowsNotificationService : INotificationService
                     if ((args.Arguments.TryGetValue("action", out var action) && action == "reconnect") ||
                         args.Arguments.ContainsKey("reconnect"))
                     {
-                        PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
+                        PlatformServices.Notification.RequestReconnect();
                     }
                 };
                 manager.Register();
@@ -92,8 +95,8 @@ public sealed partial class WindowsNotificationService : INotificationService
             }
 
             var programsPath = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-            var shortcutPath = System.IO.Path.Combine(programsPath, "Obxodka.lnk");
-            if (!System.IO.File.Exists(shortcutPath) && Environment.ProcessPath is { } targetExe)
+            var shortcutPath = Path.Combine(programsPath, "Obxodka.lnk");
+            if (!File.Exists(shortcutPath) && Environment.ProcessPath is { } targetExe)
             {
                 var type = Type.GetTypeFromProgID("WScript.Shell");
                 if (type != null)
@@ -125,7 +128,7 @@ public sealed partial class WindowsNotificationService : INotificationService
         try
         {
             var xml = """
-            <toast scenario="reminder" duration="long">
+            <toast scenario="reminder" duration="long" launch="action=reconnect" activationType="background">
                 <visual>
                     <binding template="ToastGeneric">
                         <text>Внезапное отключение</text>
@@ -133,7 +136,7 @@ public sealed partial class WindowsNotificationService : INotificationService
                     </binding>
                 </visual>
                 <actions>
-                    <action content="Переподключиться" arguments="reconnect" activationType="foreground"/>
+                    <action content="Переподключиться" arguments="action=reconnect" activationType="background"/>
                 </actions>
                 <audio src="ms-winsoundevent:Notification.Default"/>
             </toast>
@@ -143,10 +146,10 @@ public sealed partial class WindowsNotificationService : INotificationService
             {
                 try
                 {
-                    if (global::Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
+                    if (Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
                     {
-                        var notif = new global::Microsoft.Windows.AppNotifications.AppNotification(xml);
-                        global::Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notif);
+                        var notif = new Microsoft.Windows.AppNotifications.AppNotification(xml);
+                        Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notif);
                         return;
                     }
                 }
@@ -190,7 +193,7 @@ public sealed partial class WindowsNotificationService : INotificationService
         }
     }
 
-    private void AttachToastHandlers(global::Windows.UI.Notifications.ToastNotification toast)
+    private static void AttachToastHandlers(global::Windows.UI.Notifications.ToastNotification toast)
     {
         toast.Activated += (sender, args) =>
         {
@@ -205,9 +208,9 @@ public sealed partial class WindowsNotificationService : INotificationService
             }
 
             if (args is global::Windows.UI.Notifications.ToastActivatedEventArgs toastArgs &&
-                toastArgs.Arguments == "reconnect")
+                (toastArgs.Arguments == "reconnect" || toastArgs.Arguments == "action=reconnect" || toastArgs.Arguments.Contains("reconnect")))
             {
-                PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
+                PlatformServices.Notification.RequestReconnect();
             }
         };
     }
