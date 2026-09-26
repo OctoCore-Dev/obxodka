@@ -132,7 +132,7 @@
 
 	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />
 
-	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and $(TargetFramework.Contains('-windows')) and Exists('Platforms\Windows\Package.appxmanifest')">
+	<Target Name="SyncManifestVersion" BeforeTargets="BeforeBuild;BeforeRebuild;BeforePublish;_GenerateAppxManifest;PrepareForBuild" Condition="'$(IsWindows)' == 'true' and Exists('Platforms\Windows\Package.appxmanifest')">
 		<XmlPoke
 			XmlInputPath="Platforms\Windows\Package.appxmanifest"
 			Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10'/&gt;"

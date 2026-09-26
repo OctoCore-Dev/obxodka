@@ -423,6 +423,12 @@ public sealed partial class VpnView : ContentView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            if (_vpnService.CurrentState == AppVpnState.Disconnected)
+            {
+                NodeHostLabel.Text = "Нет подключения";
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(host))
             {
                 _activeConnectedNode = host;
@@ -439,7 +445,7 @@ public sealed partial class VpnView : ContentView
 
             if (string.IsNullOrWhiteSpace(displayHost))
             {
-                displayHost = "api.octocore.dev";
+                displayHost = "obxodka.one";
             }
 
             NodeHostLabel.Text = displayHost;
@@ -642,6 +648,7 @@ public sealed partial class VpnView : ContentView
                     StartLoaderAnimation();
                     ConnectButtonCore.IsEnabled = false;
                     UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
+                    UpdateActiveNode();
                     await SetNeonStateAsync("Подключение...", "ЖДИТЕ", state);
                     break;
 
@@ -650,6 +657,7 @@ public sealed partial class VpnView : ContentView
                     ResetPingIndicators();
                     ConnectButtonCore.IsEnabled = false;
                     UpdateIpStatusDisplay("Отключение...", t_grayText, t_grayText);
+                    NodeHostLabel.Text = "Отключение...";
                     StatusLabel.Text = "Отключение...";
                     ConnectButtonText.Text = "ЖДИТЕ";
                     _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
@@ -844,9 +852,9 @@ public sealed partial class VpnView : ContentView
             if (!success || servers is null || servers.Count == 0)
             {
                 servers = [
-                    new VpnServerDto("api.octocore.dev", 443, "Основной узел (Cloudflare)", true, 10, null),
-                    new VpnServerDto("obxodka.one", 443, "Основной узел (Резервный)", true, 15, null),
-                    new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 20, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
+                    new VpnServerDto("obxodka.one", 443, "Основной узел (Домен)", true, 10, null),
+                    new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 12, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="),
+                    new VpnServerDto("api.octocore.dev", 443, "Резервный узел (Cloudflare)", true, 15, null)
                 ];
             }
 
@@ -952,9 +960,9 @@ public sealed partial class VpnView : ContentView
             }
         }
         catch { }
-        fallbackCandidates.Add("api.octocore.dev");
         fallbackCandidates.Add("obxodka.one");
         fallbackCandidates.Add("45.63.117.29");
+        fallbackCandidates.Add("api.octocore.dev");
 
         foreach (var fbHost in fallbackCandidates.Distinct())
         {
