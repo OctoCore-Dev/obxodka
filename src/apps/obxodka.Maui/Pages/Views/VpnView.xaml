@@ -134,7 +134,7 @@
                                                 FontSize="11"
                                                 LineBreakMode="TailTruncation"
                                                 MaximumWidthRequest="130"
-                                                Text="api.octocore.dev"
+                                                Text="Нет подключения"
                                                 TextColor="{DynamicResource TextSecondary}"
                                                 VerticalOptions="Center" />
                                         </HorizontalStackLayout>

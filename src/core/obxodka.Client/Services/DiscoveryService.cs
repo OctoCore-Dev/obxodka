@@ -134,7 +134,7 @@ public sealed class DiscoveryService
         }
         catch { }
 
-        string[] candidateDomains = ["api.octocore.dev", "obxodka.one"];
+        string[] candidateDomains = ["obxodka.one", "api.octocore.dev"];
         foreach (var dom in candidateDomains)
         {
             if (await IsHostResolvableAsync(dom, ct).ConfigureAwait(false))

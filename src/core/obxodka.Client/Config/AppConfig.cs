@@ -2,8 +2,8 @@ namespace obxodka.Config;
 
 public static class AppConfig
 {
-    public const string DefaultApiBaseUrl = "https://api.octocore.dev/";
-    public const string LegacyApiBaseUrl = "https://obxodka.one/";
+    public const string DefaultApiBaseUrl = "https://obxodka.one/";
+    public const string LegacyApiBaseUrl = "https://api.octocore.dev/";
     public const string DirectServerIp = "45.63.117.29";
     public const string DirectApiBaseUrl = "https://45.63.117.29/";
 
