@@ -17,12 +17,64 @@ public sealed partial class WindowsNotificationService : INotificationService
     private static global::Windows.UI.Notifications.ToastNotification? t_activeToast;
     private static long t_lastNotificationTicks;
     private static bool t_aumidConfigured;
+    private static bool t_appSdkHandlerRegistered;
 
     public event Action? ReconnectRequested;
 
+    public WindowsNotificationService() => RegisterAppSdkNotificationHandler();
+
+    private void RegisterAppSdkNotificationHandler()
+    {
+        if (t_appSdkHandlerRegistered)
+        {
+            return;
+        }
+
+        try
+        {
+            if (global::Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
+            {
+                var manager = global::Microsoft.Windows.AppNotifications.AppNotificationManager.Default;
+                manager.NotificationInvoked += (sender, args) =>
+                {
+                    if (App.MainWindowHandle != IntPtr.Zero)
+                    {
+                        try
+                        {
+                            _ = ShowWindow(App.MainWindowHandle, 9);
+                            _ = SetForegroundWindow(App.MainWindowHandle);
+                        }
+                        catch { }
+                    }
+
+                    if ((args.Arguments.TryGetValue("action", out var action) && action == "reconnect") ||
+                        args.Arguments.ContainsKey("reconnect"))
+                    {
+                        PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
+                    }
+                };
+                manager.Register();
+                t_appSdkHandlerRegistered = true;
+            }
+        }
+        catch { }
+    }
+
+    private static bool IsPackaged()
+    {
+        try
+        {
+            return global::Windows.ApplicationModel.Package.Current?.Id != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static void EnsureAumid()
     {
-        if (t_aumidConfigured)
+        if (t_aumidConfigured || IsPackaged())
         {
             return;
         }
@@ -72,8 +124,6 @@ public sealed partial class WindowsNotificationService : INotificationService
 
         try
         {
-            EnsureAumid();
-
             var xml = """
             <toast scenario="reminder" duration="long">
                 <visual>
@@ -89,46 +139,76 @@ public sealed partial class WindowsNotificationService : INotificationService
             </toast>
             """;
 
-            var xmlDoc = new global::Windows.Data.Xml.Dom.XmlDocument();
-            xmlDoc.LoadXml(xml);
-
-            var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
-            toast.Activated += (sender, args) =>
+            if (IsPackaged())
             {
-                if (App.MainWindowHandle != IntPtr.Zero)
+                try
                 {
-                    try
+                    if (global::Microsoft.Windows.AppNotifications.AppNotificationManager.IsSupported())
                     {
-                        _ = ShowWindow(App.MainWindowHandle, 9);
-                        _ = SetForegroundWindow(App.MainWindowHandle);
+                        var notif = new global::Microsoft.Windows.AppNotifications.AppNotification(xml);
+                        global::Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notif);
+                        return;
                     }
-                    catch { }
                 }
+                catch { }
 
-                if (args is global::Windows.UI.Notifications.ToastActivatedEventArgs toastArgs &&
-                    toastArgs.Arguments == "reconnect")
+                var xmlDoc = new global::Windows.Data.Xml.Dom.XmlDocument();
+                xmlDoc.LoadXml(xml);
+                var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
+                AttachToastHandlers(toast);
+                t_activeToast = toast;
+
+                var notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
+                notifier.Show(toast);
+            }
+            else
+            {
+                EnsureAumid();
+
+                var xmlDoc = new global::Windows.Data.Xml.Dom.XmlDocument();
+                xmlDoc.LoadXml(xml);
+                var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
+                AttachToastHandlers(toast);
+                t_activeToast = toast;
+
+                global::Windows.UI.Notifications.ToastNotifier notifier;
+                try
                 {
-                    PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
+                    notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("com.octocore.obxodka");
                 }
-            };
+                catch
+                {
+                    notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
+                }
 
-            t_activeToast = toast;
-
-            global::Windows.UI.Notifications.ToastNotifier notifier;
-            try
-            {
-                notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("com.octocore.obxodka");
+                notifier.Show(toast);
             }
-            catch
-            {
-                notifier = global::Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier();
-            }
-
-            notifier.Show(toast);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[TOAST NOTIFICATION ERROR] {ex.Message}");
         }
+    }
+
+    private void AttachToastHandlers(global::Windows.UI.Notifications.ToastNotification toast)
+    {
+        toast.Activated += (sender, args) =>
+        {
+            if (App.MainWindowHandle != IntPtr.Zero)
+            {
+                try
+                {
+                    _ = ShowWindow(App.MainWindowHandle, 9);
+                    _ = SetForegroundWindow(App.MainWindowHandle);
+                }
+                catch { }
+            }
+
+            if (args is global::Windows.UI.Notifications.ToastActivatedEventArgs toastArgs &&
+                toastArgs.Arguments == "reconnect")
+            {
+                PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
+            }
+        };
     }
 }
