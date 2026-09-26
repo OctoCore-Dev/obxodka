@@ -77,10 +77,21 @@
                                         Text="IP Адрес" />
                                 </HorizontalStackLayout>
 
+                                <Label
+                                    x:Name="IpAddressLabel"
+                                    Grid.Column="1"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HorizontalOptions="End"
+                                    LineBreakMode="TailTruncation"
+                                    MaxLines="1"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="не назначен"
+                                    VerticalOptions="Center" />
+
                                 <Border
                                     x:Name="NodeBadge"
-                                    Grid.Column="1"
-                                    Margin="{OnIdiom Desktop='6,0,0,0', Phone='2,0,0,0'}"
+                                    Grid.Column="2"
                                     Padding="7,2"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     Stroke="{DynamicResource BorderMedium}"
@@ -104,18 +115,6 @@
                                             VerticalOptions="Center" />
                                     </HorizontalStackLayout>
                                 </Border>
-
-                                <Label
-                                    x:Name="IpAddressLabel"
-                                    Grid.Column="2"
-                                    FontFamily="{DynamicResource AppFontMedium}"
-                                    FontSize="12"
-                                    HorizontalOptions="End"
-                                    LineBreakMode="TailTruncation"
-                                    MaxLines="1"
-                                    Style="{StaticResource LabelMuted}"
-                                    Text="не назначен"
-                                    VerticalOptions="Center" />
 
                                 <Border
                                     x:Name="PingBadge"
