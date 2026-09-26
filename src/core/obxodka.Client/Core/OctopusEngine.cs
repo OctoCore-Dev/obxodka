@@ -148,7 +148,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 {
                     Debug.WriteLine($"[AUTO PROTOCOL] Probing {pName}...");
                     using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-                    probeCts.CancelAfter(TimeSpan.FromSeconds(pName == "FECHSUE" ? 3 : 8));
+                    probeCts.CancelAfter(TimeSpan.FromSeconds(pName == "FECHSUE" ? 3 : 12));
 
                     probeTransport.OnPacketReceived += (pkt, len) =>
                     {

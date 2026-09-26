@@ -181,7 +181,7 @@ public sealed partial class GrpcTransport(
 
     public async Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct)
     {
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _cts = new CancellationTokenSource();
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _thumbprint = thumbprint;
         var serverPort = _serverPort;
@@ -351,7 +351,7 @@ public sealed partial class GrpcTransport(
 
         _ = PingLoopAsync(_cts.Token);
 
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
         linkedCts.CancelAfter(TimeSpan.FromSeconds(15));
         using (linkedCts.Token.Register(() => _ipTcs.TrySetCanceled()))
         {
