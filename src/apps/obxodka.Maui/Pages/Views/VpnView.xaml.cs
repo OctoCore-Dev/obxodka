@@ -132,11 +132,12 @@ public sealed partial class VpnView : ContentView
 
     public void Initialize(MainPage parent, IVpnService vpnService, ApiService apiService)
     {
-        UpdateRayIndicator();
-        UpdateActiveNode();
         _parent = parent;
         _vpnService = vpnService;
         _apiService = apiService;
+
+        UpdateRayIndicator();
+        UpdateActiveNode();
 
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
@@ -194,6 +195,11 @@ public sealed partial class VpnView : ContentView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            if (RayIndicatorIcon == null || RayIndicatorLabel == null)
+            {
+                return;
+            }
+
             var protoPref = Preferences.Get("ProtocolMode", "AUTO");
             var activeProto = OctopusEngine.Current is { IsConnected: true }
                 ? OctopusEngine.Current.ActiveProtocol
@@ -423,9 +429,12 @@ public sealed partial class VpnView : ContentView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (_vpnService.CurrentState == AppVpnState.Disconnected)
+            if (_vpnService == null || _vpnService.CurrentState == AppVpnState.Disconnected)
             {
-                NodeHostLabel.Text = "Нет подключения";
+                if (NodeHostLabel != null)
+                {
+                    NodeHostLabel.Text = "Нет подключения";
+                }
                 return;
             }
 
@@ -448,7 +457,10 @@ public sealed partial class VpnView : ContentView
                 displayHost = "obxodka.one";
             }
 
-            NodeHostLabel.Text = displayHost;
+            if (NodeHostLabel != null)
+            {
+                NodeHostLabel.Text = displayHost;
+            }
         });
     }
 
