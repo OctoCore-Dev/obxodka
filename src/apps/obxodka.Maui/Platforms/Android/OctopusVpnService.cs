@@ -197,7 +197,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
     {
         public volatile bool IsActive = true;
         private long _lastActiveNetworkId = -1;
-        private long _lastReconnectTicks;
+        private readonly long _lastReconnectTicks;
         private int _consecutiveReconnects;
 
         private const long ReconnectCooldownMs = 3000;
