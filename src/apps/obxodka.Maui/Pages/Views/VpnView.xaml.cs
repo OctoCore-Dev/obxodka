@@ -431,10 +431,7 @@ public sealed partial class VpnView : ContentView
         {
             if (_vpnService == null || _vpnService.CurrentState == AppVpnState.Disconnected)
             {
-                if (NodeHostLabel != null)
-                {
-                    NodeHostLabel.Text = "Нет подключения";
-                }
+                NodeHostLabel?.Text = "Нет подключения";
                 return;
             }
 
@@ -457,10 +454,7 @@ public sealed partial class VpnView : ContentView
                 displayHost = "obxodka.one";
             }
 
-            if (NodeHostLabel != null)
-            {
-                NodeHostLabel.Text = displayHost;
-            }
+            NodeHostLabel?.Text = displayHost;
         });
     }
 

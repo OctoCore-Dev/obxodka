@@ -39,7 +39,7 @@ public sealed partial class FechsueTransport : IVpnTransport
     private volatile bool _isConnected;
     private volatile bool _serverUsesSessionMasking;
     public bool IsConnected => _isConnected && _sockets[0] is not null;
-    public bool EnableEntropyShaping { get; set; }
+    public bool EnableEntropyShaping { get; set; } = true;
     public bool EnablePortHopping { get; set; } = true;
     public int PortHoppingMinSeconds { get; set; } = 30;
     public int PortHoppingMaxSeconds { get; set; } = 60;
@@ -137,7 +137,7 @@ public sealed partial class FechsueTransport : IVpnTransport
             Debug.WriteLine($"[FECHSUE] Sending auth handshake attempt #{attempt + 1}/20 to {_serverEp}...");
             for (byte i = 0; i < ParallelStreams; i++)
             {
-                var authPacket = FechsueCodec.PackStealthAuth(thumbprint, i, out var authLen);
+                var authPacket = FechsueCodec.PackAuth(thumbprint, i, out var authLen);
                 try
                 {
                     if (_sockets[i] is { } s)
@@ -558,7 +558,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                         StartReceiveThread(newSock, crypto, null, i, ct);
                     }
 
-                    var authPacket = FechsueCodec.PackStealthAuth(Thumbprint, i, out var authLen);
+                    var authPacket = FechsueCodec.PackAuth(Thumbprint, i, out var authLen);
                     try
                     {
                         _ = newSock.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
@@ -664,7 +664,7 @@ public sealed partial class FechsueTransport : IVpnTransport
                     {
                         if (_sockets[i] is { } s)
                         {
-                            var authPacket = FechsueCodec.PackStealthAuth(Thumbprint, i, out var authLen);
+                            var authPacket = FechsueCodec.PackAuth(Thumbprint, i, out var authLen);
                             try
                             {
                                 _ = s.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
@@ -734,7 +734,7 @@ public sealed partial class FechsueTransport : IVpnTransport
 
             for (var attempt = 0; attempt < 2; attempt++)
             {
-                var discPacket = FechsueCodec.PackStealthDisc(Thumbprint, out var len);
+                var discPacket = FechsueCodec.PackDisc(Thumbprint, out var len);
                 try
                 {
                     if (_sockets[0] is { } sock)
