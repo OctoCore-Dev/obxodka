@@ -197,6 +197,12 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
     {
         public volatile bool IsActive = true;
         private long _lastActiveNetworkId = -1;
+        private long _lastReconnectTicks;
+        private int _consecutiveReconnects;
+
+        private const long ReconnectCooldownMs = 3000;
+        private const int MaxConsecutiveReconnects = 3;
+        private const long ConsecutiveResetMs = 30000;
 
         [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
         public VpnNetworkCallback() { }
@@ -221,6 +227,11 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     return;
                 }
 
+                if (!caps.HasCapability(NetCapability.Internet) || !caps.HasCapability(NetCapability.Validated))
+                {
+                    return;
+                }
+
                 var netId = network.NetworkHandle;
                 System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Physical network available: {network} (Handle: {netId})");
 
@@ -231,8 +242,32 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Active network changed from {_lastActiveNetworkId} to {netId}. Instant roaming reconnect!");
+                    var now = Environment.TickCount64;
+                    var elapsed = now - Volatile.Read(ref _lastReconnectTicks);
+
+                    if (elapsed > ConsecutiveResetMs)
+                    {
+                        Volatile.Write(ref _consecutiveReconnects, 0);
+                    }
+
+                    if (elapsed < ReconnectCooldownMs)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Skipping reconnect — cooldown active ({elapsed}ms < {ReconnectCooldownMs}ms)");
+                        _lastActiveNetworkId = netId;
+                        return;
+                    }
+
+                    var consecutive = Interlocked.Increment(ref _consecutiveReconnects);
+                    if (consecutive > MaxConsecutiveReconnects)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Suppressing reconnect — {consecutive} consecutive reconnects in {ConsecutiveResetMs / 1000}s, possible loop detected");
+                        _lastActiveNetworkId = netId;
+                        return;
+                    }
+
+                    System.Diagnostics.Debug.WriteLine($"[NETWORK ROAMING] Active network changed from {_lastActiveNetworkId} to {netId}. Roaming reconnect #{consecutive}");
                     _lastActiveNetworkId = netId;
+                    Volatile.Write(ref _lastReconnectTicks, now);
                     if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
                     {
                         AndroidVpnService.Instance.TriggerImmediateReconnect();
@@ -241,10 +276,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 else
                 {
                     _lastActiveNetworkId = netId;
-                    if (AndroidVpnService.Instance?.CurrentState == AppVpnState.Reconnecting)
-                    {
-                        AndroidVpnService.Instance.TriggerImmediateReconnect();
-                    }
                 }
             }
             catch (Exception ex)

@@ -421,9 +421,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                         var elapsedMs = Environment.TickCount64 - connectTicks;
                         var isInitialBlackhole = elapsedMs is >= 3000 and < 30000 && currentSent > 2000 && currentReceived == 0;
 
-                        var isDead = (isInitialBlackhole && deadTicks >= 15) ||
-                                     (currentSent > 5000 && currentReceived == 0 && deadTicks >= 20) ||
-                                     deadTicks >= 40;
+                        var isDead = (isInitialBlackhole && deadTicks >= 20) ||
+                                     (currentSent > 5000 && currentReceived == 0 && deadTicks >= 25) ||
+                                     deadTicks >= 60;
 
                         if (isDead)
                         {
