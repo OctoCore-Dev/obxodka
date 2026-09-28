@@ -197,7 +197,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
     {
         public volatile bool IsActive = true;
         private long _lastActiveNetworkId = -1;
-        private readonly long _lastReconnectTicks;
+        private long _lastReconnectTicks;
         private int _consecutiveReconnects;
 
         private const long ReconnectCooldownMs = 3000;
@@ -242,7 +242,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
                 {
-                    var now = Environment.TickCount64;
+                    var now = System.Environment.TickCount64;
                     var elapsed = now - Volatile.Read(ref _lastReconnectTicks);
 
                     if (elapsed > ConsecutiveResetMs)
