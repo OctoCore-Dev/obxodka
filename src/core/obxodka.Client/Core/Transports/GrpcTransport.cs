@@ -188,7 +188,7 @@ public sealed partial class GrpcTransport(
         var defaultSni = "api.octocore.dev";
         try
         {
-            if (Uri.TryCreate(Config.AppConfig.ApiBaseUrl, UriKind.Absolute, out var apiUri) &&
+            if (Uri.TryCreate(AppConfig.ApiBaseUrl, UriKind.Absolute, out var apiUri) &&
                 !string.IsNullOrWhiteSpace(apiUri.Host) &&
                 !IPAddress.TryParse(apiUri.Host, out _))
             {
