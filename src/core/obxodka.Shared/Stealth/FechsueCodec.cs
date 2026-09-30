@@ -1,3 +1,10 @@
+using System.Buffers;
+using System.Buffers.Binary;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
+
 namespace obxodka.Shared.Stealth;
 
 public static class FechsueCodec
@@ -11,6 +18,117 @@ public static class FechsueCodec
     public const uint QuicVersion1 = 0x00000001;
     public const byte QuicFrameCrypto = 0x06;
     public const int QuicMinInitialSize = 1200;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void XorBuffers(Span<byte> destination, ReadOnlySpan<byte> source)
+    {
+        var len = Math.Min(destination.Length, source.Length);
+        if (len <= 0)
+        {
+            return;
+        }
+
+        var i = 0;
+        if (Vector.IsHardwareAccelerated && len >= Vector<byte>.Count)
+        {
+            var vectorSize = Vector<byte>.Count;
+            var endVector = len - vectorSize;
+            while (i <= endVector)
+            {
+                var vDest = new Vector<byte>(destination.Slice(i, vectorSize));
+                var vSrc = new Vector<byte>(source.Slice(i, vectorSize));
+                (vDest ^ vSrc).CopyTo(destination.Slice(i, vectorSize));
+                i += vectorSize;
+            }
+        }
+
+        var endLong = len - sizeof(ulong);
+        while (i <= endLong)
+        {
+            var vDest = BinaryPrimitives.ReadUInt64LittleEndian(destination.Slice(i, sizeof(ulong)));
+            var vSrc = BinaryPrimitives.ReadUInt64LittleEndian(source.Slice(i, sizeof(ulong)));
+            BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(i, sizeof(ulong)), vDest ^ vSrc);
+            i += sizeof(ulong);
+        }
+
+        while (i < len)
+        {
+            destination[i] ^= source[i];
+            i++;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetActualIpPacketLength(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 20)
+        {
+            return packet.Length;
+        }
+
+        var ver = packet[0] >> 4;
+        if (ver == 4)
+        {
+            var ipLen = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(2, 2));
+            if (ipLen >= 20 && ipLen <= packet.Length)
+            {
+                return ipLen;
+            }
+        }
+        else if (ver == 6 && packet.Length >= 40)
+        {
+            var payloadLen = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(4, 2));
+            var ip6Len = payloadLen + 40;
+            if (ip6Len >= 40 && ip6Len <= packet.Length)
+            {
+                return ip6Len;
+            }
+        }
+
+        return packet.Length;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int ApplyPacketPadding(byte[] buffer, int length, int maxBufferCapacity = 1420)
+    {
+        if (length < 20 || length >= maxBufferCapacity)
+        {
+            return length;
+        }
+
+        var ver = buffer[0] >> 4;
+        if (ver is not (4 or 6))
+        {
+            return length;
+        }
+
+        int padBytes;
+        if (length <= 128)
+        {
+            padBytes = Random.Shared.Next(16, 65);
+        }
+        else if (length <= 800)
+        {
+            padBytes = Random.Shared.Next(8, 33);
+        }
+        else if (length < 1200)
+        {
+            padBytes = Random.Shared.Next(4, 17);
+        }
+        else
+        {
+            return length;
+        }
+
+        var paddedLength = Math.Min(length + padBytes, maxBufferCapacity);
+        if (paddedLength > length && paddedLength <= buffer.Length)
+        {
+            Random.Shared.NextBytes(buffer.AsSpan(length, paddedLength - length));
+            return paddedLength;
+        }
+
+        return length;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] PackAuth(string thumbprint, byte streamIndex, out int totalLength)
@@ -537,18 +655,18 @@ public static class FechsueCodec
 
                 if (index == 0)
                 {
-                    Array.Clear(_parityAccumulator, 0, _maxPacketLengthInGroup);
-                    _maxPacketLengthInGroup = 0;
-                }
-
-                if (rawLength > _maxPacketLengthInGroup)
-                {
+                    Buffer.BlockCopy(rawPacket, 0, _parityAccumulator, 0, rawLength);
                     _maxPacketLengthInGroup = rawLength;
                 }
-
-                for (var i = 0; i < rawLength; i++)
+                else
                 {
-                    _parityAccumulator[i] ^= rawPacket[i];
+                    if (rawLength > _maxPacketLengthInGroup)
+                    {
+                        Array.Clear(_parityAccumulator, _maxPacketLengthInGroup, rawLength - _maxPacketLengthInGroup);
+                        _maxPacketLengthInGroup = rawLength;
+                    }
+
+                    XorBuffers(_parityAccumulator.AsSpan(0, rawLength), rawPacket.AsSpan(0, rawLength));
                 }
 
                 var dataPacked = PackFecData(rawPacket, rawLength, groupId, index, gSize, sessionId, crypto, out var dataLen, maskSessionId);
@@ -750,48 +868,30 @@ public static class FechsueCodec
 
                 if (missingIndex >= 0)
                 {
-                    var rec = new byte[group.ParityLength];
-                    Buffer.BlockCopy(group.Parity, 0, rec, 0, group.ParityLength);
-
-                    for (var i = 0; i < group.GroupSize; i++)
+                    var rec = ArrayPool<byte>.Shared.Rent(group.ParityLength);
+                    try
                     {
-                        if (i != missingIndex && group.Slots[i].Received && group.Slots[i].Packet != null)
+                        Buffer.BlockCopy(group.Parity, 0, rec, 0, group.ParityLength);
+
+                        for (var i = 0; i < group.GroupSize; i++)
                         {
-                            var slotPkt = group.Slots[i].Packet!;
-                            for (var b = 0; b < slotPkt.Length; b++)
+                            if (i != missingIndex && group.Slots[i].Received && group.Slots[i].Packet is { } slotPkt)
                             {
-                                rec[b] ^= slotPkt[b];
+                                XorBuffers(rec.AsSpan(0, slotPkt.Length), slotPkt);
                             }
                         }
-                    }
 
-                    var actualPktLen = group.ParityLength;
-                    if (actualPktLen >= 20)
+                        var actualPktLen = GetActualIpPacketLength(rec.AsSpan(0, group.ParityLength));
+
+                        group.Recovered = true;
+                        recoveredPacket = ArrayPool<byte>.Shared.Rent(actualPktLen);
+                        Buffer.BlockCopy(rec, 0, recoveredPacket, 0, actualPktLen);
+                        recoveredLength = actualPktLen;
+                    }
+                    finally
                     {
-                        var ver = rec[0] >> 4;
-                        if (ver == 4)
-                        {
-                            var ipLen = BinaryPrimitives.ReadUInt16BigEndian(rec.AsSpan(2, 2));
-                            if (ipLen >= 20 && ipLen <= actualPktLen)
-                            {
-                                actualPktLen = ipLen;
-                            }
-                        }
-                        else if (ver == 6 && actualPktLen >= 40)
-                        {
-                            var payloadLen = BinaryPrimitives.ReadUInt16BigEndian(rec.AsSpan(4, 2));
-                            var ip6Len = payloadLen + 40;
-                            if (ip6Len >= 40 && ip6Len <= actualPktLen)
-                            {
-                                actualPktLen = ip6Len;
-                            }
-                        }
+                        ArrayPool<byte>.Shared.Return(rec);
                     }
-
-                    group.Recovered = true;
-                    recoveredPacket = ArrayPool<byte>.Shared.Rent(actualPktLen);
-                    Buffer.BlockCopy(rec, 0, recoveredPacket, 0, actualPktLen);
-                    recoveredLength = actualPktLen;
                 }
             }
         }

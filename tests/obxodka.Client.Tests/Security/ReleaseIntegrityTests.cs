@@ -51,7 +51,8 @@ public class ReleaseIntegrityTests
             }
         }
 
-        var defaultPath = @"C:\Users\irovb\Documents\code\obxodka";
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var defaultPath = Path.Combine(userProfile, "code", "obxodka");
         if (Directory.Exists(defaultPath))
         {
             return defaultPath;

@@ -24,6 +24,23 @@ public sealed class MainActivity : MauiAppCompatActivity
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        try
+        {
+            if (Window is { } earlyWindow)
+            {
+                WindowCompat.SetDecorFitsSystemWindows(earlyWindow, false);
+
+                if (OperatingSystem.IsAndroidVersionAtLeast(29))
+                {
+#pragma warning disable CA1422
+                    earlyWindow.NavigationBarContrastEnforced = false;
+                    earlyWindow.StatusBarContrastEnforced = false;
+#pragma warning restore CA1422
+                }
+            }
+        }
+        catch { }
+
         base.OnCreate(savedInstanceState);
 
         _ = (Window?.DecorView?.Post(() =>
@@ -39,17 +56,9 @@ public sealed class MainActivity : MauiAppCompatActivity
         {
             if (Window is { } window)
             {
-                WindowCompat.SetDecorFitsSystemWindows(window, false);
-
-                if (OperatingSystem.IsAndroidVersionAtLeast(29))
-                {
-#pragma warning disable CA1422
-                    window.NavigationBarContrastEnforced = false;
-                    window.StatusBarContrastEnforced = false;
-                }
-
                 if (!OperatingSystem.IsAndroidVersionAtLeast(35))
                 {
+#pragma warning disable CA1422
                     window.SetStatusBarColor(Android.Graphics.Color.Transparent);
                     window.SetNavigationBarColor(Android.Graphics.Color.Transparent);
 #pragma warning restore CA1422
@@ -84,7 +93,8 @@ public sealed class MainActivity : MauiAppCompatActivity
             var bottomDp = (systemBars?.Bottom ?? 0) / density;
 
             SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
-            return insets;
+
+            return WindowInsetsCompat.Consumed;
         }
     }
 
@@ -163,6 +173,7 @@ public sealed class MainActivity : MauiAppCompatActivity
     {
         if (Platform.CurrentActivity is not MainActivity activity)
         {
+            StartActualService(Platform.AppContext);
             return;
         }
 

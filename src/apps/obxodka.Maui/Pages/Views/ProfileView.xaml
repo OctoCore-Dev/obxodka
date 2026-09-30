@@ -9,7 +9,7 @@
     <Grid
         x:Name="RootLayoutGrid"
         Padding="{OnIdiom Desktop='32,28',
-                          Phone='16,20,16,0',
+                          Phone='16,0,16,0',
                           Default='16,20'}"
         SafeAreaEdges="None">
         <ScrollView
@@ -21,7 +21,7 @@
             <Grid
                 x:Name="ContentGrid"
                 Padding="{OnIdiom Desktop='0',
-                                  Phone='0,0,0,140',
+                                  Phone='0,50,0,140',
                                   Default='0'}"
                 ColumnDefinitions="{OnIdiom Desktop='*, *',
                                             Default='*'}"

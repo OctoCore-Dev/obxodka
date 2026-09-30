@@ -4,10 +4,12 @@ public sealed partial class FechsueTransport : IVpnTransport
 {
     public const int DefaultParallelStreams = 1;
     public const int FechsueServerPort = 443;
+    public static readonly int[] CandidateServerPorts = [443, 8443, 20443, 34443, 44443];
 
     public string ProtocolName => "FECHSUE";
     public string Thumbprint { get; private set; } = string.Empty;
     public int ParallelStreams { get; }
+    private readonly int _configuredServerPort;
 
     private readonly Socket?[] _sockets;
     private readonly AesGcm?[] _rxCryptos;
@@ -21,9 +23,11 @@ public sealed partial class FechsueTransport : IVpnTransport
     private byte[] _key = new byte[32];
     private CancellationTokenSource? _cts;
     private long _lastRxTicks = DateTime.UtcNow.Ticks;
+    private int _hopIndex;
 
-    public FechsueTransport(int activeRays = 1)
+    public FechsueTransport(int activeRays = 1, int? serverPort = null)
     {
+        _configuredServerPort = serverPort is > 0 and <= 65535 ? serverPort.Value : FechsueServerPort;
         ParallelStreams = Math.Clamp(activeRays, 1, PacketRouter.MaxRays);
         _sockets = new Socket?[ParallelStreams];
         _rxCryptos = new AesGcm?[ParallelStreams];
@@ -77,18 +81,25 @@ public sealed partial class FechsueTransport : IVpnTransport
 
         var addresses = await Dns.GetHostAddressesAsync(serverIp, ct);
         var targetIp = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.First();
-        _serverEp = new IPEndPoint(targetIp, FechsueServerPort);
+        var portToUse = _configuredServerPort > 0 ? _configuredServerPort : FechsueServerPort;
+        _serverEp = new IPEndPoint(targetIp, portToUse);
         Debug.WriteLine($"[FECHSUE] Starting connection to {serverIp} ({_serverEp}), SessionId={_sessionId:X8}, ParallelStreams={ParallelStreams}");
 
         var ipTcs = new TaskCompletionSource<(string, string)>();
 
         for (byte i = 0; i < ParallelStreams; i++)
         {
-            var sock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+            var sock = new Socket(_serverEp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            try
             {
-                ReceiveBufferSize = 16777216,
-                SendBufferSize = 16777216
-            };
+                sock.ReceiveBufferSize = 4194304;
+            }
+            catch { }
+            try
+            {
+                sock.SendBufferSize = 4194304;
+            }
+            catch { }
             try
             {
                 sock.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0xB8);
@@ -211,7 +222,8 @@ public sealed partial class FechsueTransport : IVpnTransport
             return;
         }
 
-        var isFastTrack = secondaryRay >= 0 || length < 20;
+        var wireLen = FechsueCodec.ApplyPacketPadding(packet, length, 1420);
+        var isFastTrack = secondaryRay >= 0 || wireLen < 20;
 
         if (isFastTrack)
         {
@@ -219,10 +231,10 @@ public sealed partial class FechsueTransport : IVpnTransport
             int totalLen;
             lock (txLock)
             {
-                var shouldShape = EnableEntropyShaping && length <= 850;
+                var shouldShape = EnableEntropyShaping && wireLen <= 850;
                 packed = shouldShape
-                    ? FechsueCodec.PackShaped(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
-                    : FechsueCodec.Pack(packet, length, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
+                    ? FechsueCodec.PackShaped(packet, wireLen, _sessionId, crypto, out totalLen, _serverUsesSessionMasking)
+                    : FechsueCodec.Pack(packet, wireLen, _sessionId, crypto, out totalLen, _serverUsesSessionMasking);
             }
             try
             {
@@ -252,10 +264,10 @@ public sealed partial class FechsueTransport : IVpnTransport
                     int secLen;
                     lock (sLock)
                     {
-                        var shouldShapeSec = EnableEntropyShaping && length <= 850;
+                        var shouldShapeSec = EnableEntropyShaping && wireLen <= 850;
                         secPacked = shouldShapeSec
-                            ? FechsueCodec.PackShaped(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking)
-                            : FechsueCodec.Pack(packet, length, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking);
+                            ? FechsueCodec.PackShaped(packet, wireLen, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking)
+                            : FechsueCodec.Pack(packet, wireLen, _sessionId, sCrypto, out secLen, _serverUsesSessionMasking);
                     }
                     try
                     {
@@ -287,8 +299,8 @@ public sealed partial class FechsueTransport : IVpnTransport
 
         lock (txLock)
         {
-            var shouldShapeBulk = EnableEntropyShaping && length <= 850;
-            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, length, _sessionId, crypto, _serverUsesSessionMasking, shapeEntropy: shouldShapeBulk);
+            var shouldShapeBulk = EnableEntropyShaping && wireLen <= 850;
+            (dataPacked, dataLen, parityPacked, parityLen) = _fecEncoders[pRay].Encode(packet, wireLen, _sessionId, crypto, _serverUsesSessionMasking, shapeEntropy: shouldShapeBulk);
         }
         ArrayPool<byte>.Shared.Return(packet);
 
@@ -324,7 +336,7 @@ public sealed partial class FechsueTransport : IVpnTransport
 
     public Task SendPacketAsync(byte[] packet, int length)
     {
-        var copy = ArrayPool<byte>.Shared.Rent(length);
+        var copy = ArrayPool<byte>.Shared.Rent(Math.Max(length + 128, 1500));
         Buffer.BlockCopy(packet, 0, copy, 0, length);
         SendPacketFromPool(copy, length);
         return Task.CompletedTask;
@@ -392,9 +404,10 @@ public sealed partial class FechsueTransport : IVpnTransport
         }
         else
         {
-            if (!_deduplicator.IsDuplicate(payload, realLen))
+            var actualIpLen = FechsueCodec.GetActualIpPacketLength(payload.AsSpan(0, realLen));
+            if (!_deduplicator.IsDuplicate(payload, actualIpLen))
             {
-                OnPacketReceived?.Invoke(payload, realLen);
+                OnPacketReceived?.Invoke(payload, actualIpLen);
             }
             else
             {
@@ -413,6 +426,12 @@ public sealed partial class FechsueTransport : IVpnTransport
             var rxBuffer = new byte[65536];
             while (!ct.IsCancellationRequested)
             {
+                if (!ReferenceEquals(_sockets[streamId], sock))
+                {
+                    Debug.WriteLine($"[FECHSUE-RX-{streamId}] Socket superseded by port hopping. Thread exiting cleanly.");
+                    break;
+                }
+
                 try
                 {
                     var len = sock.Receive(rxBuffer, 0, rxBuffer.Length, SocketFlags.None);
@@ -457,34 +476,36 @@ public sealed partial class FechsueTransport : IVpnTransport
                         HandleDecryptedPacket(recPkt, recLen, ipTcs);
                     }
                 }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
                 catch (SocketException sex)
                 {
-                    if (ct.IsCancellationRequested)
+                    if (ct.IsCancellationRequested || sex.SocketErrorCode == SocketError.OperationAborted)
                     {
                         break;
                     }
 
-                    if (sex.NativeErrorCode == 10054 ||
-                        sex.SocketErrorCode == SocketError.ConnectionReset ||
-                        sex.SocketErrorCode == SocketError.ConnectionRefused)
+                    if (!ReferenceEquals(_sockets[streamId], sock))
                     {
-                        continue;
+                        break;
                     }
 
-                    OnConnectionDropped?.Invoke();
-                    break;
+                    Thread.Sleep(20);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    if (ct.IsCancellationRequested)
+                    if (ct.IsCancellationRequested || !ReferenceEquals(_sockets[streamId], sock))
                     {
                         break;
                     }
 
-                    OnConnectionDropped?.Invoke();
-                    break;
+                    Debug.WriteLine($"[FECHSUE-RX-{streamId}] Transient receive error: {ex.Message}");
+                    Thread.Sleep(50);
                 }
             }
+            Debug.WriteLine($"[FECHSUE-RX-{streamId}] Receive thread stopped.");
         })
         {
             IsBackground = true
@@ -513,6 +534,10 @@ public sealed partial class FechsueTransport : IVpnTransport
 
             try
             {
+                var nextPort = CandidateServerPorts[_hopIndex++ % CandidateServerPorts.Length];
+                var targetEp = new IPEndPoint(_serverEp.Address, nextPort);
+                Debug.WriteLine($"[FECHSUE-HOPPING] Seamlessly hopping streams to port {nextPort}...");
+
                 for (byte i = 0; i < ParallelStreams; i++)
                 {
                     if (ct.IsCancellationRequested)
@@ -520,11 +545,17 @@ public sealed partial class FechsueTransport : IVpnTransport
                         break;
                     }
 
-                    var newSock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+                    var newSock = new Socket(targetEp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+                    try
                     {
-                        ReceiveBufferSize = 16777216,
-                        SendBufferSize = 16777216
-                    };
+                        newSock.ReceiveBufferSize = 4194304;
+                    }
+                    catch { }
+                    try
+                    {
+                        newSock.SendBufferSize = 4194304;
+                    }
+                    catch { }
 
                     try
                     {
@@ -550,7 +581,14 @@ public sealed partial class FechsueTransport : IVpnTransport
                         catch { }
                     }
 
-                    newSock.Connect(_serverEp);
+                    try
+                    {
+                        newSock.Connect(targetEp);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[FECHSUE-HOPPING] newSock.Connect to {targetEp} failed: {ex.Message}");
+                    }
 
                     var crypto = _rxCryptos[i];
                     if (crypto != null)
@@ -563,6 +601,14 @@ public sealed partial class FechsueTransport : IVpnTransport
                     {
                         _ = newSock.Send(authPacket.AsSpan(0, authLen), SocketFlags.None);
                     }
+                    catch
+                    {
+                        try
+                        {
+                            _ = newSock.SendTo(authPacket.AsSpan(0, authLen), SocketFlags.None, targetEp);
+                        }
+                        catch { }
+                    }
                     finally
                     {
                         ArrayPool<byte>.Shared.Return(authPacket);
@@ -571,21 +617,22 @@ public sealed partial class FechsueTransport : IVpnTransport
                     var oldSock = Interlocked.Exchange(ref _sockets[i], newSock);
                     if (oldSock != null)
                     {
-                        _ = Task.Delay(1000, CancellationToken.None).ContinueWith(_ =>
+                        _ = Task.Delay(2000, CancellationToken.None).ContinueWith(_ =>
                         {
                             try
                             {
                                 oldSock.Dispose();
                             }
-                            catch
-                            {
-                            }
+                            catch { }
                         }, TaskScheduler.Default);
                     }
                 }
+
+                _serverEp = targetEp;
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.WriteLine($"[FECHSUE-HOPPING ERROR] {ex.Message}");
             }
         }
     }
@@ -686,6 +733,13 @@ public sealed partial class FechsueTransport : IVpnTransport
                             }
                         }
                     }
+                }
+
+                if (idleTicks > TimeSpan.FromSeconds(35).Ticks && _isConnected)
+                {
+                    Debug.WriteLine("[FECHSUE] No RX packets received for 35 seconds. Connection dropped.");
+                    OnConnectionDropped?.Invoke();
+                    break;
                 }
             }
             catch { }

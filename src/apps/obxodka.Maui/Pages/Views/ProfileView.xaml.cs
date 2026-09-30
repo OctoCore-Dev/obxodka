@@ -214,9 +214,15 @@ public sealed partial class ProfileView : ContentView
 
     public void SetHeaderTopInset(double top)
     {
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
+        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
         {
-            RootLayoutGrid.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
+            RootLayoutGrid?.Padding = new Thickness(16, 0, 16, 0);
+
+            if (ContentGrid != null)
+            {
+                var topAir = Math.Max(top + 16, 50);
+                ContentGrid.Padding = new Thickness(0, topAir, 0, 140);
+            }
         }
     }
 

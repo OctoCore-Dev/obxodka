@@ -1,4 +1,4 @@
-# Requires -RunAsAdministrator
+﻿# Requires -RunAsAdministrator
 $ErrorActionPreference = "Stop"
 
 Write-Host "============================================================" -ForegroundColor Cyan
@@ -114,7 +114,7 @@ Write-Host "[*] Setting high-performance environment variables for 32GB RAM..." 
 Write-Host "[*] Configuring Windows Defender exclusions..." -ForegroundColor Yellow
 $foldersToExclude = @(
     "C:\BuildCache",
-    "c:\Users\irovb\Documents\code"
+    "$env:USERPROFILE\code"
 )
 
 foreach ($f in $foldersToExclude) {
@@ -142,3 +142,4 @@ foreach ($p in $procsToExclude) {
 
 Write-Host "`n[SUCCESS] Visual Studio environment fully unlocked!" -ForegroundColor Cyan
 Write-Host "Restart Visual Studio for all memory and GPU acceleration changes to take full effect." -ForegroundColor Cyan
+

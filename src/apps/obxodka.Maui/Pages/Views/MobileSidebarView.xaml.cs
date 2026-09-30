@@ -23,16 +23,18 @@ public sealed partial class MobileSidebarView : ContentView
 
     public void SetCompactMode(bool isCompact)
     {
+        var bottomSafe = SafeAreaHelper.BottomInset;
+
         if (isCompact)
         {
             MobileBottomBar.HeightRequest = 52;
-            MobileBottomBar.Margin = new Thickness(12, 0, 12, 8);
+            MobileBottomBar.Margin = new Thickness(12, 0, 12, Math.Max(8, bottomSafe + 6));
             MobileBottomBar.Padding = new Thickness(4, 2);
         }
         else
         {
             MobileBottomBar.HeightRequest = 68;
-            MobileBottomBar.Margin = new Thickness(16, 0, 16, 20);
+            MobileBottomBar.Margin = new Thickness(16, 0, 16, Math.Max(16, bottomSafe + 8));
             MobileBottomBar.Padding = new Thickness(6, 6);
         }
     }

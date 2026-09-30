@@ -153,7 +153,12 @@ public sealed partial class DevicesView : ContentView
 
     public void SetHeaderTopInset(double top)
     {
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
+        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
+        {
+            var topAir = Math.Max(top + 16, 50);
+            RootLayout.Padding = new Thickness(16, topAir, 16, 0);
+        }
+        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
         {
             RootLayout.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
         }

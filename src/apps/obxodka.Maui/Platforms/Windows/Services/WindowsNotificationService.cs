@@ -116,7 +116,7 @@ public sealed partial class WindowsNotificationService : INotificationService
                     </binding>
                 </visual>
                 <actions>
-                    <action content="Переподключиться" arguments="reconnect" activationType="foreground"/>
+                    <action content="Переподключиться" arguments="reconnect" activationType="background"/>
                 </actions>
                 <audio src="ms-winsoundevent:Notification.Default"/>
             </toast>
