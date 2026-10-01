@@ -45,9 +45,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentSplit.Initialize(this, _appManager);
         TabContentPayment.Initialize(this, _apiService);
         TabContentProfile.Initialize(this, _themeManager);
-        TabContentFriends.Initialize(_apiService);
-        TabContentFriends.BackRequested += (_, _) => _ = SwitchTabAsync("profile");
-        TabContentMesh.Initialize(_apiService);
 
         TabContentThemeStore.Initialize(_themeManager);
         TabContentThemeStore.BackRequested += (_, _) => _ = SwitchTabAsync("configuration");
@@ -65,7 +62,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         TabContentProfile.LogoutRequested += OnProfileLogoutRequestedAsync;
         TabContentProfile.BuyTokensRequested += OnBuyTokensRequested;
-        TabContentProfile.FriendsRequested += (_, _) => _ = SwitchTabAsync("friends");
 
         TabContentPayment.PaymentCompleted += OnPaymentCompletedAsync;
         TabContentPayment.PaymentCancelled += OnPaymentCancelled;
@@ -179,7 +175,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
         TabContentProfile.LogoutRequested -= OnProfileLogoutRequestedAsync;
         TabContentProfile.BuyTokensRequested -= OnBuyTokensRequested;
-        TabContentProfile.FriendsRequested -= (_, _) => _ = SwitchTabAsync("friends");
         TabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
         TabContentPayment.PaymentCancelled -= OnPaymentCancelled;
         DesktopSidebar.NavTapped -= OnSidebarNavTapped;
@@ -306,21 +301,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         _ = Task.Run(async () =>
         {
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
-                var activeHost = await DiscoveryService.GetActiveBridgeUrlAsync(forceRefresh: true, ct: cts.Token);
-                if (!string.IsNullOrEmpty(activeHost))
-                {
-                    AppConfig.ApiBaseUrl = $"https://{activeHost}/";
-                    TabContentVpn.UpdateActiveNode(activeHost);
-                    _ = SyncBalanceFromServerAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[DISCOVERY ERROR] {ex.Message}");
-            }
+            _ = SyncBalanceFromServerAsync();
 
             UserSession? session = null;
             try
@@ -476,7 +457,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         });
     }
 
-    private static readonly string[] t_mainMobileTabs = ["vpn", "profile", "devices", "configuration", "friends"];
+    private static readonly string[] t_mainMobileTabs = ["vpn", "profile", "devices", "split", "configuration"];
 
     private void OnContentSwipedLeft(object? sender, SwipedEventArgs e)
     {
@@ -544,16 +525,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 _ = TabContentProfile.PlayEntranceAnimationAsync();
                 _ = SyncBalanceFromServerAsync(session);
                 break;
-            case "friends":
-                TabContentFriends.ForceLayoutWidth();
-                _ = TabContentFriends.OnAppearingAsync();
-                _ = TabContentFriends.PlayEntranceAnimationAsync();
-                break;
-            case "mesh":
-                TabContentMesh.Initialize(_apiService);
-                TabContentMesh.ForceLayoutWidth();
-                _ = TabContentMesh.PlayEntranceAnimationAsync();
-                break;
             case "devices":
                 TabContentDevices.ForceLayoutWidth();
                 _ = TabContentDevices.PlayEntranceAnimationAsync();
@@ -587,8 +558,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
         "vpn" => TabContentVpn,
         "configuration" => TabContentConfiguration,
         "profile" => TabContentProfile,
-        "friends" => TabContentFriends,
-        "mesh" => TabContentMesh,
         "devices" => TabContentDevices,
         "payment" => TabContentPayment,
         "split" => TabContentSplit,
@@ -709,9 +678,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentConfiguration, bgSurface);
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentProfile, bgSurface);
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentThemeStore, bgSurface);
-        ThemeManager.ApplyVisualTreeCardOpacity(TabContentMesh, bgSurface);
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentDevices, bgSurface);
-        ThemeManager.ApplyVisualTreeCardOpacity(TabContentFriends, bgSurface);
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentPayment, bgSurface);
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentDelete, bgSurface);
         ThemeManager.ApplyVisualTreeCardOpacity(TabContentSplit, bgSurface);
@@ -723,9 +690,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentConfiguration?.UpdateCardOpacity();
         TabContentProfile?.UpdateCardOpacity();
         TabContentThemeStore?.UpdateCardOpacity();
-        TabContentMesh?.UpdateCardOpacity();
         TabContentDevices?.UpdateCardOpacity();
-        TabContentFriends?.UpdateCardOpacity();
         TabContentPayment?.UpdateCardOpacity();
         TabContentDelete?.UpdateCardOpacity();
         TabContentSplit?.UpdateCardOpacity();
@@ -742,9 +707,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         MobileBottomBar?.OnThemeChanged();
         TabContentProfile?.OnThemeChanged();
         TabContentThemeStore?.OnThemeChanged();
-        TabContentMesh?.OnThemeChanged();
         TabContentDevices?.OnThemeChanged();
-        TabContentFriends?.OnThemeChanged();
         TabContentPayment?.OnThemeChanged();
         TabContentDelete?.OnThemeChanged();
     }
@@ -1003,8 +966,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentProfile?.SetHeaderTopInset(safeTop);
         TabContentThemeStore?.SetHeaderTopInset(safeTop);
         TabContentDevices?.SetHeaderTopInset(safeTop);
-        TabContentMesh?.SetHeaderTopInset(safeTop);
-        TabContentFriends?.SetHeaderTopInset(safeTop);
     }
 
     private void UpdateBalanceUI()

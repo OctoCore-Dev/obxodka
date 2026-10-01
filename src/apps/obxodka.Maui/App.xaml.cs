@@ -22,8 +22,7 @@ internal sealed partial class App : Application
             {
                 var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
                 var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
-                var relayTask = OctopusEngine.StopRelayAsync();
-                await Task.WhenAll(stopTask, relayTask).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                await stopTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch { }
             finally
@@ -36,7 +35,6 @@ internal sealed partial class App : Application
 
 #if WINDOWS
     public static IntPtr MainWindowHandle { get; set; } = IntPtr.Zero;
-    private static bool t_isConnectivityHooked;
 #endif
 
     public App()
@@ -152,14 +150,6 @@ internal sealed partial class App : Application
             }
         };
 
-        window.Created += (_, _) => _ = OctopusEngine.StartRelayIfEnabledAsync();
-
-        if (!t_isConnectivityHooked)
-        {
-            t_isConnectivityHooked = true;
-            Connectivity.Current.ConnectivityChanged += (_, e) => _ = e.NetworkAccess != NetworkAccess.Internet ? OctopusEngine.StopRelayAsync() : OctopusEngine.StartRelayIfEnabledAsync();
-        }
-
         window.Destroying += (_, _) => InitiateGracefulBackgroundShutdown();
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
@@ -173,8 +163,7 @@ internal sealed partial class App : Application
             {
                 var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
                 var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
-                var relayTask = OctopusEngine.StopRelayAsync();
-                _ = Task.WaitAll([stopTask, relayTask], TimeSpan.FromSeconds(2));
+                _ = stopTask.Wait(TimeSpan.FromSeconds(2));
             }
             catch { }
         };

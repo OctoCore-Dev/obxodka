@@ -10,14 +10,8 @@ public sealed class AndroidDeviceInfoService(Context context) : IDeviceInfoServi
 {
     private readonly Context _context = context;
 
-    public string DeviceId
-    {
-        get
-        {
-            var id = Settings.Secure.GetString(_context.ContentResolver, Settings.Secure.AndroidId);
-            return id ?? string.Empty;
-        }
-    }
+    public string DeviceId =>
+        Settings.Secure.GetString(_context.ContentResolver, Settings.Secure.AndroidId) ?? string.Empty;
 
     public string Model => Build.Model ?? string.Empty;
 
@@ -37,31 +31,26 @@ public sealed class AndroidDeviceInfoService(Context context) : IDeviceInfoServi
             return uiMode switch
             {
                 UiMode.TypeNormal => AppDeviceIdiom.Phone,
+                UiMode.TypeDesk => AppDeviceIdiom.Desktop,
+                UiMode.TypeCar => AppDeviceIdiom.Car,
                 UiMode.TypeTelevision => AppDeviceIdiom.TV,
+                UiMode.TypeAppliance => AppDeviceIdiom.Unknown,
                 UiMode.TypeWatch => AppDeviceIdiom.Watch,
-                UiMode.NightMask => throw new NotImplementedException(),
-                UiMode.NightNo => throw new NotImplementedException(),
-                UiMode.NightUndefined => throw new NotImplementedException(),
-                UiMode.NightYes => throw new NotImplementedException(),
-                UiMode.TypeAppliance => throw new NotImplementedException(),
-                UiMode.TypeCar => throw new NotImplementedException(),
-                UiMode.TypeDesk => throw new NotImplementedException(),
-                UiMode.TypeMask => throw new NotImplementedException(),
-                UiMode.TypeVrHeadset => throw new NotImplementedException(),
-                null => throw new NotImplementedException(),
+                UiMode.TypeVrHeadset => AppDeviceIdiom.Unknown,
+                UiMode.NightMask => AppDeviceIdiom.Phone,
+                UiMode.NightNo => AppDeviceIdiom.Phone,
+                UiMode.NightUndefined => AppDeviceIdiom.Phone,
+                UiMode.NightYes => AppDeviceIdiom.Phone,
+                UiMode.TypeMask => AppDeviceIdiom.Phone,
+                null => AppDeviceIdiom.Unknown,
                 _ => AppDeviceIdiom.Phone
             };
         }
     }
 
-    public AppDeviceType DeviceType
-    {
-        get
-        {
-            var fingerprint = Build.Fingerprint?.ToLowerInvariant() ?? "";
-            return fingerprint.Contains("generic") || fingerprint.Contains("emulator")
-                ? AppDeviceType.Virtual
-                : AppDeviceType.Physical;
-        }
-    }
+    public AppDeviceType DeviceType =>
+        (Build.Fingerprint?.Contains("generic", StringComparison.OrdinalIgnoreCase) == true) ||
+        (Build.Fingerprint?.Contains("emulator", StringComparison.OrdinalIgnoreCase) == true)
+            ? AppDeviceType.Virtual
+            : AppDeviceType.Physical;
 }

@@ -1,6 +1,3 @@
-using System.Globalization;
-using obxodka.Client.Platforms;
-
 namespace obxodka.Client;
 
 public static class Preferences

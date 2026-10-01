@@ -24,4 +24,3 @@ public sealed class SplitTunnelPolicy
 
     public void ClearActiveRoutes() => ActiveBypassRoutes.Clear();
 }
-

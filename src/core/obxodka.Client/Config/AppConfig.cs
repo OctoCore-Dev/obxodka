@@ -15,50 +15,13 @@ public static class AppConfig
 
     public static string BaseUrl => ApiBaseUrl;
 
-    private static string GetInitialBaseUrl()
-    {
-        try
-        {
-            var savedBridge = Preferences.Default.Get("cached_bridge_host", string.Empty);
-            if (!string.IsNullOrWhiteSpace(savedBridge))
-            {
-                if (savedBridge.StartsWith("bridge-", StringComparison.OrdinalIgnoreCase))
-                {
-                    Preferences.Default.Remove("cached_bridge_host");
-                    return DefaultApiBaseUrl;
-                }
-
-                if (IPAddress.TryParse(savedBridge, out _))
-                {
-                    return $"https://{savedBridge}/";
-                }
-
-                var entry = Dns.GetHostEntry(savedBridge);
-                if (entry.AddressList.Length > 0)
-                {
-                    return $"https://{savedBridge}/";
-                }
-            }
-        }
-        catch
-        {
-            try
-            {
-                Preferences.Default.Remove("cached_bridge_host");
-            }
-            catch { }
-        }
-
-        return DefaultApiBaseUrl;
-    }
-
     public static string ApiBaseUrl
     {
         get;
         set => field = string.IsNullOrWhiteSpace(value)
             ? DefaultApiBaseUrl
             : value.Trim();
-    } = GetInitialBaseUrl();
+    } = DefaultApiBaseUrl;
 
     public static string ApiUrl(string endpoint)
     {

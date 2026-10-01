@@ -23,8 +23,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>preview</LangVersion>
     <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Core\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
-    <NoWarn>$(NoWarn);NU1608;NU1603</NoWarn>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
   </PropertyGroup>
 
 	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">
@@ -127,7 +126,6 @@
 	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
 	  <ProjectReference Include="..\..\core\obxodka.Client\obxodka.Client.csproj" />
 	  <ProjectReference Include="..\..\core\obxodka.Shared\obxodka.Shared.csproj" />
-	  <ProjectReference Include="..\..\core\obxodka.Core\obxodka.Core.csproj" />
 	</ItemGroup>
 
 	<Target Name="_ValidateSigningCertificate" Condition="'$(AppxPackageSigningEnabled)' == 'false'" />

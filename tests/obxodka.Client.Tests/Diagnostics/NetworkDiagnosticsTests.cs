@@ -12,16 +12,15 @@ public class NetworkDiagnosticsTests
             PrimaryInterfaceMtu = 1492,
             DefaultGateway = "192.168.1.1",
             DetectedManagementSoftware = "AnyDesk (PID: 1234)",
-            RecommendedProtocol = "HTTP2 (DpiBypass)",
-            SummaryVerdict = "ОБНАРУЖЕН МОСКОВСКИЙ ТСПУ: Прямой TLS сбрасывается по признаку несоответствия SNI/IP."
+            RecommendedProtocol = "HTTP2",
+            SummaryVerdict = "СЕТЬ ЧИСТАЯ: TLS-рукопожатие проходит без помех со стороны ТСПУ."
         };
 
         report.Steps.Add(new DiagnosticStepResult("1. Локальная сеть", DiagnosticStatus.Passed, "OK", TimeSpan.FromMilliseconds(5)));
         report.Steps.Add(new DiagnosticStepResult("2. DNS", DiagnosticStatus.Passed, "OK", TimeSpan.FromMilliseconds(15)));
         report.Steps.Add(new DiagnosticStepResult("3. TCP 443", DiagnosticStatus.Passed, "RTT: 20ms", TimeSpan.FromMilliseconds(20)));
-        report.Steps.Add(new DiagnosticStepResult("4A. TLS Прямой", DiagnosticStatus.Failed, "ТСПУ сбросил соединение (TCP RST 10054)", TimeSpan.FromMilliseconds(45)));
-        report.Steps.Add(new DiagnosticStepResult("4B. TLS с DpiBypass", DiagnosticStatus.Passed, "Рукопожатие успешно", TimeSpan.FromMilliseconds(75)));
-        report.Steps.Add(new DiagnosticStepResult("5. UDP 6767", DiagnosticStatus.Failed, "Таймаут", TimeSpan.FromMilliseconds(1500)));
+        report.Steps.Add(new DiagnosticStepResult("4. TLS и ТСПУ", DiagnosticStatus.Passed, "Рукопожатие успешно", TimeSpan.FromMilliseconds(45)));
+        report.Steps.Add(new DiagnosticStepResult("5. UDP 443", DiagnosticStatus.Passed, "OK", TimeSpan.FromMilliseconds(50)));
 
         var text = report.ToFormattedText();
 
@@ -30,40 +29,7 @@ public class NetworkDiagnosticsTests
         Assert.Contains("1492", text);
         Assert.Contains("[PASS]", text);
         Assert.Contains("1. Локальная сеть", text);
-        Assert.Contains("[BLOCKED]", text);
-        Assert.Contains("4A. TLS Прямой", text);
-        Assert.Contains("4B. TLS с DpiBypass", text);
-        Assert.Contains("5. UDP 6767", text);
-        Assert.Contains("ОБНАРУЖЕН МОСКОВСКИЙ ТСПУ", text);
-        Assert.Contains("HTTP2 (DpiBypass)", text);
-    }
-
-    [Fact]
-    public void DpiBypassStreamSplit2PreservesPayloadIntegrity()
-    {
-        using var mem = new MemoryStream();
-        using var stream = new DpiBypassStream(mem, splitPosition: 2, delayMs: 1);
-
-        var payload = new byte[] { 0x16, 0x03, 0x01, 0x00, 0x40, 0x01, 0x00 };
-        stream.Write(payload);
-        stream.Flush();
-
-        Assert.Equal(payload, mem.ToArray());
-    }
-
-    [Fact]
-    public async Task DpiBypassStreamSplit2AsyncPreservesPayloadIntegrityAsync()
-    {
-        using var mem = new MemoryStream();
-        using var stream = new DpiBypassStream(mem, splitPosition: 2, delayMs: 1);
-
-        var payload = new byte[] { 0x16, 0x03, 0x01, 0x00, 0x40, 0x01, 0x00, 0x99, 0x88 };
-        await stream.WriteAsync(payload.AsMemory());
-        await stream.FlushAsync();
-
-        Assert.Equal(payload, mem.ToArray());
-        Assert.Equal(2, stream.SplitPosition);
-        Assert.Equal(1, stream.DelayMs);
+        Assert.Contains("HTTP2", text);
     }
 
     [Fact]
@@ -76,7 +42,7 @@ public class NetworkDiagnosticsTests
         var report = await diagService.RunFullDiagnosticsAsync(
             serverHost: "127.0.0.1",
             serverPort: 443,
-            udpPort: FechsueTransport.FechsueServerPort,
+            udpPort: 443,
             onStepCompleted: s => completedSteps.Add(s),
             ct: cts.Token);
 
@@ -99,7 +65,7 @@ public class NetworkDiagnosticsTests
         var report = await diagService.RunFullDiagnosticsAsync(
             serverHost: "45.63.117.29",
             serverPort: 443,
-            udpPort: FechsueTransport.FechsueServerPort,
+            udpPort: 443,
             ct: cts.Token);
 
         Assert.NotNull(report);
@@ -107,9 +73,4 @@ public class NetworkDiagnosticsTests
         var formatted = report.ToFormattedText();
         Assert.Contains("ОБХОДКА: ПОЛНЫЙ ОТЧЁТ ДИАГНОСТИКИ СЕТИ ТЕСТЕРА", formatted);
     }
-
-    [Fact]
-    public void DiagnosticsPortMatchesFechsueTransportServerPort() =>
-        Assert.Equal(443, FechsueTransport.FechsueServerPort);
 }
-

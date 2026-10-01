@@ -1,5 +1,3 @@
-using obxodka.Client.Models;
-
 namespace obxodka.Services;
 
 public interface IAppManager

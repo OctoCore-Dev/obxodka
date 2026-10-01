@@ -25,17 +25,12 @@ namespace obxodka.Config;
 [JsonSerializable(typeof(MessageResponse))]
 [JsonSerializable(typeof(PaymentLinkResponse))]
 [JsonSerializable(typeof(object), TypeInfoPropertyName = "JsonObject")]
-[JsonSerializable(typeof(HydraConfig))]
 [JsonSerializable(typeof(CertHashResponse))]
 [JsonSerializable(typeof(GooglePurchaseVerifyRequest))]
 [JsonSerializable(typeof(ReferralFriendDto))]
 [JsonSerializable(typeof(List<ReferralFriendDto>))]
 [JsonSerializable(typeof(ReferralCodeResponse))]
 [JsonSerializable(typeof(ActivateReferralRequest))]
-[JsonSerializable(typeof(ClaimRewardRequest))]
-[JsonSerializable(typeof(ClaimRewardResponse))]
-[JsonSerializable(typeof(MeshRelayInfo))]
-[JsonSerializable(typeof(List<MeshRelayInfo>))]
 internal sealed partial class AppJsonContext : JsonSerializerContext
 {
 }

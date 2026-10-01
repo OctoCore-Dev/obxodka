@@ -1,7 +1,4 @@
 using Android.Content;
-using obxodka.Client.Platforms;
-
-using System.Globalization;
 
 namespace obxodka.Maui.Platforms.Android.Services;
 
@@ -59,16 +56,16 @@ public sealed class AndroidPreferencesService(Context context, string name = "ob
     public void SetValue<T>(string key, T value)
     {
         using var editor = _prefs.Edit()!;
-        _ = value is string s
-            ? editor.PutString(key, s)
-            : value is int i
-            ? editor.PutInt(key, i)
-            : value is bool b
-                ? editor.PutBoolean(key, b)
-                : value is long l
-                ? editor.PutLong(key, l)
-                : value is float f ? editor.PutFloat(key, f) : value is null ? editor.Remove(key) : editor.PutString(key, value.ToString());
-
+        _ = value switch
+        {
+            string s => editor.PutString(key, s),
+            int i => editor.PutInt(key, i),
+            bool b => editor.PutBoolean(key, b),
+            long l => editor.PutLong(key, l),
+            float f => editor.PutFloat(key, f),
+            null => editor.Remove(key),
+            _ => editor.PutString(key, value.ToString()),
+        };
         editor.Apply();
     }
 

@@ -1,5 +1,3 @@
-using System.Buffers.Binary;
-
 namespace obxodka.Client.Diagnostics;
 
 [Flags]
@@ -250,7 +248,7 @@ public sealed class VirtualTspuEngine
                         sniPos += 3;
                         if (nameType == 0 && sniPos + nameLen <= extEnd)
                         {
-                            sni = System.Text.Encoding.ASCII.GetString(record.Slice(sniPos, nameLen));
+                            sni = Encoding.ASCII.GetString(record.Slice(sniPos, nameLen));
                             return true;
                         }
                     }

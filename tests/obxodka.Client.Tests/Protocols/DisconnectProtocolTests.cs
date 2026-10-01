@@ -5,18 +5,13 @@ namespace obxodka.Client.Tests.Protocols;
 public class DisconnectProtocolTests
 {
     [Fact]
-    public void PackAuthWithDiscMagicCreatesValidDisconnectPacket()
+    public void IsDisconnectPayloadIdentifiesDisconnectMarker()
     {
-        var thumbprint = "TEST-THUMBPRINT-DISCONNECT-123456";
-        var packet = FechsueCodec.PackDisc(thumbprint, out var len);
+        ReadOnlySpan<byte> discMarker = [0xAA, 0xBB, 0xCC, 0xDD];
+        Assert.True(Obfuscator.IsDisconnectPayload(discMarker));
 
-        Assert.True(len >= 25);
-
-        var unpacked = FechsueCodec.TryUnpackDisc(packet.AsSpan(0, len), out var unpackedThumb, out _);
-        Assert.True(unpacked);
-        Assert.Equal(thumbprint, unpackedThumb);
-
-        ArrayPool<byte>.Shared.Return(packet);
+        ReadOnlySpan<byte> normalPacket = [0x45, 0x00, 0x00, 0x3C];
+        Assert.False(Obfuscator.IsDisconnectPayload(normalPacket));
     }
 
     [Theory]

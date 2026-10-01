@@ -1,14 +1,12 @@
-using obxodka.Client.Platforms;
-
 namespace obxodka.Maui.Services;
 
 public sealed class MauiPreferencesService : IPreferencesService
 {
     public T GetValue<T>(string key, T defaultValue = default!)
     {
-        if (Microsoft.Maui.Storage.Preferences.Default.ContainsKey(key))
+        if (Preferences.Default.ContainsKey(key))
         {
-            return Microsoft.Maui.Storage.Preferences.Default.Get<T>(key, defaultValue);
+            return Preferences.Default.Get(key, defaultValue);
         }
 
 #if WINDOWS
@@ -21,13 +19,13 @@ public sealed class MauiPreferencesService : IPreferencesService
                 if (typeof(T) == typeof(string))
                 {
                     var strVal = (T)(object)val.ToString()!;
-                    Microsoft.Maui.Storage.Preferences.Default.Set<T>(key, strVal);
+                    Preferences.Default.Set(key, strVal);
                     return strVal;
                 }
 
                 var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-                var converted = (T)Convert.ChangeType(val, targetType, System.Globalization.CultureInfo.InvariantCulture);
-                Microsoft.Maui.Storage.Preferences.Default.Set<T>(key, converted);
+                var converted = (T)Convert.ChangeType(val, targetType, CultureInfo.InvariantCulture);
+                Preferences.Default.Set(key, converted);
                 return converted;
             }
         }
@@ -41,7 +39,7 @@ public sealed class MauiPreferencesService : IPreferencesService
 
     public void SetValue<T>(string key, T value)
     {
-        Microsoft.Maui.Storage.Preferences.Default.Set<T>(key, value);
+        Preferences.Default.Set(key, value);
 #if WINDOWS
         try
         {
@@ -56,7 +54,7 @@ public sealed class MauiPreferencesService : IPreferencesService
 
     public void Remove(string key)
     {
-        Microsoft.Maui.Storage.Preferences.Default.Remove(key);
+        Preferences.Default.Remove(key);
 #if WINDOWS
         try
         {
@@ -69,7 +67,7 @@ public sealed class MauiPreferencesService : IPreferencesService
 
     public void Clear()
     {
-        Microsoft.Maui.Storage.Preferences.Default.Clear();
+        Preferences.Default.Clear();
 #if WINDOWS
         try
         {

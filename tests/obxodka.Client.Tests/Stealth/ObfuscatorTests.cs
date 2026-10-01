@@ -110,17 +110,12 @@ public class ObfuscatorTests
     }
 
     [Fact]
-    public void QuicInitialBuilderGeneratesValidRfc9000Header()
+    public void IsDisconnectPayloadIdentifiesDisconnectSignal()
     {
-        var dcid = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
-        var scid = new byte[] { 8, 7, 6, 5, 4, 3, 2, 1 };
-        var clientHello = "DummyClientHello"u8.ToArray();
+        ReadOnlySpan<byte> discMarker = [0xAA, 0xBB, 0xCC, 0xDD];
+        Assert.True(Obfuscator.IsDisconnectPayload(discMarker));
 
-        var packet = QuicInitialBuilder.BuildInitialPacket(dcid, scid, clientHello);
-
-        Assert.NotNull(packet);
-        Assert.True(packet.Length > dcid.Length + scid.Length + clientHello.Length);
-        var headerByte = packet[0];
-        Assert.Equal(0xC0, headerByte & 0xFC);
+        ReadOnlySpan<byte> normalPacket = [0x45, 0x00, 0x00, 0x3C];
+        Assert.False(Obfuscator.IsDisconnectPayload(normalPacket));
     }
 }

@@ -2,15 +2,6 @@ namespace obxodka.Views;
 
 public sealed partial class ConfigurationView : ContentView, IDisposable
 {
-    private static Color InactiveStroke => (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
-        ? bsc
-        : Color.FromArgb("#1AFFFFFF");
-    private static Color ActiveStroke => (Application.Current?.Resources.TryGetValue("Primary", out var p) == true && p is Color pc)
-        ? pc
-        : Color.FromArgb("#0078D4");
-    private static Color PurpleStroke => (Application.Current?.Resources.TryGetValue("Purple", out var p) == true && p is Color pc)
-        ? pc
-        : Color.FromArgb("#A855F7");
     private static Color CyanColor => (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac)
         ? ac
         : Color.FromArgb("#00E5FF");
@@ -35,12 +26,10 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         "https://proof.ovh.net/files/100Mb.dat"
     ];
 
-    private int _currentMode = 2;
-    private string _protocolMode = "AUTO";
-    private bool _isUpdating;
     private bool _isTestingSpeed;
     private CancellationTokenSource? _speedTestCts;
 #if WINDOWS
+    private bool _isUpdating;
     private readonly Action? _windowActivatedHandler;
 #endif
 
@@ -48,13 +37,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     {
         InitializeComponent();
 
-        var defaultRays = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 2 : 8;
-        _currentMode = Preferences.Get("BatteryMode", defaultRays);
-        _protocolMode = Preferences.Get("ProtocolMode", "AUTO");
-
         AutoReconnectToggle.IsToggled = Preferences.Get("AutoReconnect", true);
         KillSwitchToggle.IsToggled = Preferences.Get("KillSwitch", false);
-        QuickProtocolSwitchToggle.IsToggled = Preferences.Get("QuickProtocolSwitch", true);
 #if WINDOWS
         RunOnStartupToggle.IsToggled = Preferences.Get("RunOnStartup", false);
         _windowActivatedHandler = () =>
@@ -68,8 +52,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         _ = SyncWindowsStartupStateAsync();
 #endif
 
-        UpdateSelectionUI(_currentMode, _protocolMode);
-        UpdateLockState();
+        UpdateSelectionUI();
 
         ConfigScrollView.SizeChanged += (s, e) =>
         {
@@ -132,25 +115,21 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     private void OnKillSwitchToggled(object? sender, ToggledEventArgs e) =>
         Preferences.Set("KillSwitch", e.Value);
 
-    private void OnQuickProtocolSwitchToggled(object? sender, ToggledEventArgs e)
-    {
-        Preferences.Set("QuickProtocolSwitch", e.Value);
-        UpdateLockState();
-    }
-
     private void OnRunOnStartupToggled(object? sender, ToggledEventArgs e)
     {
+#if WINDOWS
         if (_isUpdating)
         {
             return;
         }
 
         Preferences.Set("RunOnStartup", e.Value);
-#if WINDOWS
         if (OperatingSystem.IsWindows())
         {
             _ = SetWindowsStartupTaskAsync(e.Value);
         }
+#else
+        Preferences.Set("RunOnStartup", e.Value);
 #endif
     }
 
@@ -186,7 +165,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             else if (OperatingSystem.IsWindows())
             {
                 using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false);
-                return key?.GetValue("Obxodka") != null;
+                return key?.GetValue("Obxodka") is not null;
             }
 
             return Preferences.Get("RunOnStartup", false);
@@ -291,7 +270,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             else
             {
                 using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-                if (key != null)
+                if (key is not null)
                 {
                     if (enable)
                     {
@@ -319,19 +298,12 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
     public void OnAppearing()
     {
-        var defaultRays = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 2 : 8;
-        _currentMode = Preferences.Get("BatteryMode", defaultRays);
-        _protocolMode = Preferences.Get("ProtocolMode", "AUTO");
-
         AutoReconnectToggle.IsToggled = Preferences.Get("AutoReconnect", true);
         KillSwitchToggle.IsToggled = Preferences.Get("KillSwitch", false);
-        QuickProtocolSwitchToggle.IsToggled = Preferences.Get("QuickProtocolSwitch", true);
 #if WINDOWS
         _ = SyncWindowsStartupStateAsync();
 #endif
-
-        UpdateSelectionUI(_currentMode, _protocolMode);
-        UpdateLockState();
+        UpdateSelectionUI();
     }
 
     public async Task PlayEntranceAnimationAsync()
@@ -342,235 +314,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         await this.PlayCardsEntranceAsync(30, 240);
     }
 
-    private void UpdateLockState()
-    {
-        var isVpnRunning = OctopusEngine.Current is { IsConnected: true };
-        var isFechsue = _protocolMode == "FECHSUE";
-        var isHotSwap = Preferences.Get("QuickProtocolSwitch", true);
-
-        if (isVpnRunning && !isHotSwap)
-        {
-            LockWarningLabel.IsVisible = true;
-            LockWarningLabel.Text = "Отключите VPN, чтобы изменить";
-            LockWarningLabel.TextColor = ErrorRedColor;
-        }
-        else if (isVpnRunning && isHotSwap)
-        {
-            LockWarningLabel.IsVisible = true;
-            LockWarningLabel.Text = "Горячая смена (Hot-Swap) активна";
-            LockWarningLabel.TextColor = CyanColor;
-        }
-        else if (isFechsue)
-        {
-            LockWarningLabel.IsVisible = true;
-            LockWarningLabel.Text = "FECHSUE работает на 1 супер-потоке";
-            LockWarningLabel.TextColor = PurpleStroke;
-        }
-        else
-        {
-            LockWarningLabel.IsVisible = false;
-        }
-
-        var raysEnabled = !isVpnRunning && !isFechsue;
-        EcoButton.IsEnabled = raysEnabled;
-        BalancedButton.IsEnabled = raysEnabled;
-        TurboButton.IsEnabled = raysEnabled;
-
-        var protoEnabled = !isVpnRunning || isHotSwap;
-        AutoButton.IsEnabled = protoEnabled;
-        Http2Button.IsEnabled = protoEnabled;
-        Http3Button.IsEnabled = protoEnabled;
-        FechsueButton.IsEnabled = protoEnabled;
-
-        var rayOpacity = isVpnRunning ? 0.5 : (isFechsue ? 0.35 : 1.0);
-        EcoButton.Opacity = rayOpacity;
-        BalancedButton.Opacity = rayOpacity;
-        TurboButton.Opacity = rayOpacity;
-
-        var protoOpacity = protoEnabled ? 1.0 : 0.5;
-        AutoButton.Opacity = protoOpacity;
-        Http2Button.Opacity = protoOpacity;
-        Http3Button.Opacity = protoOpacity;
-        FechsueButton.Opacity = protoOpacity;
-    }
-
-    private void OnEcoTapped(object? sender, TappedEventArgs e)
-    {
-        if (EcoButton.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconSpringHoverAsync(EcoIcon, 1.25);
-            SetMode(1);
-        }
-    }
-
-    private void OnBalancedTapped(object? sender, TappedEventArgs e)
-    {
-        if (BalancedButton.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconWiggleAsync(BalancedIcon, 12);
-            SetMode(2);
-        }
-    }
-
-    private void OnTurboTapped(object? sender, TappedEventArgs e)
-    {
-        if (TurboButton.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconSpringHoverAsync(TurboIcon, 1.3);
-            SetMode(8);
-        }
-    }
-
-    private void OnAutoTapped(object? sender, TappedEventArgs e)
-    {
-        if (AutoButton.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconSpringHoverAsync(AutoIcon, 1.25);
-            SetProtocol("AUTO");
-        }
-    }
-
-    private void OnHttp2Tapped(object? sender, TappedEventArgs e)
-    {
-        if (Http2Button.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconSpinAsync(Http2Icon, 180);
-            SetProtocol("HTTP2");
-        }
-    }
-
-    private void OnHttp3Tapped(object? sender, TappedEventArgs e)
-    {
-        if (Http3Button.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconPulseAsync(Http3Icon, 1.25);
-            SetProtocol("HTTP3");
-        }
-    }
-
-    private void OnFechsueTapped(object? sender, TappedEventArgs e)
-    {
-        if (FechsueButton.IsEnabled)
-        {
-            _ = UIAnimations.PlayIconSpringHoverAsync(FechsueIcon, 1.25);
-            SetProtocol("FECHSUE");
-        }
-    }
-
-    private void SetMode(int rays)
-    {
-        if (_isUpdating)
-        {
-            return;
-        }
-
-        _isUpdating = true;
-        _currentMode = rays;
-        Preferences.Set("BatteryMode", rays);
-        UpdateSelectionUI(_currentMode, _protocolMode);
-        _isUpdating = false;
-    }
-
-    private void SetProtocol(string protocol)
-    {
-        if (_isUpdating)
-        {
-            return;
-        }
-
-        _isUpdating = true;
-        _protocolMode = protocol;
-        Preferences.Set("ProtocolMode", protocol);
-        Preferences.Set("UseHttp3", protocol == "HTTP3");
-        UpdateSelectionUI(_currentMode, _protocolMode);
-        UpdateLockState();
-
-        if (OctopusEngine.Current is { IsConnected: true } && Preferences.Get("QuickProtocolSwitch", true))
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var (success, servers, _) = await new ApiService(new HttpClient(ApiService.CreateDefaultHandler())).GetServersAsync();
-                    if (success && servers is { Count: > 0 })
-                    {
-                        await OctopusEngine.Current.ReconnectAsync(servers[0].Ip, servers[0].Port);
-                        MainThread.BeginInvokeOnMainThread(UpdateLockState);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[HOT SWAP ERROR] {ex.Message}");
-                }
-            });
-        }
-
-        _isUpdating = false;
-    }
-
-    private void UpdateSelectionUI(int mode, string protocol)
-    {
-        AutoButton.Stroke = InactiveStroke;
-        EcoButton.Stroke = InactiveStroke;
-        BalancedButton.Stroke = InactiveStroke;
-        TurboButton.Stroke = InactiveStroke;
-        Http2Button.Stroke = InactiveStroke;
-        Http3Button.Stroke = InactiveStroke;
-        FechsueButton.Stroke = InactiveStroke;
-
-        var raysText = protocol == "FECHSUE"
-            ? "1 Супер-Луч"
-            : mode switch
-            {
-                1 => "1 Луч",
-                2 => "2 Луча",
-                8 => "8 Лучей",
-                _ => $"{mode} Луч."
-            };
-
-        if (protocol != "FECHSUE")
-        {
-            if (mode == 1)
-            {
-                EcoButton.Stroke = ActiveStroke;
-            }
-            else if (mode == 2)
-            {
-                BalancedButton.Stroke = ActiveStroke;
-            }
-            else if (mode == 8)
-            {
-                TurboButton.Stroke = ActiveStroke;
-            }
-        }
-
-        var protocolText = protocol switch
-        {
-            "AUTO" => "AUTO (Умный)",
-            "FECHSUE" => "FECHSUE (Мульти-пинговый Watchdog)",
-            "HTTP3" => "HTTP/3 QUIC",
-            _ => "HTTP/2 TCP"
-        };
-
-        if (protocol == "AUTO")
-        {
-            AutoButton.Stroke = CyanColor;
-        }
-        else if (protocol == "FECHSUE")
-        {
-            FechsueButton.Stroke = PurpleStroke;
-        }
-        else if (protocol == "HTTP3")
-        {
-            Http3Button.Stroke = ActiveStroke;
-        }
-        else
-        {
-            Http2Button.Stroke = ActiveStroke;
-        }
-
-        CurrentSelectionLabel.Text = $"[ {raysText} / {protocolText} ]";
-    }
+    private void UpdateSelectionUI() =>
+        CurrentSelectionLabel.Text = "[ gRPC HTTP/2 • 8 лучей ]";
 
     public void UpdateCardOpacity()
     {
@@ -578,16 +323,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             ? bgColor
             : Color.FromArgb("#161622");
 
-        EcoButton.BackgroundColor = bgSurface;
-        BalancedButton.BackgroundColor = bgSurface;
-        TurboButton.BackgroundColor = bgSurface;
-        AutoButton.BackgroundColor = bgSurface;
-        Http2Button.BackgroundColor = bgSurface;
-        Http3Button.BackgroundColor = bgSurface;
-        FechsueButton.BackgroundColor = bgSurface;
         AutoReconnectCard.BackgroundColor = bgSurface;
         KillSwitchCard.BackgroundColor = bgSurface;
-        QuickProtocolSwitchCard.BackgroundColor = bgSurface;
         RunOnStartupCard.BackgroundColor = bgSurface;
         SpeedTestCard.BackgroundColor = bgSurface;
         ThemesSettingsCard.BackgroundColor = bgSurface;
@@ -595,20 +332,21 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
     public void SetHeaderTopInset(double top)
     {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
+        if (DeviceInfo.Idiom != DeviceIdiom.Phone || RootLayoutGrid is null)
         {
-            if (RootLayoutGrid != null)
-            {
-                RootLayoutGrid.Padding = new Thickness(16, 0, 16, 0);
-            }
+            return;
+        }
 
-            if (MainContentGrid != null)
+        if (DeviceInfo.Platform == DevicePlatform.Android)
+        {
+            RootLayoutGrid.Padding = new Thickness(16, 0, 16, 0);
+            if (MainContentGrid is not null)
             {
                 var topAir = Math.Max(top + 16, 50);
                 MainContentGrid.Padding = new Thickness(0, topAir, 0, 140);
             }
         }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
+        else
         {
             RootLayoutGrid.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
         }
@@ -618,7 +356,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         MainThread.BeginInvokeOnMainThread(() =>
         {
             UpdateCardOpacity();
-            UpdateSelectionUI(_currentMode, _protocolMode);
+            UpdateSelectionUI();
         });
 
     private async void OnRunSpeedTestClickedAsync(object? sender, EventArgs e)
@@ -657,13 +395,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
                 }
             }
 
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                if (SpeedGaugeIcon is not null)
-                {
-                    _ = SpeedGaugeIcon.RotateToAsync(0, 250, Easing.CubicOut);
-                }
-            });
+            MainThread.BeginInvokeOnMainThread(() => _ = SpeedGaugeIcon?.RotateToAsync(0, 250, Easing.CubicOut));
         }, token);
 
         try
@@ -863,18 +595,14 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
     private void OnThemesSettingsTapped(object? sender, EventArgs e)
     {
-        if (ThemesSettingsCard is not null)
-        {
-            _ = ThemesSettingsCard.BounceClickAsync();
-        }
-
+        _ = ThemesSettingsCard?.BounceClickAsync();
         ThemesRequested?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()
     {
 #if WINDOWS
-        if (_windowActivatedHandler != null)
+        if (_windowActivatedHandler is not null)
         {
             App.WindowActivated -= _windowActivatedHandler;
         }

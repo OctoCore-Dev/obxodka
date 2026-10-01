@@ -133,28 +133,6 @@ public class ZeroAllocationNetworkTests : IDisposable
         Assert.Equal(0, allocAfter - allocBefore);
     }
 
-    [Fact]
-    public void FechsueCodecPackSpanHasZeroGarbageAllocations()
-    {
-        Span<byte> probe = stackalloc byte[10];
-        probe[0] = 0x99;
-        probe[1] = 0;
-        BinaryPrimitives.WriteInt64LittleEndian(probe.Slice(2, 8), Stopwatch.GetTimestamp());
-
-        var warmup = FechsueCodec.Pack(probe, 12345, _aes, out _);
-        ArrayPool<byte>.Shared.Return(warmup);
-
-        var allocBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            var packed = FechsueCodec.Pack(probe, 12345, _aes, out var totalLength);
-            _ = totalLength;
-            ArrayPool<byte>.Shared.Return(packed);
-        }
-        var allocAfter = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, allocAfter - allocBefore);
-    }
 
     [Fact]
     public void PriorityPacketQueueCorrectlyPrioritizesObfuscatedPingProbes()

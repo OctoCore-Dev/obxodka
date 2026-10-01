@@ -1,8 +1,3 @@
-using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
-using System.Runtime.CompilerServices;
-
 namespace obxodka.Client.Diagnostics;
 
 public sealed record RstFingerprint(
@@ -136,8 +131,8 @@ public static class InSituDiagnosticsEngine
                 cts.CancelAfter(1500);
 
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                req.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
-                req.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-message"));
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/dns-json"));
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/dns-message"));
 
                 var sw = Stopwatch.StartNew();
                 using var resp = await httpClient.SendAsync(req, cts.Token).ConfigureAwait(false);

@@ -39,7 +39,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>14</LangVersion>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Features>strict</Features>
+    <WarningLevel>9999</WarningLevel>
     <Version Condition="'$(Version)' == ''">4.8.6</Version>
     <IsTrimmable Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</IsTrimmable>
     <EnableTrimAnalyzer Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</EnableTrimAnalyzer>

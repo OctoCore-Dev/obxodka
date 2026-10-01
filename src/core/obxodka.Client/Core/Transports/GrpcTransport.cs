@@ -1,35 +1,30 @@
-using System.Security.Authentication;
-
 namespace obxodka.Core.Transports;
 
 public sealed partial class GrpcTransport(
-    bool useHttp3,
     int activeRays,
     X509Certificate2? clientCert,
     string? jwtToken = null,
     int serverPort = 443,
-    MeshRelayInfo? meshRelay = null,
     string? targetSni = null) : IVpnTransport
 {
-    private readonly bool _useHttp3 = useHttp3;
     private readonly int _activeRays = Math.Clamp(activeRays, 1, PacketRouter.MaxRays);
     private readonly string? _certThumbprint = clientCert?.Thumbprint;
     private readonly string? _jwtToken = jwtToken;
     private readonly int _serverPort = serverPort > 0 ? serverPort : 443;
-    private readonly MeshRelayInfo? _meshRelay = meshRelay;
     private readonly string? _configuredSni = targetSni;
     private string _thumbprint = string.Empty;
 
-    private readonly GrpcChannel?[] _grpcChannels = new GrpcChannel?[PacketRouter.MaxRays];
+    private GrpcChannel? _grpcChannel;
     private readonly PriorityPacketQueue?[] _txChannels = new PriorityPacketQueue?[PacketRouter.MaxRays];
     private readonly Stream?[] _tunnelStreams = new Stream?[PacketRouter.MaxRays];
     private readonly PacketDeduplicator _deduplicator = new();
     private CancellationTokenSource? _cts;
     private TaskCompletionSource<(string, string)>? _ipTcs;
     private volatile bool _serverUsesObfsMasking;
+    private long _lastMeasuredPingTimestamp;
 
-    public string ProtocolName => _useHttp3 ? "HTTP3" : "HTTP2";
-    public bool IsConnected => Array.Exists(_grpcChannels, c => c is not null);
+    public string ProtocolName => "HTTP2";
+    public bool IsConnected => _grpcChannel is not null && _tunnelStreams[0] is not null;
 
     public event Action<byte[], int>? OnPacketReceived;
     public event Action<long>? OnPingUpdated;
@@ -185,7 +180,7 @@ public sealed partial class GrpcTransport(
         _ipTcs = new TaskCompletionSource<(string, string)>();
         _thumbprint = thumbprint;
         var serverPort = _serverPort;
-        var defaultSni = "api.octocore.dev";
+        var defaultSni = AppSecrets.GetRandomSni();
         try
         {
             if (Uri.TryCreate(AppConfig.ApiBaseUrl, UriKind.Absolute, out var apiUri) &&
@@ -199,106 +194,74 @@ public sealed partial class GrpcTransport(
 
         var targetHost = !string.IsNullOrWhiteSpace(_configuredSni) && !IPAddress.TryParse(_configuredSni, out _)
             ? _configuredSni
-            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : defaultSni);
+            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : AppSecrets.GetRandomSni());
 
         try
         {
+            var handler = new SocketsHttpHandler
+            {
+                PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+                KeepAlivePingDelay = TimeSpan.FromSeconds(15),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
+                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+                EnableMultipleHttp2Connections = true,
+                InitialHttp2StreamWindowSize = 16777216,
+                SslOptions = new SslClientAuthenticationOptions
+                {
+                    TargetHost = targetHost,
+                    ApplicationProtocols = [SslApplicationProtocol.Http2],
+                    EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
+                    RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
+                        ValidateServerCertificate(certificate, chain, errors)
+                },
+                ConnectCallback = async (context, cToken) =>
+                {
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+                    {
+                        NoDelay = true,
+                        SendBufferSize = 8388608,
+                        ReceiveBufferSize = 8388608
+                    };
+                    socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                    OnSocketCreated?.Invoke(socket);
+                    try
+                    {
+                        var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
+                            ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
+                            : context.DnsEndPoint;
+                        Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {connectTarget} (SNI={targetHost})...");
+                        await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
+                        Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {connectTarget}!");
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[GRPC-CONNECT ERROR] Failed TCP socket connect to {serverIp}:{serverPort}: {ex.Message}");
+                        socket.Dispose();
+                        throw;
+                    }
+                }
+            };
+
+            var httpClient = new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan
+            };
+
+            var channelOptions = new GrpcChannelOptions
+            {
+                HttpClient = httpClient,
+                MaxReceiveMessageSize = null,
+                MaxSendMessageSize = null,
+                DisposeHttpClient = true
+            };
+
+            var channelHost = !string.IsNullOrWhiteSpace(targetHost) ? targetHost : serverIp;
+            Debug.WriteLine($"[GRPC-INIT] Creating multiplexed channel -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
+            _grpcChannel = GrpcChannel.ForAddress($"https://{channelHost}:{serverPort}", channelOptions);
+
             for (var i = 0; i < _activeRays; i++)
             {
-                var handler = new SocketsHttpHandler
-                {
-                    EnableMultipleHttp2Connections = true,
-                    PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-                    KeepAlivePingDelay = TimeSpan.FromSeconds(10),
-                    KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
-                    KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                    SslOptions = new SslClientAuthenticationOptions
-                    {
-                        TargetHost = targetHost,
-                        ApplicationProtocols = [SslApplicationProtocol.Http2],
-                        EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
-                        RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                            ValidateServerCertificate(certificate, chain, errors)
-                    }
-                };
-
-                if (!_useHttp3)
-                {
-                    handler.ConnectCallback = async (context, cToken) =>
-                    {
-                        if (_meshRelay is not null)
-                        {
-                            return await MeshRelayClient.ConnectThroughRelayAsync(
-                                _meshRelay.IpAddress,
-                                _meshRelay.Port,
-                                context.DnsEndPoint.Host,
-                                context.DnsEndPoint.Port,
-                                _jwtToken,
-                                _meshRelay.IsFriend,
-                                cToken
-                            ).ConfigureAwait(false);
-                        }
-
-                        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
-                        {
-                            NoDelay = true,
-                            SendBufferSize = 8388608,
-                            ReceiveBufferSize = 8388608
-                        };
-                        try
-                        {
-                            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0xB8);
-                        }
-                        catch
-                        {
-                            try
-                            {
-                                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.TypeOfService, 0x2E);
-                            }
-                            catch { }
-                        }
-                        OnSocketCreated?.Invoke(socket);
-                        try
-                        {
-                            var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
-                                ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
-                                : context.DnsEndPoint;
-                            Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {connectTarget}...");
-                            await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
-                            Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {connectTarget}!");
-                            return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25, socket: socket, enableTtlDesync: false);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"[GRPC-CONNECT ERROR] Failed TCP socket connect to {serverIp}:{serverPort}: {ex.Message}");
-                            socket.Dispose();
-                            throw;
-                        }
-                    };
-                }
-
-                var httpClient = new HttpClient(handler)
-                {
-                    Timeout = Timeout.InfiniteTimeSpan
-                };
-
-                if (_useHttp3)
-                {
-                    httpClient.DefaultRequestVersion = HttpVersion.Version30;
-                    httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
-                }
-
-                var channelOptions = new GrpcChannelOptions
-                {
-                    HttpClient = httpClient,
-                    MaxReceiveMessageSize = null,
-                    MaxSendMessageSize = null,
-                    DisposeHttpClient = true
-                };
-
-                var channelHost = !string.IsNullOrWhiteSpace(targetHost) ? targetHost : serverIp;
-                Debug.WriteLine($"[GRPC-INIT] Creating channel for ray #{i} -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
-                _grpcChannels[i] = GrpcChannel.ForAddress($"https://{channelHost}:{serverPort}", channelOptions);
                 _txChannels[i] = new PriorityPacketQueue(i <= 1 ? 2000 : 1500);
             }
 
@@ -364,25 +327,32 @@ public sealed partial class GrpcTransport(
         try
         {
             var ts = Stopwatch.GetTimestamp();
-            var targetRays = _activeRays;
             Span<byte> packet = stackalloc byte[9];
             packet[0] = 0x99;
             BinaryPrimitives.WriteInt64LittleEndian(packet.Slice(1, 8), ts);
 
-            for (var r = 0; r < targetRays; r++)
+            var packed = Obfuscator.Pack(packet, out var totalLength, _serverUsesObfsMasking);
+
+            var sentPrimary = false;
+            if (_txChannels[0] is { } ch0 && _tunnelStreams[0] != null)
             {
-                if (_txChannels[r] is { } ch && _tunnelStreams[r] != null)
+                sentPrimary = ch0.TryEnqueue(packed, totalLength);
+            }
+
+            var secondaryRay = _activeRays >= 8 ? 7 : (_activeRays >= 4 ? 3 : (_activeRays >= 2 ? 1 : -1));
+            if (secondaryRay > 0 && _txChannels[secondaryRay] is { } chSec && _tunnelStreams[secondaryRay] != null)
+            {
+                var dup = ArrayPool<byte>.Shared.Rent(totalLength);
+                Buffer.BlockCopy(packed, 0, dup, 0, totalLength);
+                if (!chSec.TryEnqueue(dup, totalLength))
                 {
-                    var packed = Obfuscator.Pack(packet, out var totalLength, _serverUsesObfsMasking);
-                    if (!ch.TryEnqueue(packed, totalLength))
-                    {
-                        ArrayPool<byte>.Shared.Return(packed);
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[GRPC-PING-PROBE] Enqueued 0x99 ping probe to Ray #{r} (timestamp={ts})");
-                    }
+                    ArrayPool<byte>.Shared.Return(dup);
                 }
+            }
+
+            if (!sentPrimary)
+            {
+                ArrayPool<byte>.Shared.Return(packed);
             }
         }
         catch (Exception ex)
@@ -403,7 +373,7 @@ public sealed partial class GrpcTransport(
 
     private async Task ConnectRayAsync(int rayIndex, bool isNewConnection)
     {
-        var client = new TunnelService.TunnelServiceClient(_grpcChannels[rayIndex]);
+        var client = new TunnelService.TunnelServiceClient(_grpcChannel!);
         var headers = new Metadata();
 
         var authThumb = !string.IsNullOrEmpty(_thumbprint) ? _thumbprint : _certThumbprint ?? "";
@@ -567,12 +537,15 @@ public sealed partial class GrpcTransport(
                     else if (packet[0] == 0x99 && realLen >= 9)
                     {
                         var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
-                        var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
-                        var rtt = (long)Math.Round(elapsedMs);
-                        Debug.WriteLine($"[GRPC-PING] Received pong on ray #{rayIndex}, RTT={rtt}ms, EngineTotalRX={OctopusEngine.Current.TotalBytesReceived}B");
-                        if (rtt is >= 0 and < 10000)
+                        if (Interlocked.Exchange(ref _lastMeasuredPingTimestamp, sentTimestamp) != sentTimestamp)
                         {
-                            OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                            var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
+                            var rtt = (long)Math.Round(elapsedMs);
+                            Debug.WriteLine($"[GRPC-PING] Received fastest pong on ray #{rayIndex}, RTT={rtt}ms, EngineTotalRX={OctopusEngine.Current.TotalBytesReceived}B");
+                            if (rtt is >= 0 and < 10000)
+                            {
+                                OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                            }
                         }
                         ArrayPool<byte>.Shared.Return(packet);
                     }
@@ -738,18 +711,18 @@ public sealed partial class GrpcTransport(
                 _tunnelStreams[i] = null;
             }
             catch { }
-
-            try
-            {
-                if (_grpcChannels[i] is not null)
-                {
-                    _ = _grpcChannels[i]!.ShutdownAsync();
-                    _grpcChannels[i]!.Dispose();
-                    _grpcChannels[i] = null;
-                }
-            }
-            catch { }
         }
+
+        try
+        {
+            if (_grpcChannel is not null)
+            {
+                _ = _grpcChannel.ShutdownAsync();
+                _grpcChannel.Dispose();
+                _grpcChannel = null;
+            }
+        }
+        catch { }
 
         GC.SuppressFinalize(this);
     }

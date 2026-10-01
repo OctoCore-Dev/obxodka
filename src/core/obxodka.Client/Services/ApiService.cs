@@ -15,7 +15,7 @@ public sealed class ApiService(HttpClient client)
         SslOptions = new SslClientAuthenticationOptions
         {
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
+            EnabledSslProtocols = SslProtocols.Tls12
         },
         UseProxy = false
     })
@@ -29,7 +29,7 @@ public sealed class ApiService(HttpClient client)
         SslOptions = new SslClientAuthenticationOptions
         {
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = System.Security.Authentication.SslProtocols.None
+            EnabledSslProtocols = SslProtocols.None
         },
         UseProxy = false
     })
@@ -45,9 +45,9 @@ public sealed class ApiService(HttpClient client)
             UseProxy = false,
             SslOptions = new SslClientAuthenticationOptions
             {
-                TargetHost = "api.octocore.dev",
+                TargetHost = AppSecrets.GetRandomSni(),
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
                     GrpcTransport.ValidateServerCertificate(cert, chain, errors)
             },
@@ -56,8 +56,8 @@ public sealed class ApiService(HttpClient client)
                 var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
                 try
                 {
-                    await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse("45.63.117.29"), 443), cToken).ConfigureAwait(false);
-                    return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25);
+                    await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(AppConfig.DirectServerIp), 443), cToken).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
                 }
                 catch
                 {
@@ -93,7 +93,7 @@ public sealed class ApiService(HttpClient client)
         SslOptions = new SslClientAuthenticationOptions
         {
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
         },
         ConnectCallback = async (context, cToken) =>
         {
@@ -101,7 +101,7 @@ public sealed class ApiService(HttpClient client)
             try
             {
                 await socket.ConnectAsync(context.DnsEndPoint, cToken).ConfigureAwait(false);
-                return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25);
+                return new NetworkStream(socket, ownsSocket: true);
             }
             catch
             {
@@ -217,7 +217,7 @@ public sealed class ApiService(HttpClient client)
 
         try
         {
-            var directUrl = $"https://45.63.117.29/{url.TrimStart('/')}";
+            var directUrl = $"https://{AppConfig.DirectServerIp}/{url.TrimStart('/')}";
             using var request = new HttpRequestMessage(method, directUrl);
             request.Headers.Host = "api.octocore.dev";
             if (body is not null && requestInfo is not null)
@@ -413,9 +413,5 @@ public sealed class ApiService(HttpClient client)
     public async Task<(bool Success, MessageResponse? Data, string? Error)> ActivateReferralCodeAsync(string code, CancellationToken ct = default) =>
         await PostWithResponseAsync(
             "api/Referral/activate", new ActivateReferralRequest(code), AppJsonContext.Default.ActivateReferralRequest, AppJsonContext.Default.MessageResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
-
-    public async Task<(bool Success, ClaimRewardResponse? Data, string? Error)> ClaimReferralRewardAsync(string claimId, CancellationToken ct = default) =>
-        await PostWithResponseAsync(
-            "api/Referral/claim", new ClaimRewardRequest(claimId), AppJsonContext.Default.ClaimRewardRequest, AppJsonContext.Default.ClaimRewardResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
 }
 
