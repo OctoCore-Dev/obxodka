@@ -434,7 +434,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     return false;
                 }
 
-                // If TUN is already established for this IP and reader/writer threads are running, keep it intact
                 if (_tunInterface != null && _currentTunIp == ip && _isTunRunning && _txThread is { IsAlive: true } && _rxThread is { IsAlive: true })
                 {
                     System.Diagnostics.Debug.WriteLine($"[VPN ESTABLISH] TUN already active for {ip}/32 with healthy worker threads. Preserving tunnel interface.");
@@ -663,7 +662,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 if (length > 0)
                 {
-                    // LOOP BREAKER: drop any packet destined for the VPN server itself
                     if (OctopusEngine.Current.IsServerDestination(buffer.AsSpan(0, length), length))
                     {
                         ArrayPool<byte>.Shared.Return(buffer);
