@@ -19,7 +19,7 @@
             VerticalScrollBarVisibility="Never">
             <Grid
                 x:Name="ContentGrid"
-                Padding="{OnIdiom Phone='0,0,0,96',
+                Padding="{OnIdiom Phone='0,50,0,96',
                                   Default='0'}"
                 ColumnDefinitions="{OnIdiom Desktop='5*, 4*',
                                             Tablet='5*, 4*',
@@ -75,7 +75,7 @@
                                         FontFamily="{DynamicResource AppFontMedium}"
                                         FontSize="11"
                                         Style="{StaticResource LabelMuted}"
-                                        Text="IP-адрес"
+                                        Text="NET"
                                         VerticalOptions="Center" />
                                 </HorizontalStackLayout>
 

@@ -266,9 +266,7 @@ public sealed partial class GrpcTransport(
                             Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {connectTarget}...");
                             await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
                             Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {connectTarget}!");
-                            var delay = Random.Shared.Next(20, 45);
-                            var desyncTtl = Random.Shared.Next(2, 5);
-                            return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: delay, socket: socket, enableTtlDesync: true, desyncTtl: desyncTtl);
+                            return new DpiBypassStream(new NetworkStream(socket, ownsSocket: true), splitPosition: 2, delayMs: 25, socket: socket, enableTtlDesync: false);
                         }
                         catch (Exception ex)
                         {

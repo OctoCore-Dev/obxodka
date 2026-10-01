@@ -19,7 +19,7 @@ public sealed partial class DpiBypassStream(
     private readonly Socket? _socket = socket;
     private bool _firstWrite = true;
 
-    public int SplitPosition { get; } = Math.Max(1, splitPosition);
+    public int SplitPosition { get; } = Math.Max(0, splitPosition);
     public int DelayMs { get; } = Math.Max(0, delayMs);
     public bool EnableTtlDesync { get; } = enableTtlDesync;
     public int DesyncTtl { get; } = Math.Clamp(desyncTtl, 1, 255);
@@ -49,11 +49,13 @@ public sealed partial class DpiBypassStream(
 
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        var effectiveSplit = _chameleon?.NextSplitPosition(1, 2) ?? SplitPosition;
+        var effectiveSplit = _chameleon?.NextSplitPosition(1, 2)
+            ?? (SplitPosition > 0 ? SplitPosition : 2);
         if (_firstWrite && buffer.Length > effectiveSplit)
         {
             _firstWrite = false;
-            var effectiveDelay = _chameleon?.NextDelayMs(15, 25) ?? DelayMs;
+            var effectiveDelay = _chameleon?.NextDelayMs(15, 35)
+                ?? (DelayMs > 0 ? DelayMs : 25);
 
             if (EnableTtlDesync && _socket != null)
             {
@@ -86,11 +88,13 @@ public sealed partial class DpiBypassStream(
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        var effectiveSplit = _chameleon?.NextSplitPosition(1, 2) ?? SplitPosition;
+        var effectiveSplit = _chameleon?.NextSplitPosition(1, 2)
+            ?? (SplitPosition > 0 ? SplitPosition : 2);
         if (_firstWrite && buffer.Length > effectiveSplit)
         {
             _firstWrite = false;
-            var effectiveDelay = _chameleon?.NextDelayMs(15, 25) ?? DelayMs;
+            var effectiveDelay = _chameleon?.NextDelayMs(15, 35)
+                ?? (DelayMs > 0 ? DelayMs : 25);
 
             if (EnableTtlDesync && _socket != null)
             {

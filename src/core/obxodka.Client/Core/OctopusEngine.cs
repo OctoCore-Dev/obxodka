@@ -71,12 +71,103 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         OnPingUpdated?.Invoke((long)Math.Round(_smoothedPing));
     }
 
-    public async Task ConnectAsync(string serverIp, int serverPort)
+    private readonly List<byte[]> _serverIpv4List = [];
+    private readonly List<byte[]> _serverIpv6List = [];
+    private readonly Lock _serverIpsLock = new();
+
+    public void RegisterServerEndpoint(string serverIp)
+    {
+        if (string.IsNullOrWhiteSpace(serverIp))
+        {
+            return;
+        }
+
+        lock (_serverIpsLock)
+        {
+            try
+            {
+                if (IPAddress.TryParse(serverIp, out var directIp))
+                {
+                    AddIpBytes(directIp);
+                }
+                else
+                {
+                    var addrs = Dns.GetHostAddresses(serverIp);
+                    foreach (var addr in addrs)
+                    {
+                        AddIpBytes(addr);
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
+    private void AddIpBytes(IPAddress ip)
+    {
+        var b = ip.GetAddressBytes();
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            if (!_serverIpv4List.Any(existing => existing.AsSpan().SequenceEqual(b)))
+            {
+                _serverIpv4List.Add(b);
+            }
+        }
+        else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            if (!_serverIpv6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
+            {
+                _serverIpv6List.Add(b);
+            }
+        }
+    }
+
+    public bool IsServerDestination(ReadOnlySpan<byte> packet, int length)
+    {
+        if (length < 20)
+        {
+            return false;
+        }
+
+        var version = packet[0] >> 4;
+        lock (_serverIpsLock)
+        {
+            if (version == 4)
+            {
+                var dstSpan = packet.Slice(16, 4);
+                foreach (var ip in _serverIpv4List)
+                {
+                    if (dstSpan.SequenceEqual(ip))
+                    {
+                        return true;
+                    }
+                }
+            }
+            else if (version == 6 && length >= 40)
+            {
+                var dstSpan = packet.Slice(24, 16);
+                foreach (var ip in _serverIpv6List)
+                {
+                    if (dstSpan.SequenceEqual(ip))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public async Task ConnectAsync(string serverIp, int serverPort, string? protocolOverride = null)
     {
         if (IsConnected)
         {
             return;
         }
+
+        RegisterServerEndpoint(serverIp);
+        RegisterServerEndpoint(AppConfig.DirectServerIp);
 
         var session = await AuthManager.LoadSessionAsync();
         if (string.IsNullOrEmpty(session.VpnConfig))
@@ -120,7 +211,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             }
         }
 
-        var protocolMode = Preferences.Get("ProtocolMode", "AUTO");
+        var protocolMode = protocolOverride ?? Preferences.Get("ProtocolMode", "AUTO");
 
         if (protocolMode == "AUTO")
         {
@@ -150,7 +241,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
             var tcs = new TaskCompletionSource<(string name, IVpnTransport transport, string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var fechsueTransport = new FechsueTransport(activeRays: ActiveRays);
+            var fechsueTransport = new FechsueTransport(activeRays: ActiveRays, serverPort: serverPort);
             var grpcTransport = new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort);
 
             var probeFailures = 0;
@@ -245,7 +336,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             IVpnTransport transport = protocolMode switch
             {
-                "FECHSUE" when meshRelay == null => new FechsueTransport(activeRays: ActiveRays),
+                "FECHSUE" when meshRelay == null => new FechsueTransport(activeRays: ActiveRays, serverPort: serverPort),
                 "HTTP2" or "HTTP3" or "GRPC" or _ => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort, meshRelay: meshRelay)
             };
 
@@ -266,10 +357,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
     }
 
-    public async Task ReconnectAsync(string serverIp, int serverPort)
+    public async Task ReconnectAsync(string serverIp, int serverPort, string? protocolOverride = null)
     {
         await DisposeAsync();
-        await ConnectAsync(serverIp, serverPort);
+        await ConnectAsync(serverIp, serverPort, protocolOverride);
     }
 
     public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default)
@@ -517,7 +608,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public Task SendPacketAsync(byte[] packet)
     {
-        if (!IsConnected || _transport is null || packet.Length == 0)
+        if (!IsConnected || _transport is null || packet.Length == 0 || IsServerDestination(packet.AsSpan(0, packet.Length), packet.Length))
         {
             return Task.CompletedTask;
         }
@@ -531,7 +622,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public Task SendPacketFromPoolAsync(byte[] inputBuf, int length)
     {
-        if (!IsConnected || _transport is null)
+        if (!IsConnected || _transport is null || IsServerDestination(inputBuf.AsSpan(0, length), length))
         {
             ArrayPool<byte>.Shared.Return(inputBuf);
             return Task.CompletedTask;

@@ -1921,7 +1921,17 @@ public sealed partial class VpnView : ContentView
     public void SetHeaderTopInset(double top)
     {
         _currentTopInset = top;
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
+        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
+        {
+            RootLayoutGrid?.Padding = new Thickness(8, 0, 8, 0);
+
+            if (ContentGrid != null)
+            {
+                var topAir = Math.Max(top + 16, 50);
+                ContentGrid.Padding = new Thickness(0, topAir, 0, 96);
+            }
+        }
+        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
         {
             RootLayoutGrid.Padding = new Thickness(8, Math.Max(top + 4, 8), 8, 0);
         }

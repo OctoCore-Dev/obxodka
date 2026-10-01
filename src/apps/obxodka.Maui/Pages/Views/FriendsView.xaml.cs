@@ -97,7 +97,12 @@ public sealed partial class FriendsView : ContentView
 
     public void SetHeaderTopInset(double top)
     {
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone && Content is Grid g)
+        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone && Content is Grid gAndroid)
+        {
+            var topAir = Math.Max(top + 16, 50);
+            gAndroid.Padding = new Thickness(16, topAir, 16, 0);
+        }
+        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && Content is Grid g)
         {
             g.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
         }

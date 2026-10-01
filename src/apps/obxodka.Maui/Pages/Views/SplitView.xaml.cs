@@ -343,7 +343,13 @@ public sealed partial class SplitView : ContentView
 
     public void SetHeaderTopInset(double top)
     {
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
+        {
+            var safeTop = Math.Max(top + 16, 50);
+            HeaderContainer.Padding = new Thickness(16, safeTop, 16, 10);
+            UpdateHeaderSpacerHeight();
+        }
+        else if (DeviceInfo.Idiom == DeviceIdiom.Phone)
         {
             var safeTop = Math.Max(top, 10);
             HeaderContainer.Padding = new Thickness(16, safeTop, 16, 10);

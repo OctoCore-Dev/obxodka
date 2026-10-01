@@ -4,8 +4,8 @@
     <IsWindows Condition="'$([MSBuild]::IsOSPlatform(&quot;Windows&quot;))' == 'true' or '$(OS)' == 'Windows_NT'">true</IsWindows>
 
     <!-- Корневые пути под разные среды -->
-    <WorkspaceCodeRoot Condition="'$(IsWindows)' == 'true'">C:/Users/irovb/Documents/code/</WorkspaceCodeRoot>
-    <WorkspaceCodeRoot Condition="'$(IsWindows)' != 'true' and Exists('/mnt/c/Users/irovb/Documents/code/')">/mnt/c/Users/irovb/Documents/code/</WorkspaceCodeRoot>
+    <WorkspaceCodeRoot Condition="'$(IsWindows)' == 'true'">$(USERPROFILE)/code/</WorkspaceCodeRoot>
+    <WorkspaceCodeRoot Condition="'$(IsWindows)' != 'true' and Exists('/mnt/c/Users/irovb/code/')">/mnt/c/Users/irovb/code/</WorkspaceCodeRoot>
     <WorkspaceCodeRoot Condition="'$(WorkspaceCodeRoot)' == '' and '$(HOME)' != ''">$(HOME)/code/</WorkspaceCodeRoot>
 
     <ProjectCacheSubDir Condition="'$(WorkspaceCodeRoot)' != '' and $([System.String]::Copy('$(MSBuildProjectDirectory)/').StartsWith('$(WorkspaceCodeRoot)'))">$([System.String]::Copy('$(MSBuildProjectDirectory)').Substring('$([System.String]::Copy('$(WorkspaceCodeRoot)').Length)'))</ProjectCacheSubDir>
@@ -20,7 +20,7 @@
     <CustomCachePath Condition="'$(CustomCachePath)' == ''">$(MSBuildProjectDirectory)/.artifacts</CustomCachePath>
 
     <!-- Корневой путь для пакетов -->
-    <PackageRoot Condition="'$(IsWindows)' == 'true'">C:/Users/irovb/Documents/Package/</PackageRoot>
+    <PackageRoot Condition="'$(IsWindows)' == 'true'">$(USERPROFILE)/Documents/Package/</PackageRoot>
     <PackageRoot Condition="'$(IsWindows)' != 'true' and Exists('/mnt/c/Users/irovb/Documents/Package/')">/mnt/c/Users/irovb/Documents/Package/</PackageRoot>
     <PackageRoot Condition="'$(PackageRoot)' == '' and '$(HOME)' != ''">$(HOME)/Package/</PackageRoot>
     <PackageRoot Condition="'$(PackageRoot)' == ''">$(MSBuildProjectDirectory)/Package/</PackageRoot>
@@ -60,7 +60,7 @@
     <NuGetAuditLevel>high</NuGetAuditLevel>
   </PropertyGroup>
 
-  <Target Name="SyncSharedConfigFiles" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('C:\Users\irovb\Documents\code\sync_configs.ps1')">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;C:\Users\irovb\Documents\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true" />
+  <Target Name="SyncSharedConfigFiles" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('$(USERPROFILE)\code\sync_configs.ps1')">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(USERPROFILE)\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true" />
   </Target>
 </Project>
