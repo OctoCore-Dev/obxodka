@@ -138,7 +138,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
     public static void HookProtection()
     {
-        FechsueTransport.OnSocketCreated = sock => ProtectSocket(sock);
         GrpcTransport.OnSocketCreated = sock => ProtectSocket(sock);
         InSituDiagnosticsEngine.OnSocketCreated = sock => ProtectSocket(sock);
     }

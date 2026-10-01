@@ -8,16 +8,14 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
-        "google.com",
         "www.google.com",
-        "microsoft.com",
-        "www.microsoft.com",
-        "apple.com",
-        "www.apple.com",
-        "cloudflare.com",
-        "www.cloudflare.com",
-        "skype.com",
-        "www.skype.com"
+        "google.com",
+        "play.googleapis.com",
+        "play.google.com",
+        "ya.ru",
+        "yandex.ru",
+        "www.yandex.ru",
+        "dzen.ru"
     ];
 
     public static string GetRandomSni() =>

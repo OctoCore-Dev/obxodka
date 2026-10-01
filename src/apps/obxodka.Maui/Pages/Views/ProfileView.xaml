@@ -258,103 +258,9 @@
                 </Border>
 
                 <Border
-                    x:Name="CardMesh"
+                    x:Name="CardLogout"
                     Grid.Row="{OnIdiom Desktop='4',
                                        Default='5'}"
-                    Grid.Column="0"
-                    Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                              Default='1'}"
-                    Padding="16"
-                    IsVisible="{OnIdiom Phone=True,
-                                        Default=False}"
-                    Style="{StaticResource NeoCard}"
-                    VerticalOptions="Start">
-                    <VerticalStackLayout Spacing="8">
-                        <Grid ColumnDefinitions="Auto, *, Auto">
-                            <mi:MauiIcon
-                                Grid.Column="0"
-                                Icon="{mi:Fluent Icon=Globe24}"
-                                IconColor="{DynamicResource Accent}"
-                                IconSize="24"
-                                VerticalOptions="Center" />
-                            <Grid
-                                Grid.Column="1"
-                                Margin="12,0"
-                                RowDefinitions="Auto, Auto"
-                                RowSpacing="4"
-                                VerticalOptions="Center">
-                                <Label
-                                    Grid.Row="0"
-                                    FontFamily="{DynamicResource AppFontMedium}"
-                                    FontSize="15"
-                                    Text="Mesh-режим (Сеть ПК)" />
-                                <Label
-                                    Grid.Row="1"
-                                    LineBreakMode="WordWrap"
-                                    Style="{StaticResource LabelMuted}"
-                                    Text="Передавать трафик через компьютеры других пользователей для обхода строгих блокировок" />
-                            </Grid>
-                            <Switch
-                                x:Name="MeshSwitch"
-                                Grid.Column="2"
-                                Toggled="OnMeshToggled"
-                                VerticalOptions="Center" />
-                        </Grid>
-                    </VerticalStackLayout>
-                </Border>
-
-                <Border
-                    x:Name="CardFriends"
-                    Grid.Row="{OnIdiom Desktop='5',
-                                       Default='6'}"
-                    Grid.Column="0"
-                    Grid.ColumnSpan="{OnIdiom Desktop='2',
-                                              Default='1'}"
-                    Padding="16"
-                    IsVisible="{OnIdiom Phone=True,
-                                        Default=False}"
-                    Style="{StaticResource NeoCard}"
-                    VerticalOptions="Start">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnFriendsTapped" />
-                    </Border.GestureRecognizers>
-                    <Grid ColumnDefinitions="Auto, *, Auto">
-                        <mi:MauiIcon
-                            Grid.Column="0"
-                            Icon="{mi:Fluent Icon=PeopleCommunity24}"
-                            IconColor="{DynamicResource Primary}"
-                            IconSize="24"
-                            VerticalOptions="Center" />
-                        <Grid
-                            Grid.Column="1"
-                            Margin="12,0"
-                            RowDefinitions="Auto, Auto"
-                            RowSpacing="4"
-                            VerticalOptions="Center">
-                            <Label
-                                Grid.Row="0"
-                                FontFamily="{DynamicResource AppFontMedium}"
-                                FontSize="15"
-                                Text="Друзья и Бонусные часы" />
-                            <Label
-                                Grid.Row="1"
-                                LineBreakMode="WordWrap"
-                                Style="{StaticResource LabelMuted}"
-                                Text="Делитесь кодом с друзьями и получайте +5 часов за каждые 5 ГБ" />
-                        </Grid>
-                        <mi:MauiIcon
-                            Grid.Column="2"
-                            Icon="{mi:Fluent Icon=ChevronRight24}"
-                            IconColor="{DynamicResource TextMuted}"
-                            IconSize="20"
-                            VerticalOptions="Center" />
-                    </Grid>
-                </Border>
-
-                <Border
-                    x:Name="CardLogout"
-                    Grid.Row="{OnIdiom Desktop='6',
-                                       Default='7'}"
                     Grid.Column="0"
                     Grid.ColumnSpan="{OnIdiom Desktop='2',
                                               Default='1'}"
@@ -394,8 +300,8 @@
 
                 <Border
                     x:Name="CardDeleteAccount"
-                    Grid.Row="{OnIdiom Desktop='4',
-                                       Default='8'}"
+                    Grid.Row="{OnIdiom Desktop='5',
+                                       Default='6'}"
                     Grid.Column="0"
                     Grid.ColumnSpan="{OnIdiom Desktop='2',
                                               Default='1'}"

@@ -8,8 +8,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     );
     public static OctopusEngine Current => t_instance.Value;
 
-    public static MeshRelayServer? ActiveRelayServer => MeshRelayManager.ActiveRelayServer;
-
     [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
     private IVpnTransport? _transport;
     private X509Certificate2? _clientCert;
@@ -159,8 +157,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         return false;
     }
 
-    public async Task ConnectAsync(string serverIp, int serverPort, string? protocolOverride = null)
+    public async Task ConnectAsync(string serverIp, int serverPort, string? protocolOverride = null, string? targetSni = null)
     {
+        _ = protocolOverride;
         if (IsConnected)
         {
             return;
@@ -194,173 +193,31 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         var configuredRays = Preferences.Get("BatteryMode", defaultRays);
         ActiveRays = configuredRays is >= 1 and <= PacketRouter.MaxRays ? configuredRays : defaultRays;
 
-        MeshRelayInfo? meshRelay = null;
-        if (MeshSettings.MeshEnabled)
+        var effectiveSni = !string.IsNullOrWhiteSpace(targetSni)
+            ? targetSni
+            : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null);
+
+        var transport = new GrpcTransport(ActiveRays, _clientCert, _jwtToken, serverPort, effectiveSni);
+        _transport = transport;
+        ActiveProtocol = "HTTP2";
+        transport.OnPacketReceived += (pkt, len) =>
         {
-            try
-            {
-                meshRelay = await MeshRelayClient.GetBestRelayAsync(_jwtToken, _cts.Token).ConfigureAwait(false);
-                if (meshRelay != null)
-                {
-                    Debug.WriteLine($"[MESH] Routing traffic through Relay: {meshRelay.IpAddress}:{meshRelay.Port} ({meshRelay.CountryCode})");
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[MESH] Relay lookup failed: {ex.Message}. Falling back to direct connection.");
-            }
-        }
+            _ = Interlocked.Add(ref _totalBytesReceived, len);
+            OnPacketReceived?.Invoke(pkt, len);
+        };
+        transport.OnPingUpdated += ReportPing;
+        transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
 
-        var protocolMode = protocolOverride ?? Preferences.Get("ProtocolMode", "AUTO");
-
-        if (protocolMode == "AUTO")
-        {
-            if (meshRelay != null)
-            {
-                var transport = new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort, meshRelay: meshRelay);
-                _transport = transport;
-                ActiveProtocol = "HTTP2";
-                transport.OnPacketReceived += (pkt, len) =>
-                {
-                    _ = Interlocked.Add(ref _totalBytesReceived, len);
-                    OnPacketReceived?.Invoke(pkt, len);
-                };
-                transport.OnPingUpdated += ReportPing;
-                transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
-
-                var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
-                AssignedIp = ip;
-                AssignedIpV6 = ip6;
-                StartTrafficMonitor();
-                return;
-            }
-
-            var thumbprint = _clientCert?.Thumbprint ?? "";
-            using var autoCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-            autoCts.CancelAfter(TimeSpan.FromSeconds(12));
-
-            var tcs = new TaskCompletionSource<(string name, IVpnTransport transport, string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            var fechsueTransport = new FechsueTransport(activeRays: ActiveRays, serverPort: serverPort);
-            var grpcTransport = new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort);
-
-            var probeFailures = 0;
-            Exception? lastProbeEx = null;
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    using var fCts = CancellationTokenSource.CreateLinkedTokenSource(autoCts.Token);
-                    fCts.CancelAfter(TimeSpan.FromSeconds(3));
-                    Debug.WriteLine("[AUTO RACING] Probing FECHSUE (UDP/QUIC)...");
-                    var (ip, ip6) = await fechsueTransport.ConnectAsync(serverIp, thumbprint, fCts.Token).ConfigureAwait(false);
-                    if (!tcs.TrySetResult(("FECHSUE", fechsueTransport, ip, ip6)))
-                    {
-                        await fechsueTransport.DisposeAsync().ConfigureAwait(false);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    lastProbeEx = ex;
-                    Debug.WriteLine($"[AUTO RACING] FECHSUE probe failed: {ex.Message}");
-                    await fechsueTransport.DisposeAsync().ConfigureAwait(false);
-                    if (Interlocked.Increment(ref probeFailures) >= 2)
-                    {
-                        _ = tcs.TrySetException(new InvalidOperationException($"Все протоколы завершились ошибкой: {ex.Message}", ex));
-                    }
-                }
-            });
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(150, autoCts.Token).ConfigureAwait(false);
-                    Debug.WriteLine("[AUTO RACING] Probing HTTP2 (TCP/TLS)...");
-                    var (ip, ip6) = await grpcTransport.ConnectAsync(serverIp, thumbprint, autoCts.Token).ConfigureAwait(false);
-                    if (!tcs.TrySetResult(("HTTP2", grpcTransport, ip, ip6)))
-                    {
-                        await grpcTransport.DisposeAsync().ConfigureAwait(false);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    lastProbeEx = ex;
-                    Debug.WriteLine($"[AUTO RACING] HTTP2 probe failed: {ex.Message}");
-                    await grpcTransport.DisposeAsync().ConfigureAwait(false);
-                    if (Interlocked.Increment(ref probeFailures) >= 2)
-                    {
-                        _ = tcs.TrySetException(new InvalidOperationException($"Все протоколы завершились ошибкой: {ex.Message}", ex));
-                    }
-                }
-            });
-
-            (string winnerName, IVpnTransport winnerTransport, string assignedIp, string assignedIp6) result;
-            try
-            {
-                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(12), autoCts.Token);
-                var completedTask = await Task.WhenAny(tcs.Task, timeoutTask).ConfigureAwait(false);
-                if (completedTask != tcs.Task)
-                {
-                    throw new TimeoutException($"Время ожидания авто-подключения истекло. Последняя ошибка: {lastProbeEx?.Message}");
-                }
-                result = await tcs.Task.ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await fechsueTransport.DisposeAsync().ConfigureAwait(false);
-                await grpcTransport.DisposeAsync().ConfigureAwait(false);
-                throw new InvalidOperationException($"Не удалось подключиться ни по одному из протоколов: {ex.Message}", ex);
-            }
-
-            var (name, winner, ipResult, ip6Result) = result;
-            _transport = winner;
-            ActiveProtocol = name;
-            AssignedIp = ipResult;
-            AssignedIpV6 = ip6Result;
-
-            winner.OnPacketReceived += (pkt, len) =>
-            {
-                _ = Interlocked.Add(ref _totalBytesReceived, len);
-                OnPacketReceived?.Invoke(pkt, len);
-            };
-            winner.OnPingUpdated += ReportPing;
-            winner.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
-
-            Debug.WriteLine($"[AUTO RACING WINNER] {name} won the race -> {ipResult}!");
-            StartTrafficMonitor();
-            return;
-        }
-        else
-        {
-            IVpnTransport transport = protocolMode switch
-            {
-                "FECHSUE" when meshRelay == null => new FechsueTransport(activeRays: ActiveRays, serverPort: serverPort),
-                "HTTP2" or "HTTP3" or "GRPC" or _ => new GrpcTransport(useHttp3: false, activeRays: ActiveRays, clientCert: _clientCert, jwtToken: _jwtToken, serverPort: serverPort, meshRelay: meshRelay)
-            };
-
-            _transport = transport;
-            ActiveProtocol = protocolMode;
-            transport.OnPacketReceived += (pkt, len) =>
-            {
-                _ = Interlocked.Add(ref _totalBytesReceived, len);
-                OnPacketReceived?.Invoke(pkt, len);
-            };
-            transport.OnPingUpdated += ReportPing;
-            transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
-
-            var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
-            AssignedIp = ip;
-            AssignedIpV6 = ip6;
-            StartTrafficMonitor();
-        }
+        var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
+        AssignedIp = ip;
+        AssignedIpV6 = ip6;
+        StartTrafficMonitor();
     }
 
-    public async Task ReconnectAsync(string serverIp, int serverPort, string? protocolOverride = null)
+    public async Task ReconnectAsync(string serverIp, int serverPort, string? protocolOverride = null, string? targetSni = null)
     {
         await DisposeAsync();
-        await ConnectAsync(serverIp, serverPort, protocolOverride);
+        await ConnectAsync(serverIp, serverPort, protocolOverride, targetSni);
     }
 
     public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default)
@@ -652,8 +509,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-
-
     public void Dispose()
     {
         _cts?.Cancel();
@@ -668,10 +523,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         GC.SuppressFinalize(this);
     }
-
-    public static Task StartRelayIfEnabledAsync() => MeshRelayManager.StartRelayIfEnabledAsync();
-
-    public static Task StopRelayAsync() => MeshRelayManager.StopRelayAsync();
 
     public void ProtectTransportSockets(Action<Socket> protectAction) => _transport?.ProtectSockets(protectAction);
 }

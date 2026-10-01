@@ -1,7 +1,6 @@
+using System.Globalization;
 using Microsoft.Win32;
 using obxodka.Client.Platforms;
-
-using System.Globalization;
 
 namespace obxodka.Maui.Platforms.Windows.Services;
 

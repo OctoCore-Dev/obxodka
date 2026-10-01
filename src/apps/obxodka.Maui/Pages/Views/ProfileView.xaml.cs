@@ -12,7 +12,6 @@ public sealed partial class ProfileView : ContentView
     private MainPage _parent = null!;
     public event EventHandler? BuyTokensRequested;
     public event EventHandler? LogoutRequested;
-    public event EventHandler? FriendsRequested;
 
     public static readonly BindableProperty IsEditingAllowedProperty =
         BindableProperty.Create(nameof(IsEditingAllowed), typeof(bool), typeof(ProfileView), true);
@@ -31,12 +30,9 @@ public sealed partial class ProfileView : ContentView
         AdBlockSwitch.IsToggled = isAdblock;
         DnsAdBlocker.IsAdBlockEnabled = isAdblock;
         TelemetrySwitch.IsToggled = Preferences.Default.Get("use_telemetry", true);
-        MeshSwitch.IsToggled = MeshSettings.MeshEnabled;
 
         if (DeviceInfo.Idiom != DeviceIdiom.Phone)
         {
-            CardMesh.IsVisible = false;
-            CardFriends.IsVisible = false;
             CardLogout.IsVisible = false;
         }
 
@@ -115,10 +111,6 @@ public sealed partial class ProfileView : ContentView
         TranslationY = 0;
         await this.PlayCardsEntranceAsync(35, 240);
     }
-
-    private void OnMeshToggled(object? sender, ToggledEventArgs e) => MeshSettings.MeshEnabled = e.Value;
-
-    private void OnFriendsTapped(object? sender, EventArgs e) => FriendsRequested?.Invoke(this, EventArgs.Empty);
 
     public void UpdateProfileInfo(UserSession session)
     {
@@ -206,8 +198,6 @@ public sealed partial class ProfileView : ContentView
         CardAdBlock.BackgroundColor = bgSurface;
         CardBalance.BackgroundColor = bgSurface;
         CardTelemetry.BackgroundColor = bgSurface;
-        CardMesh.BackgroundColor = bgSurface;
-        CardFriends.BackgroundColor = bgSurface;
         CardLogout.BackgroundColor = bgSurface;
         CardDeleteAccount.BackgroundColor = bgSurface;
     }

@@ -16,8 +16,6 @@ namespace obxodka.Client.Tests;
 [JsonSerializable(typeof(MessageResponse))]
 [JsonSerializable(typeof(VpnServerDto))]
 [JsonSerializable(typeof(TelemetryDto))]
-[JsonSerializable(typeof(MeshRelayInfo))]
-[JsonSerializable(typeof(List<MeshRelayInfo>))]
 public sealed partial class TestJsonContext : JsonSerializerContext
 {
 }

@@ -26,26 +26,15 @@ public static class CardStackScrollHelper
             return (1.0, 0.0, 1.0);
         }
 
-        if (relativeY < topThreshold)
-        {
-            var progress = Math.Clamp((topThreshold - relativeY) / zone, 0.0, 1.0);
-            var easeProgress = Math.Pow(1.0 - progress, power);
-            var scale = minScale + ((1.0 - minScale) * easeProgress);
-            var stackTranslateY = (topThreshold - relativeY) * 0.45;
-            var opacity = Math.Pow(1.0 - progress, 1.4);
+        var isTop = relativeY < topThreshold;
+        var delta = isTop ? topThreshold - relativeY : relativeY - bottomThreshold;
+        var progress = Math.Clamp(delta / zone, 0.0, 1.0);
+        var easeProgress = Math.Pow(1.0 - progress, power);
+        var scale = Math.Max(minScale, minScale + ((1.0 - minScale) * easeProgress));
+        var stackTranslateY = isTop ? delta * 0.45 : -delta * 0.45;
+        var opacity = Math.Clamp(Math.Pow(1.0 - progress, 1.4), 0.0, 1.0);
 
-            return (Math.Max(minScale, scale), stackTranslateY, Math.Clamp(opacity, 0.0, 1.0));
-        }
-        else
-        {
-            var progress = Math.Clamp((relativeY - bottomThreshold) / zone, 0.0, 1.0);
-            var easeProgress = Math.Pow(1.0 - progress, power);
-            var scale = minScale + ((1.0 - minScale) * easeProgress);
-            var stackTranslateY = -(relativeY - bottomThreshold) * 0.45;
-            var opacity = Math.Pow(1.0 - progress, 1.4);
-
-            return (Math.Max(minScale, scale), stackTranslateY, Math.Clamp(opacity, 0.0, 1.0));
-        }
+        return (scale, stackTranslateY, opacity);
     }
 
     public static void ApplyToChildren(
@@ -127,7 +116,7 @@ public static class CardStackScrollHelper
             for (var i = 0; i < childCount; i++)
             {
                 var child = recyclerView.GetChildAt(i);
-                if (child == null)
+                if (child is null)
                 {
                     continue;
                 }
@@ -152,33 +141,20 @@ public static class CardStackScrollHelper
                         child.Alpha = 1.0f;
                     }
                 }
-                else if (itemCenterY < topThreshold)
-                {
-                    var progress = Math.Clamp((topThreshold - itemCenterY) / zone, 0f, 1f);
-                    var easeProgress = (float)Math.Pow(1.0f - progress, _power);
-                    var scale = _minScale + ((1.0f - _minScale) * easeProgress);
-                    var stackTranslateY = (topThreshold - itemCenterY) * 0.45f;
-                    var opacity = (float)Math.Pow(1.0f - progress, 1.4f);
-                    var targetScale = Math.Max(_minScale, scale);
-
-                    child.ScaleX = targetScale;
-                    child.ScaleY = targetScale;
-                    child.TranslationY = stackTranslateY;
-                    child.Alpha = Math.Clamp(opacity, 0f, 1f);
-                }
                 else
                 {
-                    var progress = Math.Clamp((itemCenterY - bottomThreshold) / zone, 0f, 1f);
+                    var isTop = itemCenterY < topThreshold;
+                    var delta = isTop ? topThreshold - itemCenterY : itemCenterY - bottomThreshold;
+                    var progress = Math.Clamp(delta / zone, 0f, 1f);
                     var easeProgress = (float)Math.Pow(1.0f - progress, _power);
-                    var scale = _minScale + ((1.0f - _minScale) * easeProgress);
-                    var stackTranslateY = -(itemCenterY - bottomThreshold) * 0.45f;
-                    var opacity = (float)Math.Pow(1.0f - progress, 1.4f);
-                    var targetScale = Math.Max(_minScale, scale);
+                    var targetScale = Math.Max(_minScale, _minScale + ((1.0f - _minScale) * easeProgress));
+                    var stackTranslateY = isTop ? delta * 0.45f : -delta * 0.45f;
+                    var opacity = Math.Clamp((float)Math.Pow(1.0f - progress, 1.4f), 0f, 1f);
 
                     child.ScaleX = targetScale;
                     child.ScaleY = targetScale;
                     child.TranslationY = stackTranslateY;
-                    child.Alpha = Math.Clamp(opacity, 0f, 1f);
+                    child.Alpha = opacity;
                 }
             }
         }

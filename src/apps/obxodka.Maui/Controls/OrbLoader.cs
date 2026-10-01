@@ -1,4 +1,4 @@
-namespace obxodka.Controls;
+namespace obxodka.Maui.Controls;
 
 public partial class OrbLoader : SKCanvasView
 {
@@ -16,7 +16,7 @@ public partial class OrbLoader : SKCanvasView
             typeof(bool),
             typeof(OrbLoader),
             false,
-            propertyChanged: (b, _, n) => ((OrbLoader)b).OnAnimatingChanged((bool)n));
+            propertyChanged: static (b, _, n) => ((OrbLoader)b).OnAnimatingChanged((bool)n));
 
     public bool IsAnimating
     {
@@ -24,12 +24,12 @@ public partial class OrbLoader : SKCanvasView
         set => SetValue(IsAnimatingProperty, value);
     }
 
-    public OrbLoader() => Unloaded += (_, _) => StopTimer();
-
     private float _angle;
     private float _hue;
     private IDispatcherTimer? _timer;
     private readonly Stopwatch _stopwatch = new();
+
+    public OrbLoader() => Unloaded += (_, _) => StopTimer();
 
     private void OnAnimatingChanged(bool animating)
     {
@@ -45,7 +45,7 @@ public partial class OrbLoader : SKCanvasView
 
     private void StartTimer()
     {
-        if (_timer != null)
+        if (_timer is not null)
         {
             return;
         }

@@ -23,7 +23,6 @@ global using obxodka.Client.Models;
 global using obxodka.Client.Platforms;
 global using obxodka.Config;
 global using obxodka.Core;
-global using obxodka.Core.Mesh;
 global using obxodka.Core.Transports;
 global using obxodka.Helpers;
 global using obxodka.Maui.Services;

@@ -77,28 +77,22 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 OnLogUpdated?.Invoke("[SMART CONNECT] Обнаружена потеря пакетов. Попытка восстановления маршрута...");
                 UpdateState(AppVpnState.Reconnecting);
 
-                var activeProto = OctopusEngine.Current.ActiveProtocol;
-                if (activeProto == "FECHSUE")
+                try
                 {
-                    Debug.WriteLine($"[SMART CONNECT] UDP blackholed. Reconnecting on {_currentServerIp}:{_currentServerPort}...");
-                    OnLogUpdated?.Invoke("[SMART CONNECT] Потеря UDP пакетов. Попытка переподключения...");
-                    try
+                    await EnsureHostRouteAsync(_currentServerIp);
+                    OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
+                    await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
+                    if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
                     {
-                        await EnsureHostRouteAsync(_currentServerIp);
-                        OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
-                        await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
-                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
-                        if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
-                        {
-                            UpdateState(AppVpnState.Connected);
-                            OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено!");
-                            return;
-                        }
+                        UpdateState(AppVpnState.Connected);
+                        OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено!");
+                        return;
                     }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[SMART CONNECT] Reconnect failed on {_currentServerIp}:{_currentServerPort}: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[SMART CONNECT] Reconnect failed on {_currentServerIp}:{_currentServerPort}: {ex.Message}");
                 }
 
                 if (_fallbackServers.Count > 1)

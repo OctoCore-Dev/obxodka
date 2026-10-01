@@ -2,12 +2,9 @@ namespace obxodka.Maui.Controls;
 
 public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
 {
-    private readonly Lock _lock = new();
-    private readonly SKPaint _paint = new()
-    {
-        IsAntialias = true
-    };
     private static readonly SKSamplingOptions t_samplingOptions = new(SKFilterMode.Linear);
+    private readonly Lock _lock = new();
+    private readonly SKPaint _paint = new() { IsAntialias = true };
 
     private string? _imagePath;
     private SKImage? _skImage;
@@ -25,8 +22,7 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
     {
         lock (_lock)
         {
-            if (string.Equals(_imagePath, imagePath, StringComparison.OrdinalIgnoreCase) &&
-                Equals(_slice, slice))
+            if (string.Equals(_imagePath, imagePath, StringComparison.OrdinalIgnoreCase) && Equals(_slice, slice))
             {
                 return;
             }
@@ -48,7 +44,7 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
                 }
             }
 
-            var hasImage = _skImage != null;
+            var hasImage = _skImage is not null;
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 IsVisible = hasImage;
@@ -90,7 +86,7 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
             slice = _slice;
         }
 
-        if (img == null)
+        if (img is null)
         {
             return;
         }
@@ -98,7 +94,7 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
         var info = e.Info;
         var dst = new SKRect(0, 0, info.Width, info.Height);
 
-        if (slice != null && slice.IsValid)
+        if (slice is { IsValid: true })
         {
             var left = Math.Clamp(slice.Left, 0, img.Width / 2);
             var top = Math.Clamp(slice.Top, 0, img.Height / 2);
@@ -137,5 +133,6 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
         }
 
         _paint.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

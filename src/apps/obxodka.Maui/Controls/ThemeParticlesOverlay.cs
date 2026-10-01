@@ -1,5 +1,3 @@
-#pragma warning disable CS0618
-
 namespace obxodka.Maui.Controls;
 
 public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
@@ -34,6 +32,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     private readonly SKPaint _fallbackPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private readonly SKPath _starPath = CreateStarPath();
     private readonly SKPath _petalPath = CreatePetalPath();
+    private static readonly SKSamplingOptions t_samplingOptions = new(SKFilterMode.Linear);
     private readonly SKPath _diamondPath = CreateDiamondPath();
 
     private SKBitmap? _spriteBitmap;
@@ -58,16 +57,18 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
     private void OnSizeChanged(object? sender, EventArgs e)
     {
-        if (Width > 0 && Height > 0 && _particles.Count > 0 && !_resized)
+        if (Width <= 0 || Height <= 0 || _particles.Count == 0 || _resized)
         {
-            _resized = true;
-            foreach (var p in _particles)
-            {
-                p.X = (float)(_random.NextDouble() * Width);
-                p.Y = (float)(_random.NextDouble() * Height);
-            }
-            InvalidateSurface();
+            return;
         }
+
+        _resized = true;
+        foreach (var p in _particles)
+        {
+            p.X = (float)(_random.NextDouble() * Width);
+            p.Y = (float)(_random.NextDouble() * Height);
+        }
+        InvalidateSurface();
     }
 
 #if WINDOWS
@@ -97,7 +98,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         _spriteBitmap?.Dispose();
         _spriteBitmap = null;
 
-        if (vfx == null || string.Equals(vfx.Particles, "none", StringComparison.OrdinalIgnoreCase))
+        if (vfx is null || string.Equals(vfx.Particles, "none", StringComparison.OrdinalIgnoreCase))
         {
             _particleTypeName = "none";
             StopAnimation();
@@ -132,18 +133,10 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
         _particleColor = !string.IsNullOrWhiteSpace(vfx.Color) && SKColor.TryParse(vfx.Color, out var parsedColor)
             ? parsedColor
-            : accentColor != null
-                ? new SKColor(
-                (byte)(accentColor.Red * 255),
-                (byte)(accentColor.Green * 255),
-                (byte)(accentColor.Blue * 255),
-                220)
-                : primaryColor != null
-                ? new SKColor(
-                (byte)(primaryColor.Red * 255),
-                (byte)(primaryColor.Green * 255),
-                (byte)(primaryColor.Blue * 255),
-                220)
+            : accentColor is not null
+                ? new SKColor((byte)(accentColor.Red * 255), (byte)(accentColor.Green * 255), (byte)(accentColor.Blue * 255), 220)
+                : primaryColor is not null
+                ? new SKColor((byte)(primaryColor.Red * 255), (byte)(primaryColor.Green * 255), (byte)(primaryColor.Blue * 255), 220)
                 : new SKColor(255, 255, 255, 200);
 
         _fallbackPaint.Color = _particleColor;
@@ -211,11 +204,11 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
     public void StartAnimation()
     {
-        if (_timer == null)
+        if (_timer is null)
         {
             _timer = Dispatcher.CreateTimer();
             _timer.Interval = TimeSpan.FromMilliseconds(33);
-            _timer.Tick += (s, e) =>
+            _timer.Tick += (_, _) =>
             {
                 if (IsVisible && _initialized && _particles.Count > 0)
                 {
@@ -233,7 +226,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
     public void StopAnimation()
     {
-        if (_timer?.IsRunning == true)
+        if (_timer?.IsRunning is true)
         {
             _timer.Stop();
         }
@@ -247,7 +240,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         foreach (var p in _particles)
         {
             p.SwayPhase += p.SwaySpeed;
-            var sway = (float)Math.Sin(p.SwayPhase) * 1.0f;
+            var sway = (float)Math.Sin(p.SwayPhase);
 
             p.TwinklePhase += p.TwinkleSpeed;
             var twinkle = (float)Math.Sin(p.TwinklePhase) * 0.25f;
@@ -299,6 +292,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                     }
 
                     break;
+
                 default:
                     break;
             }
@@ -329,13 +323,13 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             canvas.Translate(p.X, p.Y);
             canvas.RotateDegrees(p.Rotation);
 
-            if (_spriteBitmap != null)
+            if (_spriteBitmap is not null)
             {
                 var halfSize = p.Size * 0.5f;
                 var destRect = new SKRect(-halfSize, -halfSize, halfSize, halfSize);
 
                 _bitmapPaint.Color = new SKColor(255, 255, 255, (byte)(p.CurrentAlpha * 255));
-                canvas.DrawBitmap(_spriteBitmap, destRect, _bitmapPaint);
+                canvas.DrawBitmap(_spriteBitmap, destRect, t_samplingOptions, _bitmapPaint);
             }
             else
             {

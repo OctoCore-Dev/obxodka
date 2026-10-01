@@ -30,7 +30,6 @@ public sealed partial class DesktopSidebarView : ContentView
             SideNavVpn,
             SideNavProfile,
             SideNavConfiguration,
-            SideNavMesh,
             SideNavDevices,
             NavBug,
             NavReviews);
@@ -103,7 +102,6 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelHideAsync(LabelVpn);
             _ = AnimateLabelHideAsync(LabelProfile);
             _ = AnimateLabelHideAsync(LabelConfiguration);
-            _ = AnimateLabelHideAsync(LabelMesh);
             _ = AnimateLabelHideAsync(LabelDevices);
             _ = AnimateLabelHideAsync(LabelBug);
             _ = AnimateLabelHideAsync(LabelReviews);
@@ -123,8 +121,7 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelShowAsync(LabelVpn, 25);
             _ = AnimateLabelShowAsync(LabelProfile, 40);
             _ = AnimateLabelShowAsync(LabelConfiguration, 55);
-            _ = AnimateLabelShowAsync(LabelMesh, 70);
-            _ = AnimateLabelShowAsync(LabelDevices, 85);
+            _ = AnimateLabelShowAsync(LabelDevices, 70);
             _ = AnimateLabelShowAsync(LabelBug, 100);
             _ = AnimateLabelShowAsync(LabelReviews, 115);
             _ = AnimateLabelShowAsync(VpnStatusLabel, 125);
@@ -196,12 +193,6 @@ public sealed partial class DesktopSidebarView : ContentView
                 _ = SideNavConfiguration.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconSpinAsync(NavConfigurationIcon, 90, 200);
                 break;
-            case "mesh":
-                SideNavMesh.BackgroundColor = ActiveBgColor;
-                NavMeshIcon.IconColor = ActiveColor;
-                _ = SideNavMesh.ScaleToAsync(1.03, 150, Easing.SpringOut);
-                _ = UIAnimations.PlayIconPulseAsync(NavMeshIcon, 1.2);
-                break;
             case "devices":
                 SideNavDevices.BackgroundColor = ActiveBgColor;
                 NavDevicesIcon.IconColor = ActiveColor;
@@ -218,13 +209,11 @@ public sealed partial class DesktopSidebarView : ContentView
         SideNavVpn.BackgroundColor = Colors.Transparent;
         SideNavProfile.BackgroundColor = Colors.Transparent;
         SideNavConfiguration.BackgroundColor = Colors.Transparent;
-        SideNavMesh.BackgroundColor = Colors.Transparent;
         SideNavDevices.BackgroundColor = Colors.Transparent;
 
         SideNavVpn.Scale = 1.0;
         SideNavProfile.Scale = 1.0;
         SideNavConfiguration.Scale = 1.0;
-        SideNavMesh.Scale = 1.0;
         SideNavDevices.Scale = 1.0;
 
         var inactiveColor = (Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc)
@@ -234,7 +223,6 @@ public sealed partial class DesktopSidebarView : ContentView
         NavVpnIcon.IconColor = inactiveColor;
         NavProfileIcon.IconColor = inactiveColor;
         NavConfigurationIcon.IconColor = inactiveColor;
-        NavMeshIcon.IconColor = inactiveColor;
         NavDevicesIcon.IconColor = inactiveColor;
     }
 
@@ -254,12 +242,6 @@ public sealed partial class DesktopSidebarView : ContentView
     {
         _ = SideNavConfiguration.BounceClickAsync();
         NavTapped?.Invoke(this, "configuration");
-    }
-
-    private void OnNavMeshTapped(object? sender, TappedEventArgs e)
-    {
-        _ = SideNavMesh.BounceClickAsync();
-        NavTapped?.Invoke(this, "mesh");
     }
 
     private void OnNavDevicesTapped(object? sender, TappedEventArgs e)
@@ -315,10 +297,6 @@ public sealed partial class DesktopSidebarView : ContentView
         {
             await UIAnimations.PlayIconSpinAsync(NavConfigurationIcon, 180, 260);
         }
-        else if (border == SideNavMesh)
-        {
-            await UIAnimations.PlayIconPulseAsync(NavMeshIcon, 1.25);
-        }
         else if (border == SideNavDevices)
         {
             await UIAnimations.PlayIconWiggleAsync(NavDevicesIcon, 14);
@@ -357,10 +335,6 @@ public sealed partial class DesktopSidebarView : ContentView
         else if (border == SideNavConfiguration)
         {
             await UIAnimations.PlayIconHoverExitAsync(NavConfigurationIcon);
-        }
-        else if (border == SideNavMesh)
-        {
-            await UIAnimations.PlayIconHoverExitAsync(NavMeshIcon);
         }
         else if (border == SideNavDevices)
         {

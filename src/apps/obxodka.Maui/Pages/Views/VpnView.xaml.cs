@@ -200,210 +200,18 @@ public sealed partial class VpnView : ContentView
                 return;
             }
 
-            var protoPref = Preferences.Get("ProtocolMode", "AUTO");
-            var activeProto = OctopusEngine.Current is { IsConnected: true }
-                ? OctopusEngine.Current.ActiveProtocol
-                : protoPref;
-
-            var defaultRays = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 2 : 8;
-            var rays = Preferences.Get("BatteryMode", defaultRays);
-            if (OctopusEngine.Current is { IsConnected: true })
-            {
-                rays = OctopusEngine.Current.ActiveRays;
-            }
-
-            if (activeProto == "FECHSUE")
-            {
-                RayIndicatorIcon.Icon = FluentIcons.Rocket24;
-                RayIndicatorIcon.IconColor = Color.FromArgb("#A855F7");
-                RayIndicatorLabel.Text = "Режим: FECHSUE (Мульти-пинговый Watchdog • 0% потерь)";
-            }
-            else if (activeProto == "AUTO" && OctopusEngine.Current is not { IsConnected: true })
-            {
-                RayIndicatorIcon.Icon = FluentIcons.Sparkle24;
-                RayIndicatorIcon.IconColor = Color.FromArgb("#00E5FF");
-                RayIndicatorLabel.Text = "Режим: Авто (Smart Probing & Fallback)";
-            }
-            else if (rays == 1)
-            {
-                var protoText = activeProto == "HTTP3" ? "HTTP/3 (QUIC)" : "HTTP/2 (TLS)";
-                RayIndicatorIcon.Icon = FluentIcons.LeafOne24;
-                RayIndicatorIcon.IconColor = Color.FromArgb("#10B981");
-                RayIndicatorLabel.Text = $"Режим: Eco (1 Луч / {protoText})";
-            }
-            else if (rays == 8)
-            {
-                var protoText = activeProto == "HTTP3" ? "HTTP/3 (QUIC)" : "HTTP/2 (TLS)";
-                RayIndicatorIcon.Icon = FluentIcons.Flash24;
-                RayIndicatorIcon.IconColor = Color.FromArgb("#EF4444");
-                RayIndicatorLabel.Text = $"Режим: Турбо (8 Лучей / {protoText})";
-            }
-            else
-            {
-                var protoText = activeProto == "HTTP3" ? "HTTP/3 (QUIC)" : "HTTP/2 (TLS)";
-                RayIndicatorIcon.Icon = FluentIcons.Scales24;
-                RayIndicatorIcon.IconColor = Color.FromArgb("#3B82F6");
-                RayIndicatorLabel.Text = $"Режим: Баланс (2 Луча / {protoText})";
-            }
+            RayIndicatorIcon.Icon = FluentIcons.ShieldCheckmark24;
+            RayIndicatorIcon.IconColor = Color.FromArgb("#00E5FF");
+            RayIndicatorLabel.Text = "gRPC HTTP/2 • 8 лучей";
         });
     }
 
-#pragma warning disable IDE0390
-    private async void OnRayIndicatorBadgeTappedAsync(object? sender, EventArgs e)
-#pragma warning restore IDE0390
+    private void OnRayIndicatorBadgeTappedAsync(object? sender, EventArgs e)
     {
         if (sender is VisualElement ve)
         {
             _ = ve.BounceClickAsync();
         }
-
-#if WINDOWS
-        var action = await _parent.DisplayActionSheetAsync(
-            "Протокол связи",
-            "Отмена",
-            null,
-            "AUTO (Умный подбор и Fallback)",
-            "FECHSUE (Мульти-пинговый Watchdog • 0% потерь)",
-            "HTTP/3 (QUIC • Маскировка под Chrome)",
-            "HTTP/2 (Стандартный TLS • Стабильный TCP)");
-
-        if (string.IsNullOrEmpty(action) || action == "Отмена")
-        {
-            return;
-        }
-
-        if (action.StartsWith("AUTO", StringComparison.OrdinalIgnoreCase))
-        {
-            ApplyProtocolSelection("AUTO");
-        }
-        else if (action.StartsWith("FECHSUE", StringComparison.OrdinalIgnoreCase) || action.StartsWith("FHARCSUE", StringComparison.OrdinalIgnoreCase))
-        {
-            ApplyProtocolSelection("FECHSUE");
-        }
-        else if (action.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
-        {
-            ApplyProtocolSelection("HTTP3");
-        }
-        else if (action.StartsWith("HTTP/2", StringComparison.OrdinalIgnoreCase))
-        {
-            ApplyProtocolSelection("HTTP2");
-        }
-#else
-        var currentProto = Preferences.Get("ProtocolMode", "AUTO");
-        UpdateProtocolModalUI(currentProto);
-
-        QuickProtocolOverlay.IsVisible = true;
-        QuickProtocolOverlay.Opacity = 0;
-        QuickProtocolModalCard.Scale = 0.92;
-
-        _ = QuickProtocolOverlay.FadeToAsync(1, 180, Easing.CubicOut);
-        _ = QuickProtocolModalCard.ScaleToAsync(1.0, 250, Easing.SpringOut);
-#endif
-    }
-
-    private async void OnCloseProtocolModalTappedAsync(object? sender, EventArgs e)
-    {
-        _ = QuickProtocolModalCard.ScaleToAsync(0.92, 160, Easing.CubicIn);
-        _ = await QuickProtocolOverlay.FadeToAsync(0, 160, Easing.CubicIn);
-        QuickProtocolOverlay.IsVisible = false;
-    }
-
-    private void OnModalSelectAutoTapped(object? sender, TappedEventArgs e)
-    {
-        _ = UIAnimations.PlayIconSpringHoverAsync(ModalAutoIcon, 1.25);
-        ApplyProtocolSelection("AUTO");
-    }
-
-    private void OnModalSelectFechsueTapped(object? sender, TappedEventArgs e)
-    {
-        _ = UIAnimations.PlayIconSpringHoverAsync(ModalFechsueIcon, 1.25);
-        ApplyProtocolSelection("FECHSUE");
-    }
-
-    private void OnModalSelectHttp3Tapped(object? sender, TappedEventArgs e)
-    {
-        _ = UIAnimations.PlayIconPulseAsync(ModalHttp3Icon, 1.25);
-        ApplyProtocolSelection("HTTP3");
-    }
-
-    private void OnModalSelectHttp2Tapped(object? sender, TappedEventArgs e)
-    {
-        _ = UIAnimations.PlayIconSpinAsync(ModalHttp2Icon, 180);
-        ApplyProtocolSelection("HTTP2");
-    }
-
-    private void ApplyProtocolSelection(string newProto)
-    {
-        Preferences.Set("ProtocolMode", newProto);
-        Preferences.Set("UseHttp3", newProto == "HTTP3");
-        UpdateProtocolModalUI(newProto);
-        UpdateRayIndicator();
-
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(200);
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                if (QuickProtocolOverlay.IsVisible)
-                {
-                    OnCloseProtocolModalTappedAsync(this, EventArgs.Empty);
-                }
-            });
-
-            if (_vpnService.CurrentState == AppVpnState.Connected)
-            {
-                try
-                {
-                    var (success, servers, _) = await _apiService.GetServersAsync();
-                    if (success && servers is { Count: > 0 })
-                    {
-                        var candidateServers = await ProbeBestServerAsync(servers);
-                        var targetServer = candidateServers.Count > 0 ? candidateServers[0] : servers[0];
-                        UpdateActiveNode(targetServer.Ip);
-                        await _vpnService.StopVpnAsync();
-                        await Task.Delay(250);
-                        await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, candidateServers.Count > 0 ? candidateServers : servers);
-                        UpdateRayIndicator();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[HOT PROTOCOL SWITCH ERROR] {ex.Message}");
-                }
-            }
-        });
-    }
-
-    private void UpdateProtocolModalUI(string selectedProto)
-    {
-        var borderInactive = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bi) == true && bi is Color bic)
-            ? bic
-            : Color.FromArgb("#2D2D3D");
-        var activeStroke = (Application.Current?.Resources.TryGetValue("Primary", out var p) == true && p is Color pc)
-            ? pc
-            : Color.FromArgb("#0078D4");
-        var accentColor = (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac)
-            ? ac
-            : Color.FromArgb("#00E5FF");
-        var purpleColor = (Application.Current?.Resources.TryGetValue("Purple", out var pr) == true && pr is Color prc)
-            ? prc
-            : Color.FromArgb("#A855F7");
-
-        ModalAutoCard.Stroke = selectedProto == "AUTO" ? accentColor : borderInactive;
-        ModalAutoCard.StrokeThickness = selectedProto == "AUTO" ? 1.5 : 1;
-        ModalAutoCheck.IsVisible = selectedProto == "AUTO";
-
-        ModalFechsueCard.Stroke = selectedProto == "FECHSUE" ? purpleColor : borderInactive;
-        ModalFechsueCard.StrokeThickness = selectedProto == "FECHSUE" ? 1.5 : 1;
-        ModalFechsueCheck.IsVisible = selectedProto == "FECHSUE";
-
-        ModalHttp3Card.Stroke = selectedProto == "HTTP3" ? accentColor : borderInactive;
-        ModalHttp3Card.StrokeThickness = selectedProto == "HTTP3" ? 1.5 : 1;
-        ModalHttp3Check.IsVisible = selectedProto == "HTTP3";
-
-        ModalHttp2Card.Stroke = selectedProto == "HTTP2" ? activeStroke : borderInactive;
-        ModalHttp2Card.StrokeThickness = selectedProto == "HTTP2" ? 1.5 : 1;
-        ModalHttp2Check.IsVisible = selectedProto == "HTTP2";
     }
 
     private void HandleVpnLog(string logMsg) =>
@@ -542,7 +350,7 @@ public sealed partial class VpnView : ContentView
             rawError.Contains("GOAWAY", StringComparison.OrdinalIgnoreCase) || rawError.Contains("The SSL connection could not be established", StringComparison.OrdinalIgnoreCase) ||
             rawError.Contains("reset by peer", StringComparison.OrdinalIgnoreCase) || rawError.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase))
         {
-            return "Сервер временно недоступен по выбранному протоколу или связь была прервана сетью.\n\nРекомендуем переключиться на протокол FECHSUE или режим AUTO.";
+            return "Сервер временно недоступен или связь была прервана сетью.\n\nПожалуйста, проверьте интернет-соединение или повторите попытку.";
         }
 
         if (rawError.Contains("No such host is known", StringComparison.OrdinalIgnoreCase) || rawError.Contains("NameResolutionFailure", StringComparison.OrdinalIgnoreCase))
@@ -831,20 +639,6 @@ public sealed partial class VpnView : ContentView
             UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
             await SetNeonStateAsync("Подключение...", "ЖДИТЕ", AppVpnState.Connecting);
 
-            try
-            {
-                using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                var activeBridge = await DiscoveryService.GetActiveBridgeUrlAsync(forceRefresh: true, ct: bridgeCts.Token);
-                if (!string.IsNullOrWhiteSpace(activeBridge))
-                {
-                    AppConfig.ApiBaseUrl = $"https://{activeBridge}/";
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[VPN CONNECT] Bridge discovery check failed: {ex.Message}");
-            }
-
             var (success, servers, errorMsg) = await _apiService.GetServersAsync();
             if (!success || servers is null || servers.Count == 0)
             {
@@ -859,7 +653,7 @@ public sealed partial class VpnView : ContentView
             {
                 servers = [
                     new VpnServerDto("obxodka.one", 443, "Основной узел (Домен)", true, 10, null),
-                    new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 12, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="),
+                    new VpnServerDto(AppConfig.DirectServerIp, 443, "Основной узел (Прямой доступ)", true, 12, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="),
                     new VpnServerDto("api.octocore.dev", 443, "Резервный узел (Cloudflare)", true, 15, null)
                 ];
             }
@@ -952,25 +746,9 @@ public sealed partial class VpnView : ContentView
             return reachableServers;
         }
 
-        var fallbackCandidates = new List<string>();
-        try
-        {
-            var bridge = await DiscoveryService.GetActiveBridgeUrlAsync(forceRefresh: false);
-            if (!string.IsNullOrWhiteSpace(bridge))
-            {
-                var bHost = Uri.TryCreate(bridge, UriKind.Absolute, out var bUri) ? bUri.Host : bridge;
-                if (!string.IsNullOrWhiteSpace(bHost))
-                {
-                    fallbackCandidates.Add(bHost);
-                }
-            }
-        }
-        catch { }
-        fallbackCandidates.Add("obxodka.one");
-        fallbackCandidates.Add("45.63.117.29");
-        fallbackCandidates.Add("api.octocore.dev");
+        string[] fallbackCandidates = ["obxodka.one", AppConfig.DirectServerIp, "api.octocore.dev"];
 
-        foreach (var fbHost in fallbackCandidates.Distinct())
+        foreach (var fbHost in fallbackCandidates)
         {
             try
             {
@@ -980,7 +758,7 @@ public sealed partial class VpnView : ContentView
                 {
                     using var client = new TcpClient();
                     await client.ConnectAsync(fbHost, 443, cts.Token).AsTask();
-                    var certHash = fbHost == "45.63.117.29" ? "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=" : null;
+                    var certHash = fbHost == AppConfig.DirectServerIp ? "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=" : null;
                     reachableServers.Add(new VpnServerDto(fbHost, 443, "Auto", true, 50, certHash));
                     break;
                 }
@@ -992,7 +770,7 @@ public sealed partial class VpnView : ContentView
             ? reachableServers
             : servers.Count > 0
                 ? servers
-                : [new VpnServerDto("45.63.117.29", 443, "Основной узел (Прямой доступ)", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")];
+                : [new VpnServerDto(AppConfig.DirectServerIp, 443, "Основной узел (Прямой доступ)", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")];
     }
 
     private void StartGraphAnimation()

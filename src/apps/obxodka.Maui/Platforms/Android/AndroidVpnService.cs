@@ -50,27 +50,21 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 OnLogUpdated?.Invoke("[SMART CONNECT] Обнаружена блокировка передачи пакетов. Автопереключение...");
                 ChangeState(AppVpnState.Reconnecting);
 
-                var activeProto = OctopusEngine.Current.ActiveProtocol;
-                if (activeProto == "FECHSUE")
+                try
                 {
-                    Debug.WriteLine("[SMART CONNECT] UDP blackholed. Reconnecting via HTTP2/TLS failover...");
-                    OnLogUpdated?.Invoke("[SMART CONNECT] Потеря UDP пакетов. Переключение на защищенный TCP/TLS...");
-                    try
+                    await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                    _ = OctopusVpnService.Instance?.EstablishTun();
+                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
+                    if (verified || OctopusEngine.Current.IsConnected)
                     {
-                        await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort, protocolOverride: "HTTP2");
-                        _ = OctopusVpnService.Instance?.EstablishTun();
-                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
-                        if (verified || OctopusEngine.Current.IsConnected)
-                        {
-                            ChangeState(AppVpnState.Connected);
-                            OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено через TCP/TLS!");
-                            return;
-                        }
+                        ChangeState(AppVpnState.Connected);
+                        OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено через TCP/TLS!");
+                        return;
                     }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[SMART CONNECT] Reconnect failed on {_currentServerIp}: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[SMART CONNECT] Reconnect failed on {_currentServerIp}: {ex.Message}");
                 }
 
                 if (_fallbackServers.Count > 1)
@@ -425,25 +419,6 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         if (verified)
                         {
                             OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
-                        }
-                        else if (OctopusEngine.Current.ActiveProtocol == "FECHSUE")
-                        {
-                            Debug.WriteLine("[ANDROID-VPN] UDP probe timed out. Operator blocking UDP detected. Falling back to HTTP2 (TCP/TLS)...");
-                            OnLogUpdated?.Invoke("[SMART CONNECT] Потеря UDP пакетов. Переключение на защищенный TCP/TLS...");
-                            try
-                            {
-                                await OctopusEngine.Current.ReconnectAsync(candidateIp, candidatePort, protocolOverride: "HTTP2");
-                                _ = OctopusVpnService.Instance?.EstablishTun();
-                                verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
-                                if (verified)
-                                {
-                                    OnLogUpdated?.Invoke($"Связь подтверждена через TCP/TLS (RX={OctopusEngine.Current.TotalBytesReceived} B)!");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ANDROID-VPN] Fallback to HTTP2 failed: {ex.Message}");
-                            }
                         }
 
                         if (verified || OctopusEngine.Current.IsConnected)

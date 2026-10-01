@@ -101,7 +101,7 @@ public class SslCertificateValidationTests
     [Trait("Category", "Integration")]
     public async Task ValidateServerCertificateWithRealObxodkaCertAsync()
     {
-        using var tcp = new System.Net.Sockets.TcpClient("45.63.117.29", 443);
+        using var tcp = new TcpClient("45.63.117.29", 443);
         var capturedErrors = SslPolicyErrors.None;
         using var ssl = new SslStream(tcp.GetStream(), false, (s, cert, chain, errs) =>
         {
@@ -116,13 +116,13 @@ public class SslCertificateValidationTests
     [Trait("Category", "Integration")]
     public async Task GrpcTransportConnectsToRealServerAsync()
     {
-        using var sw = new System.IO.StringWriter();
+        using var sw = new StringWriter();
         var listener = new TextWriterTraceListener(sw);
         _ = Trace.Listeners.Add(listener);
         try
         {
             OctopusEngine.DynamicSslPublicKeyHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
-            using var transport = new GrpcTransport(useHttp3: false, activeRays: 8, clientCert: null, jwtToken: null, serverPort: 443);
+            using var transport = new GrpcTransport(activeRays: 8, clientCert: null, jwtToken: null, serverPort: 443);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
             {

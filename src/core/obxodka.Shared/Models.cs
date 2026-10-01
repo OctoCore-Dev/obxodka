@@ -128,22 +128,6 @@ public sealed record ReviewDto(Guid Id, string? Author, string Text, int? Rating
 
 public sealed record LikeResponse(int Likes);
 
-public sealed class HydraConfig
-{
-    public string ActiveBridge { get; set; } = "https://api.octocore.dev";
-    public DateTime UpdatedAt { get; set; }
-}
-
 public sealed record ReferralFriendDto(string EmailMasked, DateTime ActivatedAt, int BonusHours);
-public sealed record ReferralCodeResponse(string Code, int ActivatedCount, long BalanceSeconds, long TotalMeshBytesRelayed, List<ReferralFriendDto> Friends);
+public sealed record ReferralCodeResponse(string Code, int ActivatedCount, long BalanceSeconds, List<ReferralFriendDto> Friends);
 public sealed record ActivateReferralRequest(string Code);
-public sealed record ClaimRewardRequest(string ClaimId);
-public sealed record ClaimRewardResponse(int HoursGranted, long NewTotalSeconds);
-
-public sealed record RegisterRelayRequest(int Port, string? CountryCode, string? CountryFlag);
-public sealed record RegisterRelayResponse(string RelayId, string Status);
-public sealed record RelayHeartbeatRequest(string RelayId);
-public sealed record ValidateRelayJwtRequest(string ClientToken);
-public sealed record ValidateRelayJwtResponse(bool Valid, bool IsFriend, string UserIdHash);
-public sealed record ActiveRelayNode(string RelayId, string IpAddress, int Port, string CountryCode, string CountryFlag, Guid UserId, DateTime LastSeen);
-public sealed record MeshRelayInfoDto(string IpAddress, int Port, string RelayId, int LoadPercent, int PingMs, string CountryCode, string CountryFlag, bool IsFriend);

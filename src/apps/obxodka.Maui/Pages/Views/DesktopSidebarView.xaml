@@ -129,33 +129,6 @@
                     </Grid>
                 </Border>
 
-                <Border x:Name="SideNavMesh" Style="{StaticResource SideNavItem}">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnNavMeshTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
-                    </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
-                        <mi:MauiIcon
-                            x:Name="NavMeshIcon"
-                            Grid.Column="0"
-                            Icon="{mi:Fluent Icon=Globe24}"
-                            IconColor="{DynamicResource TextMuted}"
-                            IconSize="22"
-                            VerticalOptions="Center" />
-                        <Label
-                            x:Name="LabelMesh"
-                            Grid.Column="1"
-                            Margin="14,0,0,0"
-                            FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
-                            LineBreakMode="NoWrap"
-                            Opacity="0"
-                            Text="Mesh Сеть"
-                            VerticalOptions="Center" />
-                    </Grid>
-                </Border>
-
-
                 <Border x:Name="SideNavDevices" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavDevicesTapped" />

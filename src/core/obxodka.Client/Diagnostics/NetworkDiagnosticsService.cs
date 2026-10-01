@@ -82,7 +82,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     public async Task<DiagnosticReport> RunFullDiagnosticsAsync(
         string serverHost = "45.63.117.29",
         int serverPort = 443,
-        int udpPort = FechsueTransport.FechsueServerPort,
+        int udpPort = 443,
         Action<DiagnosticStepResult>? onStepCompleted = null,
         CancellationToken ct = default)
     {
@@ -140,21 +140,13 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         }, onStepCompleted);
 
         var directTlsPassed = false;
-        var splitTlsPassed = false;
 
         if (tcp443Ok)
         {
-            await RunStepAsync(report, "4A. TLS Handshake (Прямой)", async () =>
+            await RunStepAsync(report, "4. TLS Handshake", async () =>
             {
-                var res = await TestTlsHandshakeAsync(serverHost, serverPort, useDpiBypass: false, ct).ConfigureAwait(false);
+                var res = await TestTlsHandshakeAsync(serverHost, serverPort, ct).ConfigureAwait(false);
                 directTlsPassed = res.status == DiagnosticStatus.Passed;
-                return res;
-            }, onStepCompleted);
-
-            await RunStepAsync(report, "4B. TLS с DpiBypassStream", async () =>
-            {
-                var res = await TestTlsHandshakeAsync(serverHost, serverPort, useDpiBypass: true, ct).ConfigureAwait(false);
-                splitTlsPassed = res.status == DiagnosticStatus.Passed;
                 return res;
             }, onStepCompleted);
         }
@@ -164,7 +156,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         }
 
         var udp6767Ok = false;
-        await RunStepAsync(report, $"5. UDP {udpPort} (FECHSUE)", async () =>
+        await RunStepAsync(report, $"5. UDP {udpPort} (UDP Probe)", async () =>
         {
             udp6767Ok = await TestUdpReachabilityAsync(serverHost, udpPort, ct).ConfigureAwait(false);
             if (udp6767Ok)
@@ -200,7 +192,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             return (status, details);
         }, onStepCompleted);
 
-        SynthesizeVerdict(report, directTlsPassed, splitTlsPassed, udp6767Ok, tcp443Ok);
+        SynthesizeVerdict(report, directTlsPassed, tcp443Ok);
         return report;
     }
 
@@ -288,7 +280,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     private static async Task<(DiagnosticStatus status, string message)> TestTlsHandshakeAsync(
         string host,
         int port,
-        bool useDpiBypass,
         CancellationToken ct)
     {
         using var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
@@ -296,10 +287,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         {
             await socket.ConnectAsync(host, port, ct).ConfigureAwait(false);
             Stream netStream = new NetworkStream(socket, ownsSocket: true);
-            if (useDpiBypass)
-            {
-                netStream = new DpiBypassStream(netStream, splitPosition: 2, delayMs: 25);
-            }
 
             using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false, (sender, cert, chain, errors) => true);
 
@@ -307,7 +294,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             {
                 TargetHost = "www.microsoft.com",
                 ApplicationProtocols = [SslApplicationProtocol.Http2],
-                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12
+                EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12
             };
 
             await sslStream.AuthenticateAsClientAsync(sslOptions, ct).ConfigureAwait(false);
@@ -352,8 +339,6 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     private static void SynthesizeVerdict(
         DiagnosticReport report,
         bool directTlsPassed,
-        bool splitTlsPassed,
-        bool udpOk,
         bool tcpOk)
     {
         var sb = new StringBuilder();
@@ -361,31 +346,24 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         if (!tcpOk)
         {
             _ = sb.AppendLine("КРИТИЧЕСКАЯ БЛОКИРОВКА: Провайдер полностью блокирует TCP-подключения к IP сервера (порт 443).");
-            _ = sb.AppendLine("Требуется смена IP-адреса ноды либо использование Mesh/CDN Relay.");
-            report.RecommendedProtocol = "MESH_RELAY";
-        }
-        else if (!directTlsPassed && splitTlsPassed)
-        {
-            _ = sb.AppendLine("ОБНАРУЖЕН МОСКОВСКИЙ ТСПУ: Прямой TLS сбрасывается по признаку несоответствия SNI/IP.");
-            _ = sb.AppendLine("МЕХАНИЗМ ОБХОДА СРАБОТАЛ: Сплиттинг ClientHello (DpiBypassStream) успешно преодолел фильтр!");
-            _ = sb.AppendLine("Рекомендуется работать по протоколу HTTP/2 с активным DpiBypassStream.");
-            report.RecommendedProtocol = "HTTP2 (DpiBypass)";
+            _ = sb.AppendLine("Требуется смена IP-адреса ноды либо проверка сетевого подключения.");
+            report.RecommendedProtocol = "HTTP2";
         }
         else if (directTlsPassed)
         {
             _ = sb.AppendLine("СЕТЬ ЧИСТАЯ: TLS-рукопожатие проходит без помех со стороны ТСПУ.");
-            report.RecommendedProtocol = udpOk ? "FECHSUE (UDP)" : "HTTP2";
+            report.RecommendedProtocol = "HTTP2";
         }
         else
         {
-            _ = sb.AppendLine("ВНИМАНИЕ: Блокировка как прямого, так и расщепленного TLS.");
-            _ = sb.AppendLine("Рекомендуется переключение на Mesh Relay или Cloudflare Bridge.");
-            report.RecommendedProtocol = "MESH_RELAY / BRIDGE";
+            _ = sb.AppendLine("ВНИМАНИЕ: Блокировка TLS-рукопожатия ТСПУ.");
+            _ = sb.AppendLine("Рекомендуется повторное подключение через резервный gRPC мост.");
+            report.RecommendedProtocol = "HTTP2";
         }
 
         if (report.TspuHopDistance > 0)
         {
-            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"ТСПУ ЛОКАЛИЗОВАН: Дистанция до инспектора составляет {report.TspuHopDistance} хопов (активирован режим опережающего TCP Desync TTL={report.TspuHopDistance}).");
+            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"ТСПУ ЛОКАЛИЗОВАН: Дистанция до инспектора составляет {report.TspuHopDistance} хопов.");
         }
 
         report.SummaryVerdict = sb.ToString().TrimEnd();
