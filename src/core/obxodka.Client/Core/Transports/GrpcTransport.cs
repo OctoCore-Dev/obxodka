@@ -21,6 +21,7 @@ public sealed partial class GrpcTransport(
     private CancellationTokenSource? _cts;
     private TaskCompletionSource<(string, string)>? _ipTcs;
     private volatile bool _serverUsesObfsMasking;
+    private long _lastMeasuredPingTimestamp;
 
     public string ProtocolName => "HTTP2";
     public bool IsConnected => _grpcChannel is not null && _tunnelStreams[0] is not null;
@@ -325,22 +326,33 @@ public sealed partial class GrpcTransport(
     {
         try
         {
-            if (_txChannels[0] is { } ch && _tunnelStreams[0] != null)
-            {
-                var ts = Stopwatch.GetTimestamp();
-                Span<byte> packet = stackalloc byte[9];
-                packet[0] = 0x99;
-                BinaryPrimitives.WriteInt64LittleEndian(packet.Slice(1, 8), ts);
+            var ts = Stopwatch.GetTimestamp();
+            Span<byte> packet = stackalloc byte[9];
+            packet[0] = 0x99;
+            BinaryPrimitives.WriteInt64LittleEndian(packet.Slice(1, 8), ts);
 
-                var packed = Obfuscator.Pack(packet, out var totalLength, _serverUsesObfsMasking);
-                if (!ch.TryEnqueue(packed, totalLength))
+            var packed = Obfuscator.Pack(packet, out var totalLength, _serverUsesObfsMasking);
+
+            var sentPrimary = false;
+            if (_txChannels[0] is { } ch0 && _tunnelStreams[0] != null)
+            {
+                sentPrimary = ch0.TryEnqueue(packed, totalLength);
+            }
+
+            var secondaryRay = _activeRays >= 8 ? 7 : (_activeRays >= 4 ? 3 : (_activeRays >= 2 ? 1 : -1));
+            if (secondaryRay > 0 && _txChannels[secondaryRay] is { } chSec && _tunnelStreams[secondaryRay] != null)
+            {
+                var dup = ArrayPool<byte>.Shared.Rent(totalLength);
+                Buffer.BlockCopy(packed, 0, dup, 0, totalLength);
+                if (!chSec.TryEnqueue(dup, totalLength))
                 {
-                    ArrayPool<byte>.Shared.Return(packed);
+                    ArrayPool<byte>.Shared.Return(dup);
                 }
-                else
-                {
-                    Debug.WriteLine($"[GRPC-PING-PROBE] Enqueued 0x99 ping probe to Ray #0 (timestamp={ts})");
-                }
+            }
+
+            if (!sentPrimary)
+            {
+                ArrayPool<byte>.Shared.Return(packed);
             }
         }
         catch (Exception ex)
@@ -525,12 +537,15 @@ public sealed partial class GrpcTransport(
                     else if (packet[0] == 0x99 && realLen >= 9)
                     {
                         var sentTimestamp = BinaryPrimitives.ReadInt64LittleEndian(packet.AsSpan(1, 8));
-                        var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
-                        var rtt = (long)Math.Round(elapsedMs);
-                        Debug.WriteLine($"[GRPC-PING] Received pong on ray #{rayIndex}, RTT={rtt}ms, EngineTotalRX={OctopusEngine.Current.TotalBytesReceived}B");
-                        if (rtt is >= 0 and < 10000)
+                        if (Interlocked.Exchange(ref _lastMeasuredPingTimestamp, sentTimestamp) != sentTimestamp)
                         {
-                            OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                            var elapsedMs = (Stopwatch.GetTimestamp() - sentTimestamp) * 1000.0 / Stopwatch.Frequency;
+                            var rtt = (long)Math.Round(elapsedMs);
+                            Debug.WriteLine($"[GRPC-PING] Received fastest pong on ray #{rayIndex}, RTT={rtt}ms, EngineTotalRX={OctopusEngine.Current.TotalBytesReceived}B");
+                            if (rtt is >= 0 and < 10000)
+                            {
+                                OnPingUpdated?.Invoke(Math.Max(1, rtt));
+                            }
                         }
                         ArrayPool<byte>.Shared.Return(packet);
                     }
