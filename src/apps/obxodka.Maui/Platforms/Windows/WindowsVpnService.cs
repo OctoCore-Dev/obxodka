@@ -1187,8 +1187,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         try
         {
-            Debug.WriteLine("[DNS-LEAK] Activating robust DNS leak protection...");
-
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
             var addTasks = new List<Task>();
@@ -1202,12 +1200,25 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 using var key = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient");
                 key?.SetValue("DisableSmartNameResolution", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                key?.SetValue("EnableMulticast", 0, Microsoft.Win32.RegistryValueKind.DWord);
             }
             catch { }
 
-            _ = await RunCmdAsync("ipconfig", "/flushdns");
+            try
+            {
+                using var dcacheKey = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"System\CurrentControlSet\Services\Dnscache\Parameters");
+                dcacheKey?.SetValue("DisableParallelAandAAAA", 1, Microsoft.Win32.RegistryValueKind.DWord);
+            }
+            catch { }
 
-            Debug.WriteLine("[DNS-LEAK] DNS leak protection activated.");
+            _ = await RunCmdAsync("powershell", "-NoProfile -Command \"try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','8.8.8.8' -DisplayName 'Obxodka-DNS' -ErrorAction Stop } catch { }\"");
+
+            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-LAN\" dir=out action=block protocol=UDP remoteport=53 interfacetype=lan");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-WiFi\" dir=out action=block protocol=UDP remoteport=53 interfacetype=wireless");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\" dir=out action=block protocol=TCP remoteport=53 interfacetype=lan");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\" dir=out action=block protocol=TCP remoteport=53 interfacetype=wireless");
+
+            _ = await RunCmdAsync("ipconfig", "/flushdns");
         }
         catch (Exception ex)
         {
@@ -1219,8 +1230,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         try
         {
-            Debug.WriteLine("[DNS-LEAK] Removing DNS leak protection...");
-
             var delTasks = new List<Task>();
             foreach (var dns in NetworkDefaults.TrustedDnsServers)
             {
@@ -1228,16 +1237,29 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
             await Task.WhenAll(delTasks);
 
+            _ = await RunCmdAsync("powershell", "-NoProfile -Command \"try { Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'Obxodka-DNS' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue } catch { }\"");
+
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\"");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\"");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\"");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\"");
+
             try
             {
                 using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
                 key?.DeleteValue("DisableSmartNameResolution", false);
+                key?.DeleteValue("EnableMulticast", false);
+            }
+            catch { }
+
+            try
+            {
+                using var dcacheKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\Dnscache\Parameters", true);
+                dcacheKey?.DeleteValue("DisableParallelAandAAAA", false);
             }
             catch { }
 
             _ = await RunCmdAsync("ipconfig", "/flushdns");
-
-            Debug.WriteLine("[DNS-LEAK] DNS leak protection deactivated.");
         }
         catch (Exception ex)
         {

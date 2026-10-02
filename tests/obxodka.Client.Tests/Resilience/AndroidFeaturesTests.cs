@@ -48,7 +48,8 @@ public class AndroidFeaturesTests
 
     [Theory]
     [InlineData(1420, 1420)]
-    [InlineData(1500, 1420)]
+    [InlineData(1500, 1500)]
+    [InlineData(1600, 1500)]
     [InlineData(1280, 1280)]
     [InlineData(1000, 1280)]
     public void SafeMobileMtuClamping(int rawMtu, int expectedSafeMtu)

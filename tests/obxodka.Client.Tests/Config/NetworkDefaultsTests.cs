@@ -6,9 +6,9 @@ public class NetworkDefaultsTests
     [Fact]
     public void NetworkDefaultsConstantsAreValid()
     {
-        Assert.Equal(1280, NetworkDefaults.DefaultMtu);
+        Assert.Equal(1500, NetworkDefaults.DefaultMtu);
         Assert.Equal(1280, NetworkDefaults.MinMtu);
-        Assert.Equal(1420, NetworkDefaults.MaxMtu);
+        Assert.Equal(1500, NetworkDefaults.MaxMtu);
         Assert.Equal("1.1.1.1", NetworkDefaults.PrimaryDns);
         Assert.Equal("1.0.0.1", NetworkDefaults.SecondaryDns);
         Assert.NotEmpty(NetworkDefaults.TrustedDnsServers);
@@ -27,9 +27,9 @@ public class NetworkDefaultsTests
     [InlineData(1360, 1360)]
     [InlineData(1400, 1400)]
     [InlineData(1420, 1420)]
-    [InlineData(1421, 1420)]
-    [InlineData(1500, 1420)]
-    [InlineData(9000, 1420)]
+    [InlineData(1421, 1421)]
+    [InlineData(1500, 1500)]
+    [InlineData(9000, 1500)]
     public void ClampMtuClampsCorrectly(int input, int expected)
     {
         var result = NetworkDefaults.ClampMtu(input);

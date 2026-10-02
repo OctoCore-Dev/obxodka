@@ -2,9 +2,9 @@ namespace obxodka.Shared.Config;
 
 public static class NetworkDefaults
 {
-    public const int DefaultMtu = 1280;
+    public const int DefaultMtu = 1500;
     public const int MinMtu = 1280;
-    public const int MaxMtu = 1420;
+    public const int MaxMtu = 1500;
 
     public static readonly string[] TrustedDnsServers =
     [
