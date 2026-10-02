@@ -285,7 +285,7 @@ public sealed partial class GrpcTransport(
                 sentPrimary = ch0.TryEnqueue(packed, totalLength);
             }
 
-            var secondaryRay = _activeRays >= 8 ? 7 : (_activeRays >= 4 ? 3 : (_activeRays >= 2 ? 1 : -1));
+            var secondaryRay = _activeRays >= 8 ? 7 : (_activeRays >= 4 ? 3 : -1);
             if (secondaryRay > 0 && _txChannels[secondaryRay] is { } chSec && _tunnelStreams[secondaryRay] != null)
             {
                 var dup = ArrayPool<byte>.Shared.Rent(totalLength);
@@ -319,7 +319,7 @@ public sealed partial class GrpcTransport(
 
     private async Task ConnectRayAsync(int rayIndex, bool isNewConnection)
     {
-        var isRealtimeRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
+        var isRealtimeRay = rayIndex == 0 || (_activeRays >= 4 && rayIndex == (_activeRays - 1));
         var targetChannel = isRealtimeRay ? _realtimeGrpcChannel! : _bulkGrpcChannel!;
         var client = new TunnelService.TunnelServiceClient(targetChannel);
         var headers = new Metadata();
@@ -361,7 +361,7 @@ public sealed partial class GrpcTransport(
 
     private async Task TxLoopAsync(int rayIndex, PriorityPacketQueue txQueue, CancellationToken ct)
     {
-        var isGamingRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
+        var isGamingRay = rayIndex == 0 || (_activeRays >= 4 && rayIndex == (_activeRays - 1));
         var batchBuffer = ArrayPool<byte>.Shared.Rent(65536);
         long pktsSent = 0;
         long bytesSent = 0;
@@ -505,7 +505,7 @@ public sealed partial class GrpcTransport(
                             Debug.WriteLine($"[GRPC-RX-RAY#{rayIndex}] Packet #{pktsReceived}: {protoDesc}, len={realLen}B, totalRayBytes={bytesReceived}B");
                         }
 
-                        var isRealtimeRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
+                        var isRealtimeRay = rayIndex == 0 || (_activeRays >= 4 && rayIndex == (_activeRays - 1));
                         if (!isRealtimeRay || !_deduplicator.IsDuplicate(packet, realLen))
                         {
                             OnPacketReceived?.Invoke(packet, realLen);

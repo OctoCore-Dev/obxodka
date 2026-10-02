@@ -89,7 +89,6 @@ public static class PacketRouter
             {
                 >= 8 => 7,
                 >= 4 => 3,
-                >= 2 => 1,
                 _ => -1
             };
         }
