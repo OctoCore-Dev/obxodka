@@ -17,6 +17,34 @@ public sealed class PacketDeduplicator
             return false;
         }
 
+        var version = packet[0] >> 4;
+        if (version == 4)
+        {
+            if (packet[9] == 6)
+            {
+                var ipHdrLen = (packet[0] & 0x0F) * 4;
+                if (length >= ipHdrLen + 20)
+                {
+                    var tcpHdrLen = ((packet[ipHdrLen + 12] >> 4) & 0x0F) * 4;
+                    if (length <= ipHdrLen + tcpHdrLen)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        else if (version == 6 && length >= 60)
+        {
+            if (packet[6] == 6)
+            {
+                var tcpHdrLen = ((packet[40 + 12] >> 4) & 0x0F) * 4;
+                if (length <= 40 + tcpHdrLen)
+                {
+                    return false;
+                }
+            }
+        }
+
         var key = FastHash64(packet.AsSpan(0, length));
         var slot = (int)(key & RingMask);
         var now = Environment.TickCount64;

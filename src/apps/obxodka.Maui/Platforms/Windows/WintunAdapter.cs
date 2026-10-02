@@ -56,7 +56,8 @@ internal sealed partial class WintunAdapter : IDisposable
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint WaitForMultipleObjects(uint nCount, [In] IntPtr[] lpHandles, [MarshalAs(UnmanagedType.Bool)] bool bWaitAll, uint dwMilliseconds);
 
-    private readonly Lock _syncLock = new();
+    private readonly Lock _rxLock = new();
+    private readonly Lock _txLock = new();
     private volatile bool _isDisposed;
     private readonly ManualResetEvent _stopEvent = new(false);
 
@@ -88,7 +89,8 @@ internal sealed partial class WintunAdapter : IDisposable
 
     public void StartSession(uint capacity = 0x4000000)
     {
-        lock (_syncLock)
+        lock (_rxLock)
+        lock (_txLock)
         {
             _session = WintunStartSession(_adapter, capacity);
             if (_session == IntPtr.Zero)
@@ -107,7 +109,7 @@ internal sealed partial class WintunAdapter : IDisposable
         }
 
         IntPtr waitEvent;
-        lock (_syncLock)
+        lock (_rxLock)
         {
             if (_isDisposed || _session == IntPtr.Zero)
             {
@@ -131,7 +133,7 @@ internal sealed partial class WintunAdapter : IDisposable
             {
                 IntPtr ptr;
                 uint size;
-                lock (_syncLock)
+                lock (_rxLock)
                 {
                     if (_isDisposed || _session == IntPtr.Zero)
                     {
@@ -147,7 +149,7 @@ internal sealed partial class WintunAdapter : IDisposable
 
                 if (size > maxPacketSize)
                 {
-                    lock (_syncLock)
+                    lock (_rxLock)
                     {
                         if (!_isDisposed && _session != IntPtr.Zero)
                         {
@@ -159,7 +161,7 @@ internal sealed partial class WintunAdapter : IDisposable
 
                 var buf = ArrayPool<byte>.Shared.Rent((int)size);
                 Marshal.Copy(ptr, buf, 0, (int)size);
-                lock (_syncLock)
+                lock (_rxLock)
                 {
                     if (!_isDisposed && _session != IntPtr.Zero)
                     {
@@ -197,7 +199,7 @@ internal sealed partial class WintunAdapter : IDisposable
         }
 
         IntPtr waitEvent;
-        lock (_syncLock)
+        lock (_rxLock)
         {
             if (_isDisposed || _session == IntPtr.Zero)
             {
@@ -218,7 +220,7 @@ internal sealed partial class WintunAdapter : IDisposable
         {
             IntPtr ptr;
             uint size;
-            lock (_syncLock)
+            lock (_rxLock)
             {
                 if (_isDisposed || _session == IntPtr.Zero)
                 {
@@ -231,7 +233,7 @@ internal sealed partial class WintunAdapter : IDisposable
             {
                 if (size > maxPacketSize)
                 {
-                    lock (_syncLock)
+                    lock (_rxLock)
                     {
                         if (!_isDisposed && _session != IntPtr.Zero)
                         {
@@ -243,7 +245,7 @@ internal sealed partial class WintunAdapter : IDisposable
 
                 var data = ArrayPool<byte>.Shared.Rent((int)size);
                 Marshal.Copy(ptr, data, 0, (int)size);
-                lock (_syncLock)
+                lock (_rxLock)
                 {
                     if (!_isDisposed && _session != IntPtr.Zero)
                     {
@@ -272,7 +274,7 @@ internal sealed partial class WintunAdapter : IDisposable
             return;
         }
 
-        lock (_syncLock)
+        lock (_txLock)
         {
             if (_isDisposed || _session == IntPtr.Zero)
             {
@@ -290,7 +292,8 @@ internal sealed partial class WintunAdapter : IDisposable
 
     public void Dispose()
     {
-        lock (_syncLock)
+        lock (_rxLock)
+        lock (_txLock)
         {
             if (_isDisposed)
             {
@@ -307,7 +310,8 @@ internal sealed partial class WintunAdapter : IDisposable
 
         Thread.Sleep(30);
 
-        lock (_syncLock)
+        lock (_rxLock)
+        lock (_txLock)
         {
             if (_session != IntPtr.Zero)
             {

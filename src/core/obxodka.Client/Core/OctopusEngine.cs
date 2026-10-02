@@ -69,8 +69,8 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         OnPingUpdated?.Invoke((long)Math.Round(_smoothedPing));
     }
 
-    private readonly List<byte[]> _serverIpv4List = [];
-    private readonly List<byte[]> _serverIpv6List = [];
+    private volatile uint[] _serverIpv4Array = [];
+    private volatile byte[][] _serverIpv6Array = [];
     private readonly Lock _serverIpsLock = new();
 
     public void RegisterServerEndpoint(string serverIp)
@@ -84,39 +84,52 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             try
             {
+                var v4List = _serverIpv4Array.ToList();
+                var v6List = _serverIpv6Array.ToList();
+                var changed = false;
+
+                void Add(IPAddress ip)
+                {
+                    if (ip.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        var u = BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
+                        if (!v4List.Contains(u))
+                        {
+                            v4List.Add(u);
+                            changed = true;
+                        }
+                    }
+                    else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+                    {
+                        var b = ip.GetAddressBytes();
+                        if (!v6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
+                        {
+                            v6List.Add(b);
+                            changed = true;
+                        }
+                    }
+                }
+
                 if (IPAddress.TryParse(serverIp, out var directIp))
                 {
-                    AddIpBytes(directIp);
+                    Add(directIp);
                 }
                 else
                 {
                     var addrs = Dns.GetHostAddresses(serverIp);
                     foreach (var addr in addrs)
                     {
-                        AddIpBytes(addr);
+                        Add(addr);
                     }
+                }
+
+                if (changed)
+                {
+                    _serverIpv4Array = [.. v4List];
+                    _serverIpv6Array = [.. v6List];
                 }
             }
             catch { }
-        }
-    }
-
-    private void AddIpBytes(IPAddress ip)
-    {
-        var b = ip.GetAddressBytes();
-        if (ip.AddressFamily == AddressFamily.InterNetwork)
-        {
-            if (!_serverIpv4List.Any(existing => existing.AsSpan().SequenceEqual(b)))
-            {
-                _serverIpv4List.Add(b);
-            }
-        }
-        else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            if (!_serverIpv6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
-            {
-                _serverIpv6List.Add(b);
-            }
         }
     }
 
@@ -128,28 +141,27 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
 
         var version = packet[0] >> 4;
-        lock (_serverIpsLock)
+        if (version == 4)
         {
-            if (version == 4)
+            var dst = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(16, 4));
+            var v4 = _serverIpv4Array;
+            for (var i = 0; i < v4.Length; i++)
             {
-                var dstSpan = packet.Slice(16, 4);
-                foreach (var ip in _serverIpv4List)
+                if (v4[i] == dst)
                 {
-                    if (dstSpan.SequenceEqual(ip))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
-            else if (version == 6 && length >= 40)
+        }
+        else if (version == 6 && length >= 40)
+        {
+            var dstSpan = packet.Slice(24, 16);
+            var v6 = _serverIpv6Array;
+            for (var i = 0; i < v6.Length; i++)
             {
-                var dstSpan = packet.Slice(24, 16);
-                foreach (var ip in _serverIpv6List)
+                if (dstSpan.SequenceEqual(v6[i]))
                 {
-                    if (dstSpan.SequenceEqual(ip))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }

@@ -14,7 +14,8 @@ public sealed partial class GrpcTransport(
     private readonly string? _configuredSni = targetSni;
     private string _thumbprint = string.Empty;
 
-    private GrpcChannel? _grpcChannel;
+    private GrpcChannel? _realtimeGrpcChannel;
+    private GrpcChannel? _bulkGrpcChannel;
     private readonly PriorityPacketQueue?[] _txChannels = new PriorityPacketQueue?[PacketRouter.MaxRays];
     private readonly Stream?[] _tunnelStreams = new Stream?[PacketRouter.MaxRays];
     private readonly PacketDeduplicator _deduplicator = new();
@@ -24,7 +25,7 @@ public sealed partial class GrpcTransport(
     private long _lastMeasuredPingTimestamp;
 
     public string ProtocolName => "HTTP2";
-    public bool IsConnected => _grpcChannel is not null && _tunnelStreams[0] is not null;
+    public bool IsConnected => (_realtimeGrpcChannel is not null || _bulkGrpcChannel is not null) && _tunnelStreams[0] is not null;
 
     public event Action<byte[], int>? OnPacketReceived;
     public event Action<long>? OnPingUpdated;
@@ -198,67 +199,12 @@ public sealed partial class GrpcTransport(
 
         try
         {
-            var handler = new SocketsHttpHandler
-            {
-                PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-                KeepAlivePingDelay = TimeSpan.FromSeconds(15),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
-                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                EnableMultipleHttp2Connections = true,
-                InitialHttp2StreamWindowSize = 16777216,
-                SslOptions = new SslClientAuthenticationOptions
-                {
-                    TargetHost = targetHost,
-                    ApplicationProtocols = [SslApplicationProtocol.Http2],
-                    EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
-                    RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                        ValidateServerCertificate(certificate, chain, errors)
-                },
-                ConnectCallback = async (context, cToken) =>
-                {
-                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
-                    {
-                        NoDelay = true,
-                        SendBufferSize = 8388608,
-                        ReceiveBufferSize = 8388608
-                    };
-                    socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-                    OnSocketCreated?.Invoke(socket);
-                    try
-                    {
-                        var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
-                            ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
-                            : context.DnsEndPoint;
-                        Debug.WriteLine($"[GRPC-CONNECT] Connecting TCP socket to {connectTarget} (SNI={targetHost})...");
-                        await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
-                        Debug.WriteLine($"[GRPC-CONNECT] Successfully connected TCP socket to {connectTarget}!");
-                        return new NetworkStream(socket, ownsSocket: true);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[GRPC-CONNECT ERROR] Failed TCP socket connect to {serverIp}:{serverPort}: {ex.Message}");
-                        socket.Dispose();
-                        throw;
-                    }
-                }
-            };
-
-            var httpClient = new HttpClient(handler)
-            {
-                Timeout = Timeout.InfiniteTimeSpan
-            };
-
-            var channelOptions = new GrpcChannelOptions
-            {
-                HttpClient = httpClient,
-                MaxReceiveMessageSize = null,
-                MaxSendMessageSize = null,
-                DisposeHttpClient = true
-            };
-
             var channelHost = !string.IsNullOrWhiteSpace(targetHost) ? targetHost : serverIp;
-            Debug.WriteLine($"[GRPC-INIT] Creating multiplexed channel -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
-            _grpcChannel = GrpcChannel.ForAddress($"https://{channelHost}:{serverPort}", channelOptions);
+            Debug.WriteLine($"[GRPC-INIT] Creating dual-socket channels -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
+            _realtimeGrpcChannel = CreateGrpcChannel(serverIp, serverPort, targetHost, channelHost);
+            _bulkGrpcChannel = _activeRays > 1
+                ? CreateGrpcChannel(serverIp, serverPort, targetHost, channelHost)
+                : _realtimeGrpcChannel;
 
             for (var i = 0; i < _activeRays; i++)
             {
@@ -373,7 +319,9 @@ public sealed partial class GrpcTransport(
 
     private async Task ConnectRayAsync(int rayIndex, bool isNewConnection)
     {
-        var client = new TunnelService.TunnelServiceClient(_grpcChannel!);
+        var isRealtimeRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
+        var targetChannel = isRealtimeRay ? _realtimeGrpcChannel! : _bulkGrpcChannel!;
+        var client = new TunnelService.TunnelServiceClient(targetChannel);
         var headers = new Metadata();
 
         var authThumb = !string.IsNullOrEmpty(_thumbprint) ? _thumbprint : _certThumbprint ?? "";
@@ -557,7 +505,8 @@ public sealed partial class GrpcTransport(
                             Debug.WriteLine($"[GRPC-RX-RAY#{rayIndex}] Packet #{pktsReceived}: {protoDesc}, len={realLen}B, totalRayBytes={bytesReceived}B");
                         }
 
-                        if (!_deduplicator.IsDuplicate(packet, realLen))
+                        var isRealtimeRay = rayIndex == 0 || rayIndex == (_activeRays - 1);
+                        if (!isRealtimeRay || !_deduplicator.IsDuplicate(packet, realLen))
                         {
                             OnPacketReceived?.Invoke(packet, realLen);
                         }
@@ -715,16 +664,85 @@ public sealed partial class GrpcTransport(
 
         try
         {
-            if (_grpcChannel is not null)
+            if (_realtimeGrpcChannel is not null)
             {
-                _ = _grpcChannel.ShutdownAsync();
-                _grpcChannel.Dispose();
-                _grpcChannel = null;
+                _ = _realtimeGrpcChannel.ShutdownAsync();
+                _realtimeGrpcChannel.Dispose();
+                _realtimeGrpcChannel = null;
+            }
+        }
+        catch { }
+
+        try
+        {
+            if (_bulkGrpcChannel is not null && !ReferenceEquals(_bulkGrpcChannel, _realtimeGrpcChannel))
+            {
+                _ = _bulkGrpcChannel.ShutdownAsync();
+                _bulkGrpcChannel.Dispose();
+                _bulkGrpcChannel = null;
             }
         }
         catch { }
 
         GC.SuppressFinalize(this);
+    }
+
+    private static GrpcChannel CreateGrpcChannel(string serverIp, int serverPort, string targetHost, string channelHost)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+            KeepAlivePingDelay = TimeSpan.FromSeconds(15),
+            KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
+            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+            EnableMultipleHttp2Connections = true,
+            InitialHttp2StreamWindowSize = 2097152,
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                TargetHost = targetHost,
+                ApplicationProtocols = [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11],
+                EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
+                RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
+                    ValidateServerCertificate(certificate, chain, errors)
+            },
+            ConnectCallback = async (context, cToken) =>
+            {
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+                {
+                    NoDelay = true
+                };
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                OnSocketCreated?.Invoke(socket);
+                try
+                {
+                    var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
+                        ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
+                        : context.DnsEndPoint;
+                    await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            }
+        };
+
+        var httpClient = new HttpClient(handler)
+        {
+            Timeout = Timeout.InfiniteTimeSpan
+        };
+
+        var channelOptions = new GrpcChannelOptions
+        {
+            HttpClient = httpClient,
+            MaxReceiveMessageSize = null,
+            MaxSendMessageSize = null,
+            DisposeHttpClient = true
+        };
+
+        return GrpcChannel.ForAddress($"https://{channelHost}:{serverPort}", channelOptions);
     }
 }
 

@@ -391,7 +391,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _adapter.StartSession();
 
                             OnLogUpdated?.Invoke("Применение настроек сети...");
-                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0");
+                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", ipv6);
 
                             OctopusEngine.Current.ResetTrafficCounters();
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
@@ -616,7 +616,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private static async Task SetAdapterConfigAsync(string adapterName, string ip, string mask)
+    private static async Task SetAdapterConfigAsync(string adapterName, string ip, string mask, string? ipv6 = null)
     {
         var pfx = mask == "255.192.0.0" ? 10 : 24;
 
@@ -629,6 +629,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
+
+                if (!string.IsNullOrWhiteSpace(ipv6))
+                {
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set address name=\"{adapterName}\" address={ipv6} store=active");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1");
+                }
+
                 Debug.WriteLine("[NET CONFIG] Configured adapter via netsh successfully.");
                 return;
             }
@@ -647,6 +656,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes {NetworkDefaults.DefaultMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
+                if ('{ipv6}' -ne '') {{ try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }} }}
             ";
             var (exitCode, output) = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript.Replace("\n", " ").Replace("\r", "")}\"");
             Debug.WriteLine($"[NET CONFIG] Attempt {i}, ExitCode: {exitCode}, Output: {output}");
