@@ -648,6 +648,16 @@ public sealed partial class VpnView : ContentView
                 return;
             }
 
+            var conflictingVpn = _vpnService.DetectConflictingVpn();
+            if (!string.IsNullOrEmpty(conflictingVpn))
+            {
+                await _parent.DisplayAlertAsync(
+                    "Сторонний VPN включён",
+                    $"У вас уже включён сторонний VPN ({conflictingVpn}).\n\nОбходка не может работать одновременно с двумя VPN. Пожалуйста, отключите его и попробуйте снова.",
+                    "Да");
+                return;
+            }
+
             StartLoaderAnimation();
             ConnectButtonCore.IsEnabled = false;
             UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);

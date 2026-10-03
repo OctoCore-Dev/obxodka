@@ -280,6 +280,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             _currentServerPort = serverPort;
             _isExplicitlyStopped = false;
 
+            var conflictingVpn = DetectConflictingVpn();
+            if (!string.IsNullOrEmpty(conflictingVpn))
+            {
+                throw new InvalidOperationException($"У вас уже включён сторонний VPN ({conflictingVpn}). Обходка не может работать одновременно с двумя VPN. Пожалуйста, отключите его и попробуйте снова.");
+            }
+
             try
             {
                 LogNetworkDiagnostics(OnLogUpdated);
@@ -824,6 +830,58 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
 
         return true;
+    }
+
+    public string? DetectConflictingVpn()
+    {
+        try
+        {
+            foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (c.OperationalStatus != OperationalStatus.Up ||
+                    c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                    c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var name = c.Name;
+                var desc = c.Description;
+                var isVpn = name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase);
+
+                if (!isVpn)
+                {
+                    var props = c.GetIPProperties();
+                    foreach (var gw in props.GatewayAddresses)
+                    {
+                        var gwStr = gw.Address.ToString();
+                        if (gwStr is "0.0.0.0" or "::")
+                        {
+                            isVpn = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isVpn)
+                {
+                    return name;
+                }
+            }
+        }
+        catch { }
+
+        return null;
     }
 
     private static void LogNetworkDiagnostics(Action<string>? onLogUpdated = null)
