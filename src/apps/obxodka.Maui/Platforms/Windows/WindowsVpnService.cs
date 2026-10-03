@@ -799,8 +799,52 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private static string t_savedPhysicalGateway = "";
     private static int t_savedPhysicalIfIndex;
 
+    private static bool IsInSameSubnet(IPAddress ip, IPAddress gw, IPAddress? mask)
+    {
+        if (ip.AddressFamily != AddressFamily.InterNetwork || gw.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        var ipBytes = ip.GetAddressBytes();
+        var gwBytes = gw.GetAddressBytes();
+        var maskBytes = mask?.GetAddressBytes();
+        if (maskBytes == null || maskBytes.Length != 4)
+        {
+            maskBytes = [255, 255, 255, 0];
+        }
+
+        for (var i = 0; i < 4; i++)
+        {
+            if ((ipBytes[i] & maskBytes[i]) != (gwBytes[i] & maskBytes[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void LogNetworkDiagnostics()
+    {
+        try
+        {
+            foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                var props = c.GetIPProperties();
+                var ips = string.Join(", ", props.UnicastAddresses.Select(u => $"{u.Address}/{u.IPv4Mask}"));
+                var gws = string.Join(", ", props.GatewayAddresses.Select(g => g.Address.ToString()));
+                var idx = props.GetIPv4Properties()?.Index ?? -1;
+                obxodka.Shared.Logging.AppLogger.Log($"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
+            }
+        }
+        catch { }
+    }
+
     private static (string Gateway, int InterfaceIndex) GetDefaultGatewayInfo(string? targetIp = null)
     {
+        LogNetworkDiagnostics();
+
         var targetStr = !string.IsNullOrEmpty(targetIp) && IPAddress.TryParse(targetIp, out _) ? targetIp : "1.1.1.1";
         if (IPAddress.TryParse(targetStr, out var targetAddr))
         {
@@ -819,91 +863,50 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         }
 
                         var ipProps = card.GetIPProperties();
-                        if (ipProps.UnicastAddresses.Any(u => u.Address.Equals(localIp)))
+                        var unicast = ipProps.UnicastAddresses.FirstOrDefault(u => u.Address.Equals(localIp));
+                        if (unicast != null)
                         {
                             var ifIndex = ipProps.GetIPv4Properties()?.Index ?? 0;
+                            var mask = unicast.IPv4Mask;
                             var gw = ipProps.GatewayAddresses
                                 .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork &&
                                                      !IPAddress.IsLoopback(g.Address) &&
                                                      !g.Address.Equals(IPAddress.Any) &&
                                                      g.Address.ToString() != "0.0.0.0" &&
-                                                     !g.Address.ToString().Contains(':'))?
+                                                     !g.Address.ToString().Contains(':') &&
+                                                     IsInSameSubnet(localIp, g.Address, mask))?
                                 .Address.ToString();
 
-                            if (ifIndex > 0)
+                            if (string.IsNullOrEmpty(gw) && ifIndex > 0)
                             {
-                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
+                                try
                                 {
-                                    var (win32Gw, _) = QueryBestRouteWin32(targetStr);
-                                    if (!string.IsNullOrEmpty(win32Gw) && win32Gw != "0.0.0.0" && !win32Gw.Contains(':'))
+                                    using var proc = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -Command \"(Get-NetRoute -InterfaceIndex {ifIndex} -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object {{ $_.NextHop -ne '0.0.0.0' -and $_.NextHop -notlike '*:*' }} | Select-Object -First 1).NextHop\"")
                                     {
-                                        gw = win32Gw;
-                                    }
-                                }
-
-                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
-                                {
-                                    try
+                                        CreateNoWindow = true,
+                                        WindowStyle = ProcessWindowStyle.Hidden,
+                                        RedirectStandardOutput = true,
+                                        UseShellExecute = false
+                                    });
+                                    if (proc != null)
                                     {
-                                        using var proc = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -Command \"(Get-NetIPConfiguration -InterfaceIndex {ifIndex} -ErrorAction SilentlyContinue).IPv4DefaultGateway.NextHop\"")
+                                        var psGw = proc.StandardOutput.ReadToEnd().Trim();
+                                        _ = proc.WaitForExit(3000);
+                                        if (!string.IsNullOrEmpty(psGw) && IPAddress.TryParse(psGw, out var parsedPsGw) && psGw != "0.0.0.0" && !psGw.Contains(':') && IsInSameSubnet(localIp, parsedPsGw, mask))
                                         {
-                                            CreateNoWindow = true,
-                                            WindowStyle = ProcessWindowStyle.Hidden,
-                                            RedirectStandardOutput = true,
-                                            UseShellExecute = false
-                                        });
-                                        if (proc != null)
-                                        {
-                                            var psGw = proc.StandardOutput.ReadToEnd().Trim();
-                                            _ = proc.WaitForExit(3000);
-                                            if (!string.IsNullOrEmpty(psGw) && IPAddress.TryParse(psGw, out _) && psGw != "0.0.0.0" && !psGw.Contains(':'))
-                                            {
-                                                gw = psGw;
-                                            }
+                                            gw = psGw;
                                         }
                                     }
-                                    catch { }
                                 }
+                                catch { }
+                            }
 
-                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
-                                {
-                                    try
-                                    {
-                                        using var proc = Process.Start(new ProcessStartInfo("powershell", "-NoProfile -Command \"(Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).IPv4DefaultGateway.NextHop\"")
-                                        {
-                                            CreateNoWindow = true,
-                                            WindowStyle = ProcessWindowStyle.Hidden,
-                                            RedirectStandardOutput = true,
-                                            UseShellExecute = false
-                                        });
-                                        if (proc != null)
-                                        {
-                                            var psGw = proc.StandardOutput.ReadToEnd().Trim();
-                                            _ = proc.WaitForExit(3000);
-                                            if (!string.IsNullOrEmpty(psGw) && IPAddress.TryParse(psGw, out _) && psGw != "0.0.0.0" && !psGw.Contains(':'))
-                                            {
-                                                gw = psGw;
-                                            }
-                                        }
-                                    }
-                                    catch { }
-                                }
-
-                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
-                                {
-                                    if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && t_savedPhysicalGateway != "0.0.0.0" && !t_savedPhysicalGateway.Contains(':'))
-                                    {
-                                        gw = t_savedPhysicalGateway;
-                                    }
-                                }
-
-                                if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0")
-                                {
-                                    Debug.WriteLine($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {gw}");
-                                    t_savedPhysicalGateway = gw;
-                                    t_savedPhysicalIfIndex = ifIndex;
-                                    return (gw, ifIndex);
-                                }
+                            if (ifIndex > 0 && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0")
+                            {
+                                obxodka.Shared.Logging.AppLogger.Log($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {gw}");
+                                t_savedPhysicalGateway = gw;
+                                t_savedPhysicalIfIndex = ifIndex;
+                                return (gw, ifIndex);
                             }
                         }
                     }
@@ -912,15 +915,40 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             catch { }
         }
 
-        var fallbackRoute = QueryBestRouteWin32(targetIp);
-        if (fallbackRoute.InterfaceIndex > 0 &&
-            !string.IsNullOrEmpty(fallbackRoute.Gateway) && !fallbackRoute.Gateway.Contains(':') && fallbackRoute.Gateway != "0.0.0.0")
+        var win32Route = QueryBestRouteWin32(targetStr);
+        if (win32Route.InterfaceIndex > 0 &&
+            !string.IsNullOrEmpty(win32Route.Gateway) && !win32Route.Gateway.Contains(':') && win32Route.Gateway != "0.0.0.0")
         {
-            Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{fallbackRoute.Gateway}', IfIndex: {fallbackRoute.InterfaceIndex}");
-            t_savedPhysicalGateway = fallbackRoute.Gateway;
-            t_savedPhysicalIfIndex = fallbackRoute.InterfaceIndex;
-            return fallbackRoute;
+            obxodka.Shared.Logging.AppLogger.Log($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
+            t_savedPhysicalGateway = win32Route.Gateway;
+            t_savedPhysicalIfIndex = win32Route.InterfaceIndex;
+            return win32Route;
         }
+
+        try
+        {
+            using var psProc = Process.Start(new ProcessStartInfo("powershell", "-NoProfile -Command \"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object { $_.NextHop -ne '0.0.0.0' -and $_.NextHop -notlike '*:*' } | Sort-Object RouteMetric | Select-Object -First 1 | ForEach-Object { $_.NextHop + ',' + $_.InterfaceIndex })\"")
+            {
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            });
+            if (psProc != null)
+            {
+                var line = psProc.StandardOutput.ReadToEnd().Trim();
+                _ = psProc.WaitForExit(3000);
+                var parts = line.Split(',');
+                if (parts.Length == 2 && IPAddress.TryParse(parts[0], out _) && int.TryParse(parts[1], CultureInfo.InvariantCulture, out var psIf) && psIf > 0)
+                {
+                    obxodka.Shared.Logging.AppLogger.Log($"[GATEWAY] PowerShell lowest-metric default route: '{parts[0]}', IfIndex: {psIf}");
+                    t_savedPhysicalGateway = parts[0];
+                    t_savedPhysicalIfIndex = psIf;
+                    return (parts[0], psIf);
+                }
+            }
+        }
+        catch { }
 
         if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && !t_savedPhysicalGateway.Contains(':') && t_savedPhysicalGateway != "0.0.0.0" && t_savedPhysicalIfIndex > 0)
         {
