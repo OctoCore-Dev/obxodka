@@ -415,28 +415,29 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.Current.ResetTrafficCounters();
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
+                            OnLogUpdated?.Invoke("Проверка готовности туннеля (RX)...");
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000), _cts.Token);
+                            if (verified)
+                            {
+                                OnLogUpdated?.Invoke("Связь подтверждена! Активация туннеля...");
+                            }
+                            else if (OctopusEngine.Current.TotalBytesReceived > 0)
+                            {
+                                OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Активация...");
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent}, RX={OctopusEngine.Current.TotalBytesReceived}), proceeding to activate routes.");
+                                OnLogUpdated?.Invoke($"Туннель запущен ({OctopusEngine.Current.ActiveProtocol}). Активация...");
+                            }
+
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
                             await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true);
                             OnLogUpdated?.Invoke("Включение защиты от утечек DNS...");
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
                             ApplyExtremeNetworkBoost();
 
-                            OnLogUpdated?.Invoke("Проверка сквозного прохождения пакетов (RX)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), _cts.Token);
-                            if (verified)
-                            {
-                                OnLogUpdated?.Invoke("Связь подтверждена! Защищенное соединение установлено.");
-                            }
-                            else if (OctopusEngine.Current.TotalBytesReceived > 0)
-                            {
-                                OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
-                            }
-                            else
-                            {
-                                Debug.WriteLine($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent}, RX={OctopusEngine.Current.TotalBytesReceived}), but tunnel is up. Proceeding to Connected state.");
-                                OnLogUpdated?.Invoke($"Туннель запущен ({OctopusEngine.Current.ActiveProtocol}). Ожидание сетевого трафика...");
-                            }
-
+                            OnLogUpdated?.Invoke("Защищенное соединение активно.");
                             UpdateState(AppVpnState.Connected);
                             connected = true;
                             return;
@@ -1284,7 +1285,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             if (!string.IsNullOrEmpty(ifIndex))
             {
-                await Task.Delay(200);
                 var tunGateway = "100.64.0.1";
                 if (IPAddress.TryParse(assignedIp, out var parsedAssigned))
                 {
@@ -1294,9 +1294,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
                     }
                 }
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
-                Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
+                var r2Task = RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
+                var r3Task = RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
+                var results = await Task.WhenAll(r2Task, r3Task).ConfigureAwait(false);
+                Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={results[0].exitCode}, R3={results[1].exitCode}");
 
                 if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
@@ -1452,6 +1453,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             try
             {
+                OnLogUpdated?.Invoke("Восстановление сетевых настроек и DNS...");
+                var routeTask = SetWindowsRoutesAsync(adapterName, _currentServerIpsToRoute.Count > 0 ? _currentServerIpsToRoute.ToArray() : (!string.IsNullOrEmpty(serverIp) ? [serverIp] : []), "", false);
+                var dnsTask = DisableDnsLeakProtectionAsync();
+                await Task.WhenAll(routeTask, dnsTask).ConfigureAwait(false);
+
                 if (adapterToDispose is not null)
                 {
                     try
@@ -1463,9 +1469,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     Debug.WriteLine("[DRIVER] Wintun adapter disposed.");
                 }
 
-                OnLogUpdated?.Invoke("Восстановление сетевых настроек и DNS...");
-                await DisableDnsLeakProtectionAsync();
-                await SetWindowsRoutesAsync(adapterName, _currentServerIpsToRoute.Count > 0 ? _currentServerIpsToRoute.ToArray() : (!string.IsNullOrEmpty(serverIp) ? [serverIp] : []), "", false);
                 await RestoreOriginalNetworkSettingsAsync();
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
@@ -1520,9 +1523,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         t_networkSettingsBoosted = false;
         try
         {
-            _ = await RunCmdAsync("netsh", "int tcp set global autotuninglevel=normal");
-            _ = await RunCmdAsync("netsh", "int tcp set global ecncapability=disabled");
-            _ = await RunCmdAsync("netsh", "int tcp set heuristics default");
+            _ = await Task.WhenAll(
+                RunCmdAsync("netsh", "int tcp set global autotuninglevel=normal"),
+                RunCmdAsync("netsh", "int tcp set global ecncapability=disabled"),
+                RunCmdAsync("netsh", "int tcp set heuristics default")
+            ).ConfigureAwait(false);
             Debug.WriteLine("[BOOST] Windows Network Stack restored to default.");
         }
         catch { }
@@ -1589,14 +1594,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 delTasks.Add(RunCmdAsync("route", $"delete {dns} mask 255.255.255.255"));
             }
-            await Task.WhenAll(delTasks);
 
-            _ = await RunCmdAsync("powershell", "-NoProfile -Command \"try { Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'Obxodka-DNS' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue } catch { }\"");
+            delTasks.Add(RunCmdAsync("powershell", "-NoProfile -ExecutionPolicy Bypass -Command \"try { Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'Obxodka-DNS' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue } catch { }\""));
+            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\""));
+            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\""));
+            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\""));
+            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\""));
 
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\"");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\"");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\"");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\"");
+            await Task.WhenAll(delTasks).ConfigureAwait(false);
 
             try
             {
@@ -1613,7 +1618,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
             catch { }
 
-            _ = await RunCmdAsync("ipconfig", "/flushdns");
+            _ = Task.Run(() => RunCmdAsync("ipconfig", "/flushdns"));
         }
         catch (Exception ex)
         {
