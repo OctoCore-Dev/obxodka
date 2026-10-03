@@ -48,6 +48,7 @@ public sealed partial class ThemeStoreView : ContentView
             manager.VideoEnabledChanged -= HandleVideoEnabledChanged;
             manager.AlwaysPlayVideoChanged -= HandleAlwaysPlayVideoChanged;
             manager.CardOpacityChanged -= HandleCardOpacityChanged;
+            manager.GlowIntensityChanged -= HandleGlowIntensityChanged;
             manager.SoundsEnabledChanged -= HandleSoundsEnabledChanged;
             manager.ParticlesEnabledChanged -= HandleParticlesEnabledChanged;
             _themeManager = null;
@@ -145,6 +146,7 @@ public sealed partial class ThemeStoreView : ContentView
             prevManager.VideoEnabledChanged -= HandleVideoEnabledChanged;
             prevManager.AlwaysPlayVideoChanged -= HandleAlwaysPlayVideoChanged;
             prevManager.CardOpacityChanged -= HandleCardOpacityChanged;
+            prevManager.GlowIntensityChanged -= HandleGlowIntensityChanged;
             prevManager.SoundsEnabledChanged -= HandleSoundsEnabledChanged;
             prevManager.ParticlesEnabledChanged -= HandleParticlesEnabledChanged;
         }
@@ -155,6 +157,7 @@ public sealed partial class ThemeStoreView : ContentView
         _themeManager.VideoEnabledChanged += HandleVideoEnabledChanged;
         _themeManager.AlwaysPlayVideoChanged += HandleAlwaysPlayVideoChanged;
         _themeManager.CardOpacityChanged += HandleCardOpacityChanged;
+        _themeManager.GlowIntensityChanged += HandleGlowIntensityChanged;
         _themeManager.SoundsEnabledChanged += HandleSoundsEnabledChanged;
         _themeManager.ParticlesEnabledChanged += HandleParticlesEnabledChanged;
 
@@ -176,16 +179,19 @@ public sealed partial class ThemeStoreView : ContentView
         SwitchAlwaysPlayVideo.IsToggled = _themeManager.AlwaysPlayVideoEnabled;
 
         var opacity = _themeManager.CardOpacity;
+        var glow = _themeManager.GlowIntensity;
         _isUpdatingSliderInternally = true;
         try
         {
             SliderCardOpacity.Value = opacity;
+            SliderGlowIntensity.Value = glow;
         }
         finally
         {
             _isUpdatingSliderInternally = false;
         }
         LabelCardOpacityValue.Text = $"{(int)Math.Round(opacity * 100)}%";
+        LabelGlowIntensityValue.Text = $"{(int)Math.Round(glow * 100)}%";
     }
 
     private void HandleVideoEnabledChanged(bool val) =>
@@ -228,6 +234,36 @@ public sealed partial class ThemeStoreView : ContentView
                     SliderCardOpacity.Value = val;
                 }
                 LabelCardOpacityValue.Text = $"{(int)Math.Round(val * 100)}%";
+            }
+            finally
+            {
+                _isUpdatingSliderInternally = false;
+            }
+        });
+    }
+
+    private void HandleGlowIntensityChanged(double val)
+    {
+        if (_isUpdatingSliderInternally)
+        {
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_isUpdatingSliderInternally)
+            {
+                return;
+            }
+
+            _isUpdatingSliderInternally = true;
+            try
+            {
+                if (Math.Abs(SliderGlowIntensity.Value - val) >= 0.01)
+                {
+                    SliderGlowIntensity.Value = val;
+                }
+                LabelGlowIntensityValue.Text = $"{(int)Math.Round(val * 100)}%";
             }
             finally
             {
@@ -1222,6 +1258,30 @@ public sealed partial class ThemeStoreView : ContentView
         }
     }
 
+    private void OnGlowIntensityChanged(object? sender, ValueChangedEventArgs e)
+    {
+        if (_isUpdatingSliderInternally)
+        {
+            return;
+        }
+
+        var rounded = Math.Round(e.NewValue, 2);
+        LabelGlowIntensityValue.Text = $"{(int)Math.Round(rounded * 100)}%";
+
+        if (_themeManager != null && Math.Abs(_themeManager.GlowIntensity - rounded) >= 0.01)
+        {
+            _isUpdatingSliderInternally = true;
+            try
+            {
+                _themeManager.GlowIntensity = rounded;
+            }
+            finally
+            {
+                _isUpdatingSliderInternally = false;
+            }
+        }
+    }
+
     private void OnResetThemeClicked(object? sender, EventArgs e)
     {
         _ = BtnResetTheme.BounceClickAsync();
@@ -1302,16 +1362,24 @@ public sealed partial class ThemeStoreView : ContentView
         IconAlwaysPlay.IconColor = accentColor;
         BadgeOpacity.BackgroundColor = primaryDim;
         IconOpacity.IconColor = primaryColor;
+        BadgeGlow.BackgroundColor = primaryDim;
+        IconGlow.IconColor = accentColor;
 
         SepVfx1.Color = borderSubtleColor;
         SepVfx2.Color = borderSubtleColor;
         SepVfx3.Color = borderSubtleColor;
         SepVfx4.Color = borderSubtleColor;
+        SepVfx5.Color = borderSubtleColor;
 
         SliderCardOpacity.MinimumTrackColor = primaryColor;
         SliderCardOpacity.ThumbColor = primaryColor;
         SliderCardOpacity.MaximumTrackColor = borderSubtleColor;
         LabelCardOpacityValue.TextColor = primaryColor;
+
+        SliderGlowIntensity.MinimumTrackColor = accentColor;
+        SliderGlowIntensity.ThumbColor = accentColor;
+        SliderGlowIntensity.MaximumTrackColor = borderSubtleColor;
+        LabelGlowIntensityValue.TextColor = accentColor;
 
         SwitchSounds.OnColor = primaryColor;
         SwitchParticles.OnColor = primaryColor;

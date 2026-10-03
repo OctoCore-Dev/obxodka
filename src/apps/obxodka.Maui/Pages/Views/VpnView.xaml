@@ -414,13 +414,13 @@
                         <Grid
                             x:Name="ButtonContainerGrid"
                             Grid.Row="1"
-                            HeightRequest="{OnIdiom Desktop=300,
-                                                    Phone=210,
-                                                    Default=300}"
+                            HeightRequest="{OnIdiom Desktop=340,
+                                                    Phone=240,
+                                                    Default=340}"
                             HorizontalOptions="Center"
-                            WidthRequest="{OnIdiom Desktop=300,
-                                                   Phone=210,
-                                                   Default=300}">
+                            WidthRequest="{OnIdiom Desktop=340,
+                                                   Phone=240,
+                                                   Default=340}">
 
                             <skia:SKCanvasView
                                 x:Name="OuterAura"

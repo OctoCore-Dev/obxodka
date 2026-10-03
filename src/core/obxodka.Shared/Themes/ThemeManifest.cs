@@ -303,6 +303,27 @@ public sealed class ThemeVfx
 
     [JsonPropertyName("color")]
     public string? Color { get; set; }
+
+    [JsonPropertyName("glow")]
+    public ThemeGlow? Glow { get; set; }
+
+    [JsonPropertyName("buttonLoaderStyle")]
+    public string ButtonLoaderStyle { get; set; } = "crystal";
+}
+
+public sealed class ThemeGlow
+{
+    [JsonPropertyName("intensity")]
+    public double Intensity { get; set; } = 1.0;
+
+    [JsonPropertyName("radius")]
+    public double Radius { get; set; } = 40.0;
+
+    [JsonPropertyName("coreColor")]
+    public string? CoreColor { get; set; }
+
+    [JsonPropertyName("bloomColor")]
+    public string? BloomColor { get; set; }
 }
 
 public sealed class ThemeCatalogResponse

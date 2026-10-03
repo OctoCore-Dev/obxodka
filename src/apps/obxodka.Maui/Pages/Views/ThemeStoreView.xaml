@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.ThemeStoreView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -483,6 +483,62 @@
                                 MinimumTrackColor="{DynamicResource Primary}"
                                 ThumbColor="{DynamicResource Primary}"
                                 ValueChanged="OnCardOpacityChanged" />
+                        </VerticalStackLayout>
+
+                        <BoxView
+                            x:Name="SepVfx5"
+                            HeightRequest="1"
+                            Color="{DynamicResource BorderSubtle}" />
+
+                        <VerticalStackLayout Spacing="8">
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <Border
+                                    x:Name="BadgeGlow"
+                                    Grid.Column="0"
+                                    BackgroundColor="{DynamicResource PrimaryDim}"
+                                    HeightRequest="36"
+                                    StrokeShape="RoundRectangle 18"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center"
+                                    WidthRequest="36">
+                                    <mi:MauiIcon
+                                        x:Name="IconGlow"
+                                        HorizontalOptions="Center"
+                                        Icon="{mi:Fluent Icon=WeatherMoon24}"
+                                        IconColor="{DynamicResource Accent}"
+                                        IconSize="18"
+                                        VerticalOptions="Center" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        Text="Интенсивность неонового свечения"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Регулировка яркости неоновой ауры и квантового кристалла" />
+                                </VerticalStackLayout>
+                                <Label
+                                    x:Name="LabelGlowIntensityValue"
+                                    Grid.Column="2"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="14"
+                                    HorizontalOptions="End"
+                                    Text="100%"
+                                    TextColor="{DynamicResource Accent}"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                            <Slider
+                                x:Name="SliderGlowIntensity"
+                                Margin="48,0,0,0"
+                                Maximum="2.0"
+                                MaximumTrackColor="{DynamicResource BorderSubtle}"
+                                Minimum="0.0"
+                                MinimumTrackColor="{DynamicResource Accent}"
+                                ThumbColor="{DynamicResource Accent}"
+                                ValueChanged="OnGlowIntensityChanged" />
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
