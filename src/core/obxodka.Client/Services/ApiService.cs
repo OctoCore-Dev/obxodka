@@ -57,7 +57,8 @@ public sealed class ApiService(HttpClient client)
                 try
                 {
                     await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(AppConfig.DirectServerIp), 443), cToken).ConfigureAwait(false);
-                    return new NetworkStream(socket, ownsSocket: true);
+                    var netStream = new NetworkStream(socket, ownsSocket: true);
+                    return new obxodka.Core.Transports.DpiBypassStream(netStream);
                 }
                 catch
                 {
