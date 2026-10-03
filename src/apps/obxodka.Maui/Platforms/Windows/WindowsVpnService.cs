@@ -815,9 +815,28 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             return name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
                    name.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
                    name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("Hamachi", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("VirtualBox", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("VMware", StringComparison.OrdinalIgnoreCase) ||
+                   name.Contains("Npcap", StringComparison.OrdinalIgnoreCase) ||
                    desc.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
                    desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase);
+                   desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("Famatech", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("Hamachi", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                   desc.Contains("VMware", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
