@@ -768,7 +768,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 {
                     var gwBytes = BitConverter.GetBytes(gwUint);
                     var gwIp = new IPAddress(gwBytes).ToString();
-                    if (gwIp != "0.0.0.0")
+                    if (gwIp != "0.0.0.0" && !gwIp.Contains(':'))
                     {
                         return (gwIp, ifIndex);
                     }
@@ -780,9 +780,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     if (ipProps.GetIPv4Properties()?.Index == ifIndex)
                     {
                         var gw = ipProps.GatewayAddresses
-                            .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any))?
+                            .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any) && !g.Address.ToString().Contains(':'))?
                             .Address.ToString();
-                        return (gw ?? "", ifIndex);
+                        if (!string.IsNullOrEmpty(gw))
+                        {
+                            return (gw, ifIndex);
+                        }
                     }
                 }
 
@@ -825,7 +828,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private static (string Gateway, int InterfaceIndex) GetDefaultGatewayInfo(string? targetIp = null)
     {
         var win32Route = QueryBestRouteWin32(targetIp);
-        if (win32Route.InterfaceIndex > 0 && !IsVirtualAdapter(win32Route.InterfaceIndex))
+        if (win32Route.InterfaceIndex > 0 && !IsVirtualAdapter(win32Route.InterfaceIndex) &&
+            !string.IsNullOrEmpty(win32Route.Gateway) && !win32Route.Gateway.Contains(':') && win32Route.Gateway != "0.0.0.0")
         {
             Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
             t_savedPhysicalGateway = win32Route.Gateway;
@@ -835,31 +839,41 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
         try
         {
-            var card = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n =>
-                n.OperationalStatus == OperationalStatus.Up &&
-                n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                !n.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) &&
-                !n.Name.Contains("Wintun", StringComparison.OrdinalIgnoreCase) &&
-                !n.Name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) &&
-                !n.Name.Contains("Radmin", StringComparison.OrdinalIgnoreCase) &&
-                !n.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase) &&
-                !n.Description.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) &&
-                n.GetIPProperties().GatewayAddresses.Count != 0);
-
-            var gw = card?.GetIPProperties().GatewayAddresses.FirstOrDefault()?.Address.ToString() ?? "";
-            var ifIndex = card?.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
-            if (!string.IsNullOrEmpty(gw) && ifIndex > 0)
+            foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
             {
-                t_savedPhysicalGateway = gw;
-                t_savedPhysicalIfIndex = ifIndex;
-                return (gw, ifIndex);
+                if (card.OperationalStatus != OperationalStatus.Up ||
+                    card.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
+
+                var ifIndex = card.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+                if (ifIndex <= 0 || IsVirtualAdapter(ifIndex))
+                {
+                    continue;
+                }
+
+                var ipv4Gateway = card.GetIPProperties().GatewayAddresses
+                    .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                         !IPAddress.IsLoopback(g.Address) &&
+                                         !g.Address.Equals(IPAddress.Any) &&
+                                         g.Address.ToString() != "0.0.0.0" &&
+                                         !g.Address.ToString().Contains(':'))?
+                    .Address.ToString();
+
+                if (!string.IsNullOrEmpty(ipv4Gateway))
+                {
+                    t_savedPhysicalGateway = ipv4Gateway;
+                    t_savedPhysicalIfIndex = ifIndex;
+                    return (ipv4Gateway, ifIndex);
+                }
             }
         }
         catch
         {
         }
 
-        if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && t_savedPhysicalIfIndex > 0)
+        if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && !t_savedPhysicalGateway.Contains(':') && t_savedPhysicalIfIndex > 0)
         {
             return (t_savedPhysicalGateway, t_savedPhysicalIfIndex);
         }
@@ -934,7 +948,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 ifIndex = output.Trim();
             }
 
-            var nextHop = !string.IsNullOrEmpty(gw) ? gw : "0.0.0.0";
+            var nextHop = !string.IsNullOrEmpty(gw) && !gw.Contains(':') ? gw : "0.0.0.0";
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             foreach (var serverIp in serverIps)
             {
