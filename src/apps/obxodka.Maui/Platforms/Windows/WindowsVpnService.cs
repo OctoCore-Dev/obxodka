@@ -55,6 +55,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         _ = await RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
+        _ = await RunCmdAsync("route", $"delete {AppConfig.DirectServerIp} mask 255.255.255.255");
         await DisableDnsLeakProtectionAsync();
     }
 
