@@ -32,46 +32,54 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
     public async ValueTask<(byte[] buffer, int length)> DequeueAsync(CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested)
+        try
         {
-            await _semaphore.WaitAsync(ct).ConfigureAwait(false);
-
-            if (_high.TryDequeue(out var highItem))
+            while (!ct.IsCancellationRequested)
             {
-                _ = Interlocked.Decrement(ref _count);
-                return highItem;
-            }
+                await _semaphore.WaitAsync(ct).ConfigureAwait(false);
 
-            if (_low.TryDequeue(out var lowItem))
-            {
-                _ = Interlocked.Decrement(ref _count);
-                return lowItem;
-            }
+                if (_high.TryDequeue(out var highItem))
+                {
+                    _ = Interlocked.Decrement(ref _count);
+                    return highItem;
+                }
 
-            _ = _semaphore.Release();
+                if (_low.TryDequeue(out var lowItem))
+                {
+                    _ = Interlocked.Decrement(ref _count);
+                    return lowItem;
+                }
+
+                _ = _semaphore.Release();
+            }
         }
+        catch (ObjectDisposedException) { }
 
         return ([], 0);
     }
 
     public bool TryDequeue(out (byte[] buffer, int length) item)
     {
-        if (_semaphore.Wait(0))
+        try
         {
-            if (_high.TryDequeue(out item))
+            if (_semaphore.Wait(0))
             {
-                _ = Interlocked.Decrement(ref _count);
-                return true;
-            }
+                if (_high.TryDequeue(out item))
+                {
+                    _ = Interlocked.Decrement(ref _count);
+                    return true;
+                }
 
-            if (_low.TryDequeue(out item))
-            {
-                _ = Interlocked.Decrement(ref _count);
-                return true;
-            }
+                if (_low.TryDequeue(out item))
+                {
+                    _ = Interlocked.Decrement(ref _count);
+                    return true;
+                }
 
-            _ = _semaphore.Release();
+                _ = _semaphore.Release();
+            }
         }
+        catch (ObjectDisposedException) { }
 
         item = default;
         return false;
@@ -79,8 +87,18 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
     public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
     {
-        while (TryDequeue(out var item))
+        while (_high.TryDequeue(out var item))
         {
+            _ = Interlocked.Decrement(ref _count);
+            if (item.buffer != null && item.buffer.Length > 0)
+            {
+                returnBuffer?.Invoke(item.buffer);
+            }
+        }
+
+        while (_low.TryDequeue(out var item))
+        {
+            _ = Interlocked.Decrement(ref _count);
             if (item.buffer != null && item.buffer.Length > 0)
             {
                 returnBuffer?.Invoke(item.buffer);
@@ -166,5 +184,12 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return false;
     }
 
-    public void Dispose() => _semaphore.Dispose();
+    private int _disposed;
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            _semaphore.Dispose();
+        }
+    }
 }

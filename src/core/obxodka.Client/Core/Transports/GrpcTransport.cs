@@ -23,6 +23,7 @@ public sealed partial class GrpcTransport(
     private TaskCompletionSource<(string, string)>? _ipTcs;
     private volatile bool _serverUsesObfsMasking;
     private long _lastMeasuredPingTimestamp;
+    private int _disposed;
 
     public string ProtocolName => "HTTP2";
     public bool IsConnected => (_realtimeGrpcChannel is not null || _bulkGrpcChannel is not null) && _tunnelStreams[0] is not null;
@@ -614,6 +615,11 @@ public sealed partial class GrpcTransport(
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         await SendDisconnectSignalAsync().ConfigureAwait(false);
 
         try
@@ -624,28 +630,40 @@ public sealed partial class GrpcTransport(
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            _txChannels[i]?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
-            _txChannels[i]?.Dispose();
-            _txChannels[i] = null;
+            var ch = Interlocked.Exchange(ref _txChannels[i], null);
+            ch?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
+            ch?.Dispose();
         }
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            if (_tunnelStreams[i] is { } stream)
+            var stream = Interlocked.Exchange(ref _tunnelStreams[i], null);
+            if (stream is not null)
             {
                 try
                 {
                     await stream.DisposeAsync().ConfigureAwait(false);
                 }
                 catch { }
-                _tunnelStreams[i] = null;
             }
         }
 
-        Dispose();
+        DisposeInternal();
+        GC.SuppressFinalize(this);
     }
 
     public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        DisposeInternal();
+        GC.SuppressFinalize(this);
+    }
+
+    private void DisposeInternal()
     {
         try
         {
@@ -657,14 +675,14 @@ public sealed partial class GrpcTransport(
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            _txChannels[i]?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
-            _txChannels[i]?.Dispose();
-            _txChannels[i] = null;
+            var ch = Interlocked.Exchange(ref _txChannels[i], null);
+            ch?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
+            ch?.Dispose();
 
             try
             {
-                _tunnelStreams[i]?.Dispose();
-                _tunnelStreams[i] = null;
+                var stream = Interlocked.Exchange(ref _tunnelStreams[i], null);
+                stream?.Dispose();
             }
             catch { }
         }
@@ -690,8 +708,6 @@ public sealed partial class GrpcTransport(
             }
         }
         catch { }
-
-        GC.SuppressFinalize(this);
     }
 
     private static GrpcChannel CreateGrpcChannel(string serverIp, int serverPort, string targetHost, string channelHost)

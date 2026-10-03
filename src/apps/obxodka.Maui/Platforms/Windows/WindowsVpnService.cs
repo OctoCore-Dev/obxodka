@@ -282,6 +282,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             try
             {
+                LogNetworkDiagnostics(OnLogUpdated);
                 OnLogUpdated?.Invoke($"Построение маршрута через {originalHost}...");
 
                 var connected = false;
@@ -825,7 +826,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return true;
     }
 
-    private static void LogNetworkDiagnostics()
+    private static void LogNetworkDiagnostics(Action<string>? onLogUpdated = null)
     {
         try
         {
@@ -836,6 +837,22 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var gws = string.Join(", ", props.GatewayAddresses.Select(g => g.Address.ToString()));
                 var idx = props.GetIPv4Properties()?.Index ?? -1;
                 obxodka.Shared.Logging.AppLogger.Log($"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
+
+                if (c.OperationalStatus == OperationalStatus.Up &&
+                    c.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                    !c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) &&
+                    (c.Name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                     c.Name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                     c.Description.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                     c.Description.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                     c.Name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
+                     c.Name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
+                     c.Name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
+                     c.Description.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase)))
+                {
+                    obxodka.Shared.Logging.AppLogger.Log($"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is Up. It may block Obxodka traffic via WFP firewall.");
+                    onLogUpdated?.Invoke($"[ВНИМАНИЕ] Обнаружен активный сторонний VPN: '{c.Name}'. Пожалуйста, отключите его!");
+                }
             }
         }
         catch { }

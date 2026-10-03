@@ -4,6 +4,7 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
 {
     private readonly AsyncDuplexStreamingCall<TunnelPacket, TunnelPacket> _call = call;
     private readonly CancellationTokenSource _cts = new();
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private ReadOnlyMemory<byte>? _readBuffer;
     private int _readOffset;
     private bool _disposed;
@@ -91,8 +92,21 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
 
         try
         {
-            var packet = new TunnelPacket { Data = UnsafeByteOperations.UnsafeWrap(buffer) };
-            await _call.RequestStream.WriteAsync(packet, cancellationToken).ConfigureAwait(false);
+            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (_disposed || cancellationToken.IsCancellationRequested || _cts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var packet = new TunnelPacket { Data = UnsafeByteOperations.UnsafeWrap(buffer) };
+                await _call.RequestStream.WriteAsync(packet, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _ = _writeLock.Release();
+            }
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled || cancellationToken.IsCancellationRequested || _cts.IsCancellationRequested)
         {
@@ -151,6 +165,8 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
         }
         catch { }
 
+        _writeLock.Dispose();
+
         await base.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
@@ -178,6 +194,8 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
                 _cts.Dispose();
             }
             catch { }
+
+            _writeLock.Dispose();
         }
 
         base.Dispose(disposing);
