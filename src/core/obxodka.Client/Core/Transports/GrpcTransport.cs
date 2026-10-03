@@ -727,7 +727,10 @@ public sealed partial class GrpcTransport(
                         ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
                         : context.DnsEndPoint;
                     await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
-                    return new NetworkStream(socket, ownsSocket: true);
+                    var netStream = new NetworkStream(socket, ownsSocket: true);
+                    return IPAddress.TryParse(serverIp, out var parsedIp) && !IPAddress.IsLoopback(parsedIp)
+                        ? new DpiBypassStream(netStream)
+                        : netStream;
                 }
                 catch
                 {
