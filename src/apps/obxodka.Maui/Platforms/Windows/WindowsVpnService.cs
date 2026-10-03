@@ -464,10 +464,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 if (!connected)
                 {
-                    if (lastException is OperationCanceledException || _isExplicitlyStopped)
+                    if (_isExplicitlyStopped)
                     {
                         UpdateState(AppVpnState.Disconnected);
                         return;
+                    }
+                    if (lastException is OperationCanceledException or TimeoutException)
+                    {
+                        throw new TimeoutException($"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS/gRPC хэндшейк.");
                     }
                     throw lastException ?? new InvalidOperationException("Сервер не отвечает или пакеты блокируются (0 RX). Проверьте интернет или смените протокол.");
                 }
@@ -475,14 +479,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             catch (Exception ex)
             {
                 UpdateState(AppVpnState.Error);
-                if (ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase))
-                {
-                    OnErrorOccurred?.Invoke("Сервер недоступен (Timeout).");
-                }
-                else
-                {
-                    OnErrorOccurred?.Invoke($"Ошибка: {ex.Message}");
-                }
+                var errMsg = ex is TimeoutException || ex.InnerException is TimeoutException
+                    ? ex.Message
+                    : $"Ошибка: {ex.Message}";
+                OnLogUpdated?.Invoke(errMsg);
+                OnErrorOccurred?.Invoke(errMsg);
             }
         }
         finally

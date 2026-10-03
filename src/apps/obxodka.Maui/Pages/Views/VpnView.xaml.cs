@@ -40,6 +40,7 @@ public sealed partial class VpnView : ContentView
     private bool _isBusy;
     private bool _isErrorState;
     private string? _activeConnectedNode;
+    private string? _lastErrorMessage;
     private float _loaderAngle;
     private IDispatcherTimer? _loaderTimer;
     private IDispatcherTimer? _graphAnimTimer;
@@ -308,13 +309,17 @@ public sealed partial class VpnView : ContentView
         PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
 
         var friendlyMessage = FormatUserFriendlyError(err);
+        _lastErrorMessage = friendlyMessage;
 
         MainThread.BeginInvokeOnMainThread(async () =>
         {
-            if (DeviceInfo.Platform != DevicePlatform.WinUI)
+            StatusLabel.Text = friendlyMessage;
+            StatusLabel.TextColor = Colors.Red;
+            try
             {
                 await _parent.DisplayAlertAsync("Сбой сети", friendlyMessage, "OK");
             }
+            catch { }
         });
     }
 
@@ -323,6 +328,13 @@ public sealed partial class VpnView : ContentView
         if (string.IsNullOrWhiteSpace(rawError))
         {
             return "Не удалось установить соединение с сервером.";
+        }
+
+        if (rawError.Contains("Таймаут", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("Timeout", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Не удалось подключиться к серверу (таймаут ответа).\n\nВозможные причины:\n• Блокировка TLS/протокола провайдером\n• Нестабильный интернет\n\nПопробуйте повторить попытку.";
         }
 
         if (rawError.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) ||
@@ -451,7 +463,8 @@ public sealed partial class VpnView : ContentView
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
                     PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
-                    await SetNeonStateAsync("Ошибка", "ПОВТОРИТЬ", AppVpnState.Error);
+                    var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage) ? _lastErrorMessage : "Ошибка подключения";
+                    await SetNeonStateAsync(errDisplay, "ПОВТОРИТЬ", AppVpnState.Error);
                     _parent.NotifyVpnDisconnected();
                     break;
 
@@ -574,6 +587,7 @@ public sealed partial class VpnView : ContentView
             return;
         }
 
+        _lastErrorMessage = null;
         await ConnectButtonCore.BounceClickAsync();
         try
         {

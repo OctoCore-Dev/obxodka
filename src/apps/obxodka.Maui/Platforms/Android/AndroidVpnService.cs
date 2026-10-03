@@ -479,18 +479,16 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             }
             catch { }
 
-            if (ex is OperationCanceledException ||
-                ex.InnerException is OperationCanceledException ||
-                ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase) ||
-                ex.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
-                _isExplicitlyStopped)
+            if (_isExplicitlyStopped)
             {
                 Debug.WriteLine($"[VPN DISCONNECT] Normal stop/cancellation: {ex.Message}");
                 ChangeState(AppVpnState.Disconnected);
                 return;
             }
 
-            SetError($"Ошибка подключения: {ex.Message}");
+            SetError(ex is TimeoutException or OperationCanceledException
+                ? $"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS/gRPC хэндшейк."
+                : $"Ошибка подключения: {ex.Message}");
         }
     }
 
