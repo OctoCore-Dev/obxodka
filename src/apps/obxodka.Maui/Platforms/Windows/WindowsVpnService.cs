@@ -799,97 +799,60 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private static string t_savedPhysicalGateway = "";
     private static int t_savedPhysicalIfIndex;
 
-    private static bool IsVirtualAdapter(int ifIndex)
-    {
-        try
-        {
-            var card = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n =>
-                n.GetIPProperties().GetIPv4Properties()?.Index == ifIndex);
-            if (card == null)
-            {
-                return false;
-            }
-
-            var name = card.Name;
-            var desc = card.Description;
-            return name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("Hamachi", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("VirtualBox", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("VMware", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains("Npcap", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Famatech", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Hamachi", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
-                   desc.Contains("VMware", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static (string Gateway, int InterfaceIndex) GetDefaultGatewayInfo(string? targetIp = null)
     {
+        var targetStr = !string.IsNullOrEmpty(targetIp) && IPAddress.TryParse(targetIp, out _) ? targetIp : "1.1.1.1";
+        if (IPAddress.TryParse(targetStr, out var targetAddr))
+        {
+            try
+            {
+                using var socket = new Socket(targetAddr.AddressFamily, SocketType.Dgram, 0);
+                socket.Connect(targetAddr, 443);
+                if (socket.LocalEndPoint is IPEndPoint ep && !ep.Address.Equals(IPAddress.Any) && !IPAddress.IsLoopback(ep.Address))
+                {
+                    var localIp = ep.Address;
+                    foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
+                    {
+                        if (card.OperationalStatus != OperationalStatus.Up || card.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                        {
+                            continue;
+                        }
+
+                        var ipProps = card.GetIPProperties();
+                        if (ipProps.UnicastAddresses.Any(u => u.Address.Equals(localIp)))
+                        {
+                            var ifIndex = ipProps.GetIPv4Properties()?.Index ?? 0;
+                            var gw = ipProps.GatewayAddresses
+                                .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                                     !IPAddress.IsLoopback(g.Address) &&
+                                                     !g.Address.Equals(IPAddress.Any) &&
+                                                     g.Address.ToString() != "0.0.0.0" &&
+                                                     !g.Address.ToString().Contains(':'))?
+                                .Address.ToString();
+
+                            if (ifIndex > 0)
+                            {
+                                var actualGw = !string.IsNullOrEmpty(gw) ? gw : "0.0.0.0";
+                                Debug.WriteLine($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {actualGw}");
+                                t_savedPhysicalGateway = actualGw;
+                                t_savedPhysicalIfIndex = ifIndex;
+                                return (actualGw, ifIndex);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
         var win32Route = QueryBestRouteWin32(targetIp);
-        if (win32Route.InterfaceIndex > 0 && !IsVirtualAdapter(win32Route.InterfaceIndex) &&
+        if (win32Route.InterfaceIndex > 0 &&
             !string.IsNullOrEmpty(win32Route.Gateway) && !win32Route.Gateway.Contains(':') && win32Route.Gateway != "0.0.0.0")
         {
             Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
             t_savedPhysicalGateway = win32Route.Gateway;
             t_savedPhysicalIfIndex = win32Route.InterfaceIndex;
             return win32Route;
-        }
-
-        try
-        {
-            foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (card.OperationalStatus != OperationalStatus.Up ||
-                    card.NetworkInterfaceType == NetworkInterfaceType.Loopback)
-                {
-                    continue;
-                }
-
-                var ifIndex = card.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
-                if (ifIndex <= 0 || IsVirtualAdapter(ifIndex))
-                {
-                    continue;
-                }
-
-                var ipv4Gateway = card.GetIPProperties().GatewayAddresses
-                    .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork &&
-                                         !IPAddress.IsLoopback(g.Address) &&
-                                         !g.Address.Equals(IPAddress.Any) &&
-                                         g.Address.ToString() != "0.0.0.0" &&
-                                         !g.Address.ToString().Contains(':'))?
-                    .Address.ToString();
-
-                if (!string.IsNullOrEmpty(ipv4Gateway))
-                {
-                    t_savedPhysicalGateway = ipv4Gateway;
-                    t_savedPhysicalIfIndex = ifIndex;
-                    return (ipv4Gateway, ifIndex);
-                }
-            }
-        }
-        catch
-        {
         }
 
         if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && !t_savedPhysicalGateway.Contains(':') && t_savedPhysicalIfIndex > 0)
