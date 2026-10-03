@@ -1,6 +1,6 @@
 namespace obxodka.Maui.Controls;
 
-public partial class OrbLoader : SKCanvasView
+public partial class OrbLoader : SKCanvasView, IDisposable
 {
     private static ReadOnlySpan<float> Angles => [0f, 1f, -1f, 0.5f, -0.5f, 1.5f, -1.5f];
     private static ReadOnlySpan<float> Offsets => [0f, 0f, 0f, 60f, -60f, 120f, -90f];
@@ -27,9 +27,14 @@ public partial class OrbLoader : SKCanvasView
     private float _angle;
     private float _hue;
     private IDispatcherTimer? _timer;
+    private EventHandler? _timerTick;
     private readonly Stopwatch _stopwatch = new();
+    private readonly SKPaint _glowPaint = new() { IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 18f) };
+    private readonly SKPaint _bgPaint = new() { IsAntialias = true };
+    private readonly SKPaint _borderPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f };
+    private readonly SKPaint _polyPaint = new() { IsAntialias = true };
 
-    public OrbLoader() => Unloaded += (_, _) => StopTimer();
+    public OrbLoader() => Unloaded += (_, _) => Dispose();
 
     private void OnAnimatingChanged(bool animating)
     {
@@ -47,26 +52,43 @@ public partial class OrbLoader : SKCanvasView
     {
         if (_timer is not null)
         {
+            if (!_timer.IsRunning)
+            {
+                _timer.Start();
+            }
             return;
         }
 
         _stopwatch.Restart();
         _timer = Dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
-        _timer.Tick += (_, _) =>
+        _timerTick = (_, _) =>
         {
             var seconds = (float)_stopwatch.Elapsed.TotalSeconds;
             _angle = seconds * 112.5f % 360f;
             _hue = seconds * 18.75f % 360f;
             InvalidateSurface();
         };
+        _timer.Tick += _timerTick;
         _timer.Start();
     }
 
     private void StopTimer()
     {
-        _timer?.Stop();
-        _timer = null;
+        if (_timer is not null)
+        {
+            if (_timerTick is not null)
+            {
+                _timer.Tick -= _timerTick;
+                _timerTick = null;
+            }
+            if (_timer.IsRunning)
+            {
+                _timer.Stop();
+            }
+            _timer = null;
+        }
+
         _stopwatch.Reset();
     }
 
@@ -79,51 +101,36 @@ public partial class OrbLoader : SKCanvasView
 
         canvas.Clear(SKColors.Transparent);
 
-        using var glowPaint = new SKPaint
-        {
-            IsAntialias = true,
-            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 18f),
-            Color = SKColor.FromHsv(_hue, 80f, 100f).WithAlpha(60)
-        };
-        canvas.DrawCircle(cx, cy, r, glowPaint);
+        _glowPaint.Color = SKColor.FromHsv(_hue, 80f, 100f).WithAlpha(60);
+        canvas.DrawCircle(cx, cy, r, _glowPaint);
 
-        using var bgPaint = new SKPaint
-        {
-            IsAntialias = true,
-            Shader = SKShader.CreateRadialGradient(
-                new SKPoint(cx, cy - (r * 0.3f)),
-                r,
-                [
-                    SKColor.FromHsv(_hue, 60f, 100f).WithAlpha(40),
-                    SKColor.FromHsv((_hue + 30f) % 360f, 90f, 70f).WithAlpha(80)
-                ],
-                SKShaderTileMode.Clamp)
-        };
-        canvas.DrawCircle(cx, cy, r, bgPaint);
+        _bgPaint.Shader?.Dispose();
+        _bgPaint.Shader = SKShader.CreateRadialGradient(
+            new SKPoint(cx, cy - (r * 0.3f)),
+            r,
+            [
+                SKColor.FromHsv(_hue, 60f, 100f).WithAlpha(40),
+                SKColor.FromHsv((_hue + 30f) % 360f, 90f, 70f).WithAlpha(80)
+            ],
+            SKShaderTileMode.Clamp);
+        canvas.DrawCircle(cx, cy, r, _bgPaint);
 
-        using var borderPaint = new SKPaint
-        {
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1.5f,
-            Color = SKColor.FromHsv(_hue, 70f, 100f).WithAlpha(180)
-        };
-        canvas.DrawCircle(cx, cy, r, borderPaint);
+        _borderPaint.Color = SKColor.FromHsv(_hue, 70f, 100f).WithAlpha(180);
+        canvas.DrawCircle(cx, cy, r, _borderPaint);
 
         DrawPolygons(canvas, cx, cy, r);
     }
 
     private void DrawPolygons(SKCanvas canvas, float cx, float cy, float r)
     {
-        using var paint = new SKPaint { IsAntialias = true };
-
         for (var i = 0; i < 4; i++)
         {
             var rot = (_angle * Angles[i]) + Offsets[i];
             var alpha = 120f + (i * 20f);
 
-            paint.Color = SKColor.FromHsv((_hue + (i * 25f)) % 360f, 85f, 100f).WithAlpha((byte)alpha);
-            paint.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 10f);
+            _polyPaint.Color = SKColor.FromHsv((_hue + (i * 25f)) % 360f, 85f, 100f).WithAlpha((byte)alpha);
+            _polyPaint.MaskFilter?.Dispose();
+            _polyPaint.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 10f);
 
             _ = canvas.Save();
             var ox = cx + ((t_origins[i].X - 0.5f) * r);
@@ -133,7 +140,7 @@ public partial class OrbLoader : SKCanvasView
             var pr = r * 0.45f;
 
             using var path = MakePolygon(ox, oy, pr, 5);
-            canvas.DrawPath(path, paint);
+            canvas.DrawPath(path, _polyPaint);
             canvas.Restore();
         }
     }
@@ -162,5 +169,17 @@ public partial class OrbLoader : SKCanvasView
 
         builder.Close();
         return builder.Detach();
+    }
+
+    public void Dispose()
+    {
+        StopTimer();
+        _glowPaint.Dispose();
+        _bgPaint.Shader?.Dispose();
+        _bgPaint.Dispose();
+        _borderPaint.Dispose();
+        _polyPaint.Dispose();
+        _stopwatch.Reset();
+        GC.SuppressFinalize(this);
     }
 }

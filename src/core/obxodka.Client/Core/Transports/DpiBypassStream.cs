@@ -1,10 +1,10 @@
 namespace obxodka.Core.Transports;
 
-internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 2, int delayMs = 20) : Stream
+internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0, int delayMs = 0) : Stream
 {
     private readonly Stream _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
-    private readonly int _splitPosition = Math.Max(1, splitPosition);
-    private readonly int _delayMs = Math.Max(10, delayMs);
+    private readonly int _splitPosition = splitPosition > 0 ? splitPosition : Random.Shared.Next(1, 4);
+    private readonly int _delayMs = delayMs > 0 ? delayMs : Random.Shared.Next(18, 46);
     private bool _firstWrite = true;
 
     public override bool CanRead => _innerStream.CanRead;

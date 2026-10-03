@@ -194,7 +194,7 @@ public sealed partial class VpnView : ContentView
 
     private void UpdateRayIndicator()
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        PlatformThrottler.Post("ui:ray", TimeSpan.FromMilliseconds(500), () =>
         {
             if (RayIndicatorIcon == null || RayIndicatorLabel == null)
             {
@@ -384,7 +384,7 @@ public sealed partial class VpnView : ContentView
 
     private void HandlePingUpdated(long rtt)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        PlatformThrottler.Post("ui:ping", TimeSpan.FromMilliseconds(250), () =>
         {
             if (OctopusEngine.Current is { IsConnected: true })
             {
@@ -893,7 +893,7 @@ public sealed partial class VpnView : ContentView
         _targetSpeedUp = sentSpeed;
         _targetSpeedDown = recvSpeed;
 
-        MainThread.BeginInvokeOnMainThread(() =>
+        PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(200), () =>
         {
             TrafficUpLabel.Text = $"{FormatBytes(sentSpeed)}/s";
             TrafficDownLabel.Text = $"{FormatBytes(recvSpeed)}/s";

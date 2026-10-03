@@ -1237,7 +1237,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             {
                 await Task.Delay(1000, ct);
                 RemainingSeconds = Math.Max(0, RemainingSeconds - 1);
-                MainThread.BeginInvokeOnMainThread(UpdateBalanceUI);
+                PlatformThrottler.Post("ui:balance", TimeSpan.FromMilliseconds(250), UpdateBalanceUI);
 
                 syncCounter++;
                 if (syncCounter >= 30)
