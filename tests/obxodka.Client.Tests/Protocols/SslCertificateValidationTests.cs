@@ -101,7 +101,7 @@ public class SslCertificateValidationTests
     [Trait("Category", "Integration")]
     public async Task ValidateServerCertificateWithRealObxodkaCertAsync()
     {
-        using var tcp = new TcpClient("45.63.117.29", 443);
+        using var tcp = new TcpClient(AppConfig.DirectServerIp, 443);
         var capturedErrors = SslPolicyErrors.None;
         using var ssl = new SslStream(tcp.GetStream(), false, (s, cert, chain, errs) =>
         {
@@ -126,7 +126,7 @@ public class SslCertificateValidationTests
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
             {
-                var (ip, _) = await transport.ConnectAsync("45.63.117.29", "441671375F27A7A223240C624CF1F56678666289", cts.Token);
+                var (ip, _) = await transport.ConnectAsync(AppConfig.DirectServerIp, "441671375F27A7A223240C624CF1F56678666289", cts.Token);
                 Assert.False(string.IsNullOrEmpty(ip));
             }
             catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException or Grpc.Core.RpcException)

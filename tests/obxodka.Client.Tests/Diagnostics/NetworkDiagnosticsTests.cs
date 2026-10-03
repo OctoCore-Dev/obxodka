@@ -63,7 +63,7 @@ public class NetworkDiagnosticsTests
         var diagService = new NetworkDiagnosticsService();
 
         var report = await diagService.RunFullDiagnosticsAsync(
-            serverHost: "45.63.117.29",
+            serverHost: AppConfig.DirectServerIp,
             serverPort: 443,
             udpPort: 443,
             ct: cts.Token);

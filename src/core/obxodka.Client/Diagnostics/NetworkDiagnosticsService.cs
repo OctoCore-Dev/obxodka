@@ -80,7 +80,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
     public async Task<DiagnosticReport> RunFullDiagnosticsAsync(
-        string serverHost = "45.63.117.29",
+        string serverHost = AppConfig.DirectServerIp,
         int serverPort = 443,
         int udpPort = 443,
         Action<DiagnosticStepResult>? onStepCompleted = null,

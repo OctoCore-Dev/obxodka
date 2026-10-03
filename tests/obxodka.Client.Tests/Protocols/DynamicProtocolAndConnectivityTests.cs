@@ -82,7 +82,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         {
             using var tcp = new TcpClient();
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await tcp.ConnectAsync("45.63.117.29", 443, cts.Token);
+            await tcp.ConnectAsync(AppConfig.DirectServerIp, 443, cts.Token);
             using var ssl = new SslStream(tcp.GetStream(), false, (sender, cert, chain, errors) =>
             {
                 validated = GrpcTransport.ValidateServerCertificate(cert, chain, errors, expectedHash);
@@ -119,7 +119,7 @@ public sealed class DynamicProtocolAndConnectivityTests
 
         var transport = new GrpcTransport(activeRays: 1, clientCert: null, jwtToken: null, serverPort: 443);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        var ex = await Record.ExceptionAsync(() => transport.ConnectAsync("45.63.117.29", "TEST_THUMBPRINT", cts.Token));
+        var ex = await Record.ExceptionAsync(() => transport.ConnectAsync(AppConfig.DirectServerIp, "TEST_THUMBPRINT", cts.Token));
 
         Assert.True(ex is null or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException or SocketException, $"Expected cancellation, got: {ex}");
     }
@@ -146,7 +146,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         string ip;
         try
         {
-            var res = await transport.ConnectAsync("45.63.117.29", "8C4D558DD38236249DA05CA9FD59658C0CAC305E", cts.Token);
+            var res = await transport.ConnectAsync(AppConfig.DirectServerIp, "8C4D558DD38236249DA05CA9FD59658C0CAC305E", cts.Token);
             ip = res.ip;
         }
         catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException or Grpc.Core.RpcException or HttpRequestException or IOException)
@@ -172,7 +172,7 @@ public sealed class DynamicProtocolAndConnectivityTests
     public void VpnServerDtoSerializesAndDeserializesCertHashCorrectly()
     {
         var expectedHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
-        var server = new VpnServerDto("45.63.117.29", 443, "Германия", true, 15, expectedHash);
+        var server = new VpnServerDto(AppConfig.DirectServerIp, 443, "Швеция", true, 15, expectedHash);
 
         var json = JsonSerializer.Serialize(server, AppJsonContext.Default.VpnServerDto);
         Assert.Contains("certHash", json);
@@ -180,6 +180,6 @@ public sealed class DynamicProtocolAndConnectivityTests
         var deserialized = JsonSerializer.Deserialize(json, AppJsonContext.Default.VpnServerDto);
         Assert.NotNull(deserialized);
         Assert.Equal(expectedHash, deserialized.CertHash);
-        Assert.Equal("45.63.117.29", deserialized.Ip);
+        Assert.Equal(AppConfig.DirectServerIp, deserialized.Ip);
     }
 }
