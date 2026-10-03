@@ -832,11 +832,78 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                             if (ifIndex > 0)
                             {
-                                var actualGw = !string.IsNullOrEmpty(gw) ? gw : "0.0.0.0";
-                                Debug.WriteLine($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {actualGw}");
-                                t_savedPhysicalGateway = actualGw;
-                                t_savedPhysicalIfIndex = ifIndex;
-                                return (actualGw, ifIndex);
+                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
+                                {
+                                    var (win32Gw, _) = QueryBestRouteWin32(targetStr);
+                                    if (!string.IsNullOrEmpty(win32Gw) && win32Gw != "0.0.0.0" && !win32Gw.Contains(':'))
+                                    {
+                                        gw = win32Gw;
+                                    }
+                                }
+
+                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
+                                {
+                                    try
+                                    {
+                                        using var proc = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -Command \"(Get-NetIPConfiguration -InterfaceIndex {ifIndex} -ErrorAction SilentlyContinue).IPv4DefaultGateway.NextHop\"")
+                                        {
+                                            CreateNoWindow = true,
+                                            WindowStyle = ProcessWindowStyle.Hidden,
+                                            RedirectStandardOutput = true,
+                                            UseShellExecute = false
+                                        });
+                                        if (proc != null)
+                                        {
+                                            var psGw = proc.StandardOutput.ReadToEnd().Trim();
+                                            _ = proc.WaitForExit(3000);
+                                            if (!string.IsNullOrEmpty(psGw) && IPAddress.TryParse(psGw, out _) && psGw != "0.0.0.0" && !psGw.Contains(':'))
+                                            {
+                                                gw = psGw;
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
+
+                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
+                                {
+                                    try
+                                    {
+                                        using var proc = Process.Start(new ProcessStartInfo("powershell", "-NoProfile -Command \"(Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).IPv4DefaultGateway.NextHop\"")
+                                        {
+                                            CreateNoWindow = true,
+                                            WindowStyle = ProcessWindowStyle.Hidden,
+                                            RedirectStandardOutput = true,
+                                            UseShellExecute = false
+                                        });
+                                        if (proc != null)
+                                        {
+                                            var psGw = proc.StandardOutput.ReadToEnd().Trim();
+                                            _ = proc.WaitForExit(3000);
+                                            if (!string.IsNullOrEmpty(psGw) && IPAddress.TryParse(psGw, out _) && psGw != "0.0.0.0" && !psGw.Contains(':'))
+                                            {
+                                                gw = psGw;
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
+
+                                if (string.IsNullOrEmpty(gw) || gw == "0.0.0.0")
+                                {
+                                    if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && t_savedPhysicalGateway != "0.0.0.0" && !t_savedPhysicalGateway.Contains(':'))
+                                    {
+                                        gw = t_savedPhysicalGateway;
+                                    }
+                                }
+
+                                if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0")
+                                {
+                                    Debug.WriteLine($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {gw}");
+                                    t_savedPhysicalGateway = gw;
+                                    t_savedPhysicalIfIndex = ifIndex;
+                                    return (gw, ifIndex);
+                                }
                             }
                         }
                     }
@@ -845,17 +912,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             catch { }
         }
 
-        var win32Route = QueryBestRouteWin32(targetIp);
-        if (win32Route.InterfaceIndex > 0 &&
-            !string.IsNullOrEmpty(win32Route.Gateway) && !win32Route.Gateway.Contains(':') && win32Route.Gateway != "0.0.0.0")
+        var fallbackRoute = QueryBestRouteWin32(targetIp);
+        if (fallbackRoute.InterfaceIndex > 0 &&
+            !string.IsNullOrEmpty(fallbackRoute.Gateway) && !fallbackRoute.Gateway.Contains(':') && fallbackRoute.Gateway != "0.0.0.0")
         {
-            Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
-            t_savedPhysicalGateway = win32Route.Gateway;
-            t_savedPhysicalIfIndex = win32Route.InterfaceIndex;
-            return win32Route;
+            Debug.WriteLine($"[GATEWAY] Win32 GetBestRoute found gateway: '{fallbackRoute.Gateway}', IfIndex: {fallbackRoute.InterfaceIndex}");
+            t_savedPhysicalGateway = fallbackRoute.Gateway;
+            t_savedPhysicalIfIndex = fallbackRoute.InterfaceIndex;
+            return fallbackRoute;
         }
 
-        if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && !t_savedPhysicalGateway.Contains(':') && t_savedPhysicalIfIndex > 0)
+        if (!string.IsNullOrEmpty(t_savedPhysicalGateway) && !t_savedPhysicalGateway.Contains(':') && t_savedPhysicalGateway != "0.0.0.0" && t_savedPhysicalIfIndex > 0)
         {
             return (t_savedPhysicalGateway, t_savedPhysicalIfIndex);
         }
@@ -870,7 +937,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             return;
         }
         var (gw, physicalIfIndex) = GetDefaultGatewayInfo(targetIp);
-        if (!string.IsNullOrEmpty(gw))
+        if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
         {
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             _ = await RunCmdAsync("route", $"delete {targetIp} mask 255.255.255.255");
@@ -886,7 +953,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private static async Task SwitchHostRouteAsync(string oldIp, string newIp)
     {
         var (gw, physicalIfIndex) = GetDefaultGatewayInfo(newIp);
-        if (!string.IsNullOrEmpty(gw))
+        if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
         {
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             if (!string.IsNullOrEmpty(oldIp) && oldIp != newIp)
@@ -930,18 +997,20 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 ifIndex = output.Trim();
             }
 
-            var nextHop = !string.IsNullOrEmpty(gw) && !gw.Contains(':') ? gw : "0.0.0.0";
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
-            foreach (var serverIp in serverIps)
+            if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
             {
-                if (!string.IsNullOrEmpty(serverIp) && IPAddress.TryParse(serverIp, out _))
+                foreach (var serverIp in serverIps)
                 {
-                    _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
-                    var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
-                    Debug.WriteLine($"[ROUTE] Add Server Route: {serverIp}, ExitCode {exitCode}, Output: {output}");
-                    if (exitCode != 0 && physicalIfIndex > 0)
+                    if (!string.IsNullOrEmpty(serverIp) && IPAddress.TryParse(serverIp, out _))
                     {
-                        _ = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {nextHop} metric 1");
+                        _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
+                        var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
+                        Debug.WriteLine($"[ROUTE] Add Server Route: {serverIp}, ExitCode {exitCode}, Output: {output}");
+                        if (exitCode != 0 && physicalIfIndex > 0)
+                        {
+                            _ = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1");
+                        }
                     }
                 }
             }
@@ -962,20 +1031,20 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
 
-                if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw))
+                if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
                     foreach (var bypassIp in SplitTunnelPolicy.CustomBypassIps)
                     {
                         if (IPAddress.TryParse(bypassIp, out _))
                         {
-                            _ = await RunCmdAsync("route", $"add {bypassIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
+                            _ = await RunCmdAsync("route", $"add {bypassIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
                             SplitTunnelPolicy.RecordBypassRoute(bypassIp, "Пользовательское исключение");
                         }
                     }
 
                     if (SplitTunnelPolicy.BypassRemoteManagement)
                     {
-                        await ApplyRemoteManagementBypassRoutesAsync(nextHop, physIfArg);
+                        await ApplyRemoteManagementBypassRoutesAsync(gw, physIfArg);
                     }
                 }
 
