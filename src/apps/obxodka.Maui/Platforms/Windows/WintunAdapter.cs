@@ -90,15 +90,15 @@ internal sealed partial class WintunAdapter : IDisposable
     public void StartSession(uint capacity = 0x4000000)
     {
         lock (_rxLock)
-        lock (_txLock)
-        {
-            _session = WintunStartSession(_adapter, capacity);
-            if (_session == IntPtr.Zero)
+            lock (_txLock)
             {
-                var err = Marshal.GetLastPInvokeError();
-                throw new InvalidOperationException($"Не удалось запустить Wintun сессию (Код Win32: {err}).");
+                _session = WintunStartSession(_adapter, capacity);
+                if (_session == IntPtr.Zero)
+                {
+                    var err = Marshal.GetLastPInvokeError();
+                    throw new InvalidOperationException($"Не удалось запустить Wintun сессию (Код Win32: {err}).");
+                }
             }
-        }
     }
 
     public int ReceiveBatch(PacketBatch outBatch, CancellationToken ct)
@@ -293,14 +293,14 @@ internal sealed partial class WintunAdapter : IDisposable
     public void Dispose()
     {
         lock (_rxLock)
-        lock (_txLock)
-        {
-            if (_isDisposed)
+            lock (_txLock)
             {
-                return;
+                if (_isDisposed)
+                {
+                    return;
+                }
+                _isDisposed = true;
             }
-            _isDisposed = true;
-        }
 
         try
         {
@@ -311,28 +311,28 @@ internal sealed partial class WintunAdapter : IDisposable
         Thread.Sleep(30);
 
         lock (_rxLock)
-        lock (_txLock)
-        {
-            if (_session != IntPtr.Zero)
+            lock (_txLock)
             {
-                try
+                if (_session != IntPtr.Zero)
                 {
-                    WintunEndSession(_session);
+                    try
+                    {
+                        WintunEndSession(_session);
+                    }
+                    catch { }
+                    _session = IntPtr.Zero;
                 }
-                catch { }
-                _session = IntPtr.Zero;
-            }
 
-            if (_adapter != IntPtr.Zero)
-            {
-                try
+                if (_adapter != IntPtr.Zero)
                 {
-                    WintunCloseAdapter(_adapter);
+                    try
+                    {
+                        WintunCloseAdapter(_adapter);
+                    }
+                    catch { }
+                    _adapter = IntPtr.Zero;
                 }
-                catch { }
-                _adapter = IntPtr.Zero;
             }
-        }
 
         try
         {

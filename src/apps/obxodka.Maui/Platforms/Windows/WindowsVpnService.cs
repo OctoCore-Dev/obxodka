@@ -952,8 +952,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             if (!string.IsNullOrEmpty(ifIndex))
             {
                 await Task.Delay(200);
-                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
-                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {assignedIp} metric 1 if {ifIndex}");
+                var tunGateway = "100.64.0.1";
+                if (IPAddress.TryParse(assignedIp, out var parsedAssigned))
+                {
+                    var bytes = parsedAssigned.GetAddressBytes();
+                    if (bytes.Length == 4)
+                    {
+                        tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
+                    }
+                }
+                var (exitCode, output) = await RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
+                var r3 = await RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={exitCode} ({output}), R3={r3.exitCode} ({r3.output})");
 
                 if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw))
@@ -1190,10 +1199,19 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
+            var tunGateway = "100.64.0.1";
+            if (IPAddress.TryParse(assignedIp, out var parsedAssigned))
+            {
+                var bytes = parsedAssigned.GetAddressBytes();
+                if (bytes.Length == 4)
+                {
+                    tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
+                }
+            }
             var addTasks = new List<Task>();
             foreach (var dns in NetworkDefaults.TrustedDnsServers)
             {
-                addTasks.Add(RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {assignedIp} metric 1{ifArg}"));
+                addTasks.Add(RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {tunGateway} metric 1{ifArg}"));
             }
             await Task.WhenAll(addTasks);
 
@@ -1214,10 +1232,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             _ = await RunCmdAsync("powershell", "-NoProfile -Command \"try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','8.8.8.8' -DisplayName 'Obxodka-DNS' -ErrorAction Stop } catch { }\"");
 
-            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-LAN\" dir=out action=block protocol=UDP remoteport=53 interfacetype=lan");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-WiFi\" dir=out action=block protocol=UDP remoteport=53 interfacetype=wireless");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\" dir=out action=block protocol=TCP remoteport=53 interfacetype=lan");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall add rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\" dir=out action=block protocol=TCP remoteport=53 interfacetype=wireless");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\"");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\"");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\"");
+            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\"");
 
             _ = await RunCmdAsync("ipconfig", "/flushdns");
         }
