@@ -35,6 +35,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     public WindowsVpnService()
     {
+        _ = Task.Run(CleanupStaleRoutesAsync);
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
             try
