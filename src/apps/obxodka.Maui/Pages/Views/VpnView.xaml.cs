@@ -1,9 +1,10 @@
 using Microsoft.Maui.Controls.Shapes;
+using obxodka.Pages;
 using Path = System.IO.Path;
 
 namespace obxodka.Views;
 
-public sealed partial class VpnView : ContentView
+public sealed partial class VpnView : ContentView, IDisposable
 {
     private static readonly Color t_greenDot = Color.FromArgb("#10B981");
     private static readonly Color t_greenText = Color.FromArgb("#34D399");
@@ -34,20 +35,37 @@ public sealed partial class VpnView : ContentView
         Style = SKPaintStyle.Stroke
     };
 
-    private MainPage _parent = null!;
+    private WeakReference<MainPage>? _parentRef;
+    private MainPage? ParentPage => _parentRef is not null && _parentRef.TryGetTarget(out var target) ? target : null;
     private IVpnService _vpnService = null!;
     private ApiService _apiService = null!;
     private bool _isBusy;
     private bool _isErrorState;
     private string? _activeConnectedNode;
     private string? _lastErrorMessage;
-    private float _loaderAngle;
+    private readonly Stopwatch _loaderStopwatch = new();
     private IDispatcherTimer? _loaderTimer;
     private IDispatcherTimer? _graphAnimTimer;
     private double _targetSpeedUp, _targetSpeedDown;
     private double _smoothSpeedUp, _smoothSpeedDown;
     private double _smoothMaxSpeed = 1024.0;
     private float _pulsePhase;
+    private float _lastGraphTickTime;
+    private float _lastSampleTime;
+
+    private readonly SKPaint _loaderTrackPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f };
+    private readonly SKPaint _loaderArcCorePaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 4.5f, StrokeCap = SKStrokeCap.Round };
+    private readonly SKPaint _loaderGlowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 10f, StrokeCap = SKStrokeCap.Round };
+    private readonly SKPaint _loaderHeadPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly SKPaint _loaderInnerArcPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round };
+    private readonly SKPaint _loaderInnerHeadPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly SKPaint _auraPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+
+    private readonly SKPaint _graphStrokeUpPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
+    private readonly SKPaint _graphStrokeDownPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
+    private readonly SKPaint _graphFillPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly SKPaint _graphDotGlowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly SKPaint _graphDotSolidPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
 
     private readonly struct GraphSample(float time, float speedUp, float speedDown)
     {
@@ -91,7 +109,7 @@ public sealed partial class VpnView : ContentView
             }
         };
 
-        Unloaded += (_, _) => UnsubscribeEvents();
+        Unloaded += (_, _) => Dispose();
     }
 
     public void ForceLayoutWidth()
@@ -133,7 +151,7 @@ public sealed partial class VpnView : ContentView
 
     public void Initialize(MainPage parent, IVpnService vpnService, ApiService apiService)
     {
-        _parent = parent;
+        _parentRef = new WeakReference<MainPage>(parent);
         _vpnService = vpnService;
         _apiService = apiService;
 
@@ -173,6 +191,37 @@ public sealed partial class VpnView : ContentView
         StopLoaderAnimation();
         StopGraphAnimation();
         DisposeAnimatedButtonResources();
+    }
+
+    public void Dispose()
+    {
+        UnsubscribeEvents();
+        _loaderTrackPaint.Dispose();
+        _loaderArcCorePaint.Dispose();
+        _loaderGlowPaint.Dispose();
+        _loaderHeadPaint.Dispose();
+        _loaderInnerArcPaint.Dispose();
+        _loaderInnerHeadPaint.Dispose();
+        _auraPaint.Dispose();
+        _graphStrokeUpPaint.Dispose();
+        _graphStrokeDownPaint.Dispose();
+        _graphFillPaint.Dispose();
+        _graphDotGlowPaint.Dispose();
+        _graphDotSolidPaint.Dispose();
+        _buttonAnimatedCurrent?.Dispose();
+        _buttonAnimatedCurrent = null;
+        _buttonAnimatedIdle?.Dispose();
+        _buttonAnimatedIdle = null;
+        _buttonAnimatedConnecting?.Dispose();
+        _buttonAnimatedConnecting = null;
+        _buttonAnimatedActive?.Dispose();
+        _buttonAnimatedActive = null;
+        _buttonAnimatedError?.Dispose();
+        _buttonAnimatedError = null;
+        _buttonAnimCts?.Dispose();
+        _buttonAnimCts = null;
+        _parentRef = null;
+        GC.SuppressFinalize(this);
     }
 
     public async Task PlayEntranceAnimationAsync()
@@ -222,9 +271,9 @@ public sealed partial class VpnView : ContentView
     {
         MainThread.BeginInvokeOnMainThread(async () =>
         {
-            if (_parent is not null)
+            if (ParentPage is not null)
             {
-                await _parent.SwitchTabAsync("vpn");
+                await ParentPage.SwitchTabAsync("vpn");
             }
 
             if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
@@ -317,7 +366,10 @@ public sealed partial class VpnView : ContentView
             StatusLabel.TextColor = Colors.Red;
             try
             {
-                await _parent.DisplayAlertAsync("Сбой сети", friendlyMessage, "OK");
+                if (ParentPage is not null)
+                {
+                    await ParentPage.DisplayAlertAsync("Сбой сети", friendlyMessage, "OK");
+                }
             }
             catch { }
         });
@@ -435,7 +487,7 @@ public sealed partial class VpnView : ContentView
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
                     await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
-                    _parent.NotifyVpnDisconnected();
+                    ParentPage?.NotifyVpnDisconnected();
                     break;
 
                 case AppVpnState.Connected:
@@ -448,7 +500,7 @@ public sealed partial class VpnView : ContentView
                     ConnectButtonCore.IsEnabled = true;
                     UpdateRayIndicator();
                     await SetNeonStateAsync("Защищено", "СТОП", AppVpnState.Connected);
-                    _parent.NotifyVpnConnected();
+                    ParentPage?.NotifyVpnConnected();
                     break;
 
                 case AppVpnState.Error:
@@ -465,7 +517,7 @@ public sealed partial class VpnView : ContentView
                     PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
                     var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage) ? _lastErrorMessage : "Ошибка подключения";
                     await SetNeonStateAsync(errDisplay, "ПОВТОРИТЬ", AppVpnState.Error);
-                    _parent.NotifyVpnDisconnected();
+                    ParentPage?.NotifyVpnDisconnected();
                     break;
 
                 case AppVpnState.Connecting:
@@ -595,7 +647,7 @@ public sealed partial class VpnView : ContentView
             var isDisclosureAccepted = Preferences.Get("VpnDisclosureAccepted", false);
             if (!isDisclosureAccepted)
             {
-                var accepted = await _parent.DisplayAlertAsync(
+                var accepted = ParentPage is not null && await ParentPage.DisplayAlertAsync(
                     "Защита и использование VPN",
                     "Приложение Obxodka использует службу Android VpnService для создания безопасного зашифрованного туннеля и защиты вашего интернет-трафика.\n\n" +
                     "• Мы не сохраняем историю посещений, сетевые логи и личные данные.\n" +
@@ -614,7 +666,10 @@ public sealed partial class VpnView : ContentView
 
             if (Connectivity.Current.NetworkAccess == NetworkAccess.None)
             {
-                await _parent.DisplayAlertAsync("Нет интернета", "Отсутствует подключение к интернету. Проверьте сеть и повторите попытку.", "OK");
+                if (ParentPage is not null)
+                {
+                    await ParentPage.DisplayAlertAsync("Нет интернета", "Отсутствует подключение к интернету. Проверьте сеть и повторите попытку.", "OK");
+                }
                 return;
             }
 
@@ -625,7 +680,7 @@ public sealed partial class VpnView : ContentView
                     ? "Как удалить:\n1. В открывшихся настройках выберите «Надежные сертификаты» (или «Хранилище учетных данных»).\n2. Перейдите во вкладку «Пользователь».\n3. Нажмите на сертификат и выберите «Удалить»."
                     : "Как удалить:\n1. В открывшемся окне «certmgr» раскройте «Доверенные корневые центры сертификации» -> «Сертификаты».\n2. Найдите сертификат, нажмите правой кнопкой мыши -> «Удалить».";
 
-                var openSettings = await _parent.DisplayAlertAsync(
+                var openSettings = ParentPage is not null && await ParentPage.DisplayAlertAsync(
                     "⚠️ Обнаружен сертификат перехвата!",
                     $"На вашем устройстве установлен сторонний корневой сертификат:\n«{auditResult.CertificateName}»\n\n" +
                     "⚠️ ВНИМАНИЕ: Вне VPN этот сертификат позволяет операторам связи и третьим лицам расшифровывать ваш защищённый трафик (HTTPS), видеть переписки и перехватывать пароли.\n\n" +
@@ -642,19 +697,25 @@ public sealed partial class VpnView : ContentView
                 return;
             }
 
-            if (_parent.RemainingSeconds <= 0)
+            if ((ParentPage?.RemainingSeconds ?? 0) <= 0)
             {
-                await _parent.DisplayAlertAsync("Внимание", "Нет доступного времени.", "OK");
+                if (ParentPage is not null)
+                {
+                    await ParentPage.DisplayAlertAsync("Внимание", "Нет доступного времени.", "OK");
+                }
                 return;
             }
 
             var conflictingVpn = _vpnService.DetectConflictingVpn();
             if (!string.IsNullOrEmpty(conflictingVpn))
             {
-                await _parent.DisplayAlertAsync(
-                    "Сторонний VPN включён",
-                    $"У вас уже включён сторонний VPN ({conflictingVpn}).\n\nОбходка не может работать одновременно с двумя VPN. Пожалуйста, отключите его и попробуйте снова.",
-                    "Да");
+                if (ParentPage is not null)
+                {
+                    await ParentPage.DisplayAlertAsync(
+                        "Сторонний VPN включён",
+                        $"У вас уже включён сторонний VPN ({conflictingVpn}).\n\nОбходка не может работать одновременно с двумя VPN. Пожалуйста, отключите его и попробуйте снова.",
+                        "Да");
+                }
                 return;
             }
 
@@ -719,7 +780,10 @@ public sealed partial class VpnView : ContentView
             var friendlyMsg = ex is SocketException or InvalidOperationException
                 ? ex.Message
                 : "Произошла ошибка при подключении/отключении";
-            await _parent.DisplayAlertAsync("Ошибка", friendlyMsg, "OK");
+            if (ParentPage is not null)
+            {
+                await ParentPage.DisplayAlertAsync("Ошибка", friendlyMsg, "OK");
+            }
         }
         finally
         {
@@ -815,6 +879,8 @@ public sealed partial class VpnView : ContentView
             _graphSamples.Add(new GraphSample(0f, 0f, 0f));
         }
 
+        _lastGraphTickTime = 0;
+        _lastSampleTime = 0;
         _smoothSpeedUp = 0;
         _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
@@ -829,24 +895,37 @@ public sealed partial class VpnView : ContentView
             }
 
             var now = (float)_graphStopwatch.Elapsed.TotalSeconds;
+            var dt = Math.Clamp(now - _lastGraphTickTime, 0.001f, 0.1f);
+            _lastGraphTickTime = now;
 
-            _pulsePhase += 0.09f;
+            _pulsePhase += dt * 5.5f;
             if (_pulsePhase > MathF.PI * 2)
             {
                 _pulsePhase -= MathF.PI * 2;
             }
 
-            _smoothSpeedUp += (_targetSpeedUp - _smoothSpeedUp) * 0.16;
-            _smoothSpeedDown += (_targetSpeedDown - _smoothSpeedDown) * 0.16;
+            var speedLerp = 1.0 - Math.Exp(-8.0 * dt);
+            _smoothSpeedUp += (_targetSpeedUp - _smoothSpeedUp) * speedLerp;
+            _smoothSpeedDown += (_targetSpeedDown - _smoothSpeedDown) * speedLerp;
 
             lock (_graphSamples)
             {
-                _graphSamples.Add(new GraphSample(now, (float)_smoothSpeedUp, (float)_smoothSpeedDown));
-
-                var cutoff = now - (TimeWindowSeconds + 1.0f);
-                while (_graphSamples.Count > 0 && _graphSamples[0].Time < cutoff)
+                if (now - _lastSampleTime >= 0.05f || _graphSamples.Count == 0)
                 {
-                    _graphSamples.RemoveAt(0);
+                    _graphSamples.Add(new GraphSample(now, (float)_smoothSpeedUp, (float)_smoothSpeedDown));
+                    _lastSampleTime = now;
+
+                    var cutoff = now - (TimeWindowSeconds + 1.0f);
+                    var removeCount = 0;
+                    while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
+                    {
+                        removeCount++;
+                    }
+
+                    if (removeCount > 0)
+                    {
+                        _graphSamples.RemoveRange(0, removeCount);
+                    }
                 }
 
                 var peak = 1024.0;
@@ -864,7 +943,8 @@ public sealed partial class VpnView : ContentView
                     }
                 }
 
-                _smoothMaxSpeed += (peak - _smoothMaxSpeed) * 0.08;
+                var peakLerp = 1.0 - Math.Exp(-4.0 * dt);
+                _smoothMaxSpeed += (peak - _smoothMaxSpeed) * peakLerp;
             }
 
             TrafficGraphCanvas.InvalidateSurface();
@@ -877,6 +957,8 @@ public sealed partial class VpnView : ContentView
         _graphAnimTimer?.Stop();
         _graphAnimTimer = null;
         _graphStopwatch.Reset();
+        _lastGraphTickTime = 0;
+        _lastSampleTime = 0;
         _targetSpeedUp = 0;
         _targetSpeedDown = 0;
         _smoothSpeedUp = 0;
@@ -1011,39 +1093,27 @@ public sealed partial class VpnView : ContentView
             fillBuilder.Close();
             using var fillPath = fillBuilder.Detach();
 
-            using var fillPaint = new SKPaint
-            {
-                IsAntialias = true,
-                Style = SKPaintStyle.Fill,
-                Shader = SKShader.CreateLinearGradient(
-                    new SKPoint(0, 0),
-                    new SKPoint(0, h),
-                    [startFillColor, SKColors.Transparent],
-                    [0f, 1f],
-                    SKShaderTileMode.Clamp)
-            };
-            canvas.DrawPath(fillPath, fillPaint);
+            using var fillShader = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0),
+                new SKPoint(0, h),
+                [startFillColor, SKColors.Transparent],
+                [0f, 1f],
+                SKShaderTileMode.Clamp);
+            _graphFillPaint.Shader = fillShader;
+            canvas.DrawPath(fillPath, _graphFillPaint);
+            _graphFillPaint.Shader = null;
+
             canvas.DrawPath(strokePath, strokePaint);
 
             var lastPt = points[^1];
             var pulseRadius = 4.5f + (1.8f * MathF.Sin(_pulsePhase));
             var alphaGlow = (byte)Math.Clamp(50 + (35 * MathF.Sin(_pulsePhase)), 0, 255);
 
-            using var dotGlowPaint = new SKPaint
-            {
-                IsAntialias = true,
-                Color = strokeColor.WithAlpha(alphaGlow),
-                Style = SKPaintStyle.Fill
-            };
-            canvas.DrawCircle(lastPt.X, lastPt.Y, pulseRadius, dotGlowPaint);
+            _graphDotGlowPaint.Color = strokeColor.WithAlpha(alphaGlow);
+            canvas.DrawCircle(lastPt.X, lastPt.Y, pulseRadius, _graphDotGlowPaint);
 
-            using var dotSolidPaint = new SKPaint
-            {
-                IsAntialias = true,
-                Color = strokeColor,
-                Style = SKPaintStyle.Fill
-            };
-            canvas.DrawCircle(lastPt.X, lastPt.Y, 2.5f, dotSolidPaint);
+            _graphDotSolidPaint.Color = strokeColor;
+            canvas.DrawCircle(lastPt.X, lastPt.Y, 2.5f, _graphDotSolidPaint);
         }
 
         var skPrimaryBright = GetSkiaThemeColor("PrimaryBright", t_skGraphUp);
@@ -1051,27 +1121,11 @@ public sealed partial class VpnView : ContentView
         var skGraphUpFill = skPrimaryBright.WithAlpha(55);
         var skGraphDownFill = skAccent.WithAlpha(75);
 
-        using var strokeUpPaint = new SKPaint
-        {
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            Color = skPrimaryBright,
-            StrokeWidth = 2.5f,
-            StrokeCap = SKStrokeCap.Round,
-            StrokeJoin = SKStrokeJoin.Round
-        };
-        using var strokeDownPaint = new SKPaint
-        {
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            Color = skAccent,
-            StrokeWidth = 2.5f,
-            StrokeCap = SKStrokeCap.Round,
-            StrokeJoin = SKStrokeJoin.Round
-        };
+        _graphStrokeUpPaint.Color = skPrimaryBright;
+        _graphStrokeDownPaint.Color = skAccent;
 
-        DrawStream(true, strokeUpPaint, skGraphUpFill, skPrimaryBright);
-        DrawStream(false, strokeDownPaint, skGraphDownFill, skAccent);
+        DrawStream(true, _graphStrokeUpPaint, skGraphUpFill, skPrimaryBright);
+        DrawStream(false, _graphStrokeDownPaint, skGraphDownFill, skAccent);
     }
 
     public static string FormatBytes(double bytes) => FormatHelper.FormatBytes(bytes);
@@ -1083,13 +1137,10 @@ public sealed partial class VpnView : ContentView
             return;
         }
 
+        _loaderStopwatch.Restart();
         _loaderTimer = Dispatcher.CreateTimer();
         _loaderTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _loaderTimer.Tick += (_, _) =>
-        {
-            _loaderAngle += 1.5f;
-            LoaderCanvas?.InvalidateSurface();
-        };
+        _loaderTimer.Tick += (_, _) => LoaderCanvas?.InvalidateSurface();
         LoaderCanvas.Opacity = 1;
         LoaderCanvas.IsVisible = true;
         _loaderTimer.Start();
@@ -1099,6 +1150,7 @@ public sealed partial class VpnView : ContentView
     {
         _loaderTimer?.Stop();
         _loaderTimer = null;
+        _loaderStopwatch.Reset();
 
         if (LoaderCanvas is not null)
         {
@@ -1193,47 +1245,91 @@ public sealed partial class VpnView : ContentView
 
         var cx = e.Info.Width / 2f;
         var cy = e.Info.Height / 2f;
-        var r = Math.Min(cx, cy) - 4f;
+        var r = Math.Min(cx, cy) - 8f;
+        if (r <= 12f)
+        {
+            return;
+        }
+
+        var t = (float)_loaderStopwatch.Elapsed.TotalSeconds;
 
         var skPrimary = GetSkiaThemeColor("Primary", t_skPurple);
         var skAccent = GetSkiaThemeColor("Accent", t_skCyan);
-        var colorPurple = _isErrorState ? SKColors.DarkRed : skPrimary;
-        var colorCyan = _isErrorState ? SKColors.Red : skAccent;
+        var colorPrimary = _isErrorState ? SKColors.DarkRed : skPrimary;
+        var colorAccent = _isErrorState ? SKColors.Red : skAccent;
 
-        using var glowPaint = new SKPaint
+        _loaderTrackPaint.Color = colorPrimary.WithAlpha(30);
+        canvas.DrawCircle(cx, cy, r, _loaderTrackPaint);
+
+        var rot1 = t * 220f % 360f;
+        var sweep1 = 45f + (145f * (0.5f + (0.5f * MathF.Sin(t * 2.8f))));
+        var start1 = rot1 + (t * 60f);
+
+        var arcRect = new SKRect(cx - r, cy - r, cx + r, cy + r);
+
+        _loaderGlowPaint.Color = colorAccent.WithAlpha(50);
+        canvas.DrawArc(arcRect, start1, sweep1, false, _loaderGlowPaint);
+
+        _loaderArcCorePaint.Color = colorAccent;
+        canvas.DrawArc(arcRect, start1, sweep1, false, _loaderArcCorePaint);
+
+        var headAngleRad = (start1 + sweep1) * (MathF.PI / 180f);
+        var headX = cx + (r * MathF.Cos(headAngleRad));
+        var headY = cy + (r * MathF.Sin(headAngleRad));
+
+        _loaderGlowPaint.Color = colorAccent.WithAlpha(90);
+        canvas.DrawCircle(headX, headY, 6.5f, _loaderGlowPaint);
+        _loaderHeadPaint.Color = SKColors.White;
+        canvas.DrawCircle(headX, headY, 3.2f, _loaderHeadPaint);
+
+        var r2 = r - 12f;
+        if (r2 > 12f)
         {
-            IsAntialias = true,
-            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 22f),
-            Color = colorPurple.WithAlpha(45)
-        };
-        canvas.DrawCircle(cx, cy, r - 30f, glowPaint);
+            var arcRect2 = new SKRect(cx - r2, cy - r2, cx + r2, cy + r2);
+            _loaderTrackPaint.Color = colorPrimary.WithAlpha(18);
+            canvas.DrawCircle(cx, cy, r2, _loaderTrackPaint);
 
-        var configs = new (float speed, float delay, float ox, float oy, float size, int sides)[]
-        {
-            ( 1.0f,   0f, 0.5f, 0.5f, 0.74f, 5),
-            (-1.0f,   0f, 0.5f, 0.5f, 0.65f, 6),
-            ( 1.5f,  60f, 0.5f, 0.6f, 0.54f, 5),
-            (-1.5f, -60f, 0.4f, 0.4f, 0.45f, 4),
-            ( 2.0f, 120f, 0.6f, 0.4f, 0.38f, 6),
-        };
+            var rot2 = -t * 160f % 360f;
+            var sweep2 = 30f + (65f * (0.5f + (0.5f * MathF.Cos(t * 3.4f))));
+            var start2 = rot2 - (t * 40f);
 
-        using var polyPaint = new SKPaint { IsAntialias = true };
-        for (var i = 0; i < configs.Length; i++)
-        {
-            var (speed, delay, ox, oy, size, sides) = configs[i];
-            var rot = (_loaderAngle * speed) + delay;
-            var alpha = (byte)(90 + (i * 15));
-            polyPaint.Color = (i % 2 == 0 ? colorPurple : colorCyan).WithAlpha(alpha);
-            polyPaint.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 8f);
+            _loaderInnerArcPaint.Color = colorPrimary.WithAlpha(180);
+            canvas.DrawArc(arcRect2, start2, sweep2, false, _loaderInnerArcPaint);
 
-            var pivotX = cx + ((ox - 0.5f) * r);
-            var pivotY = cy + ((oy - 0.5f) * r);
-            _ = canvas.Save();
-            canvas.RotateDegrees(rot, pivotX, pivotY);
-            using var path = MakePolygon(pivotX, pivotY, r * size, sides);
-            canvas.DrawPath(path, polyPaint);
-            canvas.Restore();
+            var head2Rad = (start2 + sweep2) * (MathF.PI / 180f);
+            var head2X = cx + (r2 * MathF.Cos(head2Rad));
+            var head2Y = cy + (r2 * MathF.Sin(head2Rad));
+            _loaderInnerHeadPaint.Color = colorAccent.WithAlpha(210);
+            canvas.DrawCircle(head2X, head2Y, 2.5f, _loaderInnerHeadPaint);
         }
+    }
+
+    private void OnPaintOuterAuraSurface(object? sender, SKPaintSurfaceEventArgs e)
+    {
+        var canvas = e.Surface.Canvas;
+        canvas.Clear(SKColors.Transparent);
+
+        var cx = e.Info.Width / 2f;
+        var cy = e.Info.Height / 2f;
+        var r = Math.Min(cx, cy) - 2f;
+        if (r <= 5f)
+        {
+            return;
+        }
+
+        var skAccent = GetSkiaThemeColor("Accent", t_skCyan);
+        var color = _isErrorState ? SKColors.Red : skAccent;
+
+        using var auraShader = SKShader.CreateRadialGradient(
+            new SKPoint(cx, cy),
+            r,
+            [color.WithAlpha(65), color.WithAlpha(20), SKColors.Transparent],
+            [0f, 0.65f, 1f],
+            SKShaderTileMode.Clamp);
+
+        _auraPaint.Shader = auraShader;
+        canvas.DrawCircle(cx, cy, r, _auraPaint);
+        _auraPaint.Shader = null;
     }
 
     private static SKColor GetSkiaThemeColor(string key, SKColor fallback) =>
@@ -1428,6 +1524,7 @@ public sealed partial class VpnView : ContentView
         _buttonAnimCts?.Dispose();
         _buttonAnimCts = null;
         StopButtonAnimation();
+        _buttonAnimatedCurrent?.Dispose();
         _buttonAnimatedCurrent = null;
         _buttonAnimatedIdle?.Dispose();
         _buttonAnimatedIdle = null;
@@ -1913,6 +2010,7 @@ public sealed partial class VpnView : ContentView
         MainThread.BeginInvokeOnMainThread(() =>
         {
             LoaderCanvas?.InvalidateSurface();
+            OuterAura?.InvalidateSurface();
             TrafficGraphCanvas?.InvalidateSurface();
             UpdateRayIndicator();
 
@@ -1972,26 +2070,5 @@ public sealed partial class VpnView : ContentView
         }
         catch { }
         return fallback;
-    }
-
-    private static SKPath MakePolygon(float cx, float cy, float r, int sides)
-    {
-        using var builder = new SKPathBuilder();
-        for (var i = 0; i < sides; i++)
-        {
-            var a = (float)((i * 2 * Math.PI / sides) - (Math.PI / 2));
-            var x = cx + (r * MathF.Cos(a));
-            var y = cy + (r * MathF.Sin(a));
-            if (i == 0)
-            {
-                builder.MoveTo(x, y);
-            }
-            else
-            {
-                builder.LineTo(x, y);
-            }
-        }
-        builder.Close();
-        return builder.Detach();
     }
 }

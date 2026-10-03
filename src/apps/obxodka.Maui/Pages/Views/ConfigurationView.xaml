@@ -148,6 +148,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Border
@@ -239,7 +240,7 @@
                     <Border
                         x:Name="RunOnStartupCard"
                         Grid.Row="{OnIdiom Desktop=1,
-                                           Phone=2}"
+                                           Phone=4}"
                         Grid.Column="0"
                         Grid.ColumnSpan="{OnIdiom Desktop=2,
                                                   Phone=1}"
@@ -286,7 +287,7 @@
                     <Border
                         x:Name="SpeedTestCard"
                         Grid.Row="{OnIdiom Desktop=2,
-                                           Phone=3}"
+                                           Phone=2}"
                         Grid.Column="0"
                         Grid.ColumnSpan="{OnIdiom Desktop=2,
                                                   Phone=1}"
@@ -347,7 +348,7 @@
                     <Border
                         x:Name="ThemesSettingsCard"
                         Grid.Row="{OnIdiom Desktop=3,
-                                           Phone=4}"
+                                           Phone=3}"
                         Grid.Column="0"
                         Grid.ColumnSpan="{OnIdiom Desktop=2,
                                                   Phone=1}"

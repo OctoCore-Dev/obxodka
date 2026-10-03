@@ -427,6 +427,7 @@
                                 HorizontalOptions="Fill"
                                 IgnorePixelScaling="True"
                                 Opacity="0"
+                                PaintSurface="OnPaintOuterAuraSurface"
                                 VerticalOptions="Fill" />
 
                             <skia:SKCanvasView

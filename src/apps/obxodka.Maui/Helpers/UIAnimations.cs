@@ -1060,6 +1060,60 @@ public static class UIAnimations
         }
     }
 
+    public static readonly BindableProperty SmoothHoverProperty =
+        BindableProperty.CreateAttached(
+            "SmoothHover",
+            typeof(bool),
+            typeof(UIAnimations),
+            false,
+            propertyChanged: OnSmoothHoverChanged);
+
+    public static bool GetSmoothHover(BindableObject view) => (bool)view.GetValue(SmoothHoverProperty);
+    public static void SetSmoothHover(BindableObject view, bool value) => view.SetValue(SmoothHoverProperty, value);
+
+    private static readonly BindableProperty t_isSmoothHoverAttachedProperty =
+        BindableProperty.CreateAttached(
+            "IsSmoothHoverAttached",
+            typeof(bool),
+            typeof(UIAnimations),
+            false);
+
+    private static void OnSmoothHoverChanged(BindableObject bindable, object oldValue, object newValue)
+    {
+        if (bindable is not View view)
+        {
+            return;
+        }
+
+        var enable = (bool)newValue;
+        var existing = view.GestureRecognizers.OfType<PointerGestureRecognizer>()
+            .FirstOrDefault(p => (bool)p.GetValue(t_isSmoothHoverAttachedProperty));
+
+        if (enable)
+        {
+            if (existing is null)
+            {
+                var pointer = new PointerGestureRecognizer();
+                pointer.SetValue(t_isSmoothHoverAttachedProperty, true);
+                pointer.PointerEntered += (_, _) =>
+                {
+                    view.CancelAnimations();
+                    _ = view.ScaleToAsync(1.018, 140, Easing.CubicOut);
+                };
+                pointer.PointerExited += (_, _) =>
+                {
+                    view.CancelAnimations();
+                    _ = view.ScaleToAsync(1.0, 140, Easing.CubicOut);
+                };
+                view.GestureRecognizers.Add(pointer);
+            }
+        }
+        else if (existing is not null)
+        {
+            _ = view.GestureRecognizers.Remove(existing);
+        }
+    }
+
     private static async void OnButtonClickedBounceAsync(object? sender, EventArgs e)
     {
         if (sender is Button { IsEnabled: true } btn)
