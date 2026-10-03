@@ -8,6 +8,8 @@ public static class NetworkDefaults
 
     public static readonly string[] TrustedDnsServers =
     [
+        "77.88.8.8",
+        "77.88.8.1",
         "1.1.1.1",
         "1.0.0.1",
         "8.8.8.8",

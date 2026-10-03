@@ -259,6 +259,16 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
+                    await AutoHealAdapterDnsAsync().ConfigureAwait(false);
+                    try
+                    {
+                        var ips = await Dns.GetHostAddressesAsync(serverIp);
+                        if (ips.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) is { } ipv4)
+                        {
+                            targetIp = ipv4.ToString();
+                        }
+                    }
+                    catch { }
                 }
             }
 
@@ -407,6 +417,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
                             await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true);
+                            OnLogUpdated?.Invoke("Включение защиты от утечек DNS...");
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
                             ApplyExtremeNetworkBoost();
 
@@ -869,11 +880,87 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             OnLogUpdated?.Invoke("Основной узел недоступен напрямую, пробуем резервные пути...");
         }
 
-        OnLogUpdated?.Invoke(dnsOk
-            ? "Интернет и DNS в порядке."
-            : "Системный DNS не отвечает. Обходка будет использовать собственный защищённый DNS.");
+        if (!dnsOk)
+        {
+            OnLogUpdated?.Invoke("Обнаружен сбой системного DNS. Автовосстановление серверов...");
+            await AutoHealAdapterDnsAsync().ConfigureAwait(false);
+            dnsOk = await ProbeSystemDnsAsync("ya.ru", 2500).ConfigureAwait(false);
+            if (dnsOk)
+            {
+                OnLogUpdated?.Invoke("Системный DNS успешно восстановлен (Яндекс / Cloudflare).");
+            }
+            else
+            {
+                OnLogUpdated?.Invoke("Обходка переключается на автономный защищённый DNS.");
+            }
+        }
+        else
+        {
+            OnLogUpdated?.Invoke("Интернет и системный DNS в порядке.");
+        }
 
         return null;
+    }
+
+    private static async Task AutoHealAdapterDnsAsync()
+    {
+        try
+        {
+            var targetIndices = new HashSet<int>();
+            var targetNames = new HashSet<string>();
+
+            var (_, physIfIndex) = GetDefaultGatewayInfo();
+            if (physIfIndex > 0)
+            {
+                _ = targetIndices.Add(physIfIndex);
+            }
+
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up ||
+                    nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
+
+                var desc = nic.Description;
+                var name = nic.Name;
+                if (desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
+                    desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                    desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("Wintun", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (nic.NetworkInterfaceType is NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211 or NetworkInterfaceType.GigabitEthernet)
+                {
+                    var idx = nic.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+                    if (idx > 0)
+                    {
+                        _ = targetIndices.Add(idx);
+                    }
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        _ = targetNames.Add(name);
+                    }
+                }
+            }
+
+            foreach (var idx in targetIndices)
+            {
+                _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"try {{ Set-DnsClientServerAddress -InterfaceIndex {idx} -ServerAddresses '77.88.8.8','1.1.1.1' -ErrorAction Stop }} catch {{ }}\"");
+            }
+
+            foreach (var name in targetNames)
+            {
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{name}\" static 77.88.8.8 primary");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{name}\" 1.1.1.1 index=2");
+            }
+
+            _ = await RunCmdAsync("ipconfig", "/flushdns");
+        }
+        catch { }
     }
 
     private static async Task<(bool ok, SocketError error)> ProbeTcpAsync(string ip, int port, int timeoutMs)
@@ -1356,7 +1443,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
         try
         {
-            OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");
+            OnLogUpdated?.Invoke("Отключение VPN...");
 
             var adapterToDispose = _adapter;
             var adapterName = _adapter?.Name ?? "";
@@ -1376,11 +1463,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     Debug.WriteLine("[DRIVER] Wintun adapter disposed.");
                 }
 
+                OnLogUpdated?.Invoke("Восстановление сетевых настроек и DNS...");
                 await DisableDnsLeakProtectionAsync();
                 await SetWindowsRoutesAsync(adapterName, _currentServerIpsToRoute.Count > 0 ? _currentServerIpsToRoute.ToArray() : (!string.IsNullOrEmpty(serverIp) ? [serverIp] : []), "", false);
                 await RestoreOriginalNetworkSettingsAsync();
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
+                OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");
             }
             catch (Exception ex)
             {
@@ -1476,7 +1565,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
             catch { }
 
-            _ = await RunCmdAsync("powershell", "-NoProfile -Command \"try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','8.8.8.8' -DisplayName 'Obxodka-DNS' -ErrorAction Stop } catch { }\"");
+            _ = await RunCmdAsync("powershell", "-NoProfile -ExecutionPolicy Bypass -Command \"try { Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'Obxodka-DNS' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue } catch { }; try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','8.8.8.8' -DisplayName 'Obxodka-DNS' -ErrorAction Stop } catch { }\"");
 
             _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\"");
             _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\"");
