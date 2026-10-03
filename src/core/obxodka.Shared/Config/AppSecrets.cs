@@ -11,11 +11,7 @@ public static class AppSecrets
         "www.google.com",
         "google.com",
         "play.googleapis.com",
-        "play.google.com",
-        "ya.ru",
-        "yandex.ru",
-        "www.yandex.ru",
-        "dzen.ru"
+        "play.google.com"
     ];
 
     public static string GetRandomSni() =>

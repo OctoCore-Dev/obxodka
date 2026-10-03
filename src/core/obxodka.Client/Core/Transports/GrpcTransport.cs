@@ -347,7 +347,14 @@ public sealed partial class GrpcTransport(
             handshake[1] = (byte)rayIndex;
             handshake[2] = (byte)(isNewConnection ? 1 : 0);
 
-            await call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
+            var writeTask = call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(7), _cts!.Token);
+            if (await Task.WhenAny(writeTask, timeoutTask).ConfigureAwait(false) != writeTask)
+            {
+                throw new TimeoutException($"gRPC handshake timeout on ray {rayIndex}");
+            }
+            await writeTask.ConfigureAwait(false);
+
             _tunnelStreams[rayIndex] = new TunnelGrpcStream(call);
             _ = ReceiveLoopAsync(rayIndex, _cts.Token);
             Debug.WriteLine($"[GRPC-RAY-{rayIndex}] Handshake sent and receive loop started!");
@@ -691,6 +698,7 @@ public sealed partial class GrpcTransport(
     {
         var handler = new SocketsHttpHandler
         {
+            ConnectTimeout = TimeSpan.FromSeconds(6),
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
             KeepAlivePingDelay = TimeSpan.FromSeconds(15),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
