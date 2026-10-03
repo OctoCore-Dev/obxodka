@@ -311,10 +311,19 @@ public sealed partial class GrpcTransport(
 
     private async Task PingLoopAsync(CancellationToken ct)
     {
+        var isMobile = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
+        var startTime = Stopwatch.GetTimestamp();
+
         while (!ct.IsCancellationRequested)
         {
             await SendPingProbeAsync();
-            await Task.Delay(1500, ct);
+
+            var elapsedSec = (Stopwatch.GetTimestamp() - startTime) / Stopwatch.Frequency;
+            var delayMs = isMobile
+                ? (elapsedSec < 30 ? 3000 : 25000)
+                : 1800;
+
+            await Task.Delay(delayMs, ct);
         }
     }
 

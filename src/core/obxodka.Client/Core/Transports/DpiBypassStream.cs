@@ -34,19 +34,40 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        if (_firstWrite && buffer.Length > _splitPosition)
+        if (_firstWrite && buffer.Length > 4)
         {
             _firstWrite = false;
-            _innerStream.Write(buffer[.._splitPosition]);
-            _innerStream.Flush();
+            var isTlsHandshake = buffer[0] == 0x16 && buffer[1] == 0x03;
+            var p1 = _splitPosition > 0 ? Math.Min(_splitPosition, buffer.Length - 1) : Random.Shared.Next(1, 4);
+            var delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(15, 35);
 
-            if (_delayMs > 0)
+            if (isTlsHandshake && buffer.Length > 64 && _splitPosition == 0)
             {
-                Thread.Sleep(_delayMs);
-            }
+                var p2 = Random.Shared.Next(p1 + 8, Math.Min(buffer.Length - 16, p1 + 42));
+                var delay2 = Random.Shared.Next(10, 25);
 
-            _innerStream.Write(buffer[_splitPosition..]);
-            _innerStream.Flush();
+                _innerStream.Write(buffer[..p1]);
+                _innerStream.Flush();
+                Thread.Sleep(delay1);
+
+                _innerStream.Write(buffer[p1..p2]);
+                _innerStream.Flush();
+                Thread.Sleep(delay2);
+
+                _innerStream.Write(buffer[p2..]);
+                _innerStream.Flush();
+            }
+            else
+            {
+                _innerStream.Write(buffer[..p1]);
+                _innerStream.Flush();
+                if (delay1 > 0)
+                {
+                    Thread.Sleep(delay1);
+                }
+                _innerStream.Write(buffer[p1..]);
+                _innerStream.Flush();
+            }
         }
         else
         {
@@ -59,19 +80,41 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (_firstWrite && buffer.Length > _splitPosition)
+        if (_firstWrite && buffer.Length > 4)
         {
             _firstWrite = false;
-            await _innerStream.WriteAsync(buffer[.._splitPosition], cancellationToken).ConfigureAwait(false);
-            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            var span = buffer.Span;
+            var isTlsHandshake = span[0] == 0x16 && span[1] == 0x03;
+            var p1 = _splitPosition > 0 ? Math.Min(_splitPosition, buffer.Length - 1) : Random.Shared.Next(1, 4);
+            var delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(15, 35);
 
-            if (_delayMs > 0)
+            if (isTlsHandshake && buffer.Length > 64 && _splitPosition == 0)
             {
-                await Task.Delay(_delayMs, cancellationToken).ConfigureAwait(false);
-            }
+                var p2 = Random.Shared.Next(p1 + 8, Math.Min(buffer.Length - 16, p1 + 42));
+                var delay2 = Random.Shared.Next(10, 25);
 
-            await _innerStream.WriteAsync(buffer[_splitPosition..], cancellationToken).ConfigureAwait(false);
-            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await _innerStream.WriteAsync(buffer[..p1], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
+
+                await _innerStream.WriteAsync(buffer[p1..p2], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await Task.Delay(delay2, cancellationToken).ConfigureAwait(false);
+
+                await _innerStream.WriteAsync(buffer[p2..], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _innerStream.WriteAsync(buffer[..p1], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                if (delay1 > 0)
+                {
+                    await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
+                }
+                await _innerStream.WriteAsync(buffer[p1..], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
         else
         {

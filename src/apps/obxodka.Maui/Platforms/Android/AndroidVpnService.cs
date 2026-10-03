@@ -1,3 +1,4 @@
+using obxodka.Shared.Config;
 using Uri = System.Uri;
 
 namespace obxodka.Platforms.Android;
@@ -345,6 +346,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             var serversToTry = _fallbackServers.Count > 0
                 ? _fallbackServers
                 : [new VpnServerDto(targetIp, serverPort, "", true, 0, null)];
+
+            if (serversToTry.Count > 1)
+            {
+                OnLogUpdated?.Invoke("Поиск быстрейшего узла (Happy Eyeballs)...");
+                serversToTry = [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
+            }
 
             for (var idx = 0; idx < serversToTry.Count; idx++)
             {
