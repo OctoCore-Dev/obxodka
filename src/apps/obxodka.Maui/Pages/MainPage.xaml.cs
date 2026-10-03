@@ -57,6 +57,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _themeManager.VideoEnabledChanged += OnThemeVideoEnabledChanged;
         _themeManager.AlwaysPlayVideoChanged += OnAlwaysPlayVideoChanged;
         _themeManager.CardOpacityChanged += OnCardOpacityChanged;
+        _themeManager.GlowIntensityChanged += OnGlowIntensityChanged;
         _themeManager.RestoreActiveThemeAtStartup();
         UpdateAllViewsOpacity();
 
@@ -170,6 +171,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _themeManager.VideoEnabledChanged -= OnThemeVideoEnabledChanged;
         _themeManager.AlwaysPlayVideoChanged -= OnAlwaysPlayVideoChanged;
         _themeManager.CardOpacityChanged -= OnCardOpacityChanged;
+        _themeManager.GlowIntensityChanged -= OnGlowIntensityChanged;
 
         TabContentDelete.CancelRequested -= OnDeleteCancelRequested;
         TabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
@@ -665,6 +667,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private void OnCardOpacityChanged(double opacity) =>
         MainThread.BeginInvokeOnMainThread(UpdateAllViewsOpacity);
+
+    private void OnGlowIntensityChanged(double glow) =>
+        MainThread.BeginInvokeOnMainThread(() => TabContentVpn?.OnThemeChanged());
 
     private void UpdateAllViewsOpacity()
     {
@@ -1237,7 +1242,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             {
                 await Task.Delay(1000, ct);
                 RemainingSeconds = Math.Max(0, RemainingSeconds - 1);
-                MainThread.BeginInvokeOnMainThread(UpdateBalanceUI);
+                PlatformThrottler.Post("ui:balance", TimeSpan.FromMilliseconds(250), UpdateBalanceUI);
 
                 syncCounter++;
                 if (syncCounter >= 30)

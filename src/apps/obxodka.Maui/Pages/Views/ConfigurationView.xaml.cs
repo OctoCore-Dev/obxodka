@@ -380,23 +380,17 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         SpeedTestResultLabel.Text = "Подключение и замер пинга...";
         SpeedTestResultLabel.TextColor = CyanColor;
 
-        _ = Task.Run(async () =>
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            while (!token.IsCancellationRequested && _isTestingSpeed)
+            if (SpeedGaugeIcon is null)
             {
-                MainThread.BeginInvokeOnMainThread(() => SpeedGaugeIcon?.Rotation = (SpeedGaugeIcon.Rotation + 16) % 360);
-                try
-                {
-                    await Task.Delay(25, token);
-                }
-                catch
-                {
-                    break;
-                }
+                return;
             }
 
-            MainThread.BeginInvokeOnMainThread(() => _ = SpeedGaugeIcon?.RotateToAsync(0, 250, Easing.CubicOut));
-        }, token);
+            _ = SpeedGaugeIcon.AbortAnimation("SpeedGaugeSpin");
+            var spinAnim = new Animation(v => SpeedGaugeIcon.Rotation = v, 0, 360);
+            spinAnim.Commit(SpeedGaugeIcon, "SpeedGaugeSpin", 16, 900, Easing.Linear, repeat: () => _isTestingSpeed);
+        });
 
         try
         {
@@ -587,7 +581,15 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             _speedTestCts?.Dispose();
             _speedTestCts = null;
 
-            MainThread.BeginInvokeOnMainThread(() => SpeedTestBtnText.Text = "ТЕСТ");
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                SpeedTestBtnText.Text = "ТЕСТ";
+                if (SpeedGaugeIcon is not null)
+                {
+                    _ = SpeedGaugeIcon.AbortAnimation("SpeedGaugeSpin");
+                    _ = SpeedGaugeIcon.RotateToAsync(0, 300, Easing.CubicOut);
+                }
+            });
         }
     }
 

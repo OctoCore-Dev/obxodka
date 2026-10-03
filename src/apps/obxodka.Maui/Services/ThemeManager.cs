@@ -54,6 +54,7 @@ public sealed class ThemeManager
     private const string ThemeVideoEnabledKey = "ThemeVideoEnabled";
     private const string ThemeCardOpacityKey = "ThemeCardOpacity";
     private const string ThemeAlwaysPlayVideoKey = "ThemeAlwaysPlayVideoEnabled";
+    private const string ThemeGlowIntensityKey = "ThemeGlowIntensity";
 
     private static readonly HttpClient t_httpClient = CreateHttpClient();
 
@@ -73,6 +74,7 @@ public sealed class ThemeManager
     public event Action<bool>? ParticlesEnabledChanged;
     public event Action<bool>? AlwaysPlayVideoChanged;
     public event Action<double>? CardOpacityChanged;
+    public event Action<double>? GlowIntensityChanged;
     public event EventHandler<(string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error)>? ThemeDownloadProgressChanged;
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<bool>> _activeDownloads = new();
@@ -154,6 +156,25 @@ public sealed class ThemeManager
         }
     }
 
+    private double? _cachedGlowIntensity;
+
+    public double GlowIntensity
+    {
+        get => _cachedGlowIntensity ??= Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.0, 2.0);
+            if (_cachedGlowIntensity.HasValue && Math.Abs(_cachedGlowIntensity.Value - clamped) < 0.01)
+            {
+                return;
+            }
+
+            _cachedGlowIntensity = clamped;
+            Preferences.Default.Set(ThemeGlowIntensityKey, clamped);
+            GlowIntensityChanged?.Invoke(clamped);
+        }
+    }
+
     public bool IsThemeDownloading(string themeId, out double progress)
     {
         if (_activeDownloads.ContainsKey(themeId))
@@ -170,8 +191,12 @@ public sealed class ThemeManager
 
     public string ThemesDirectory => Path.Combine(FileSystem.AppDataDirectory, "themes");
 
+    public static ThemeManager? Instance { get; private set; }
+    public static double CurrentGlowIntensity => Instance?.GlowIntensity ?? Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
+
     public ThemeManager()
     {
+        Instance = this;
         _ = Directory.CreateDirectory(ThemesDirectory);
         CaptureDefaultResourcesSnapshot();
     }
@@ -906,6 +931,29 @@ public sealed class ThemeManager
                 SetResourceValue(appResources, "AccentLight", primaryColor.AddLuminosity(0.12f));
             }
 
+            if (primaryColor is not null)
+            {
+                var stop2 = accentColor ?? primaryColor.AddLuminosity(0.18f);
+                var gradStops = new GradientStopCollection
+                {
+                    new GradientStop(primaryColor, 0.0f),
+                    new GradientStop(stop2, 1.0f)
+                };
+                if (manifest.Core.Gradients?.PrimaryGradient?.Stops is { Count: >= 2 } customStops)
+                {
+                    gradStops.Clear();
+                    for (var i = 0; i < customStops.Count; i++)
+                    {
+                        if (Color.TryParse(customStops[i], out var sc))
+                        {
+                            var offset = (float)i / (customStops.Count - 1);
+                            gradStops.Add(new GradientStop(sc, offset));
+                        }
+                    }
+                }
+                SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(gradStops, new Point(0, 0), new Point(1, 1)));
+            }
+
             Color? bgBaseColor = null;
             if (Color.TryParse(manifest.Core.Colors.BgBase, out var parsedBgBase))
             {
@@ -923,6 +971,25 @@ public sealed class ThemeManager
                 resolvedSurface = bgSurfaceColor;
                 SetResourceValue(appResources, "BgSurface", bgSurfaceColor);
                 SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(bgSurfaceColor));
+
+                var surfaceStops = new GradientStopCollection
+                {
+                    new GradientStop(bgSurfaceColor, 0.0f),
+                    new GradientStop(bgSurfaceColor.AddLuminosity(0.06f), 1.0f)
+                };
+                if (manifest.Core.Gradients?.SurfaceGradient?.Stops is { Count: >= 2 } surfCustomStops)
+                {
+                    surfaceStops.Clear();
+                    for (var i = 0; i < surfCustomStops.Count; i++)
+                    {
+                        if (Color.TryParse(surfCustomStops[i], out var ssc))
+                        {
+                            var offset = (float)i / (surfCustomStops.Count - 1);
+                            surfaceStops.Add(new GradientStop(ssc, offset));
+                        }
+                    }
+                }
+                SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(surfaceStops, new Point(0, 0), new Point(0, 1)));
             }
 
             if (!string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) && Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor))

@@ -57,7 +57,8 @@ public sealed class ApiService(HttpClient client)
                 try
                 {
                     await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(AppConfig.DirectServerIp), 443), cToken).ConfigureAwait(false);
-                    return new NetworkStream(socket, ownsSocket: true);
+                    var netStream = new NetworkStream(socket, ownsSocket: true);
+                    return new DpiBypassStream(netStream);
                 }
                 catch
                 {
@@ -215,70 +216,74 @@ public sealed class ApiService(HttpClient client)
             }
         }
 
-        try
+        string[] directHosts = ["obxodka.one", "api.octocore.dev"];
+        foreach (var directHost in directHosts)
         {
-            var directUrl = $"https://{AppConfig.DirectServerIp}/{url.TrimStart('/')}";
-            using var request = new HttpRequestMessage(method, directUrl);
-            request.Headers.Host = "api.octocore.dev";
-            if (body is not null && requestInfo is not null)
+            try
             {
-                request.Content = JsonContent.Create(body, requestInfo);
-            }
-
-            await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
-            var response = await t_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
-
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                try
+                var directUrl = $"https://{AppConfig.DirectServerIp}/{url.TrimStart('/')}";
+                using var request = new HttpRequestMessage(method, directUrl);
+                request.Headers.Host = directHost;
+                if (body is not null && requestInfo is not null)
                 {
-                    MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
-                }
-                catch { }
-
-                return (false, null, "Сессия истекла или устройство было удалено.");
-            }
-
-            if (response.IsSuccessStatusCode)
-            {
-                if (responseInfo is not null)
-                {
-                    return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                    request.Content = JsonContent.Create(body, requestInfo);
                 }
 
-                return (true, null, null);
-            }
+                await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
+                var response = await t_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
 
-            var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(rawError))
-            {
-                var trimmed = rawError.Trim();
-                if (trimmed.StartsWith('{'))
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
                     try
                     {
-                        var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
-                        if (errorObj is { Message: { Length: > 0 } msg })
-                        {
-                            return (false, null, msg);
-                        }
+                        MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
                     }
                     catch { }
+
+                    return (false, null, "Сессия истекла или устройство было удалено.");
                 }
 
-                return (false, null, trimmed);
-            }
+                if (response.IsSuccessStatusCode)
+                {
+                    if (responseInfo is not null)
+                    {
+                        return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                    }
 
-            return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            lastEx = ex;
-            Debug.WriteLine($"[API DIRECT DPI ERROR] {method} {url}: {ex.Message}");
+                    return (true, null, null);
+                }
+
+                var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(rawError))
+                {
+                    var trimmed = rawError.Trim();
+                    if (trimmed.StartsWith('{'))
+                    {
+                        try
+                        {
+                            var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
+                            if (errorObj is { Message: { Length: > 0 } msg })
+                            {
+                                return (false, null, msg);
+                            }
+                        }
+                        catch { }
+                    }
+
+                    return (false, null, trimmed);
+                }
+
+                return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastEx = ex;
+                Debug.WriteLine($"[API DIRECT DPI ERROR] {method} {directHost}: {ex.Message}");
+            }
         }
 
         var baseEx = lastEx?.GetBaseException();

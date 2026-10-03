@@ -11,6 +11,10 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
     private FrameSlice? _slice;
     private bool _isDisposed;
 
+    private bool _useNinePatch;
+    private SKRectI _cachedCenter;
+    private bool _hasImage;
+
     public ThemeFrameOverlay()
     {
         InputTransparent = true;
@@ -31,6 +35,8 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
             _skImage = null;
             _imagePath = imagePath;
             _slice = slice;
+            _useNinePatch = false;
+            _cachedCenter = default;
 
             if (!string.IsNullOrEmpty(imagePath) && File.Exists(imagePath))
             {
@@ -44,10 +50,32 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
                 }
             }
 
-            var hasImage = _skImage is not null;
+            if (_skImage is not null)
+            {
+                if (slice is { IsValid: true })
+                {
+                    var left = Math.Clamp(slice.Left, 0, _skImage.Width / 2);
+                    var top = Math.Clamp(slice.Top, 0, _skImage.Height / 2);
+                    var right = Math.Clamp(slice.Right, 0, _skImage.Width / 2);
+                    var bottom = Math.Clamp(slice.Bottom, 0, _skImage.Height / 2);
+
+                    _cachedCenter = new SKRectI(left, top, Math.Max(left + 1, _skImage.Width - right), Math.Max(top + 1, _skImage.Height - bottom));
+                    _useNinePatch = true;
+                }
+                else if (DeviceInfo.Idiom == DeviceIdiom.Phone && _skImage.Width > _skImage.Height * 1.15f)
+                {
+                    var sliceX = Math.Max(1, (int)(_skImage.Width * 0.12f));
+                    var sliceY = Math.Max(1, (int)(_skImage.Height * 0.12f));
+                    _cachedCenter = new SKRectI(sliceX, sliceY, _skImage.Width - sliceX, _skImage.Height - sliceY);
+                    _useNinePatch = true;
+                }
+            }
+
+            _hasImage = _skImage is not null;
+
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                IsVisible = hasImage;
+                IsVisible = _hasImage;
                 InvalidateSurface();
             });
         }
@@ -61,6 +89,9 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
             _skImage = null;
             _imagePath = null;
             _slice = null;
+            _useNinePatch = false;
+            _cachedCenter = default;
+            _hasImage = false;
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
@@ -78,12 +109,14 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
         canvas.Clear(SKColors.Transparent);
 
         SKImage? img;
-        FrameSlice? slice;
+        bool useNine;
+        SKRectI center;
 
         lock (_lock)
         {
             img = _skImage;
-            slice = _slice;
+            useNine = _useNinePatch;
+            center = _cachedCenter;
         }
 
         if (img is null)
@@ -94,28 +127,13 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
         var info = e.Info;
         var dst = new SKRect(0, 0, info.Width, info.Height);
 
-        if (slice is { IsValid: true })
+        if (useNine)
         {
-            var left = Math.Clamp(slice.Left, 0, img.Width / 2);
-            var top = Math.Clamp(slice.Top, 0, img.Height / 2);
-            var right = Math.Clamp(slice.Right, 0, img.Width / 2);
-            var bottom = Math.Clamp(slice.Bottom, 0, img.Height / 2);
-
-            var center = new SKRectI(left, top, Math.Max(left + 1, img.Width - right), Math.Max(top + 1, img.Height - bottom));
             canvas.DrawImageNinePatch(img, center, dst, _paint);
+            return;
         }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && img.Width > img.Height * 1.15f)
-        {
-            var sliceX = Math.Max(1, (int)(img.Width * 0.12f));
-            var sliceY = Math.Max(1, (int)(img.Height * 0.12f));
-            var center = new SKRectI(sliceX, sliceY, img.Width - sliceX, img.Height - sliceY);
 
-            canvas.DrawImageNinePatch(img, center, dst, _paint);
-        }
-        else
-        {
-            canvas.DrawImage(img, dst, t_samplingOptions, _paint);
-        }
+        canvas.DrawImage(img, dst, t_samplingOptions, _paint);
     }
 
     public void Dispose()

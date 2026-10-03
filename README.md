@@ -10,7 +10,8 @@
 
 # 🐙 Obxodka VPN Client
 
-### *Продвинутый Stealth VPN-клиент нового поколения для Windows и Android.*
+### _Продвинутый Stealth VPN-клиент нового поколения для Windows и Android._
+
 **Абсолютная свобода в сети • Устойчивость к DPI и ТСПУ • Source-Available**
 
 <br/>
@@ -85,7 +86,7 @@ flowchart LR
     classDef clientStyle fill:#1a1c23,stroke:#00e5ff,stroke-width:2px,color:#fff;
     classDef dpiStyle fill:#2d1b36,stroke:#ff007f,stroke-width:2px,color:#fff;
     classDef serverStyle fill:#13271f,stroke:#00ff88,stroke-width:2px,color:#fff;
-    
+
     class Client clientStyle;
     class ISP dpiStyle;
     class Server serverStyle;
@@ -117,12 +118,12 @@ sequenceDiagram
 
 ## 📊 Сравнение технологий и протоколов
 
-| Протокол / Технология          |    Устойчивость к DPI / ТСПУ     |      Скорость и задержка      |    Шифрование сессии     |    Мультиплексирование    | Защита от блокировок |
-| :----------------------------- | :------------------------------: | :---------------------------: | :----------------------: | :-----------------------: | :------------------: |
-| 🐙 **Obxodka (Octopus Engine)** |  🟢 **100% (Не детектируется)**   | ⚡ **< 1ms задержка (Wintun)** | 🔒 **mTLS + AES-256-GCM** | 🚀 **HTTP/2 gRPC Streams** |  🛡️ **Максимальная**  |
-| 🛡️ **WireGuard**                |  🔴 **0% (Блокируется по UDP)**   |         ⚡ **Высокая**         |   🔒 ChaCha20-Poly1305    |           ❌ Нет           |    ❌ Блокируется     |
-| 🔒 **OpenVPN**                  | 🔴 **10% (Легко детектируется)**  |  🐢 **Средняя/Низкая (TAP)**   |     🔒 TLS / AES-CBC      |           ❌ Нет           |    ❌ Блокируется     |
-| 👥 **Shadowsocks / VLESS**      | 🟡 **60% (Частично блокируется)** |         ⚡ **Высокая**         |       🔒 AEAD / TLS       |       ⚠️ Ограничено        |     ⚠️ Частичная      |
+| Протокол / Технология           |     Устойчивость к DPI / ТСПУ     |      Скорость и задержка       |     Шифрование сессии     |    Мультиплексирование     | Защита от блокировок |
+| :------------------------------ | :-------------------------------: | :----------------------------: | :-----------------------: | :------------------------: | :------------------: |
+| 🐙 **Obxodka (Octopus Engine)** |  🟢 **100% (Не детектируется)**   | ⚡ **< 1ms задержка (Wintun)** | 🔒 **mTLS + AES-256-GCM** | 🚀 **HTTP/2 gRPC Streams** | 🛡️ **Максимальная**  |
+| 🛡️ **WireGuard**                |  🔴 **0% (Блокируется по UDP)**   |         ⚡ **Высокая**         |   🔒 ChaCha20-Poly1305    |           ❌ Нет           |    ❌ Блокируется    |
+| 🔒 **OpenVPN**                  | 🔴 **10% (Легко детектируется)**  |  🐢 **Средняя/Низкая (TAP)**   |     🔒 TLS / AES-CBC      |           ❌ Нет           |    ❌ Блокируется    |
+| 👥 **Shadowsocks / VLESS**      | 🟡 **60% (Частично блокируется)** |         ⚡ **Высокая**         |       🔒 AEAD / TLS       |       ⚠️ Ограничено        |     ⚠️ Частичная     |
 
 ---
 
@@ -130,10 +131,14 @@ sequenceDiagram
 
 В **Obxodka** интегрирована передовая аппаратная система защиты от шпионских SDK, трекеров телеметрии и детекции туннеля на **Windows** и **Android**:
 
-* ⚡ **Аппаратный L3 DNS Sinkhole (Windows & Android):** Встроенный в драйвер Wintun и TUN-ядро перехватчик сетевых запросов. Все попытки фоновой телеметрии (`AppMetrica`, `Yandex Metrika`, `VK Stats`, `Mail.ru`, аналитика Сбера, Госуслуг, трекеры `AppsFlyer` / `Adjust`) перехватываются на L3-уровне и за **`0.05 мс` гасятся ответом `0.0.0.0`**. Шпионский пакет физически не покидает оперативную память устройства.
-* 🎭 **Smart App Cloaking (Android):** Автоматическая изоляция отечественных банков, Госуслуг, такси и маркетплейсов (`AddDisallowedApplication`). Операционная система Android рапортует приложениям: **`TRANSPORT_VPN: FALSE`** — банки не блокируют переводы и работают на максимальной скорости сотового оператора без капчи.
-* 🔒 **Zero-Leak & Hardware Kill-Switch (Windows & Android):** Принудительная блокировка утечек IPv6 (`fd00::/8`), изоляция WebRTC/STUN портов (`3478` / `5349`) и аппаратная блокировка пакетов при разрывах связи (`SetBlocking(true)` на Android и Wintun шлюз с метрикой 1 на Windows).
-
+- ⚡ **Аппаратный L3 DNS Sinkhole (Windows & Android):** Встроенный в драйвер Wintun и TUN-ядро перехватчик сетевых запросов. Все попытки фоновой телеметрии (`AppMetrica`, `Yandex Metrika`, `VK Stats`, `Mail.ru`, аналитика Сбера, Госуслуг, трекеры `AppsFlyer` / `Adjust`) перехватываются на L3-уровне и за **`0.05 мс` гасятся ответом `0.0.0.0`**. Шпионский пакет физически не покидает оперативную память устройства.
+- 🚀 **Happy Eyeballs & Auto-Best-Node:** Параллельное неблокирующее зондирование серверов кластера при подключении. Клиент автоматически выбирает узел с минимальным RTT и наименьшей нагрузкой, исключая таймауты и зависания.
+- 🔀 **Адаптивный обход DPI (Multi-Stage TLS Splitting):** Динамическое расщепление первого сегмента TLS ClientHello на 1–5 байт с паузой 15–35 мс и фрагментацией тела. Системы ТСПУ и DPI не способны восстановить сигнатуру рукопожатия и пропускают трафик без замедлений.
+- 🔄 **Zero-Handoff Seamless Switching:** Бесшовное переключение серверов и сетевой роуминг (Wi-Fi ↔ LTE) без сброса TCP-соединений, потери пакетов или прыжков интернет-трафика.
+- 🛡️ **Защита от утечек DNS (NRPT & Auto-Heal):** Принудительная изоляция через таблицу политик разрешения имен Windows (NRPT), сброс кэша резолвера и автоматическое восстановление поврежденного физического DNS при аварийном завершении других VPN.
+- 🔋 **Адаптивный Mobile NAT Keep-Alive (Android):** Умный таймер поддержания сотовых NAT-таблиц (25 сек в покое / 3 сек при активности), снижающий нагрузку на радиомодуль и экономящий до 90% заряда батареи.
+- 🎭 **Smart App Cloaking (Android):** Автоматическая изоляция отечественных банков, Госуслуг, такси и маркетплейсов (`AddDisallowedApplication`). Операционная система Android рапортует приложениям: **`TRANSPORT_VPN: FALSE`** — банки не блокируют переводы и работают на максимальной скорости сотового оператора без капчи.
+- 🔒 **Zero-Leak & Hardware Kill-Switch (Windows & Android):** Принудительная блокировка утечек IPv6 (`fd00::/8`), изоляция WebRTC/STUN портов (`3478` / `5349`) и аппаратная блокировка пакетов при разрывах связи (`SetBlocking(true)` на Android и Wintun шлюз с метрикой 1 на Windows).
 
 ---
 
@@ -157,9 +162,8 @@ sequenceDiagram
 - [x] ⚡ **Движок Octopus:** Wintun Layer 3 + Stealth HTTP/2 gRPC
 - [x] 🔄 **Автоматическая синхронизация отзывов:** Google Play + Microsoft Store на сайте [obxodka.one/Reviews](https://obxodka.one/Reviews)
 - [x] 🛡️ **CI/CD Авто-деплой:** непрерывная сборка и публикация в магазины через GitHub Actions
-- [ ] 🍎 **Разработка клиентов под iOS и macOS**
-- [ ] 🌐 **Режим Mesh-Routing и децентрализованные релейные ноды**
 - [x] 🛑 **Встроенный AdBlock & Anti-Phishing фильтр на уровне DNS**
+- [ ] 🍎 **Разработка клиентов под iOS и macOS**
 
 ---
 
@@ -170,6 +174,7 @@ sequenceDiagram
 <br>
 
 Большинство обычных VPN используют протоколы с фиксированными сигнатурами (WireGuard handshake, OpenVPN TLS handshake). Системы DPI легко видят такие пакеты и сбрасывают соединение. **Obxodka** инкапсулирует трафик в стандартные gRPC-потоки поверх TLS 1.3 на 443 порту — для любого провайдера это выглядит как обычный защищенный просмотр веб-сайтов крупных IT-корпораций.
+
 </details>
 
 <details>
@@ -177,6 +182,7 @@ sequenceDiagram
 <br>
 
 **Категорически нет.** Вся архитектура построена по принципу Zero-Log. Серверы не хранят историю посещенных сайтов, IP-адреса назначения или DNS-запросы. Трафик проходит через оперативную память в зашифрованном виде и мгновенно уничтожается.
+
 </details>
 
 <details>
@@ -197,20 +203,21 @@ dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19
 # 4. Запуск модульных тестов
 dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
 ```
+
 </details>
 
 ---
 
 ## 🤝 Сообщество и контакты
 
-* 🌐 **Официальный сайт:** [obxodka.one](https://obxodka.one)
-* 📐 **Архитектура и протоколы:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-* 🔒 **Политика безопасности и криптография:** [.github/SECURITY.md](.github/SECURITY.md)
-* 💬 **Форум и обсуждения:** [GitHub Discussions](https://github.com/OctoCore-Dev/obxodka/discussions)
-* 🐛 **Сообщить об ошибке:** [GitHub Issues](https://github.com/OctoCore-Dev/obxodka/issues)
-* 📧 **Контакты и поддержка:** [contact@octocore.dev](mailto:contact@octocore.dev)
-* 📜 **Кодекс поведения:** [.github/CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md)
-
+- 🌐 **Официальный сайт:** [obxodka.one](https://obxodka.one)
+- 📐 **Архитектура и протоколы:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 🔧 **Диагностика и устранение неполадок:** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- 🔒 **Политика безопасности и криптография:** [.github/SECURITY.md](.github/SECURITY.md)
+- 💬 **Форум и обсуждения:** [GitHub Discussions](https://github.com/OctoCore-Dev/obxodka/discussions)
+- 🐛 **Сообщить об ошибке:** [GitHub Issues](https://github.com/OctoCore-Dev/obxodka/issues)
+- 📧 **Контакты и поддержка:** [contact@octocore.dev](mailto:contact@octocore.dev)
+- 📜 **Кодекс поведения:** [.github/CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md)
 
 ---
 

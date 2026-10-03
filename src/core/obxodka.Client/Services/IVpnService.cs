@@ -15,4 +15,6 @@ public interface IVpnService
     public Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers) =>
         StartVpnAsync(serverIp, serverPort);
     public Task StopVpnAsync();
+    public string? DetectConflictingVpn() => null;
+    public Task<string?> RunNetworkPreflightAsync() => Task.FromResult<string?>(null);
 }

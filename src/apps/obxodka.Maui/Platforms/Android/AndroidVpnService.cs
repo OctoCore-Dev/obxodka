@@ -1,3 +1,4 @@
+using obxodka.Shared.Config;
 using Uri = System.Uri;
 
 namespace obxodka.Platforms.Android;
@@ -346,6 +347,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 ? _fallbackServers
                 : [new VpnServerDto(targetIp, serverPort, "", true, 0, null)];
 
+            if (serversToTry.Count > 1)
+            {
+                OnLogUpdated?.Invoke("Поиск быстрейшего узла (Happy Eyeballs)...");
+                serversToTry = [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
+            }
+
             for (var idx = 0; idx < serversToTry.Count; idx++)
             {
                 if (_isExplicitlyStopped)
@@ -479,18 +486,16 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             }
             catch { }
 
-            if (ex is OperationCanceledException ||
-                ex.InnerException is OperationCanceledException ||
-                ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase) ||
-                ex.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
-                _isExplicitlyStopped)
+            if (_isExplicitlyStopped)
             {
                 Debug.WriteLine($"[VPN DISCONNECT] Normal stop/cancellation: {ex.Message}");
                 ChangeState(AppVpnState.Disconnected);
                 return;
             }
 
-            SetError($"Ошибка подключения: {ex.Message}");
+            SetError(ex is TimeoutException or OperationCanceledException
+                ? $"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS/gRPC хэндшейк."
+                : $"Ошибка подключения: {ex.Message}");
         }
     }
 

@@ -188,7 +188,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                 SpeedX = speedX,
                 SpeedY = speedY,
                 Rotation = (float)(_random.NextDouble() * 360),
-                RotationSpeed = (float)((_random.NextDouble() - 0.5) * 2.5),
+                RotationSpeed = (float)((_random.NextDouble() - 0.5) * 3.0),
                 Size = baseSize,
                 BaseAlpha = baseAlpha,
                 CurrentAlpha = baseAlpha,

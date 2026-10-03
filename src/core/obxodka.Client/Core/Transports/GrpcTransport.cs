@@ -23,6 +23,7 @@ public sealed partial class GrpcTransport(
     private TaskCompletionSource<(string, string)>? _ipTcs;
     private volatile bool _serverUsesObfsMasking;
     private long _lastMeasuredPingTimestamp;
+    private int _disposed;
 
     public string ProtocolName => "HTTP2";
     public bool IsConnected => (_realtimeGrpcChannel is not null || _bulkGrpcChannel is not null) && _tunnelStreams[0] is not null;
@@ -310,10 +311,19 @@ public sealed partial class GrpcTransport(
 
     private async Task PingLoopAsync(CancellationToken ct)
     {
+        var isMobile = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
+        var startTime = Stopwatch.GetTimestamp();
+
         while (!ct.IsCancellationRequested)
         {
             await SendPingProbeAsync();
-            await Task.Delay(1500, ct);
+
+            var elapsedSec = (Stopwatch.GetTimestamp() - startTime) / Stopwatch.Frequency;
+            var delayMs = isMobile
+                ? (elapsedSec < 30 ? 3000 : 25000)
+                : 1800;
+
+            await Task.Delay(delayMs, ct);
         }
     }
 
@@ -347,7 +357,14 @@ public sealed partial class GrpcTransport(
             handshake[1] = (byte)rayIndex;
             handshake[2] = (byte)(isNewConnection ? 1 : 0);
 
-            await call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
+            var writeTask = call.RequestStream.WriteAsync(new TunnelPacket { Data = ByteString.CopyFrom(handshake) });
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(7), _cts!.Token);
+            if (await Task.WhenAny(writeTask, timeoutTask).ConfigureAwait(false) != writeTask)
+            {
+                throw new TimeoutException($"gRPC handshake timeout on ray {rayIndex}");
+            }
+            await writeTask.ConfigureAwait(false);
+
             _tunnelStreams[rayIndex] = new TunnelGrpcStream(call);
             _ = ReceiveLoopAsync(rayIndex, _cts.Token);
             Debug.WriteLine($"[GRPC-RAY-{rayIndex}] Handshake sent and receive loop started!");
@@ -607,6 +624,11 @@ public sealed partial class GrpcTransport(
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         await SendDisconnectSignalAsync().ConfigureAwait(false);
 
         try
@@ -617,28 +639,40 @@ public sealed partial class GrpcTransport(
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            _txChannels[i]?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
-            _txChannels[i]?.Dispose();
-            _txChannels[i] = null;
+            var ch = Interlocked.Exchange(ref _txChannels[i], null);
+            ch?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
+            ch?.Dispose();
         }
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            if (_tunnelStreams[i] is { } stream)
+            var stream = Interlocked.Exchange(ref _tunnelStreams[i], null);
+            if (stream is not null)
             {
                 try
                 {
                     await stream.DisposeAsync().ConfigureAwait(false);
                 }
                 catch { }
-                _tunnelStreams[i] = null;
             }
         }
 
-        Dispose();
+        DisposeInternal();
+        GC.SuppressFinalize(this);
     }
 
     public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        DisposeInternal();
+        GC.SuppressFinalize(this);
+    }
+
+    private void DisposeInternal()
     {
         try
         {
@@ -650,14 +684,14 @@ public sealed partial class GrpcTransport(
 
         for (var i = 0; i < PacketRouter.MaxRays; i++)
         {
-            _txChannels[i]?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
-            _txChannels[i]?.Dispose();
-            _txChannels[i] = null;
+            var ch = Interlocked.Exchange(ref _txChannels[i], null);
+            ch?.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
+            ch?.Dispose();
 
             try
             {
-                _tunnelStreams[i]?.Dispose();
-                _tunnelStreams[i] = null;
+                var stream = Interlocked.Exchange(ref _tunnelStreams[i], null);
+                stream?.Dispose();
             }
             catch { }
         }
@@ -683,14 +717,13 @@ public sealed partial class GrpcTransport(
             }
         }
         catch { }
-
-        GC.SuppressFinalize(this);
     }
 
     private static GrpcChannel CreateGrpcChannel(string serverIp, int serverPort, string targetHost, string channelHost)
     {
         var handler = new SocketsHttpHandler
         {
+            ConnectTimeout = TimeSpan.FromSeconds(6),
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
             KeepAlivePingDelay = TimeSpan.FromSeconds(15),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
@@ -719,7 +752,10 @@ public sealed partial class GrpcTransport(
                         ? (EndPoint)new IPEndPoint(ipAddr, serverPort)
                         : context.DnsEndPoint;
                     await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
-                    return new NetworkStream(socket, ownsSocket: true);
+                    var netStream = new NetworkStream(socket, ownsSocket: true);
+                    return IPAddress.TryParse(serverIp, out var parsedIp) && !IPAddress.IsLoopback(parsedIp)
+                        ? new DpiBypassStream(netStream)
+                        : netStream;
                 }
                 catch
                 {
