@@ -16,4 +16,5 @@ public interface IVpnService
         StartVpnAsync(serverIp, serverPort);
     public Task StopVpnAsync();
     public string? DetectConflictingVpn() => null;
+    public Task<string?> RunNetworkPreflightAsync() => Task.FromResult<string?>(null);
 }

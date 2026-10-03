@@ -833,6 +833,82 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return true;
     }
 
+    public async Task<string?> RunNetworkPreflightAsync()
+    {
+        OnLogUpdated?.Invoke("Проверка доступа в интернет и DNS...");
+
+        string[] referenceIps = ["77.88.55.242", "1.1.1.1", "8.8.8.8"];
+        var referenceTasks = referenceIps.Select(ip => ProbeTcpAsync(ip, 443, 3000)).ToArray();
+        var serverTask = ProbeTcpAsync(AppConfig.DirectServerIp, 443, 3000);
+        var dnsTask = ProbeSystemDnsAsync("ya.ru", 3000);
+
+        var referenceResults = await Task.WhenAll(referenceTasks).ConfigureAwait(false);
+        var (serverOk, serverError) = await serverTask.ConfigureAwait(false);
+        var dnsOk = await dnsTask.ConfigureAwait(false);
+
+        for (var i = 0; i < referenceIps.Length; i++)
+        {
+            var (refOk, refError) = referenceResults[i];
+            Shared.Logging.AppLogger.Log($"[PREFLIGHT] TCP {referenceIps[i]}:443 -> {(refOk ? "OK" : refError.ToString())}");
+        }
+        Shared.Logging.AppLogger.Log($"[PREFLIGHT] TCP {AppConfig.DirectServerIp}:443 -> {(serverOk ? "OK" : serverError.ToString())}");
+        Shared.Logging.AppLogger.Log($"[PREFLIGHT] System DNS -> {(dnsOk ? "OK" : "FAIL")}");
+
+        var internetOk = referenceResults.Any(r => r.ok);
+        if (!internetOk && !serverOk)
+        {
+            return "Нет доступа в интернет: компьютер не может подключиться ни к одному сайту (даже к Яндексу).\n\n" +
+                   "Частые причины:\n" +
+                   "• Kill Switch другого VPN (Amnezia, WireGuard и т.п.) блокирует интернет, даже когда тот VPN отключён. Выключите Kill Switch в его настройках или полностью закройте программу.\n" +
+                   "• Не подключён кабель / Wi-Fi.\n\n" +
+                   "После этого попробуйте снова.";
+        }
+
+        if (!serverOk)
+        {
+            OnLogUpdated?.Invoke("Основной узел недоступен напрямую, пробуем резервные пути...");
+        }
+
+        OnLogUpdated?.Invoke(dnsOk
+            ? "Интернет и DNS в порядке."
+            : "Системный DNS не отвечает. Обходка будет использовать собственный защищённый DNS.");
+
+        return null;
+    }
+
+    private static async Task<(bool ok, SocketError error)> ProbeTcpAsync(string ip, int port, int timeoutMs)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(timeoutMs);
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            await socket.ConnectAsync(IPAddress.Parse(ip), port, cts.Token).ConfigureAwait(false);
+            return (true, SocketError.Success);
+        }
+        catch (SocketException ex)
+        {
+            return (false, ex.SocketErrorCode);
+        }
+        catch
+        {
+            return (false, SocketError.TimedOut);
+        }
+    }
+
+    private static async Task<bool> ProbeSystemDnsAsync(string host, int timeoutMs)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(timeoutMs);
+            var addrs = await Dns.GetHostAddressesAsync(host, cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);
+            return addrs.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public string? DetectConflictingVpn()
     {
         try
@@ -895,7 +971,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var ips = string.Join(", ", props.UnicastAddresses.Select(u => $"{u.Address}/{u.IPv4Mask}"));
                 var gws = string.Join(", ", props.GatewayAddresses.Select(g => g.Address.ToString()));
                 var idx = props.GetIPv4Properties()?.Index ?? -1;
-                obxodka.Shared.Logging.AppLogger.Log($"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
+                Shared.Logging.AppLogger.Log($"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
 
                 if (c.OperationalStatus == OperationalStatus.Up &&
                     c.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
@@ -909,7 +985,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                      c.Name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
                      c.Description.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase)))
                 {
-                    obxodka.Shared.Logging.AppLogger.Log($"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is Up. It may block Obxodka traffic via WFP firewall.");
+                    Shared.Logging.AppLogger.Log($"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is Up. It may block Obxodka traffic via WFP firewall.");
                     onLogUpdated?.Invoke($"[ВНИМАНИЕ] Обнаружен активный сторонний VPN: '{c.Name}'. Пожалуйста, отключите его!");
                 }
             }
@@ -979,7 +1055,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                             if (ifIndex > 0 && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0")
                             {
-                                obxodka.Shared.Logging.AppLogger.Log($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {gw}");
+                                Shared.Logging.AppLogger.Log($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {gw}");
                                 t_savedPhysicalGateway = gw;
                                 t_savedPhysicalIfIndex = ifIndex;
                                 return (gw, ifIndex);
@@ -995,7 +1071,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         if (win32Route.InterfaceIndex > 0 &&
             !string.IsNullOrEmpty(win32Route.Gateway) && !win32Route.Gateway.Contains(':') && win32Route.Gateway != "0.0.0.0")
         {
-            obxodka.Shared.Logging.AppLogger.Log($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
+            Shared.Logging.AppLogger.Log($"[GATEWAY] Win32 GetBestRoute found gateway: '{win32Route.Gateway}', IfIndex: {win32Route.InterfaceIndex}");
             t_savedPhysicalGateway = win32Route.Gateway;
             t_savedPhysicalIfIndex = win32Route.InterfaceIndex;
             return win32Route;
@@ -1017,7 +1093,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var parts = line.Split(',');
                 if (parts.Length == 2 && IPAddress.TryParse(parts[0], out _) && int.TryParse(parts[1], CultureInfo.InvariantCulture, out var psIf) && psIf > 0)
                 {
-                    obxodka.Shared.Logging.AppLogger.Log($"[GATEWAY] PowerShell lowest-metric default route: '{parts[0]}', IfIndex: {psIf}");
+                    Shared.Logging.AppLogger.Log($"[GATEWAY] PowerShell lowest-metric default route: '{parts[0]}', IfIndex: {psIf}");
                     t_savedPhysicalGateway = parts[0];
                     t_savedPhysicalIfIndex = psIf;
                     return (parts[0], psIf);

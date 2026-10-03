@@ -663,6 +663,12 @@ public sealed partial class VpnView : ContentView
             UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
             await SetNeonStateAsync("Подключение...", "ЖДИТЕ", AppVpnState.Connecting);
 
+            var preflightError = await Task.Run(_vpnService.RunNetworkPreflightAsync);
+            if (!string.IsNullOrEmpty(preflightError))
+            {
+                throw new InvalidOperationException(preflightError);
+            }
+
             var (success, servers, errorMsg) = await _apiService.GetServersAsync();
             if (!success || servers is null || servers.Count == 0)
             {
