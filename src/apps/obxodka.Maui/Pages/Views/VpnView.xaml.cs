@@ -652,9 +652,7 @@ public sealed partial class VpnView : ContentView
             if (!success || servers is null || servers.Count == 0)
             {
                 servers = [
-                    new VpnServerDto("obxodka.one", 443, "Основной узел (Домен)", true, 10, null),
-                    new VpnServerDto(AppConfig.DirectServerIp, 443, "Основной узел (Прямой доступ)", true, 12, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="),
-                    new VpnServerDto("api.octocore.dev", 443, "Резервный узел (Cloudflare)", true, 15, null)
+                    new VpnServerDto(AppConfig.DirectServerIp, 443, "Основной узел (Прямой доступ)", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
                 ];
             }
 
@@ -746,7 +744,7 @@ public sealed partial class VpnView : ContentView
             return reachableServers;
         }
 
-        string[] fallbackCandidates = ["obxodka.one", AppConfig.DirectServerIp, "api.octocore.dev"];
+        string[] fallbackCandidates = [AppConfig.DirectServerIp];
 
         foreach (var fbHost in fallbackCandidates)
         {
@@ -758,8 +756,8 @@ public sealed partial class VpnView : ContentView
                 {
                     using var client = new TcpClient();
                     await client.ConnectAsync(fbHost, 443, cts.Token).AsTask();
-                    var certHash = fbHost == AppConfig.DirectServerIp ? "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=" : null;
-                    reachableServers.Add(new VpnServerDto(fbHost, 443, "Auto", true, 50, certHash));
+                    var certHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
+                    reachableServers.Add(new VpnServerDto(fbHost, 443, "Основной узел (Прямой доступ)", true, 10, certHash));
                     break;
                 }
             }

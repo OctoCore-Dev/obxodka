@@ -387,11 +387,28 @@ public sealed class ApiService(HttpClient client)
 
             if (attempt >= maxRetries || Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
             {
-                return (false, result.Data, result.Error ?? "Не удалось получить список нод");
+                break;
             }
 
             await Task.Delay(attempt * 600, ct).ConfigureAwait(false);
         }
+
+        try
+        {
+            using var rawCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            rawCts.CancelAfter(TimeSpan.FromSeconds(4));
+            using var rawClient = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+            var rawJson = await rawClient.GetStringAsync(AppConfig.RemoteServersDiscoveryUrl, rawCts.Token).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(rawJson))
+            {
+                var discovered = JsonSerializer.Deserialize(rawJson, AppJsonContext.Default.ListVpnServerDto);
+                if (discovered is { Count: > 0 })
+                {
+                    return (true, discovered, null);
+                }
+            }
+        }
+        catch { }
 
         return (false, null, "Не удалось получить список нод");
     }
