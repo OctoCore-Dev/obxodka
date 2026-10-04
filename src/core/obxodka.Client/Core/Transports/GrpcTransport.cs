@@ -94,6 +94,14 @@ public sealed partial class GrpcTransport(
                 }
             }
 
+            foreach (var backupHash in AppSecrets.BackupPublicKeyHashes)
+            {
+                if (string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
             var isTrustedDomain = cert2.Subject.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
                                   cert2.Subject.Contains("octocore.dev", StringComparison.OrdinalIgnoreCase);
             if (!isTrustedDomain)

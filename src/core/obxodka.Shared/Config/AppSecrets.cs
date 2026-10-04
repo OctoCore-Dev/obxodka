@@ -4,7 +4,10 @@ public static class AppSecrets
 {
     public static string? SslPublicKeyHash { get; set; }
 
-    public static readonly string[] BackupPublicKeyHashes = [];
+    public static readonly string[] BackupPublicKeyHashes =
+    [
+        "CBDEBFDE826F40C6BF0F77525522E624C7A624BC"
+    ];
 
     public static readonly string[] AllowedSniPool =
     [
