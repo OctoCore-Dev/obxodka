@@ -1,5 +1,6 @@
 <Project>
   <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.local" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.local')" />
   <PropertyGroup>
     <IsWindows Condition="'$([MSBuild]::IsOSPlatform(&quot;Windows&quot;))' == 'true' or '$(OS)' == 'Windows_NT'">true</IsWindows>
 
@@ -12,8 +13,11 @@
     <ProjectCacheSubDir Condition="'$(ProjectCacheSubDir)' == ''">$(MSBuildProjectName)</ProjectCacheSubDir>
 
     <!-- Кеш под Windows -->
-    <CustomCachePath Condition="'$(IsWindows)' == 'true' and Exists('C:\BuildCache')">C:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">$(LocalAppData)/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(BUILD_CACHE_PATH)' != ''">$(BUILD_CACHE_PATH)/$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and Exists('E:\BuildCache')">E:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and Exists('C:\BuildCache')">C:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and Exists('E:\') and !Exists('C:\BuildCache')">E:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">$(LocalAppData)/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
 
     <!-- Кеш под Linux / WSL -->
     <CustomCachePath Condition="'$(IsWindows)' != 'true' and '$(HOME)' != ''">$(HOME)/.cache/build/$(ProjectCacheSubDir)</CustomCachePath>
