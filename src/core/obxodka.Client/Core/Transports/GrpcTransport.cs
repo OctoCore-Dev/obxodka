@@ -217,29 +217,28 @@ public sealed partial class GrpcTransport(
 
             if (_activeRays > 1)
             {
-                var secondaryRayTasks = new Task[_activeRays - 1];
-                for (var i = 1; i < _activeRays; i++)
+                _ = Task.Run(async () =>
                 {
-                    var rayIndex = i;
-                    secondaryRayTasks[i - 1] = Task.Run(async () =>
+                    for (var i = 1; i < _activeRays; i++)
                     {
+                        if (_cts?.IsCancellationRequested == true)
+                        {
+                            break;
+                        }
+
                         try
                         {
+                            await Task.Delay(400, _cts!.Token).ConfigureAwait(false);
+                            var rayIndex = i;
                             await ConnectRayAsync(rayIndex, isNewConnection: false).ConfigureAwait(false);
                             _ = TxLoopAsync(rayIndex, _txChannels[rayIndex]!, _cts.Token);
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"[GRPC-RAY #{rayIndex} WARN] Secondary ray failed: {ex.Message}");
+                            Debug.WriteLine($"[GRPC-RAY #{i} WARN] Secondary ray failed: {ex.Message}");
                         }
-                    }, _cts.Token);
-                }
-
-                try
-                {
-                    _ = await Task.WhenAny(Task.WhenAll(secondaryRayTasks), Task.Delay(3500, _cts.Token)).ConfigureAwait(false);
-                }
-                catch { }
+                    }
+                }, _cts.Token);
             }
         }
         catch (OperationCanceledException)
@@ -427,7 +426,17 @@ public sealed partial class GrpcTransport(
                 }
                 else
                 {
-                    Debug.WriteLine($"[GRPC-TX-WARN-RAY#{rayIndex}] Stream is null! Packet of {offset}B dropped.");
+                    var fallbackChannel = _txChannels[0];
+                    if (rayIndex != 0 && fallbackChannel is not null && _tunnelStreams[0] is not null)
+                    {
+                        var copy = ArrayPool<byte>.Shared.Rent(offset);
+                        Buffer.BlockCopy(batchBuffer, 0, copy, 0, offset);
+                        _ = fallbackChannel.TryEnqueue(copy, offset);
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[GRPC-TX-WARN-RAY#{rayIndex}] Stream is null! Packet of {offset}B dropped.");
+                    }
                 }
             }
         }
@@ -441,6 +450,7 @@ public sealed partial class GrpcTransport(
         }
         finally
         {
+            _tunnelStreams[rayIndex] = null;
             ArrayPool<byte>.Shared.Return(batchBuffer);
             Debug.WriteLine($"[GRPC-TX-EXIT #{rayIndex}] TX loop exited. Lifetime stats: {pktsSent} pkts, {bytesSent} bytes.");
         }
@@ -553,8 +563,32 @@ public sealed partial class GrpcTransport(
         }
         finally
         {
+            _tunnelStreams[rayIndex] = null;
             Debug.WriteLine($"[GRPC-RX-EXIT #{rayIndex}] Receive loop exited. Lifetime stats: {pktsReceived} pkts, {bytesReceived} bytes.");
         }
+    }
+
+    private int SelectActiveRay(int desiredRay)
+    {
+        if (desiredRay >= 0 && desiredRay < _activeRays && _tunnelStreams[desiredRay] is not null)
+        {
+            return desiredRay;
+        }
+
+        if (_tunnelStreams[0] is not null)
+        {
+            return 0;
+        }
+
+        for (var i = 1; i < _activeRays; i++)
+        {
+            if (_tunnelStreams[i] is not null)
+            {
+                return i;
+            }
+        }
+
+        return 0;
     }
 
     public void SendPacketFromPool(byte[] packet, int length)
@@ -566,8 +600,9 @@ public sealed partial class GrpcTransport(
             return;
         }
 
-        PacketRouter.GetRays(packet, length, _activeRays, out var primaryRay, out var secondaryRay);
-        var primaryChannel = _txChannels[primaryRay];
+        PacketRouter.GetRays(packet, length, _activeRays, out var desiredPrimary, out var desiredSecondary);
+        var primaryRay = SelectActiveRay(desiredPrimary);
+        var primaryChannel = _txChannels[primaryRay] ?? _txChannels[0];
         if (primaryChannel is null)
         {
             Debug.WriteLine($"[GRPC-TX-DROP] Primary channel #{primaryRay} is null for {length}B packet.");
@@ -579,10 +614,15 @@ public sealed partial class GrpcTransport(
         ArrayPool<byte>.Shared.Return(packet);
 
         byte[]? dup = null;
-        if (secondaryRay >= 0 && secondaryRay < _activeRays && _txChannels[secondaryRay] is not null)
+        var secondaryRay = -1;
+        if (desiredSecondary >= 0 && desiredSecondary < _activeRays)
         {
-            dup = ArrayPool<byte>.Shared.Rent(totalLength);
-            Buffer.BlockCopy(packed, 0, dup, 0, totalLength);
+            secondaryRay = SelectActiveRay(desiredSecondary);
+            if (secondaryRay != primaryRay && _txChannels[secondaryRay] is not null)
+            {
+                dup = ArrayPool<byte>.Shared.Rent(totalLength);
+                Buffer.BlockCopy(packed, 0, dup, 0, totalLength);
+            }
         }
 
         if (!primaryChannel.TryEnqueue(packed, totalLength))
@@ -591,7 +631,7 @@ public sealed partial class GrpcTransport(
             ArrayPool<byte>.Shared.Return(packed);
         }
 
-        if (dup is not null)
+        if (dup is not null && secondaryRay >= 0)
         {
             var secondaryChannel = _txChannels[secondaryRay];
             if (secondaryChannel is null || !secondaryChannel.TryEnqueue(dup, totalLength))
