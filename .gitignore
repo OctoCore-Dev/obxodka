@@ -387,5 +387,4 @@ deploy_android.ps1
 
 
 .vscode/
-Directory.Build.props
 Directory.Build.props.local

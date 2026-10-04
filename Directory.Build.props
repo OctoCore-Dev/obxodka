@@ -14,10 +14,7 @@
 
     <!-- Кеш под Windows -->
     <CustomCachePath Condition="'$(BUILD_CACHE_PATH)' != ''">$(BUILD_CACHE_PATH)/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and Exists('E:\BuildCache')">E:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and Exists('C:\BuildCache')">C:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and Exists('E:\') and !Exists('C:\BuildCache')">E:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">$(LocalAppData)/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
+    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true'">C:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
 
     <!-- Кеш под Linux / WSL -->
     <CustomCachePath Condition="'$(IsWindows)' != 'true' and '$(HOME)' != ''">$(HOME)/.cache/build/$(ProjectCacheSubDir)</CustomCachePath>
@@ -66,6 +63,10 @@
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>high</NuGetAuditLevel>
   </PropertyGroup>
+
+  <Target Name="EnsureBuildCacheDir" BeforeTargets="BeforeBuild;Restore" Condition="'$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">
+    <MakeDir Directories="C:\BuildCache" ContinueOnError="true" />
+  </Target>
 
   <Target Name="SyncSharedConfigFiles" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('$(USERPROFILE)\code\sync_configs.ps1')">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(USERPROFILE)\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true" />
