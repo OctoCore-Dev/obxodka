@@ -1007,45 +1007,57 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
+    private static bool IsConflictingAdapter(NetworkInterface c)
+    {
+        if (c.OperationalStatus != OperationalStatus.Up ||
+            c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+            c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var name = c.Name;
+        var desc = c.Description;
+        var isConflicting = desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("VPN", StringComparison.OrdinalIgnoreCase);
+
+        if (!isConflicting)
+        {
+            var props = c.GetIPProperties();
+            foreach (var gw in props.GatewayAddresses)
+            {
+                var gwStr = gw.Address.ToString();
+                if (gwStr is "0.0.0.0" or "::")
+                {
+                    isConflicting = true;
+                    break;
+                }
+            }
+        }
+
+        return isConflicting;
+    }
+
     public string? DetectConflictingVpn()
     {
         try
         {
             foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (c.OperationalStatus != OperationalStatus.Up ||
-                    c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                    c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+                if (IsConflictingAdapter(c))
                 {
-                    continue;
-                }
-
-                var name = c.Name;
-                var desc = c.Description;
-                var isConflicting = desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
-                                    desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                                    desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("VPN", StringComparison.OrdinalIgnoreCase);
-
-                if (!isConflicting)
-                {
-                    var props = c.GetIPProperties();
-                    foreach (var gw in props.GatewayAddresses)
-                    {
-                        var gwStr = gw.Address.ToString();
-                        if (gwStr is "0.0.0.0" or "::")
-                        {
-                            isConflicting = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (isConflicting)
-                {
-                    return name;
+                    return c.Name;
                 }
             }
         }
@@ -1062,50 +1074,22 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (c.OperationalStatus != OperationalStatus.Up ||
-                    c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                    c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+                if (!IsConflictingAdapter(c))
                 {
                     continue;
                 }
 
                 var name = c.Name;
-                var desc = c.Description;
-                var isConflicting = name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                                    desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                                    desc.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
-                                    desc.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase) ||
-                                    (desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) && !name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase));
-
-                if (!isConflicting)
+                onLogUpdated?.Invoke($"Отключение остаточного адаптера '{name}'...");
+                var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=disabled", timeoutMs: 3000);
+                if (code != 0)
                 {
-                    var props = c.GetIPProperties();
-                    foreach (var gw in props.GatewayAddresses)
-                    {
-                        var gwStr = gw.Address.ToString();
-                        if (gwStr is "0.0.0.0" or "::")
-                        {
-                            isConflicting = true;
-                            break;
-                        }
-                    }
+                    _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Disable-NetAdapter -Name '{name}' -Confirm:$false -ErrorAction SilentlyContinue\"", timeoutMs: 3000);
                 }
-
-                if (isConflicting)
+                Debug.WriteLine($"[NET-NEUTRALIZE] Disabled '{name}': exitCode={code}, out={outStr}");
+                lock (s_neutralizedAdapters)
                 {
-                    onLogUpdated?.Invoke($"Отключение остаточного адаптера '{name}'...");
-                    var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=disabled", timeoutMs: 3000);
-                    Debug.WriteLine($"[NET-NEUTRALIZE] Disabled '{name}': exitCode={code}, out={outStr}");
-                    lock (s_neutralizedAdapters)
-                    {
-                        s_neutralizedAdapters.Add(name);
-                    }
+                    s_neutralizedAdapters.Add(name);
                 }
             }
         }
@@ -1133,6 +1117,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             try
             {
                 var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=enabled", timeoutMs: 3000);
+                if (code != 0)
+                {
+                    _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Enable-NetAdapter -Name '{name}' -Confirm:$false -ErrorAction SilentlyContinue\"", timeoutMs: 3000);
+                }
                 Debug.WriteLine($"[NET-RESTORE] Re-enabled '{name}': exitCode={code}, out={outStr}");
             }
             catch (Exception ex)
@@ -1154,17 +1142,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var idx = props.GetIPv4Properties()?.Index ?? -1;
                 Shared.Logging.AppLogger.Log($"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
 
-                if (c.OperationalStatus == OperationalStatus.Up &&
-                    c.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                    !c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) &&
-                    (c.Name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                     c.Name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                     c.Description.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                     c.Description.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                     c.Name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
-                     c.Name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
-                     c.Name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
-                     c.Description.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase)))
+                if (IsConflictingAdapter(c))
                 {
                     Shared.Logging.AppLogger.Log($"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is Up. It may block Obxodka traffic via WFP firewall.");
                     onLogUpdated?.Invoke($"[ВНИМАНИЕ] Обнаружен активный сторонний VPN: '{c.Name}'. Пожалуйста, отключите его!");
