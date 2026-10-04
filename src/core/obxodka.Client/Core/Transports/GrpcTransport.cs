@@ -23,6 +23,9 @@ public sealed partial class GrpcTransport(
     private TaskCompletionSource<(string, string)>? _ipTcs;
     private volatile bool _serverUsesObfsMasking;
     private long _lastMeasuredPingTimestamp;
+    private readonly bool[] _rayHealthy = new bool[PacketRouter.MaxRays];
+    private readonly TaskCompletionSource<bool>?[] _rayProbeTcs = new TaskCompletionSource<bool>?[PacketRouter.MaxRays];
+    private volatile int _verifiedRays = 1;
     private int _disposed;
 
     public string ProtocolName => "HTTP2";
@@ -203,9 +206,7 @@ public sealed partial class GrpcTransport(
             var channelHost = !string.IsNullOrWhiteSpace(targetHost) ? targetHost : serverIp;
             Debug.WriteLine($"[GRPC-INIT] Creating dual-socket channels -> https://{channelHost}:{serverPort} (Target IP: {serverIp})");
             _realtimeGrpcChannel = CreateGrpcChannel(serverIp, serverPort, targetHost, channelHost);
-            _bulkGrpcChannel = _activeRays > 1
-                ? CreateGrpcChannel(serverIp, serverPort, targetHost, channelHost)
-                : _realtimeGrpcChannel;
+            _bulkGrpcChannel = _realtimeGrpcChannel;
 
             for (var i = 0; i < _activeRays; i++)
             {
@@ -214,31 +215,12 @@ public sealed partial class GrpcTransport(
 
             await ConnectRayAsync(0, isNewConnection: true).ConfigureAwait(false);
             _ = TxLoopAsync(0, _txChannels[0]!, _cts.Token);
+            _rayHealthy[0] = true;
+            _verifiedRays = 1;
 
             if (_activeRays > 1)
             {
-                _ = Task.Run(async () =>
-                {
-                    for (var i = 1; i < _activeRays; i++)
-                    {
-                        if (_cts?.IsCancellationRequested == true)
-                        {
-                            break;
-                        }
-
-                        try
-                        {
-                            await Task.Delay(400, _cts!.Token).ConfigureAwait(false);
-                            var rayIndex = i;
-                            await ConnectRayAsync(rayIndex, isNewConnection: false).ConfigureAwait(false);
-                            _ = TxLoopAsync(rayIndex, _txChannels[rayIndex]!, _cts.Token);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"[GRPC-RAY #{i} WARN] Secondary ray failed: {ex.Message}");
-                        }
-                    }
-                }, _cts.Token);
+                _ = Task.Run(() => AdaptiveRayScalerLoopAsync(_cts.Token), _cts.Token);
             }
         }
         catch (OperationCanceledException)
@@ -285,8 +267,8 @@ public sealed partial class GrpcTransport(
                 sentPrimary = ch0.TryEnqueue(packed, totalLength);
             }
 
-            var secondaryRay = _activeRays >= 8 ? 7 : (_activeRays >= 4 ? 3 : -1);
-            if (secondaryRay > 0 && _txChannels[secondaryRay] is { } chSec && _tunnelStreams[secondaryRay] != null)
+            var secondaryRay = _verifiedRays >= 8 ? 7 : (_verifiedRays >= 4 ? 3 : -1);
+            if (secondaryRay > 0 && _txChannels[secondaryRay] is { } chSec && _rayHealthy[secondaryRay] && _tunnelStreams[secondaryRay] != null)
             {
                 var dup = ArrayPool<byte>.Shared.Rent(totalLength);
                 Buffer.BlockCopy(packed, 0, dup, 0, totalLength);
@@ -326,10 +308,98 @@ public sealed partial class GrpcTransport(
         }
     }
 
+    private async Task<bool> ProbeRayHealthAsync(int rayIndex, TimeSpan timeout, CancellationToken ct)
+    {
+        if (rayIndex < 0 || rayIndex >= _activeRays || _tunnelStreams[rayIndex] is null)
+        {
+            return false;
+        }
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _rayProbeTcs[rayIndex] = tcs;
+
+        try
+        {
+            var ts = Stopwatch.GetTimestamp();
+            Span<byte> packet = stackalloc byte[9];
+            packet[0] = 0x99;
+            BinaryPrimitives.WriteInt64LittleEndian(packet.Slice(1, 8), ts);
+
+            var packed = Obfuscator.Pack(packet, out var totalLength, _serverUsesObfsMasking);
+            var queue = _txChannels[rayIndex];
+            if (queue is null || !queue.TryEnqueue(packed, totalLength))
+            {
+                ArrayPool<byte>.Shared.Return(packed);
+                return false;
+            }
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(timeout);
+
+            var delayTask = Task.Delay(timeout, timeoutCts.Token);
+            var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
+            return completed == tcs.Task && await tcs.Task.ConfigureAwait(false);
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _rayProbeTcs[rayIndex] = null;
+        }
+    }
+
+    private async Task AdaptiveRayScalerLoopAsync(CancellationToken ct)
+    {
+        for (var i = 1; i < _activeRays; i++)
+        {
+            if (ct.IsCancellationRequested || _cts?.IsCancellationRequested == true)
+            {
+                break;
+            }
+
+            await Task.Delay(500, ct).ConfigureAwait(false);
+            var rayIndex = i;
+            bool success;
+
+            try
+            {
+                await ConnectRayAsync(rayIndex, isNewConnection: false).ConfigureAwait(false);
+                _ = TxLoopAsync(rayIndex, _txChannels[rayIndex]!, ct);
+
+                success = await ProbeRayHealthAsync(rayIndex, TimeSpan.FromMilliseconds(2000), ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[RAY-SCALER #{rayIndex} WARN] Secondary ray failed: {ex.Message}");
+                success = false;
+            }
+
+            if (success)
+            {
+                _rayHealthy[rayIndex] = true;
+                _verifiedRays = rayIndex + 1;
+                Debug.WriteLine($"[RAY-SCALER] Ray #{rayIndex} VERIFIED. Scaled active verified rays to {_verifiedRays}.");
+            }
+            else
+            {
+                Debug.WriteLine($"[RAY-SCALER] Ray #{rayIndex} FAILED probe. Halting escalation at {_verifiedRays} active rays.");
+                try
+                {
+                    var stream = Interlocked.Exchange(ref _tunnelStreams[rayIndex], null);
+                    stream?.Dispose();
+                }
+                catch { }
+                _rayHealthy[rayIndex] = false;
+                break;
+            }
+        }
+    }
+
     private async Task ConnectRayAsync(int rayIndex, bool isNewConnection)
     {
-        var isRealtimeRay = rayIndex == 0 || (_activeRays >= 4 && rayIndex == (_activeRays - 1));
-        var targetChannel = isRealtimeRay ? _realtimeGrpcChannel! : _bulkGrpcChannel!;
+        var targetChannel = _realtimeGrpcChannel!;
         var client = new TunnelService.TunnelServiceClient(targetChannel);
         var headers = new Metadata();
 
@@ -451,6 +521,8 @@ public sealed partial class GrpcTransport(
         finally
         {
             _tunnelStreams[rayIndex] = null;
+            _rayHealthy[rayIndex] = false;
+            RecalculateVerifiedRays();
             ArrayPool<byte>.Shared.Return(batchBuffer);
             Debug.WriteLine($"[GRPC-TX-EXIT #{rayIndex}] TX loop exited. Lifetime stats: {pktsSent} pkts, {bytesSent} bytes.");
         }
@@ -522,6 +594,7 @@ public sealed partial class GrpcTransport(
                                 OnPingUpdated?.Invoke(Math.Max(1, rtt));
                             }
                         }
+                        _ = _rayProbeTcs[rayIndex]?.TrySetResult(true);
                         ArrayPool<byte>.Shared.Return(packet);
                     }
                     else
@@ -564,25 +637,48 @@ public sealed partial class GrpcTransport(
         finally
         {
             _tunnelStreams[rayIndex] = null;
+            _rayHealthy[rayIndex] = false;
+            if (rayIndex > 0)
+            {
+                RecalculateVerifiedRays();
+                Debug.WriteLine($"[RAY-HEALTH] Secondary ray #{rayIndex} exited. Scaled down to {_verifiedRays} rays.");
+            }
+            else
+            {
+                OnConnectionDropped?.Invoke();
+            }
             Debug.WriteLine($"[GRPC-RX-EXIT #{rayIndex}] Receive loop exited. Lifetime stats: {pktsReceived} pkts, {bytesReceived} bytes.");
         }
     }
 
+    private void RecalculateVerifiedRays()
+    {
+        var healthy = 0;
+        for (var r = 0; r < _activeRays; r++)
+        {
+            if (_rayHealthy[r] && _tunnelStreams[r] is not null)
+            {
+                healthy = r + 1;
+            }
+        }
+        _verifiedRays = Math.Max(1, healthy);
+    }
+
     private int SelectActiveRay(int desiredRay)
     {
-        if (desiredRay >= 0 && desiredRay < _activeRays && _tunnelStreams[desiredRay] is not null)
+        if (desiredRay >= 0 && desiredRay < _verifiedRays && _rayHealthy[desiredRay] && _tunnelStreams[desiredRay] is not null)
         {
             return desiredRay;
         }
 
-        if (_tunnelStreams[0] is not null)
+        if (_rayHealthy[0] && _tunnelStreams[0] is not null)
         {
             return 0;
         }
 
-        for (var i = 1; i < _activeRays; i++)
+        for (var i = 1; i < _verifiedRays; i++)
         {
-            if (_tunnelStreams[i] is not null)
+            if (_rayHealthy[i] && _tunnelStreams[i] is not null)
             {
                 return i;
             }
@@ -600,7 +696,7 @@ public sealed partial class GrpcTransport(
             return;
         }
 
-        PacketRouter.GetRays(packet, length, _activeRays, out var desiredPrimary, out var desiredSecondary);
+        PacketRouter.GetRays(packet, length, _verifiedRays, out var desiredPrimary, out var desiredSecondary);
         var primaryRay = SelectActiveRay(desiredPrimary);
         var primaryChannel = _txChannels[primaryRay] ?? _txChannels[0];
         if (primaryChannel is null)
@@ -615,7 +711,7 @@ public sealed partial class GrpcTransport(
 
         byte[]? dup = null;
         var secondaryRay = -1;
-        if (desiredSecondary >= 0 && desiredSecondary < _activeRays)
+        if (desiredSecondary >= 0 && desiredSecondary < _verifiedRays)
         {
             secondaryRay = SelectActiveRay(desiredSecondary);
             if (secondaryRay != primaryRay && _txChannels[secondaryRay] is not null)
