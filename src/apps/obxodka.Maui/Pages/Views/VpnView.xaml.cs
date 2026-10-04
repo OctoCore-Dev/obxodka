@@ -781,12 +781,17 @@ public sealed partial class VpnView : ContentView, IDisposable
             {
                 if (ParentPage is not null)
                 {
-                    await ParentPage.DisplayAlertAsync(
-                        "Сторонний VPN включён",
-                        $"У вас уже включён сторонний VPN ({conflictingVpn}).\n\nОбходка не может работать одновременно с двумя VPN. Пожалуйста, отключите его и попробуйте снова.",
-                        "Да");
+                    var proceed = await ParentPage.DisplayAlertAsync(
+                        "Сторонний VPN",
+                        $"Обнаружен сторонний VPN ({conflictingVpn}).\n\nЕсли вы уже отключили тот VPN, Обходка автоматически нейтрализует оставшийся адаптер и подключится.\n\nПродолжить?",
+                        "Продолжить",
+                        "Отмена");
+
+                    if (!proceed)
+                    {
+                        return;
+                    }
                 }
-                return;
             }
 
             StartLoaderAnimation();

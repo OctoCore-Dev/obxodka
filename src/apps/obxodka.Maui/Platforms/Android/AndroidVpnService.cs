@@ -430,6 +430,8 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                         if (verified || OctopusEngine.Current.IsConnected)
                         {
+                            OctopusEngine.Current.ResetTrafficCounters();
+                            OctopusEngine.Current.ArmTrafficWatchdog();
                             ChangeState(AppVpnState.Connected);
                             connected = true;
                             break;

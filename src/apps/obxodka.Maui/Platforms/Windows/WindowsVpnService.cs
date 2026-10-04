@@ -57,6 +57,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", $"delete {AppConfig.DirectServerIp} mask 255.255.255.255");
         await DisableDnsLeakProtectionAsync();
+        await RestoreNeutralizedAdaptersAsync();
     }
 
     private void HandleDeadConnection()
@@ -87,6 +88,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
                     if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
                     {
+                        OctopusEngine.Current.ResetTrafficCounters();
+                        OctopusEngine.Current.ArmTrafficWatchdog();
                         UpdateState(AppVpnState.Connected);
                         OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено!");
                         return;
@@ -138,6 +141,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
                             {
+                                OctopusEngine.Current.ResetTrafficCounters();
+                                OctopusEngine.Current.ArmTrafficWatchdog();
                                 UpdateState(AppVpnState.Connected);
                                 OnLogUpdated?.Invoke("[SMART CONNECT] Подключение успешно переведено на новый узел!");
                                 return;
@@ -291,11 +296,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             _currentServerPort = serverPort;
             _isExplicitlyStopped = false;
 
-            var conflictingVpn = DetectConflictingVpn();
-            if (!string.IsNullOrEmpty(conflictingVpn))
-            {
-                throw new InvalidOperationException($"У вас уже включён сторонний VPN ({conflictingVpn}). Обходка не может работать одновременно с двумя VPN. Пожалуйста, отключите его и попробуйте снова.");
-            }
+            await NeutralizeConflictingAdaptersAsync(OnLogUpdated);
 
             try
             {
@@ -442,6 +443,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke("Включение защиты от утечек DNS...");
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
                             ApplyExtremeNetworkBoost();
+
+                            OctopusEngine.Current.ResetTrafficCounters();
+                            OctopusEngine.Current.ArmTrafficWatchdog();
 
                             OnLogUpdated?.Invoke("Защищенное соединение активно.");
                             UpdateState(AppVpnState.Connected);
@@ -1018,19 +1022,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 var name = c.Name;
                 var desc = c.Description;
-                var isVpn = name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                            desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
-                            desc.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
-                            desc.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase) ||
-                            desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase);
+                var isConflicting = desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
+                                    desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                                    desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("VPN", StringComparison.OrdinalIgnoreCase);
 
-                if (!isVpn)
+                if (!isConflicting)
                 {
                     var props = c.GetIPProperties();
                     foreach (var gw in props.GatewayAddresses)
@@ -1038,13 +1037,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         var gwStr = gw.Address.ToString();
                         if (gwStr is "0.0.0.0" or "::")
                         {
-                            isVpn = true;
+                            isConflicting = true;
                             break;
                         }
                     }
                 }
 
-                if (isVpn)
+                if (isConflicting)
                 {
                     return name;
                 }
@@ -1053,6 +1052,94 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         catch { }
 
         return null;
+    }
+
+    private static readonly HashSet<string> s_neutralizedAdapters = new(StringComparer.OrdinalIgnoreCase);
+
+    private static async Task NeutralizeConflictingAdaptersAsync(Action<string>? onLogUpdated)
+    {
+        try
+        {
+            foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (c.OperationalStatus != OperationalStatus.Up ||
+                    c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                    c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var name = c.Name;
+                var desc = c.Description;
+                var isConflicting = name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                                    desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                                    desc.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                                    desc.Contains("TAP-Windows", StringComparison.OrdinalIgnoreCase) ||
+                                    (desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) && !name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase));
+
+                if (!isConflicting)
+                {
+                    var props = c.GetIPProperties();
+                    foreach (var gw in props.GatewayAddresses)
+                    {
+                        var gwStr = gw.Address.ToString();
+                        if (gwStr is "0.0.0.0" or "::")
+                        {
+                            isConflicting = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isConflicting)
+                {
+                    onLogUpdated?.Invoke($"Отключение остаточного адаптера '{name}'...");
+                    var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=disabled", timeoutMs: 3000);
+                    Debug.WriteLine($"[NET-NEUTRALIZE] Disabled '{name}': exitCode={code}, out={outStr}");
+                    lock (s_neutralizedAdapters)
+                    {
+                        s_neutralizedAdapters.Add(name);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[NET-NEUTRALIZE-ERR] {ex.Message}");
+        }
+    }
+
+    private static async Task RestoreNeutralizedAdaptersAsync()
+    {
+        List<string> adaptersToRestore;
+        lock (s_neutralizedAdapters)
+        {
+            if (s_neutralizedAdapters.Count == 0)
+            {
+                return;
+            }
+            adaptersToRestore = [.. s_neutralizedAdapters];
+            s_neutralizedAdapters.Clear();
+        }
+
+        foreach (var name in adaptersToRestore)
+        {
+            try
+            {
+                var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=enabled", timeoutMs: 3000);
+                Debug.WriteLine($"[NET-RESTORE] Re-enabled '{name}': exitCode={code}, out={outStr}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[NET-RESTORE-ERR] {name}: {ex.Message}");
+            }
+        }
     }
 
     private static void LogNetworkDiagnostics(Action<string>? onLogUpdated = null)
@@ -1476,6 +1563,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 }
 
                 await RestoreOriginalNetworkSettingsAsync();
+                await RestoreNeutralizedAdaptersAsync();
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
                 OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");

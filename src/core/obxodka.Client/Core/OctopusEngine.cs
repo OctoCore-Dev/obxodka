@@ -36,10 +36,16 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public string ActiveProtocol { get; private set; } = "AUTO";
 
+    private long _watchdogArmedTicks;
+
+    public void ArmTrafficWatchdog() =>
+        Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
+
     public void ResetTrafficCounters()
     {
         _ = Interlocked.Exchange(ref _totalBytesSent, 0);
         _ = Interlocked.Exchange(ref _totalBytesReceived, 0);
+        Volatile.Write(ref _watchdogArmedTicks, 0);
         _smoothedPing = 0;
     }
 
@@ -268,9 +274,13 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
                 try
                 {
-                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1") is { } pIcmp)
+                    if (BuildIcmpProbePacket(AssignedIp, "1.1.1.1") is { } pIcmp1)
                     {
-                        _ = SendPacketAsync(pIcmp);
+                        _ = SendPacketAsync(pIcmp1);
+                    }
+                    if (BuildIcmpProbePacket(AssignedIp, "8.8.8.8") is { } pIcmp8)
+                    {
+                        _ = SendPacketAsync(pIcmp8);
                     }
                     if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
                     {
@@ -426,7 +436,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             long lastSent = 0;
             long lastReceived = 0;
             var deadTicks = 0;
-            var connectTicks = Environment.TickCount64;
 
             void OnPing(long _) => deadTicks = 0;
             OnPingUpdated += OnPing;
@@ -439,15 +448,25 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     var currentReceived = TotalBytesReceived;
                     OnTrafficUpdated?.Invoke(currentSent, currentReceived);
 
+                    var armedTicks = Volatile.Read(ref _watchdogArmedTicks);
+                    if (armedTicks == 0)
+                    {
+                        deadTicks = 0;
+                        lastSent = currentSent;
+                        lastReceived = currentReceived;
+                        await Task.Delay(200, token);
+                        continue;
+                    }
+
                     if (currentSent > lastSent && currentReceived == lastReceived)
                     {
                         deadTicks++;
-                        var elapsedMs = Environment.TickCount64 - connectTicks;
-                        var isInitialBlackhole = elapsedMs is >= 3000 and < 30000 && currentSent > 2000 && currentReceived == 0;
+                        var elapsedMs = Environment.TickCount64 - armedTicks;
+                        var isInitialBlackhole = elapsedMs is >= 15000 and < 60000 && currentSent > 25000 && currentReceived == 0;
 
-                        var isDead = (isInitialBlackhole && deadTicks >= 20) ||
-                                     (currentSent > 5000 && currentReceived == 0 && deadTicks >= 25) ||
-                                     deadTicks >= 60;
+                        var isDead = (isInitialBlackhole && deadTicks >= 50) ||
+                                     (currentSent > 50000 && currentReceived == 0 && deadTicks >= 60) ||
+                                     deadTicks >= 90;
 
                         if (isDead)
                         {
@@ -504,6 +523,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Volatile.Write(ref _watchdogArmedTicks, 0);
         _smoothedPing = 0;
         _cts?.Cancel();
         _cts?.Dispose();
@@ -523,6 +543,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
+        Volatile.Write(ref _watchdogArmedTicks, 0);
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
