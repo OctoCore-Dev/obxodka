@@ -8,10 +8,8 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
-        "www.google.com",
-        "google.com",
-        "play.googleapis.com",
-        "play.google.com"
+        "obxodka.one",
+        "api.octocore.dev"
     ];
 
     public static string GetRandomSni() =>

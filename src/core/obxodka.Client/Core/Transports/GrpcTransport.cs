@@ -196,7 +196,7 @@ public sealed partial class GrpcTransport(
 
         var targetHost = !string.IsNullOrWhiteSpace(_configuredSni) && !IPAddress.TryParse(_configuredSni, out _)
             ? _configuredSni
-            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : AppSecrets.GetRandomSni());
+            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : defaultSni);
 
         try
         {
@@ -723,7 +723,7 @@ public sealed partial class GrpcTransport(
     {
         var handler = new SocketsHttpHandler
         {
-            ConnectTimeout = TimeSpan.FromSeconds(6),
+            ConnectTimeout = TimeSpan.FromSeconds(15),
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
             KeepAlivePingDelay = TimeSpan.FromSeconds(15),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
