@@ -201,7 +201,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _jwtToken = session.JwtToken;
         _cts = new CancellationTokenSource();
 
-        var defaultRays = DeviceInfo.Platform is "Android" or "iOS" ? 2 : PacketRouter.MaxRays;
+        var defaultRays = DeviceInfo.Platform is "Android" or "iOS" ? 2 : 4;
         var configuredRays = Preferences.Get("BatteryMode", defaultRays);
         ActiveRays = configuredRays is >= 1 and <= PacketRouter.MaxRays ? configuredRays : defaultRays;
 
