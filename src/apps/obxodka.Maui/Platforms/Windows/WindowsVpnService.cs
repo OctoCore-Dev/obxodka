@@ -392,6 +392,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 OnLogUpdated?.Invoke($"Повтор подключения ({attempt}/2)...");
                             }
 
+                            foreach (var ipToRoute in _currentServerIpsToRoute)
+                            {
+                                await EnsureHostRouteAsync(ipToRoute);
+                                OctopusEngine.Current.RegisterServerEndpoint(ipToRoute);
+                            }
+
                             OnLogUpdated?.Invoke($"Подключение к {candidateIp}:{candidatePort}...");
                             await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
 
@@ -654,17 +660,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
                 {
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set address name=\"{adapterName}\" address={ipv6} store=active");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
                 }
 
                 Debug.WriteLine("[NET CONFIG] Configured adapter via netsh successfully.");
@@ -682,8 +685,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ exit 1; }}
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 1 -NlMtuBytes {NetworkDefaults.DefaultMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 50 -NlMtuBytes {NetworkDefaults.DefaultMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 if ('{ipv6}' -ne '') {{ try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }} }}
             ";
@@ -1367,6 +1369,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var results = await Task.WhenAll(r2Task, r3Task).ConfigureAwait(false);
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={results[0].exitCode}, R3={results[1].exitCode}");
 
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
+
                 if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
                     foreach (var bypassIp in SplitTunnelPolicy.CustomBypassIps)
@@ -1384,6 +1390,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
 
+                _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary", timeoutMs: 1500);
+                _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
                 _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
                 _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
             }
@@ -1416,6 +1424,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             if (!string.IsNullOrEmpty(adapterName))
             {
+                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50", timeoutMs: 1500));
+                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
             }
