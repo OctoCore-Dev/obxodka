@@ -200,12 +200,6 @@ public static class Obfuscator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsDisconnectPayload(ReadOnlySpan<byte> payload)
-    {
-        return payload.Length >= 4 &&
-               payload[0] == 0xAA &&
-               payload[1] == 0xBB &&
-               payload[2] == 0xCC &&
-               payload[3] == 0xDD;
-    }
+    public static bool IsDisconnectPayload(ReadOnlySpan<byte> payload) =>
+        payload.Length >= 4 && (payload[..4].SequenceEqual("DISC"u8) || (payload[0] == 0xAA && payload[1] == 0xBB && payload[2] == 0xCC && payload[3] == 0xDD));
 }
