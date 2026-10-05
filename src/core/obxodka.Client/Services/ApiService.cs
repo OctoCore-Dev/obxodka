@@ -211,7 +211,14 @@ public sealed class ApiService(HttpClient client)
                 catch (Exception ex)
                 {
                     lastEx = ex;
-                    Debug.WriteLine($"[API ERROR] {method} {reqUrl}: {ex.Message}");
+                    var innerInfo = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
+                    Debug.WriteLine($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
+                    var isTlsBlock = ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.InnerException is System.Security.Authentication.AuthenticationException or System.Net.Sockets.SocketException);
+                    if (isTlsBlock)
+                    {
+                        Debug.WriteLine($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");
+                        break;
+                    }
                 }
             }
         }
@@ -245,6 +252,7 @@ public sealed class ApiService(HttpClient client)
 
                 if (response.IsSuccessStatusCode)
                 {
+                    Debug.WriteLine($"[API-DPI] Request {method} {url} succeeded via DPI bypass stream (IP {AppConfig.DirectServerIp}, Host {directHost})");
                     if (responseInfo is not null)
                     {
                         return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);

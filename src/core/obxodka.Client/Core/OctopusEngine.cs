@@ -241,10 +241,12 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     {
         if (!IsConnected || _transport is null)
         {
+            Shared.Logging.AppLogger.LogWarning("[PROBE FAIL] Engine is not connected or transport is null.");
             return false;
         }
 
         var initialReceived = TotalBytesReceived;
+        var initialSent = TotalBytesSent;
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts?.Token ?? CancellationToken.None);
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -252,19 +254,27 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             if (len > 0)
             {
+                var proto = len >= 20 ? ((pkt[0] >> 4) == 4 ? $"IPv4(proto={pkt[9]})" : "IPv6") : "NonIP";
+                Shared.Logging.AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
                 _ = tcs.TrySetResult(true);
             }
         }
 
-        void OnPing(long rtt) => _ = tcs.TrySetResult(true);
+        void OnPing(long rtt)
+        {
+            Shared.Logging.AppLogger.Log($"[PROBE RX] Received verified Pong probe (RTT={rtt}ms). Total RX={TotalBytesReceived}B");
+            _ = tcs.TrySetResult(true);
+        }
 
         OnPacketReceived += OnPacket;
         OnPingUpdated += OnPing;
 
+        var probeCycle = 0;
         try
         {
             async Task SendProbesAsync()
             {
+                var cycle = Interlocked.Increment(ref probeCycle);
                 try
                 {
                     await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
@@ -291,6 +301,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     }
                 }
                 catch { }
+
+                if (cycle == 1 || cycle % 4 == 0)
+                {
+                    Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent Ping(0x99) + ICMP Echo + DNS Query probes to verify server downlink...");
+                }
             }
 
             _ = Task.Run(SendProbesAsync, linkedCts.Token);
@@ -300,6 +315,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 if (TotalBytesReceived > initialReceived)
                 {
+                    Shared.Logging.AppLogger.Log($"[PROBE SUCCESS] Downlink confirmed! Total RX={TotalBytesReceived}B.");
                     return true;
                 }
 
@@ -307,17 +323,29 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {
+                    Shared.Logging.AppLogger.Log($"[PROBE SUCCESS] Downlink confirmed via probe event! Total RX={TotalBytesReceived}B.");
                     return true;
                 }
 
                 _ = Task.Run(SendProbesAsync, linkedCts.Token);
             }
 
-            return TotalBytesReceived > initialReceived;
+            var deltaRx = TotalBytesReceived - initialReceived;
+            var deltaTx = TotalBytesSent - initialSent;
+            if (deltaRx <= 0)
+            {
+                Shared.Logging.AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server. Connection rejected to protect network routes.");
+            }
+            return deltaRx > 0;
         }
         catch (OperationCanceledException)
         {
-            return TotalBytesReceived > initialReceived;
+            var deltaRx = TotalBytesReceived - initialReceived;
+            if (deltaRx <= 0)
+            {
+                Shared.Logging.AppLogger.LogWarning($"[PROBE CANCELED] Verification canceled after sending {probeCycle} probe cycles without downlink response.");
+            }
+            return deltaRx > 0;
         }
         finally
         {

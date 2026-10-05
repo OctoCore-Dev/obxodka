@@ -432,11 +432,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(6000), _cts.Token);
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
+                                Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Downlink verified (RX={OctopusEngine.Current.TotalBytesReceived} B)! Activating routes and elevating adapter priority.");
                                 OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Активация...");
                             }
                             else
                             {
-                                Debug.WriteLine($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent}, RX=0). Rejecting dead connection.");
+                                Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent} B, RX=0 B). No incoming packets over tunnel. Rejecting dead connection to prevent hijacking default routes.");
                                 OnLogUpdated?.Invoke($"Нет входящего трафика от сервера (0 RX). Переподключение ({attempt}/2)...");
                                 throw new InvalidOperationException("Сервер не отвечает на тестовые пакеты (0 RX).");
                             }
@@ -1280,11 +1281,16 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             _ = await RunCmdAsync("route", $"delete {targetIp} mask 255.255.255.255");
             var (exitCode, output) = await RunCmdAsync("route", $"add {targetIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
-            Debug.WriteLine($"[ROUTE] EnsureHostRoute for {targetIp} via {gw} (if {physicalIfIndex}): {exitCode} {output}");
+            Shared.Logging.AppLogger.Log($"[ROUTE PIN] Physical host route for {targetIp} via {gw} (ifIndex {physicalIfIndex}, metric 1): exitCode={exitCode}");
             if (exitCode != 0 && physicalIfIndex > 0)
             {
-                _ = await RunCmdAsync("route", $"add {targetIp} mask 255.255.255.255 {gw} metric 1");
+                var (fbCode, _) = await RunCmdAsync("route", $"add {targetIp} mask 255.255.255.255 {gw} metric 1");
+                Shared.Logging.AppLogger.Log($"[ROUTE PIN] Fallback host route for {targetIp} via {gw} (metric 1): exitCode={fbCode}");
             }
+        }
+        else
+        {
+            Shared.Logging.AppLogger.LogWarning($"[ROUTE PIN] Could not determine physical gateway for {targetIp}! Outer socket relies on kernel default route.");
         }
     }
 
