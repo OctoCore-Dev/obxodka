@@ -1066,7 +1066,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return null;
     }
 
-    private static readonly HashSet<string> s_neutralizedAdapters = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> t_neutralizedAdapters = [];
 
     private static async Task NeutralizeConflictingAdaptersAsync(Action<string>? onLogUpdated)
     {
@@ -1087,9 +1087,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Disable-NetAdapter -Name '{name}' -Confirm:$false -ErrorAction SilentlyContinue\"", timeoutMs: 3000);
                 }
                 Debug.WriteLine($"[NET-NEUTRALIZE] Disabled '{name}': exitCode={code}, out={outStr}");
-                lock (s_neutralizedAdapters)
+                lock (t_neutralizedAdapters)
                 {
-                    s_neutralizedAdapters.Add(name);
+                    _ = t_neutralizedAdapters.Add(name);
                 }
             }
         }
@@ -1102,14 +1102,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private static async Task RestoreNeutralizedAdaptersAsync()
     {
         List<string> adaptersToRestore;
-        lock (s_neutralizedAdapters)
+        lock (t_neutralizedAdapters)
         {
-            if (s_neutralizedAdapters.Count == 0)
+            if (t_neutralizedAdapters.Count == 0)
             {
                 return;
             }
-            adaptersToRestore = [.. s_neutralizedAdapters];
-            s_neutralizedAdapters.Clear();
+            adaptersToRestore = [.. t_neutralizedAdapters];
+            t_neutralizedAdapters.Clear();
         }
 
         foreach (var name in adaptersToRestore)
@@ -1280,7 +1280,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             _ = await RunCmdAsync("route", $"delete {targetIp} mask 255.255.255.255");
-            var (exitCode, output) = await RunCmdAsync("route", $"add {targetIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
+            var (exitCode, _) = await RunCmdAsync("route", $"add {targetIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
             Shared.Logging.AppLogger.Log($"[ROUTE PIN] Physical host route for {targetIp} via {gw} (ifIndex {physicalIfIndex}, metric 1): exitCode={exitCode}");
             if (exitCode != 0 && physicalIfIndex > 0)
             {
