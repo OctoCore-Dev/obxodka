@@ -700,7 +700,11 @@ public sealed partial class GrpcTransport(
         if (!IsConnected)
         {
             Debug.WriteLine($"[GRPC-TX-DROP] Cannot send {length}B: Not connected.");
-            ArrayPool<byte>.Shared.Return(packet);
+            try
+            {
+                ArrayPool<byte>.Shared.Return(packet);
+            }
+            catch { }
             return;
         }
 
@@ -710,12 +714,20 @@ public sealed partial class GrpcTransport(
         if (primaryChannel is null)
         {
             Debug.WriteLine($"[GRPC-TX-DROP] Primary channel #{primaryRay} is null for {length}B packet.");
-            ArrayPool<byte>.Shared.Return(packet);
+            try
+            {
+                ArrayPool<byte>.Shared.Return(packet);
+            }
+            catch { }
             return;
         }
 
         var packed = Obfuscator.Pack(packet, length, out var totalLength, _serverUsesObfsMasking);
-        ArrayPool<byte>.Shared.Return(packet);
+        try
+        {
+            ArrayPool<byte>.Shared.Return(packet);
+        }
+        catch { }
 
         byte[]? dup = null;
         var secondaryRay = -1;
