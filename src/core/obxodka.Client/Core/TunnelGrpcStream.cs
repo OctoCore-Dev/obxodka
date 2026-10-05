@@ -100,7 +100,7 @@ public sealed partial class TunnelGrpcStream(AsyncDuplexStreamingCall<TunnelPack
                     return;
                 }
 
-                var packet = new TunnelPacket { Data = UnsafeByteOperations.UnsafeWrap(buffer) };
+                var packet = new TunnelPacket { Data = ByteString.CopyFrom(buffer.Span) };
                 await _call.RequestStream.WriteAsync(packet, cancellationToken).ConfigureAwait(false);
             }
             finally

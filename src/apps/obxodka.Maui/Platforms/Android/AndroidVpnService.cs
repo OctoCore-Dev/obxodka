@@ -428,7 +428,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
                         }
 
-                        if (verified || OctopusEngine.Current.IsConnected)
+                        if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                         {
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();

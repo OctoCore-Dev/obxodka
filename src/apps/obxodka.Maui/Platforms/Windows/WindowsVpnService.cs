@@ -86,7 +86,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
                     await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
                     var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
-                    if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
+                    if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                     {
                         OctopusEngine.Current.ResetTrafficCounters();
                         OctopusEngine.Current.ArmTrafficWatchdog();
@@ -139,7 +139,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.Current.RegisterServerEndpoint(newIp);
                             await OctopusEngine.Current.ReconnectAsync(newIp, newPort);
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
-                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
+                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
                                 OctopusEngine.Current.ResetTrafficCounters();
                                 OctopusEngine.Current.ArmTrafficWatchdog();
@@ -203,7 +203,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
                             await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
-                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0 || OctopusEngine.Current.IsConnected)
+                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
                                 UpdateState(AppVpnState.Connected);
                                 return;
@@ -423,19 +423,16 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
                             OnLogUpdated?.Invoke("Проверка готовности туннеля (RX)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000), _cts.Token);
-                            if (verified)
-                            {
-                                OnLogUpdated?.Invoke("Связь подтверждена! Активация туннеля...");
-                            }
-                            else if (OctopusEngine.Current.TotalBytesReceived > 0)
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(6000), _cts.Token);
+                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
                                 OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Активация...");
                             }
                             else
                             {
-                                Debug.WriteLine($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent}, RX={OctopusEngine.Current.TotalBytesReceived}), proceeding to activate routes.");
-                                OnLogUpdated?.Invoke($"Туннель запущен ({OctopusEngine.Current.ActiveProtocol}). Активация...");
+                                Debug.WriteLine($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent}, RX=0). Rejecting dead connection.");
+                                OnLogUpdated?.Invoke($"Нет входящего трафика от сервера (0 RX). Переподключение ({attempt}/2)...");
+                                throw new InvalidOperationException("Сервер не отвечает на тестовые пакеты (0 RX).");
                             }
 
                             OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
