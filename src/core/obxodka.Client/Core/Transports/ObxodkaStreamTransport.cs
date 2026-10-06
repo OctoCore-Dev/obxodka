@@ -56,7 +56,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
             KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
             EnableMultipleHttp2Connections = true,
-            InitialHttp2StreamWindowSize = 2097152,
+            InitialHttp2StreamWindowSize = 4194304,
             SslOptions = new SslClientAuthenticationOptions
             {
                 TargetHost = targetHost,
@@ -69,7 +69,9 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             {
                 var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
                 {
-                    NoDelay = true
+                    NoDelay = true,
+                    ReceiveBufferSize = 2 * 1024 * 1024,
+                    SendBufferSize = 2 * 1024 * 1024
                 };
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
                 OnSocketCreated?.Invoke(socket);
@@ -140,13 +142,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
                     try
                     {
-                        var isPing = length == 8 && packet[0] == 0xAA && packet[1] == 0xBB;
+                        var isPing = length == 10 && packet[0] == 0xAA && packet[1] == 0xBB;
                         var cmd = isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData;
-                        var frame = ObxodkaFraming.Pack(cmd, packet.AsSpan(0, length), out var totalLen, maxMtu: 1360);
+                        var payloadSpan = isPing ? packet.AsSpan(2, 8) : packet.AsSpan(0, length);
+                        var frame = ObxodkaFraming.Pack(cmd, payloadSpan, out var totalLen, maxMtu: 1360);
                         try
                         {
                             await stream.WriteAsync(frame.AsMemory(0, totalLen), token).ConfigureAwait(false);
-                            await stream.FlushAsync(token).ConfigureAwait(false);
                         }
                         finally
                         {
@@ -157,6 +159,35 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     {
                         ArrayPool<byte>.Shared.Return(packet);
                     }
+
+                    while (_txQueue.TryDequeue(out var nextItem))
+                    {
+                        var (nextPkt, nextLen) = nextItem;
+                        if (nextPkt != null && nextLen > 0)
+                        {
+                            try
+                            {
+                                var nextIsPing = nextLen == 10 && nextPkt[0] == 0xAA && nextPkt[1] == 0xBB;
+                                var nextCmd = nextIsPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData;
+                                var nextSpan = nextIsPing ? nextPkt.AsSpan(2, 8) : nextPkt.AsSpan(0, nextLen);
+                                var nextFrame = ObxodkaFraming.Pack(nextCmd, nextSpan, out var nextTotalLen, maxMtu: 1360);
+                                try
+                                {
+                                    await stream.WriteAsync(nextFrame.AsMemory(0, nextTotalLen), token).ConfigureAwait(false);
+                                }
+                                finally
+                                {
+                                    ArrayPool<byte>.Shared.Return(nextFrame);
+                                }
+                            }
+                            finally
+                            {
+                                ArrayPool<byte>.Shared.Return(nextPkt);
+                            }
+                        }
+                    }
+
+                    await stream.FlushAsync(token).ConfigureAwait(false);
                 }
             });
 
@@ -178,31 +209,20 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     break;
                 }
 
-                var payload = ArrayPool<byte>.Shared.Rent(payloadLen);
+                var remLen = totalLen - ObxodkaFraming.HeaderSize;
+                var frameBuf = ArrayPool<byte>.Shared.Rent(remLen);
                 try
                 {
-                    if (payloadLen > 0)
+                    if (remLen > 0)
                     {
-                        await responseStream.ReadExactlyAsync(payload.AsMemory(0, payloadLen), ct).ConfigureAwait(false);
+                        await responseStream.ReadExactlyAsync(frameBuf.AsMemory(0, remLen), ct).ConfigureAwait(false);
                     }
 
-                    var paddingLen = totalLen - ObxodkaFraming.HeaderSize - payloadLen;
-                    if (paddingLen > 0)
-                    {
-                        var trash = ArrayPool<byte>.Shared.Rent(paddingLen);
-                        try
-                        {
-                            await responseStream.ReadExactlyAsync(trash.AsMemory(0, paddingLen), ct).ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(trash);
-                        }
-                    }
+                    var payloadSpan = frameBuf.AsSpan(0, payloadLen);
 
                     if (command == ObxodkaFraming.CmdHandshakeResponse)
                     {
-                        var info = Encoding.UTF8.GetString(payload.AsSpan(0, payloadLen));
+                        var info = Encoding.UTF8.GetString(payloadSpan);
                         if (info.StartsWith("IP:", StringComparison.OrdinalIgnoreCase))
                         {
                             var parts = info[3..].Split('|');
@@ -219,16 +239,18 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         var count = Interlocked.Increment(ref _downlinkPacketCount);
                         if (count <= 3 || count % 100 == 0)
                         {
-                            var proto = payloadLen >= 20 ? ((payload[0] >> 4) == 4 ? $"IPv4(proto={payload[9]})" : "IPv6") : "NonIP";
+                            var proto = payloadLen >= 20 ? ((payloadSpan[0] >> 4) == 4 ? $"IPv4(proto={payloadSpan[9]})" : "IPv6") : "NonIP";
                             Shared.Logging.AppLogger.Log($"[OBXODKA-RX] Downlink packet #{count}: len={payloadLen}B, type={proto}");
                         }
-                        OnPacketReceived?.Invoke(payload, payloadLen);
+                        var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
+                        payloadSpan.CopyTo(rented);
+                        OnPacketReceived?.Invoke(rented, payloadLen);
                     }
                     else if (command == ObxodkaFraming.CmdPong)
                     {
                         if (payloadLen >= 8)
                         {
-                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(0, 8));
+                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(payloadSpan[..8]);
                             var now = Stopwatch.GetTimestamp();
                             var elapsedMs = (long)((now - sendTs) * 1000.0 / Stopwatch.Frequency);
                             if (elapsedMs is >= 0 and < 5000)
@@ -245,7 +267,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.Return(payload);
+                    ArrayPool<byte>.Shared.Return(frameBuf);
                 }
             }
         }
@@ -264,12 +286,14 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     private async Task PingLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2.5));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2.0));
         while (!ct.IsCancellationRequested && await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
         {
-            var pingBuf = ArrayPool<byte>.Shared.Rent(8);
-            BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(0, 8), Stopwatch.GetTimestamp());
-            if (!_txQueue.TryEnqueue(pingBuf, 8))
+            var pingBuf = ArrayPool<byte>.Shared.Rent(10);
+            pingBuf[0] = 0xAA;
+            pingBuf[1] = 0xBB;
+            BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(2, 8), Stopwatch.GetTimestamp());
+            if (!_txQueue.TryEnqueue(pingBuf, 10))
             {
                 ArrayPool<byte>.Shared.Return(pingBuf);
             }
@@ -292,9 +316,11 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     public Task SendPingProbeAsync()
     {
-        var pingBuf = ArrayPool<byte>.Shared.Rent(8);
-        BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(0, 8), Stopwatch.GetTimestamp());
-        if (!_txQueue.TryEnqueue(pingBuf, 8))
+        var pingBuf = ArrayPool<byte>.Shared.Rent(10);
+        pingBuf[0] = 0xAA;
+        pingBuf[1] = 0xBB;
+        BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(2, 8), Stopwatch.GetTimestamp());
+        if (!_txQueue.TryEnqueue(pingBuf, 10))
         {
             ArrayPool<byte>.Shared.Return(pingBuf);
         }
