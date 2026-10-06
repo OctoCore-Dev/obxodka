@@ -1,14 +1,14 @@
-# Руководство по участию в разработке (Contributing to Obxodka)
+# 🛠️ Руководство по участию в разработке (Contributing to Obxodka)
 
-Спасибо за интерес к развитию проекта **Obxodka**! Мы рады любому вкладу: от отчётов об ошибках и предложений новых функций до оптимизации кода и улучшения документации.
+Спасибо за интерес к развитию проекта **Obxodka**! Мы рады любому конструктивному вкладу: от отчётов об ошибках и предложений новых функций до оптимизации низкоуровневого кода, скинов и улучшения документации.
 
 ---
 
-## 🛠️ Требования для локальной разработки
+## 💻 Требования для локальной разработки
 
-* **.NET 10 SDK** (или новее)
-* **Visual Studio 2026 / Rider / VS Code** с поддержкой .NET MAUI
-* Рабочие нагрузки: `maui-windows`, `maui-android`
+* **.NET 10 SDK** (версия 10.0.100 или новее)
+* **Visual Studio 2026 / Rider / VS Code** с расширениями для C# 14 и .NET MAUI
+* Установленные рабочие нагрузки MAUI: `maui-windows`, `maui-android`
 
 ```powershell
 # Установка необходимых рабочих нагрузок MAUI
@@ -17,30 +17,40 @@ dotnet workload install maui-windows maui-android
 
 ---
 
-## 🚀 Как отправить свой вклад (Workflow)
+## 🚀 Процесс разработки и сборки (Workflow)
 
-1. **Форкните** репозиторий на GitHub.
-2. Создайте свою ветку функции от `main`:
+1. **Форкните** репозиторий [OctoCore-Dev/obxodka](https://github.com/OctoCore-Dev/obxodka) на GitHub.
+2. Создайте свою ветку от `develop`:
    ```bash
    git checkout -b feature/awesome-feature
    ```
-3. Внесите изменения и убедитесь, что проект компилируется без ошибок:
+3. Соберите проект:
    ```powershell
-   dotnet build obxodka.csproj
+   # Сборка MAUI клиента под Windows
+   dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Debug
+
+   # Или сборка корневого решения
+   dotnet build obxodka.sln -c Debug
    ```
 4. Запустите модульные тесты:
    ```powershell
-   dotnet test tests/obxodka.Tests/obxodka.Tests.csproj
+   dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
    ```
-5. Закоммитьте изменения с понятным сообщением:
+   *Все 311+ тестов должны успешно проходить без ошибок и предупреждений.*
+5. Убедитесь в чистоте кода:
+   * **0 предупреждений компилятора (0 warnings, 0 errors)**.
+   * Соблюдение правил архитектурной изоляции и Zero-Allocation в горячих путях обработки пакетов (`ArrayPool<byte>.Shared`).
+6. Закоммитьте изменения:
    ```bash
    git commit -m "feat: добавлена поддержка функции X"
    ```
-6. Отправьте ветку в свой форк:
-   ```bash
-   git push origin feature/awesome-feature
-   ```
-7. Откройте **Pull Request** в репозиторий `OctoCore-Dev/obxodka`.
+7. Отправьте ветку в свой форк и создайте **Pull Request** в ветку `develop` репозитория `OctoCore-Dev/obxodka`.
+
+---
+
+## ⚖️ Соглашение и лицензия
+
+Отправляя код в проект Obxodka, вы подтверждаете согласие с условиями [Лицензии (Source-Available)](../LICENSE), [Политикой конфиденциальности](../PRIVACY_POLICY.md) и [Условиями использования](../TERMS_OF_SERVICE.md).
 
 ---
 
@@ -53,8 +63,8 @@ dotnet workload install maui-windows maui-android
 
 ---
 
-## 💬 Связь с разработчиками
+## 💬 Связь с командой
 
-По любым вопросам или предложениям вы можете написать нам:
-📧 **contact@octocore.dev**
-🌐 **[obxodka.one](https://obxodka.one)**
+* 📧 **Email:** [contact@octocore.dev](mailto:contact@octocore.dev)
+* 🌐 **Сайт:** [https://obxodka.one](https://obxodka.one)
+* 💬 **Обсуждения:** [GitHub Discussions](https://github.com/OctoCore-Dev/obxodka/discussions)
