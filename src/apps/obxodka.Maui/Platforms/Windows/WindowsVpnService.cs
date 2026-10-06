@@ -29,10 +29,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
     public static SplitTunnelPolicy SplitTunnelPolicy { get; } = new();
 
-    private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
-        Channel.CreateUnbounded<(byte[] buffer, int length)>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
-
     public WindowsVpnService()
     {
         _ = Task.Run(CleanupStaleRoutesAsync);
@@ -578,7 +574,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             continue;
                         }
 
-                        _ = OctopusEngine.Current.SendPacketFromPoolAsync(buf, len);
+                        OctopusEngine.Current.SendPacketFromPool(buf, len);
                     }
                 }
             }
@@ -593,41 +589,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         };
         txThread.Start();
 
-        var rxThread = new Thread(() =>
-        {
-            Thread.CurrentThread.Priority = ThreadPriority.Highest;
-            Thread.CurrentThread.Name = "Wintun-Downloader";
-            var reader = _downstreamChannel.Reader;
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    while (reader.TryRead(out var item))
-                    {
-                        _adapter?.SendPacket(item.buffer, item.length);
-                        ArrayPool<byte>.Shared.Return(item.buffer);
-                    }
-
-                    if (reader.WaitToReadAsync(ct).AsTask().Result)
-                    {
-                        continue;
-                    }
-                }
-            }
-            catch { }
-            finally
-            {
-                while (reader.TryRead(out var item))
-                {
-                    ArrayPool<byte>.Shared.Return(item.buffer);
-                }
-            }
-        })
-        {
-            IsBackground = true
-        };
-        rxThread.Start();
-
         try
         {
             await tcs.Task;
@@ -638,8 +599,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private void HandlePacketFromVpn(byte[] data, int length) =>
-        _downstreamChannel.Writer.TryWrite((data, length));
+    private void HandlePacketFromVpn(byte[] data, int length)
+    {
+        try
+        {
+            _adapter?.SendPacket(data, length);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(data);
+        }
+    }
 
     private void UpdateState(AppVpnState state)
     {

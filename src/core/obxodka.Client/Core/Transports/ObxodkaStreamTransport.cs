@@ -1,3 +1,5 @@
+using System.Threading.Channels;
+
 namespace obxodka.Core.Transports;
 
 public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configuredSni = null) : IVpnTransport
@@ -10,7 +12,9 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     public event Action? OnConnectionDropped;
     public static event Action<Socket>? OnSocketCreated;
 
-    private readonly PriorityPacketQueue _txQueue = new(3000);
+    private readonly Channel<(byte[] buffer, int length)> _txChannel =
+        Channel.CreateUnbounded<(byte[] buffer, int length)>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly TaskCompletionSource<(string ip, string ip6)> _ipTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly string? _configuredSni = configuredSni;
     private readonly int _serverPort = serverPort;
@@ -69,9 +73,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             {
                 var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
                 {
-                    NoDelay = true,
-                    ReceiveBufferSize = 2 * 1024 * 1024,
-                    SendBufferSize = 2 * 1024 * 1024
+                    NoDelay = true
                 };
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
                 OnSocketCreated?.Invoke(socket);
@@ -132,58 +134,35 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     ArrayPool<byte>.Shared.Return(hsFrame);
                 }
 
-                while (!token.IsCancellationRequested)
+                var reader = _txChannel.Reader;
+                while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
                 {
-                    var (packet, length) = await _txQueue.DequeueAsync(token).ConfigureAwait(false);
-                    if (packet == null || length <= 0)
+                    while (reader.TryRead(out var item))
                     {
-                        continue;
-                    }
+                        var (packet, length) = item;
+                        if (packet == null || length <= 0)
+                        {
+                            continue;
+                        }
 
-                    try
-                    {
-                        var isPing = length == 10 && packet[0] == 0xAA && packet[1] == 0xBB;
-                        var cmd = isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData;
-                        var payloadSpan = isPing ? packet.AsSpan(2, 8) : packet.AsSpan(0, length);
-                        var frame = ObxodkaFraming.Pack(cmd, payloadSpan, out var totalLen, maxMtu: 1360);
                         try
                         {
-                            await stream.WriteAsync(frame.AsMemory(0, totalLen), token).ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(frame);
-                        }
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(packet);
-                    }
-
-                    while (_txQueue.TryDequeue(out var nextItem))
-                    {
-                        var (nextPkt, nextLen) = nextItem;
-                        if (nextPkt != null && nextLen > 0)
-                        {
+                            var isPing = length == 10 && packet[0] == 0xAA && packet[1] == 0xBB;
+                            var cmd = isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData;
+                            var payloadSpan = isPing ? packet.AsSpan(2, 8) : packet.AsSpan(0, length);
+                            var frame = ObxodkaFraming.Pack(cmd, payloadSpan, out var totalLen, maxMtu: 1360);
                             try
                             {
-                                var nextIsPing = nextLen == 10 && nextPkt[0] == 0xAA && nextPkt[1] == 0xBB;
-                                var nextCmd = nextIsPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData;
-                                var nextSpan = nextIsPing ? nextPkt.AsSpan(2, 8) : nextPkt.AsSpan(0, nextLen);
-                                var nextFrame = ObxodkaFraming.Pack(nextCmd, nextSpan, out var nextTotalLen, maxMtu: 1360);
-                                try
-                                {
-                                    await stream.WriteAsync(nextFrame.AsMemory(0, nextTotalLen), token).ConfigureAwait(false);
-                                }
-                                finally
-                                {
-                                    ArrayPool<byte>.Shared.Return(nextFrame);
-                                }
+                                await stream.WriteAsync(frame.AsMemory(0, totalLen), token).ConfigureAwait(false);
                             }
                             finally
                             {
-                                ArrayPool<byte>.Shared.Return(nextPkt);
+                                ArrayPool<byte>.Shared.Return(frame);
                             }
+                        }
+                        finally
+                        {
+                            ArrayPool<byte>.Shared.Return(packet);
                         }
                     }
 
@@ -293,7 +272,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             pingBuf[0] = 0xAA;
             pingBuf[1] = 0xBB;
             BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(2, 8), Stopwatch.GetTimestamp());
-            if (!_txQueue.TryEnqueue(pingBuf, 10))
+            if (!_txChannel.Writer.TryWrite((pingBuf, 10)))
             {
                 ArrayPool<byte>.Shared.Return(pingBuf);
             }
@@ -308,7 +287,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             return;
         }
 
-        if (!_txQueue.TryEnqueue(packet, length))
+        if (!_txChannel.Writer.TryWrite((packet, length)))
         {
             ArrayPool<byte>.Shared.Return(packet);
         }
@@ -320,7 +299,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         pingBuf[0] = 0xAA;
         pingBuf[1] = 0xBB;
         BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(2, 8), Stopwatch.GetTimestamp());
-        if (!_txQueue.TryEnqueue(pingBuf, 10))
+        if (!_txChannel.Writer.TryWrite((pingBuf, 10)))
         {
             ArrayPool<byte>.Shared.Return(pingBuf);
         }
@@ -343,8 +322,14 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         _disposed = true;
         Volatile.Write(ref _connected, false);
         _cts?.Cancel();
-        _txQueue.DrainAndReturn(b => ArrayPool<byte>.Shared.Return(b));
-        _txQueue.Dispose();
+        _ = _txChannel.Writer.TryComplete();
+        while (_txChannel.Reader.TryRead(out var item))
+        {
+            if (item.buffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(item.buffer);
+            }
+        }
         _httpClient?.Dispose();
         _handler?.Dispose();
         _cts?.Dispose();

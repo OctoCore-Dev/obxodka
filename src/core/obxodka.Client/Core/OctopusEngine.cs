@@ -530,16 +530,21 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    public Task SendPacketFromPoolAsync(byte[] inputBuf, int length)
+    public void SendPacketFromPool(byte[] inputBuf, int length)
     {
         if (!IsConnected || _transport is null || IsServerDestination(inputBuf.AsSpan(0, length), length))
         {
             ArrayPool<byte>.Shared.Return(inputBuf);
-            return Task.CompletedTask;
+            return;
         }
 
         _ = Interlocked.Add(ref _totalBytesSent, length);
         _transport.SendPacketFromPool(inputBuf, length);
+    }
+
+    public Task SendPacketFromPoolAsync(byte[] inputBuf, int length)
+    {
+        SendPacketFromPool(inputBuf, length);
         return Task.CompletedTask;
     }
 

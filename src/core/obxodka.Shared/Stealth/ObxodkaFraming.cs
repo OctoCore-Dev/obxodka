@@ -52,8 +52,13 @@ public static class ObxodkaFraming
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int CalculatePaddingLength(int payloadLength, int maxMtu = 1360)
+    public static int CalculatePaddingLength(byte command, int payloadLength, int maxMtu = 1360)
     {
+        if (command is CmdData or CmdPong)
+        {
+            return 0;
+        }
+
         if (payloadLength <= 100)
         {
             return Random.Shared.Next(32, 192);
@@ -69,9 +74,13 @@ public static class ObxodkaFraming
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CalculatePaddingLength(int payloadLength, int maxMtu = 1360) =>
+        CalculatePaddingLength(CmdData, payloadLength, maxMtu);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] Pack(byte command, ReadOnlySpan<byte> payload, out int totalLen, int maxMtu = 1360)
     {
-        var paddingLen = CalculatePaddingLength(payload.Length, maxMtu);
+        var paddingLen = CalculatePaddingLength(command, payload.Length, maxMtu);
         totalLen = HeaderSize + payload.Length + paddingLen;
 
         var buffer = ArrayPool<byte>.Shared.Rent(totalLen);
