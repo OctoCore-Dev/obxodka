@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/apps/">
-    <Project Path="src/apps/obxodka.Maui/obxodka.Maui.csproj" />
+    <Project Path="src/apps/obxodka.Maui/obxodka.Maui.csproj">
+      <Deploy Solution="Debug|*" />
+    </Project>
     <Project Path="src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj" />
   </Folder>
   <Folder Name="/core/">

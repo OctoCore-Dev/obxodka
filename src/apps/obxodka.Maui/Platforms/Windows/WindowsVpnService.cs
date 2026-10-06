@@ -22,7 +22,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private readonly List<string> _currentServerIpsToRoute = [];
     private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
-    private static bool t_networkSettingsBoosted;
     private List<VpnServerDto> _fallbackServers = [];
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
@@ -53,7 +52,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", $"delete {AppConfig.DirectServerIp} mask 255.255.255.255");
         await DisableDnsLeakProtectionAsync();
-        await RestoreNeutralizedAdaptersAsync();
     }
 
     private void HandleDeadConnection()
@@ -292,8 +290,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             _currentServerPort = serverPort;
             _isExplicitlyStopped = false;
 
-            await NeutralizeConflictingAdaptersAsync(OnLogUpdated);
-
             try
             {
                 LogNetworkDiagnostics(OnLogUpdated);
@@ -454,7 +450,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true);
                             OnLogUpdated?.Invoke("Включение защиты от утечек DNS...");
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
-                            ApplyExtremeNetworkBoost();
 
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
@@ -995,7 +990,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         if (c.OperationalStatus != OperationalStatus.Up ||
             c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-            c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+            c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
+            c.Name.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
+            c.Description.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
+            c.Description.Contains("Famatech", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -1005,7 +1003,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         var isConflicting = desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
                             desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
                             desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
-                            desc.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
@@ -1013,8 +1010,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("VPN", StringComparison.OrdinalIgnoreCase);
+                            name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase);
 
         if (!isConflicting)
         {
@@ -1050,69 +1046,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         return null;
     }
 
-    private static readonly HashSet<string> t_neutralizedAdapters = [];
-
-    private static async Task NeutralizeConflictingAdaptersAsync(Action<string>? onLogUpdated)
-    {
-        try
-        {
-            foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (!IsConflictingAdapter(c))
-                {
-                    continue;
-                }
-
-                var name = c.Name;
-                onLogUpdated?.Invoke($"Отключение остаточного адаптера '{name}'...");
-                var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=disabled", timeoutMs: 3000);
-                if (code != 0)
-                {
-                    _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Disable-NetAdapter -Name '{name}' -Confirm:$false -ErrorAction SilentlyContinue\"", timeoutMs: 3000);
-                }
-                Debug.WriteLine($"[NET-NEUTRALIZE] Disabled '{name}': exitCode={code}, out={outStr}");
-                lock (t_neutralizedAdapters)
-                {
-                    _ = t_neutralizedAdapters.Add(name);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[NET-NEUTRALIZE-ERR] {ex.Message}");
-        }
-    }
-
-    private static async Task RestoreNeutralizedAdaptersAsync()
-    {
-        List<string> adaptersToRestore;
-        lock (t_neutralizedAdapters)
-        {
-            if (t_neutralizedAdapters.Count == 0)
-            {
-                return;
-            }
-            adaptersToRestore = [.. t_neutralizedAdapters];
-            t_neutralizedAdapters.Clear();
-        }
-
-        foreach (var name in adaptersToRestore)
-        {
-            try
-            {
-                var (code, outStr) = await RunCmdAsync("netsh", $"interface set interface name=\"{name}\" admin=enabled", timeoutMs: 3000);
-                if (code != 0)
-                {
-                    _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Enable-NetAdapter -Name '{name}' -Confirm:$false -ErrorAction SilentlyContinue\"", timeoutMs: 3000);
-                }
-                Debug.WriteLine($"[NET-RESTORE] Re-enabled '{name}': exitCode={code}, out={outStr}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[NET-RESTORE-ERR] {name}: {ex.Message}");
-            }
-        }
-    }
 
     private static void LogNetworkDiagnostics(Action<string>? onLogUpdated = null)
     {
@@ -1414,8 +1347,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             if (!string.IsNullOrEmpty(adapterName))
             {
-                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50", timeoutMs: 1500));
-                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
             }
@@ -1498,7 +1429,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _isExplicitlyStopped = true;
         _cts?.Cancel();
 
-        if (CurrentState == AppVpnState.Disconnected && _adapter == null && !t_networkSettingsBoosted)
+        if (CurrentState == AppVpnState.Disconnected && _adapter == null)
         {
             await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
             return;
@@ -1537,8 +1468,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     Debug.WriteLine("[DRIVER] Wintun adapter disposed.");
                 }
 
-                await RestoreOriginalNetworkSettingsAsync();
-                await RestoreNeutralizedAdaptersAsync();
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
                 OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");
@@ -1560,47 +1489,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private static void ApplyExtremeNetworkBoost()
-    {
-        t_networkSettingsBoosted = true;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                _ = await RunCmdAsync("netsh", "int tcp set global autotuninglevel=experimental");
-                _ = await RunCmdAsync("netsh", "int tcp set global ecncapability=enabled");
-                _ = await RunCmdAsync("netsh", "int tcp set global rss=enabled");
-                _ = await RunCmdAsync("netsh", "int tcp set global rsc=enabled");
-                _ = await RunCmdAsync("netsh", "int tcp set global fastopen=enabled");
-                _ = await RunCmdAsync("netsh", "int tcp set global timestamps=allowed");
-                _ = await RunCmdAsync("netsh", "int tcp set global nonsackrttresiliency=disabled");
-                _ = await RunCmdAsync("netsh", "int tcp set heuristics disabled");
-                _ = await RunCmdAsync("netsh", "int tcp set supplemental template=internet congestionprovider=ctcp");
-                Debug.WriteLine("[BOOST] Windows Network Stack accelerated safely to high performance.");
-            }
-            catch { }
-        });
-    }
-
-    private static async Task RestoreOriginalNetworkSettingsAsync()
-    {
-        if (!t_networkSettingsBoosted)
-        {
-            return;
-        }
-
-        t_networkSettingsBoosted = false;
-        try
-        {
-            _ = await Task.WhenAll(
-                RunCmdAsync("netsh", "int tcp set global autotuninglevel=normal"),
-                RunCmdAsync("netsh", "int tcp set global ecncapability=disabled"),
-                RunCmdAsync("netsh", "int tcp set heuristics default")
-            ).ConfigureAwait(false);
-            Debug.WriteLine("[BOOST] Windows Network Stack restored to default.");
-        }
-        catch { }
-    }
 
     private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
     {
@@ -1622,31 +1510,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 addTasks.Add(RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {tunGateway} metric 1{ifArg}"));
             }
-            await Task.WhenAll(addTasks);
-
-            try
-            {
-                using var key = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient");
-                key?.SetValue("DisableSmartNameResolution", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                key?.SetValue("EnableMulticast", 0, Microsoft.Win32.RegistryValueKind.DWord);
-            }
-            catch { }
-
-            try
-            {
-                using var dcacheKey = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"System\CurrentControlSet\Services\Dnscache\Parameters");
-                dcacheKey?.SetValue("DisableParallelAandAAAA", 1, Microsoft.Win32.RegistryValueKind.DWord);
-            }
-            catch { }
-
-            _ = await RunCmdAsync("powershell", "-NoProfile -ExecutionPolicy Bypass -Command \"try { Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'Obxodka-DNS' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue } catch { }; try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1','8.8.8.8' -DisplayName 'Obxodka-DNS' -ErrorAction Stop } catch { }\"");
-
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\"");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\"");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\"");
-            _ = await RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\"");
-
-            _ = await RunCmdAsync("ipconfig", "/flushdns");
+            await Task.WhenAll(addTasks).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1663,31 +1527,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 delTasks.Add(RunCmdAsync("route", $"delete {dns} mask 255.255.255.255"));
             }
-
-            delTasks.Add(RunCmdAsync("powershell", "-NoProfile -ExecutionPolicy Bypass -Command \"try { Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'Obxodka-DNS' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue } catch { }\""));
-            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN\""));
-            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi\""));
-            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-LAN-TCP\""));
-            delTasks.Add(RunCmdAsync("netsh", "advfirewall firewall delete rule name=\"Obxodka-DnsLeak-Block-WiFi-TCP\""));
-
             await Task.WhenAll(delTasks).ConfigureAwait(false);
-
-            try
-            {
-                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
-                key?.DeleteValue("DisableSmartNameResolution", false);
-                key?.DeleteValue("EnableMulticast", false);
-            }
-            catch { }
-
-            try
-            {
-                using var dcacheKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\Dnscache\Parameters", true);
-                dcacheKey?.DeleteValue("DisableParallelAandAAAA", false);
-            }
-            catch { }
-
-            _ = Task.Run(() => RunCmdAsync("ipconfig", "/flushdns"));
         }
         catch (Exception ex)
         {
