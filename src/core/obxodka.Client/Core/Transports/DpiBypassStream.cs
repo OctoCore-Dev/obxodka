@@ -20,12 +20,27 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     public override void Flush() => _innerStream.Flush();
     public override Task FlushAsync(CancellationToken cancellationToken) => _innerStream.FlushAsync(cancellationToken);
 
-    public override int Read(byte[] buffer, int offset, int count) => _innerStream.Read(buffer, offset, count);
-    public override int Read(Span<byte> buffer) => _innerStream.Read(buffer);
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+    public override int Read(Span<byte> buffer)
+    {
+        var read = _innerStream.Read(buffer);
+        if (read > 0)
+        {
+            Shared.Logging.AppLogger.Log($"[TCP-RAW-RX] Socket read {read} bytes from network.");
+        }
+        return read;
+    }
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-        _innerStream.ReadAsync(buffer, offset, count, cancellationToken);
-    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
-        _innerStream.ReadAsync(buffer, cancellationToken);
+        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        var read = await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        if (read > 0)
+        {
+            Shared.Logging.AppLogger.Log($"[TCP-RAW-RX] Socket read {read} bytes from network.");
+        }
+        return read;
+    }
 
     public override long Seek(long offset, SeekOrigin origin) => _innerStream.Seek(offset, origin);
     public override void SetLength(long value) => _innerStream.SetLength(value);

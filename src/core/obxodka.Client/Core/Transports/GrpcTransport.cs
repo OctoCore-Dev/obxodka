@@ -556,6 +556,7 @@ public sealed partial class GrpcTransport(
                 if (packet is null)
                 {
                     Debug.WriteLine($"[GRPC-RX-EOF #{rayIndex}] Stream closed (null packet read).");
+                    Shared.Logging.AppLogger.LogWarning($"[GRPC-RX-EOF #{rayIndex}] Stream closed (null packet read). Lifetime: {pktsReceived} pkts, {bytesReceived} bytes.");
                     break;
                 }
 
@@ -611,6 +612,7 @@ public sealed partial class GrpcTransport(
                         {
                             var protoDesc = realLen >= 20 ? ((packet[0] >> 4) == 4 ? $"IPv4(proto={packet[9]})" : "IPv6") : "NonIP";
                             Debug.WriteLine($"[GRPC-RX-RAY#{rayIndex}] Packet #{pktsReceived}: {protoDesc}, len={realLen}B, totalRayBytes={bytesReceived}B");
+                            Shared.Logging.AppLogger.Log($"[GRPC-RX-RAY#{rayIndex}] Packet #{pktsReceived}: {protoDesc}, len={realLen}B, totalRayBytes={bytesReceived}B");
                         }
 
                         var isRealtimeRay = rayIndex == 0 || (_activeRays >= 4 && rayIndex == (_activeRays - 1));

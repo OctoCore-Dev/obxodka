@@ -302,10 +302,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 }
                 catch { }
 
-                if (cycle == 1 || cycle % 4 == 0)
-                {
-                    Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent Ping(0x99) + ICMP Echo + DNS Query probes to verify server downlink...");
-                }
+                Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent Ping(0x99) + ICMP Echo + DNS Query. TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
             }
 
             _ = Task.Run(SendProbesAsync, linkedCts.Token);

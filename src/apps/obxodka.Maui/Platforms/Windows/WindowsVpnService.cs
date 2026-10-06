@@ -425,8 +425,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke("Применение настроек сети...");
                             await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", ipv6);
 
+                            var (_, tcpPost) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetTCPConnection -RemoteAddress {candidateIp} -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State | Format-Table -AutoSize | Out-String\"");
+                            Shared.Logging.AppLogger.Log($"[POST-CONFIG TCP-STATE]\n{tcpPost.Trim()}");
+
+                            var (_, routePost) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0','{candidateIp}/32','100.64.0.0/10' -ErrorAction SilentlyContinue | Select-Object DestinationPrefix,NextHop,InterfaceIndex,RouteMetric | Format-Table -AutoSize | Out-String\"");
+                            Shared.Logging.AppLogger.Log($"[POST-CONFIG ROUTE-STATE]\n{routePost.Trim()}");
+
                             OctopusEngine.Current.ResetTrafficCounters();
-                            _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
 
                             OnLogUpdated?.Invoke("Проверка готовности туннеля (RX)...");
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(6000), _cts.Token);
@@ -434,10 +439,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             {
                                 Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Downlink verified (RX={OctopusEngine.Current.TotalBytesReceived} B)! Activating routes and elevating adapter priority.");
                                 OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Активация...");
+                                _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else
                             {
-                                Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent} B, RX=0 B). No incoming packets over tunnel. Rejecting dead connection to prevent hijacking default routes.");
+                                var (_, tcpFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetTCPConnection -RemoteAddress {candidateIp} -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State | Format-Table -AutoSize | Out-String\"");
+                                Shared.Logging.AppLogger.LogError($"[PROBE-FAIL TCP-STATE]\n{tcpFail.Trim()}");
+
+                                var (_, routeFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0','{candidateIp}/32','100.64.0.0/10' -ErrorAction SilentlyContinue | Select-Object DestinationPrefix,NextHop,InterfaceIndex,RouteMetric | Format-Table -AutoSize | Out-String\"");
+                                Shared.Logging.AppLogger.LogError($"[PROBE-FAIL ROUTE-STATE]\n{routeFail.Trim()}");
+
+                                Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B). No incoming packets over tunnel. Rejecting dead connection to prevent hijacking default routes.");
                                 OnLogUpdated?.Invoke($"Нет входящего трафика от сервера (0 RX). Переподключение ({attempt}/2)...");
                                 throw new InvalidOperationException("Сервер не отвечает на тестовые пакеты (0 RX).");
                             }
@@ -661,17 +673,19 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
+                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
+                var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
+                Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
                 {
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set address name=\"{adapterName}\" address={ipv6} store=active");
+                    var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
+                    Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
                 }
 
-                Debug.WriteLine("[NET CONFIG] Configured adapter via netsh successfully.");
+                Shared.Logging.AppLogger.Log("[NET CONFIG] Configured adapter via netsh successfully.");
                 return;
             }
             await Task.Delay(100);
