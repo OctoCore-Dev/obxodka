@@ -25,7 +25,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     public event Action<byte[], int>? OnPacketReceived;
     public event Action<long>? OnPingUpdated;
     public event Action? OnConnectionDropped;
-    public static event Action<Socket>? OnSocketCreated;
+    public static Action<Socket>? OnSocketCreated { get; set; }
 
     private readonly Channel<(byte[] buffer, int length)>[] _txChannels =
     [
