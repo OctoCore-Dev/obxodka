@@ -13,6 +13,9 @@ on:
 permissions:
   contents: read
 
+env:
+  BUILD_CACHE_PATH: 'C:/BuildCache'
+
 jobs:
   # ==========================================
   # 🧪 ЭТАП 1: МОДУЛЬНЫЕ ТЕСТЫ (xUnit)
@@ -26,6 +29,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: 📁 Ensure Build Cache Directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "C:\BuildCache" -Force
 
       - name: 🌐 Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -80,6 +88,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: 📁 Ensure Build Cache Directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "C:\BuildCache" -Force
 
       - name: 🌐 Setup .NET 10
         uses: actions/setup-dotnet@v4

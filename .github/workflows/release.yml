@@ -32,6 +32,9 @@ on:
 permissions:
   contents: write
 
+env:
+  BUILD_CACHE_PATH: 'C:/BuildCache'
+
 jobs:
   # ==========================================
   # 🧪 ЭТАП 1: АВТОМАТИЧЕСКИЕ ТЕСТЫ И ВАЛИДАЦИЯ
@@ -45,6 +48,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: 📁 Ensure Build Cache Directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "C:\BuildCache" -Force
 
       - name: 🌐 Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -60,14 +68,12 @@ jobs:
           dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=detailed"
 
   # ==========================================
-  # 🤖 ЭТАП 2: СБОРКА И ДЕПЛОЙ ANDROID (GOOGLE PLAY)
+  # 🤖 ЭТАП 2: СБОРКА И АРТЕФАКТ ANDROID (AAB)
   # ==========================================
   build-android:
-    name: 🤖 Android AAB (Google Play)
+    name: 🤖 Android AAB Build
     needs: [run-tests]
     runs-on: ubuntu-latest
-    env:
-      PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
 
     steps:
       - name: 📥 Checkout Code
@@ -153,26 +159,13 @@ jobs:
           path: ${{ steps.find-aab.outputs.aab_path }}
           retention-days: 14
 
-      - name: 📲 Auto-Deploy to Google Play Store
-        if: ${{ env.PLAY_CONFIG_JSON != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
-          packageName: com.octocore.obxodka
-          releaseFiles: ${{ steps.find-aab.outputs.aab_path }}
-          track: ${{ inputs.android_track || 'production' }}
-          whatsNewDirectory: packaging/whatsnew
-          status: 'completed'
-
   # ==========================================
-  # 🪟 ЭТАП 3: СБОРКА И ДЕПЛОЙ WINDOWS (MICROSOFT STORE)
+  # 🪟 ЭТАП 3: СБОРКА И АРТЕФАКТ WINDOWS (MSIX)
   # ==========================================
   build-windows:
-    name: 🪟 Windows MSIX (Microsoft Store)
+    name: 🪟 Windows MSIX Build
     needs: [run-tests]
     runs-on: windows-latest
-    env:
-      STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
 
     steps:
       - name: 📥 Checkout Code
@@ -180,6 +173,11 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+
+      - name: 📁 Ensure Build Cache Directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "C:\BuildCache" -Force
 
       - name: 🌐 Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -221,18 +219,99 @@ jobs:
           if ($pkg) {
               Write-Host "Found Windows Package: $($pkg.FullName)"
               echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
+          } else {
+              Write-Error "Windows package not found!"
+              exit 1
           }
 
       - name: 📤 Upload Windows Artifact
         uses: actions/upload-artifact@v4
-        if: steps.find-windows-pkg.outputs.pkg_path != ''
         with:
           name: obxodka-windows-package
           path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
           retention-days: 14
 
+  # ==========================================
+  # 📲 ЭТАП 4: ДЕПЛОЙ ANDROID В GOOGLE PLAY
+  # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)
+  # ==========================================
+  deploy-android:
+    name: 📲 Deploy to Google Play Store
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || inputs.publish_to_stores == true }}
+    env:
+      PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Android AAB Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: obxodka-android-aab
+          path: ./aab-artifact
+
+      - name: 🔍 Locate AAB Package
+        id: find-aab
+        run: |
+          AAB_FILE=$(find ./aab-artifact -type f -name "*.aab" | head -n 1)
+          echo "Found AAB for store deployment: $AAB_FILE"
+          if [ -z "$AAB_FILE" ]; then
+            echo "❌ No AAB found in downloaded artifact!"
+            exit 1
+          fi
+          echo "aab_path=$AAB_FILE" >> $GITHUB_OUTPUT
+
+      - name: 📲 Upload to Google Play Store
+        if: ${{ env.PLAY_CONFIG_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
+          packageName: com.octocore.obxodka
+          releaseFiles: ${{ steps.find-aab.outputs.aab_path }}
+          track: ${{ inputs.android_track || 'production' }}
+          whatsNewDirectory: packaging/whatsnew
+          status: 'completed'
+
+  # ==========================================
+  # 🚀 ЭТАП 5: ДЕПЛОЙ WINDOWS В MICROSOFT STORE
+  # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)
+  # ==========================================
+  deploy-windows:
+    name: 🚀 Deploy to Microsoft Store
+    needs: [build-android, build-windows]
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'push' || inputs.publish_to_stores == true }}
+    env:
+      STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Windows Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: obxodka-windows-package
+          path: ./win-artifact
+
+      - name: 🔍 Locate Windows Package
+        id: find-windows-pkg
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem -Path "./win-artifact" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Select-Object -First 1
+          if ($pkg) {
+              Write-Host "Found Windows Package for Store deployment: $($pkg.FullName)"
+              echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
+          } else {
+              Write-Error "Windows package not found in downloaded artifact!"
+              exit 1
+          }
+
       - name: 🚀 Publish to Microsoft Store
-        if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name == 'push' || inputs.publish_to_stores == true) }}
+        if: ${{ env.STORE_CLIENT_ID != '' }}
         shell: pwsh
         env:
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
@@ -243,14 +322,13 @@ jobs:
         run: |
           pwsh tools/scripts/publish_msstore.ps1 -PackagePath "${{ steps.find-windows-pkg.outputs.pkg_path }}"
 
-
-
   # ==========================================
-  # 🏷️ ЭТАП 4: АВТОМАТИЧЕСКИЙ РЕЛИЗ НА GITHUB
+  # 🏷️ ЭТАП 6: АВТОМАТИЧЕСКИЙ РЕЛИЗ НА GITHUB
   # ==========================================
   create-release:
     name: 📦 Publish GitHub Release
-    needs: [build-android, build-windows]
+    needs: [build-android, build-windows, deploy-android, deploy-windows]
+    if: always() && needs.build-android.result == 'success' && needs.build-windows.result == 'success' && (needs.deploy-android.result == 'success' || needs.deploy-android.result == 'skipped') && (needs.deploy-windows.result == 'success' || needs.deploy-windows.result == 'skipped')
     runs-on: ubuntu-latest
 
     steps:
