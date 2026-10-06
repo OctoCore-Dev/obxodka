@@ -89,6 +89,7 @@ public static class PacketRouter
             {
                 >= 8 => 7,
                 >= 4 => 3,
+                >= 2 => 1,
                 _ => -1
             };
         }
@@ -106,7 +107,7 @@ public static class PacketRouter
             }
             else if (activeRays == 2)
             {
-                primaryRay = 1;
+                primaryRay = hash & 1;
                 secondaryRay = -1;
             }
             else

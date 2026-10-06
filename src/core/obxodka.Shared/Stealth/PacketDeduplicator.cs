@@ -4,14 +4,15 @@ public sealed class PacketDeduplicator
 {
     private const int RingSize = 16384;
     private const int RingMask = RingSize - 1;
-    private const long MaxDuplicateAgeMs = 50;
+    private const long MaxDuplicateAgeMs = 500;
 
     private readonly ulong[] _seenKeys = new ulong[RingSize];
     private readonly long[] _seenTimestamps = new long[RingSize];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool IsDuplicate(byte[] packet, int length)
+    public bool IsDuplicate(ReadOnlySpan<byte> packet)
     {
+        var length = packet.Length;
         if (length < 20)
         {
             return false;
@@ -45,7 +46,7 @@ public sealed class PacketDeduplicator
             }
         }
 
-        var key = FastHash64(packet.AsSpan(0, length));
+        var key = FastHash64(packet);
         var slot = (int)(key & RingMask);
         var now = Environment.TickCount64;
 
@@ -61,6 +62,9 @@ public sealed class PacketDeduplicator
         _seenTimestamps[slot] = now;
         return false;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsDuplicate(byte[] packet, int length) => IsDuplicate(packet.AsSpan(0, length));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong FastHash64(ReadOnlySpan<byte> data)

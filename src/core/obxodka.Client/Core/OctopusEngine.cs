@@ -206,7 +206,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _cts = new CancellationTokenSource();
 
         var configuredRays = Preferences.Get("BatteryMode", 1);
-        ActiveRays = 1;
+        ActiveRays = 2;
 
         var effectiveSni = !string.IsNullOrWhiteSpace(targetSni)
             ? targetSni
