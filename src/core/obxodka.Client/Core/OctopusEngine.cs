@@ -214,9 +214,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             ? targetSni
             : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null);
 
-        var transport = new GrpcTransport(ActiveRays, _clientCert, _jwtToken, serverPort, effectiveSni);
+        IVpnTransport transport = string.Equals(protocolOverride, "GRPC", StringComparison.OrdinalIgnoreCase)
+            ? new GrpcTransport(ActiveRays, _clientCert, _jwtToken, serverPort, effectiveSni)
+            : new ObxodkaStreamTransport(serverPort, effectiveSni);
         _transport = transport;
-        ActiveProtocol = "HTTP2";
+        ActiveProtocol = transport.ProtocolName;
         transport.OnPacketReceived += (pkt, len) =>
         {
             _ = Interlocked.Add(ref _totalBytesReceived, len);
