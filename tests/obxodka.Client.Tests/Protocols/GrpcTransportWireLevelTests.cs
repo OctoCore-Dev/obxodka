@@ -2,22 +2,19 @@ namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "WireLevel")]
 [Trait("Category", "Integration")]
-public class GrpcTransportWireLevelTests
+public class StreamTransportWireLevelTests
 {
     [Fact]
-    public async Task GrpcTransportConnectsViaStandardTlsClientHelloOnWireAsync()
+    public async Task StreamTransportConnectsViaStandardTlsClientHelloOnWireAsync()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        var transport = new GrpcTransport(
-            activeRays: 1,
-            clientCert: null,
-            jwtToken: null,
+        var transport = new ObxodkaStreamTransport(
             serverPort: port,
-            targetSni: "obxodka.one"
+            configuredSni: "obxodka.one"
         );
 
         var connectTask = Task.Run(async () =>
@@ -37,7 +34,7 @@ public class GrpcTransportWireLevelTests
         var buffer = new byte[4096];
         var firstRead = acceptedSocket.Receive(buffer, 0, buffer.Length, SocketFlags.None);
 
-        Assert.True(firstRead > 5, "Server socket must receive TLS ClientHello from GrpcTransport");
+        Assert.True(firstRead > 5, "Server socket must receive TLS ClientHello from StreamTransport");
         Assert.Equal(0x16, buffer[0]);
         Assert.Equal(0x03, buffer[1]);
         Assert.Equal(0x01, buffer[5]);

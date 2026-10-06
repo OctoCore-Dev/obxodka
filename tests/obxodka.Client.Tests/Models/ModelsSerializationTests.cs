@@ -106,7 +106,7 @@ public class ModelsSerializationTests
     [Fact]
     public void TelemetryDtoSerialization()
     {
-        var telemetry = new TelemetryDto("hwid_xyz", "3.7.18", "Socket connection dropped", "at GrpcTransport.Receive()");
+        var telemetry = new TelemetryDto("hwid_xyz", "3.7.18", "Socket connection dropped", "at ObxodkaStreamTransport.Receive()");
         var json = JsonSerializer.Serialize(telemetry, TestJsonContext.Default.TelemetryDto);
 
         Assert.Contains("hwid_xyz", json);

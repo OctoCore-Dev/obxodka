@@ -1,3 +1,5 @@
+using obxodka.Client.Security;
+
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocol")]
@@ -8,7 +10,7 @@ public class SslCertificateValidationTests
     [Fact]
     public void ValidateServerCertificateReturnsFalseWhenCertificateIsNull()
     {
-        var result = GrpcTransport.ValidateServerCertificate(null, null, SslPolicyErrors.None);
+        var result = CertificateValidator.ValidateServerCertificate(null, null, SslPolicyErrors.None);
         Assert.False(result);
     }
 
@@ -22,7 +24,7 @@ public class SslCertificateValidationTests
         var pubKey = cert.GetPublicKey();
         var expectedHash = Convert.ToBase64String(SHA256.HashData(pubKey));
 
-        var result = GrpcTransport.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: expectedHash);
+        var result = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: expectedHash);
         Assert.True(result);
     }
 
@@ -35,7 +37,7 @@ public class SslCertificateValidationTests
 
         var forgedHash = "FORGED_HASH_THAT_DOES_NOT_MATCH_THE_SERVER_KEY==";
 
-        var result = GrpcTransport.ValidateServerCertificate(cert, null, SslPolicyErrors.None, dynamicPinningHash: forgedHash);
+        var result = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.None, dynamicPinningHash: forgedHash);
         Assert.False(result);
     }
 
@@ -46,7 +48,7 @@ public class SslCertificateValidationTests
         var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var expiredCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddDays(-1));
 
-        var result = GrpcTransport.ValidateServerCertificate(expiredCert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: "");
+        var result = CertificateValidator.ValidateServerCertificate(expiredCert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: "");
         Assert.False(result);
     }
 
@@ -57,7 +59,7 @@ public class SslCertificateValidationTests
         var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var validDateCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
 
-        var result = GrpcTransport.ValidateServerCertificate(validDateCert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: "");
+        var result = CertificateValidator.ValidateServerCertificate(validDateCert, null, SslPolicyErrors.RemoteCertificateChainErrors, dynamicPinningHash: "");
         Assert.False(result);
     }
 
@@ -68,7 +70,7 @@ public class SslCertificateValidationTests
         var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var validDateCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
 
-        var result = GrpcTransport.ValidateServerCertificate(validDateCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: null);
+        var result = CertificateValidator.ValidateServerCertificate(validDateCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: null);
         Assert.False(result);
     }
 
@@ -79,7 +81,7 @@ public class SslCertificateValidationTests
         var req = new CertificateRequest("cn=obxodka.one", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var selfSignedObxodkaCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
 
-        var result = GrpcTransport.ValidateServerCertificate(selfSignedObxodkaCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: "DIFFERENT_HASH==");
+        var result = CertificateValidator.ValidateServerCertificate(selfSignedObxodkaCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: "DIFFERENT_HASH==");
         Assert.False(result);
     }
 
@@ -93,7 +95,7 @@ public class SslCertificateValidationTests
         var pubKey = selfSignedObxodkaCert.GetPublicKey();
         var expectedHash = Convert.ToBase64String(SHA256.HashData(pubKey));
 
-        var result = GrpcTransport.ValidateServerCertificate(selfSignedObxodkaCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: expectedHash);
+        var result = CertificateValidator.ValidateServerCertificate(selfSignedObxodkaCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: expectedHash);
         Assert.True(result);
     }
 
@@ -106,7 +108,7 @@ public class SslCertificateValidationTests
         using var ssl = new SslStream(tcp.GetStream(), false, (s, cert, chain, errs) =>
         {
             capturedErrors = errs;
-            return GrpcTransport.ValidateServerCertificate(cert, chain, errs, dynamicPinningHash: "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=");
+            return CertificateValidator.ValidateServerCertificate(cert, chain, errs, dynamicPinningHash: "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=");
         });
         await ssl.AuthenticateAsClientAsync("obxodka.one");
         Assert.True(ssl.IsAuthenticated, $"Auth failed. Errs: {capturedErrors}");
@@ -114,7 +116,7 @@ public class SslCertificateValidationTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task GrpcTransportConnectsToRealServerAsync()
+    public async Task ObxodkaStreamTransportConnectsToRealServerAsync()
     {
         using var sw = new StringWriter();
         var listener = new TextWriterTraceListener(sw);
@@ -122,21 +124,21 @@ public class SslCertificateValidationTests
         try
         {
             OctopusEngine.DynamicSslPublicKeyHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
-            using var transport = new GrpcTransport(activeRays: 8, clientCert: null, jwtToken: null, serverPort: 443);
+            using var transport = new ObxodkaStreamTransport(serverPort: 443);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
             {
                 var (ip, _) = await transport.ConnectAsync(AppConfig.DirectServerIp, "441671375F27A7A223240C624CF1F56678666289", cts.Token);
                 Assert.False(string.IsNullOrEmpty(ip));
             }
-            catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException or Grpc.Core.RpcException)
+            catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException)
             {
             }
         }
         catch (Exception ex)
         {
             listener.Flush();
-            Assert.Fail($"GrpcTransport failed: {ex.Message}\nTrace:\n{sw}");
+            Assert.Fail($"ObxodkaStreamTransport failed: {ex.Message}\nTrace:\n{sw}");
         }
         finally
         {
