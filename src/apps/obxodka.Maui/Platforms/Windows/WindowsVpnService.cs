@@ -518,7 +518,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                     if (lastException is OperationCanceledException or TimeoutException)
                     {
-                        throw new TimeoutException($"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS/gRPC хэндшейк.");
+                        throw new TimeoutException($"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS хэндшейк.");
                     }
                     throw lastException ?? new InvalidOperationException("Сервер не отвечает или пакеты блокируются (0 RX). Проверьте интернет или смените протокол.");
                 }

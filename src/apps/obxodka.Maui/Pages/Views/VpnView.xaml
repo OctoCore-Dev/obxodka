@@ -407,7 +407,7 @@
                                     x:Name="RayIndicatorLabel"
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="13"
-                                    Text="gRPC HTTP/2 • 8 лучей" />
+                                    Text="obxodka Stream • HTTP/2" />
                             </HorizontalStackLayout>
                         </Border>
 

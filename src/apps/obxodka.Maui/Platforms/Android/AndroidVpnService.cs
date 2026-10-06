@@ -496,7 +496,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             }
 
             SetError(ex is TimeoutException or OperationCanceledException
-                ? $"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS/gRPC хэндшейк."
+                ? $"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS хэндшейк."
                 : $"Ошибка подключения: {ex.Message}");
         }
     }

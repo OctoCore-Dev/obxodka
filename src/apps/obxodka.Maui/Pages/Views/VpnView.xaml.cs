@@ -312,7 +312,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
             RayIndicatorIcon.Icon = FluentIcons.ShieldCheckmark24;
             RayIndicatorIcon.IconColor = Color.FromArgb("#00E5FF");
-            RayIndicatorLabel.Text = "gRPC HTTP/2 • 8 лучей";
+            RayIndicatorLabel.Text = "obxodka Stream • HTTP/2";
         });
     }
 

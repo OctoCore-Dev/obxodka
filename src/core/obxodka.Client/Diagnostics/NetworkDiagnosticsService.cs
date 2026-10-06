@@ -357,7 +357,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         else
         {
             _ = sb.AppendLine("ВНИМАНИЕ: Блокировка TLS-рукопожатия ТСПУ.");
-            _ = sb.AppendLine("Рекомендуется повторное подключение через резервный gRPC мост.");
+            _ = sb.AppendLine("Рекомендуется повторное подключение к серверу.");
             report.RecommendedProtocol = "HTTP2";
         }
 

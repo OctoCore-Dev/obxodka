@@ -40,7 +40,7 @@
                         Margin="16,0,0,0"
                         FontFamily="{DynamicResource AppFontBold}"
                         FontSize="14"
-                        Text="[ gRPC HTTP/2 • 8 лучей ]"
+                        Text="[ obxodka Stream • HTTP/2 ]"
                         TextColor="{DynamicResource Accent}"
                         VerticalOptions="Center" />
                 </Grid>
@@ -51,7 +51,7 @@
                     LineBreakMode="WordWrap"
                     Style="{StaticResource LabelMuted}">
                     <Label.Text>
-                        Оптимизированный транспорт: gRPC через HTTP/2 на 443 порту с 8 мультиплексированными лучами.
+                        Оптимизированный транспорт: obxodka Stream через HTTP/2 на 443 порту с обфускацией и защитой от цензуры.
                     </Label.Text>
                 </Label>
 
@@ -98,13 +98,13 @@
                                 FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="{OnIdiom Desktop=14,
                                                    Default=15}"
-                                Text="gRPC over HTTP/2 (TLS 443)" />
+                                Text="obxodka Stream (HTTP/2 TLS 443)" />
                             <Label
                                 FontSize="{OnIdiom Desktop=11,
                                                    Default=12}"
                                 LineBreakMode="WordWrap"
                                 Style="{StaticResource LabelMuted}"
-                                Text="8 мультиплексированных лучей в едином защищённом TCP-туннеле" />
+                                Text="Сверхбыстрый защищённый дуплексный поток с нулевой задержкой и динамической маскировкой" />
                         </VerticalStackLayout>
                         <Border
                             Grid.Column="2"

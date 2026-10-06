@@ -315,7 +315,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     }
 
     private void UpdateSelectionUI() =>
-        CurrentSelectionLabel.Text = "[ gRPC HTTP/2 • 8 лучей ]";
+        CurrentSelectionLabel.Text = "[ obxodka Stream • HTTP/2 ]";
 
     public void UpdateCardOpacity()
     {
