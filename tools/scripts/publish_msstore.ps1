@@ -190,6 +190,35 @@ if (-not $matchedExisting) {
 }
 $subData.applicationPackages = $updatedPackages
 
+$whatsNewDir = Join-Path $PSScriptRoot "../../packaging/whatsnew"
+if (-not (Test-Path $whatsNewDir)) {
+    $whatsNewDir = Join-Path (Get-Location) "packaging/whatsnew"
+}
+$whatsNewRu = Join-Path $whatsNewDir "whatsnew-ru-RU"
+$whatsNewEn = Join-Path $whatsNewDir "whatsnew-en-US"
+
+$notesRu = if (Test-Path $whatsNewRu) { (Get-Content $whatsNewRu -Raw).Trim() } else { $null }
+$notesEn = if (Test-Path $whatsNewEn) { (Get-Content $whatsNewEn -Raw).Trim() } else { $null }
+
+if ($subData.listings) {
+    foreach ($prop in $subData.listings.PSObject.Properties) {
+        $lang = $prop.Name.ToLowerInvariant()
+        $listing = $prop.Value
+        if ($lang -match "ru" -and $notesRu) {
+            $listing.releaseNotes = $notesRu
+            Log-Info "Attached Russian release notes to Microsoft Store listing ($lang)."
+        }
+        elseif ($notesEn) {
+            $listing.releaseNotes = $notesEn
+            Log-Info "Attached English release notes to Microsoft Store listing ($lang)."
+        }
+        elseif ($notesRu) {
+            $listing.releaseNotes = $notesRu
+            Log-Info "Attached fallback release notes to Microsoft Store listing ($lang)."
+        }
+    }
+}
+
 $updateUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$subId"
 $updateJson = $subData | ConvertTo-Json -Depth 10
 $updatedSub = Invoke-RestMethod -Method Put -Uri $updateUri -Headers $authHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($updateJson)) -ContentType "application/json; charset=utf-8"

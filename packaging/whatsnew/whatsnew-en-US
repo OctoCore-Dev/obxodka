@@ -1,4 +1,4 @@
-- Fixed a critical crash on Windows 10 during RX packet downlink verification.
-- Thread-safe Wintun session synchronization and access violation prevention.
-- Fixed ArrayPool buffer corruption when transmitting DNS probe packets.
-- Seamless network roaming on Android and reliable connection state indicators.
+- Dual-Ray Hedging: real-time gaming UDP and ping redundancy across dual independent paths with zero-allocation deduplication.
+- Seamless VPN disconnection without network adapter flickering or connectivity drops.
+- Ultra-responsive ping monitoring (500ms) with adaptive latency jitter smoothing.
+- High-speed HTTP/2 stealth tunnel streaming with traffic camouflage.
