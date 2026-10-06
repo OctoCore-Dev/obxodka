@@ -63,7 +63,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 ApplicationProtocols = [SslApplicationProtocol.Http2],
                 EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                    GrpcTransport.ValidateServerCertificate(certificate, chain, errors)
+                    CertificateValidator.ValidateServerCertificate(certificate, chain, errors)
             },
             ConnectCallback = async (context, cToken) =>
             {

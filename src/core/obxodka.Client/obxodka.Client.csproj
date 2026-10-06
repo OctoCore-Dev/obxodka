@@ -10,8 +10,6 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Google.Protobuf" Version="3.36.0" />
-    <PackageReference Include="Grpc.Net.Client" Version="2.83.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
     <PackageReference Include="PacketDotNet" Version="1.4.8" />
   </ItemGroup>

@@ -11,7 +11,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
     private IVpnTransport? _transport;
     private X509Certificate2? _clientCert;
-    private string? _jwtToken;
     private CancellationTokenSource? _cts;
     public static string? DynamicSslPublicKeyHash { get; set; }
 
@@ -204,7 +203,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             throw new UnauthorizedAccessException("Old certificate");
         }
 
-        _jwtToken = session.JwtToken;
         _cts = new CancellationTokenSource();
 
         var configuredRays = Preferences.Get("BatteryMode", 1);
@@ -214,9 +212,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             ? targetSni
             : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null);
 
-        IVpnTransport transport = string.Equals(protocolOverride, "GRPC", StringComparison.OrdinalIgnoreCase)
-            ? new GrpcTransport(ActiveRays, _clientCert, _jwtToken, serverPort, effectiveSni)
-            : new ObxodkaStreamTransport(serverPort, effectiveSni);
+        var transport = new ObxodkaStreamTransport(serverPort, effectiveSni);
         _transport = transport;
         ActiveProtocol = transport.ProtocolName;
         transport.OnPacketReceived += (pkt, len) =>

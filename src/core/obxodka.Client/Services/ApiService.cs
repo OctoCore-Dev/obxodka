@@ -49,7 +49,7 @@ public sealed class ApiService(HttpClient client)
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                    GrpcTransport.ValidateServerCertificate(cert, chain, errors)
+                    CertificateValidator.ValidateServerCertificate(cert, chain, errors)
             },
             ConnectCallback = async (_, cToken) =>
             {
