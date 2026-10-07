@@ -193,7 +193,7 @@ jobs:
 
       - name: 📦 Install .NET MAUI Windows Workload
         run: |
-          dotnet workload install maui-windows
+          dotnet workload install maui-windows --skip-manifest-update
 
       - name: 🚀 Publish Windows Package
         env:
