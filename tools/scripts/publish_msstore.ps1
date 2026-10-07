@@ -226,7 +226,7 @@ if ($subData.listings) {
                 Log-Info "Attached release notes to Microsoft Store listing ($lang)."
             }
             catch {
-                Log-Info "Warning: could not attach releaseNotes for $lang: $_"
+                Log-Info "Warning: could not attach releaseNotes for $($lang): $_"
             }
         }
     }
