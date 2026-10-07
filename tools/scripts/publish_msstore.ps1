@@ -204,17 +204,30 @@ if ($subData.listings) {
     foreach ($prop in $subData.listings.PSObject.Properties) {
         $lang = $prop.Name.ToLowerInvariant()
         $listing = $prop.Value
+        $targetNotes = $null
         if ($lang -match "ru" -and $notesRu) {
-            $listing.releaseNotes = $notesRu
-            Log-Info "Attached Russian release notes to Microsoft Store listing ($lang)."
+            $targetNotes = $notesRu
         }
         elseif ($notesEn) {
-            $listing.releaseNotes = $notesEn
-            Log-Info "Attached English release notes to Microsoft Store listing ($lang)."
+            $targetNotes = $notesEn
         }
         elseif ($notesRu) {
-            $listing.releaseNotes = $notesRu
-            Log-Info "Attached fallback release notes to Microsoft Store listing ($lang)."
+            $targetNotes = $notesRu
+        }
+
+        if ($targetNotes) {
+            try {
+                if ($listing -is [System.Collections.IDictionary]) {
+                    $listing["releaseNotes"] = $targetNotes
+                }
+                else {
+                    $listing | Add-Member -NotePropertyName "releaseNotes" -NotePropertyValue $targetNotes -Force
+                }
+                Log-Info "Attached release notes to Microsoft Store listing ($lang)."
+            }
+            catch {
+                Log-Info "Warning: could not attach releaseNotes for $lang: $_"
+            }
         }
     }
 }

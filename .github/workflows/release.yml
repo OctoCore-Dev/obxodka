@@ -9,6 +9,15 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      target_platform:
+        description: 'Целевая платформа (all = Android + Windows, windows = только Windows, android = только Android)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows
+          - android
       version_name:
         description: 'Версия приложения (оставьте пустым для версии из csproj)'
         required: false
@@ -59,10 +68,6 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: 📦 Install MAUI Windows Workload for Testing
-        run: |
-          dotnet workload install maui-windows
-
       - name: 🚀 Run Client Tests (xUnit)
         run: |
           dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=detailed"
@@ -74,6 +79,7 @@ jobs:
     name: 🤖 Android AAB Build
     needs: [run-tests]
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows' }}
 
     steps:
       - name: 📥 Checkout Code
@@ -166,6 +172,7 @@ jobs:
     name: 🪟 Windows MSIX Build
     needs: [run-tests]
     runs-on: windows-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android' }}
 
     steps:
       - name: 📥 Checkout Code
@@ -239,7 +246,12 @@ jobs:
     name: 📲 Deploy to Google Play Store
     needs: [build-android, build-windows]
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || inputs.publish_to_stores == true }}
+    if: |
+      always() &&
+      (needs.build-android.result == 'success') &&
+      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows') &&
+      (github.event_name == 'push' || inputs.publish_to_stores == true)
     env:
       PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
 
@@ -283,7 +295,12 @@ jobs:
     name: 🚀 Deploy to Microsoft Store
     needs: [build-android, build-windows]
     runs-on: windows-latest
-    if: ${{ github.event_name == 'push' || inputs.publish_to_stores == true }}
+    if: |
+      always() &&
+      (needs.build-windows.result == 'success') &&
+      (needs.build-android.result == 'success' || needs.build-android.result == 'skipped') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android') &&
+      (github.event_name == 'push' || inputs.publish_to_stores == true)
     env:
       STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
 
@@ -328,7 +345,12 @@ jobs:
   create-release:
     name: 📦 Publish GitHub Release
     needs: [build-android, build-windows, deploy-android, deploy-windows]
-    if: always() && needs.build-android.result == 'success' && needs.build-windows.result == 'success' && (needs.deploy-android.result == 'success' || needs.deploy-android.result == 'skipped') && (needs.deploy-windows.result == 'success' || needs.deploy-windows.result == 'skipped')
+    if: |
+      always() &&
+      (needs.build-android.result == 'success' || needs.build-android.result == 'skipped') &&
+      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
+      (needs.deploy-android.result == 'success' || needs.deploy-android.result == 'skipped') &&
+      (needs.deploy-windows.result == 'success' || needs.deploy-windows.result == 'skipped')
     runs-on: ubuntu-latest
 
     steps:
