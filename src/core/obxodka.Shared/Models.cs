@@ -100,7 +100,9 @@ public sealed record VpnServerDto(
     string Location,
     bool IsOnline,
     int LoadPercent,
-    string? CertHash = null);
+    string? CertHash = null,
+    string? Provider = "Vultr",
+    string? Flag = null);
 
 public sealed record TelemetryDto(
     string Hwid,

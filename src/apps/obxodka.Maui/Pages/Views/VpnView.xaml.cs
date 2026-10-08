@@ -43,6 +43,9 @@ public sealed partial class VpnView : ContentView, IDisposable
     private bool _isErrorState;
     private string? _activeConnectedNode;
     private string? _lastErrorMessage;
+    private VpnServerDto? _selectedServer;
+    private List<VpnServerDto> _cachedServers = [];
+    private readonly Dictionary<string, long> _serverPings = [];
     private readonly Stopwatch _loaderStopwatch = new();
     private IDispatcherTimer? _loaderTimer;
     private IDispatcherTimer? _graphAnimTimer;
@@ -210,6 +213,8 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         UpdateRayIndicator();
         UpdateActiveNode();
+        LoadSavedServerSelection();
+        _ = RefreshServerListAsync();
 
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
@@ -304,27 +309,356 @@ public sealed partial class VpnView : ContentView, IDisposable
         }
     }
 
-    private void UpdateRayIndicator()
+    private static void UpdateRayIndicator()
     {
-        PlatformThrottler.Post("ui:ray", TimeSpan.FromMilliseconds(500), () =>
+    }
+
+    private static string GetServerFlag(VpnServerDto server)
+    {
+        if (!string.IsNullOrWhiteSpace(server.Flag))
         {
-            if (RayIndicatorIcon == null || RayIndicatorLabel == null)
+            return server.Flag;
+        }
+
+        var loc = server.Location ?? string.Empty;
+        if (loc.Contains("Швеция", StringComparison.OrdinalIgnoreCase) || loc.Contains("Стокгольм", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇸🇪";
+        }
+        if (loc.Contains("Польша", StringComparison.OrdinalIgnoreCase) || loc.Contains("Варшава", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇵🇱";
+        }
+        if (loc.Contains("Германия", StringComparison.OrdinalIgnoreCase) || loc.Contains("Франкфурт", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇩🇪";
+        }
+        if (loc.Contains("Нидерланды", StringComparison.OrdinalIgnoreCase) || loc.Contains("Амстердам", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇳🇱";
+        }
+        if (loc.Contains("Франция", StringComparison.OrdinalIgnoreCase) || loc.Contains("Париж", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇫🇷";
+        }
+        if (loc.Contains("Великобритания", StringComparison.OrdinalIgnoreCase) || loc.Contains("Лондон", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇬🇧";
+        }
+        if (loc.Contains("США", StringComparison.OrdinalIgnoreCase) || loc.Contains("USA", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇺🇸";
+        }
+        if (loc.Contains("Финляндия", StringComparison.OrdinalIgnoreCase) || loc.Contains("Хельсинки", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🇫🇮";
+        }
+        return loc.Contains("Казахстан", StringComparison.OrdinalIgnoreCase) || loc.Contains("Алматы", StringComparison.OrdinalIgnoreCase)
+            ? "🇰🇿"
+            : "🌐";
+    }
+
+    private static string GetServerProvider(VpnServerDto server) =>
+        !string.IsNullOrWhiteSpace(server.Provider) ? server.Provider : "Vultr";
+
+    private void LoadSavedServerSelection()
+    {
+        var savedIp = Preferences.Get("selected_server_ip", string.Empty);
+        if (!string.IsNullOrEmpty(savedIp))
+        {
+            var savedLocation = Preferences.Get("selected_server_location", "Швеция, Стокгольм");
+            var savedProvider = Preferences.Get("selected_server_provider", "Vultr");
+            var savedFlag = Preferences.Get("selected_server_flag", "🇸🇪");
+            _selectedServer = new VpnServerDto(savedIp, 443, savedLocation, true, 10, null, savedProvider, savedFlag);
+        }
+        UpdateSelectedServerDisplay();
+    }
+
+    private void UpdateSelectedServerDisplay()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (SelectedServerFlagLabel is null || SelectedServerLocationLabel is null || SelectedServerProviderLabel is null)
             {
                 return;
             }
 
-            RayIndicatorIcon.Icon = FluentIcons.ShieldCheckmark24;
-            RayIndicatorIcon.IconColor = Color.FromArgb("#00E5FF");
-            RayIndicatorLabel.Text = "obxodka Stream • HTTP/2";
+            if (_selectedServer is null)
+            {
+                SelectedServerFlagLabel.Text = "🇸🇪";
+                SelectedServerLocationLabel.Text = "Швеция, Стокгольм";
+                SelectedServerProviderLabel.Text = "Vultr";
+                SelectedServerLatencyLabel.Text = "Online";
+                return;
+            }
+
+            SelectedServerFlagLabel.Text = GetServerFlag(_selectedServer);
+            SelectedServerLocationLabel.Text = _selectedServer.Location;
+            SelectedServerProviderLabel.Text = GetServerProvider(_selectedServer);
+            SelectedServerLatencyLabel.Text = _serverPings.TryGetValue(_selectedServer.Ip, out var pingMs)
+                ? $"{pingMs} ms"
+                : "Online";
         });
     }
 
-    private void OnRayIndicatorBadgeTappedAsync(object? sender, EventArgs e)
+    private async Task RefreshServerListAsync()
+    {
+        try
+        {
+            var (success, servers, _) = await _apiService.GetServersAsync();
+            if (success && servers is { Count: > 0 })
+            {
+                _cachedServers = servers;
+            }
+            else if (_cachedServers.Count == 0)
+            {
+                _cachedServers =
+                [
+                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, null, "Vultr", "🇸🇪"),
+                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, null, "Vultr", "🇵🇱")
+                ];
+            }
+
+            if (_selectedServer is null && _cachedServers.Count > 0)
+            {
+                _selectedServer = _cachedServers[0];
+            }
+            else if (_selectedServer is not null && _cachedServers.Any(s => s.Ip == _selectedServer.Ip))
+            {
+                _selectedServer = _cachedServers.First(s => s.Ip == _selectedServer.Ip);
+            }
+
+            UpdateSelectedServerDisplay();
+            PopulateServerList();
+            _ = Task.Run(PingCachedServersAsync);
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task PingCachedServersAsync()
+    {
+        var tasks = _cachedServers.Select(async s =>
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var cts = new CancellationTokenSource(2500);
+                using var client = new TcpClient();
+                await client.ConnectAsync(s.Ip, s.Port > 0 ? s.Port : 443, cts.Token).AsTask();
+                sw.Stop();
+                _serverPings[s.Ip] = sw.ElapsedMilliseconds;
+            }
+            catch
+            {
+                sw.Stop();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        UpdateSelectedServerDisplay();
+        PopulateServerList();
+    }
+
+    private void PopulateServerList()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (ServerItemsContainer is null)
+            {
+                return;
+            }
+
+            ServerItemsContainer.Children.Clear();
+            var currentSelectedIp = _selectedServer?.Ip ?? (_cachedServers.Count > 0 ? _cachedServers[0].Ip : string.Empty);
+
+            foreach (var server in _cachedServers)
+            {
+                var isSelected = string.Equals(server.Ip, currentSelectedIp, StringComparison.OrdinalIgnoreCase);
+
+                var card = new Border
+                {
+                    Padding = new Thickness(14, 10),
+                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14) },
+                    StrokeThickness = isSelected ? 1.5 : 1.0,
+                    BackgroundColor = isSelected
+                        ? (Application.Current?.Resources.TryGetValue("BgElevated", out var bgEl) == true ? (Color)bgEl : Color.FromArgb("#1E293B"))
+                        : (Application.Current?.Resources.TryGetValue("BgCard", out var bgCd) == true ? (Color)bgCd : Color.FromArgb("#0F172A")),
+                    Stroke = isSelected
+                        ? (Application.Current?.Resources.TryGetValue("Primary", out var pColor) == true ? (Color)pColor : Color.FromArgb("#7C3AED"))
+                        : (Application.Current?.Resources.TryGetValue("BorderMedium", out var bColor) == true ? (Color)bColor : Color.FromArgb("#334155"))
+                };
+
+                var grid = new Grid
+                {
+                    ColumnDefinitions =
+                    [
+                        new ColumnDefinition(GridLength.Auto),
+                        new ColumnDefinition(GridLength.Star),
+                        new ColumnDefinition(GridLength.Auto)
+                    ],
+                    ColumnSpacing = 12,
+                    VerticalOptions = LayoutOptions.Center
+                };
+
+                var flagLabel = new Label
+                {
+                    Text = GetServerFlag(server),
+                    FontSize = 22,
+                    VerticalOptions = LayoutOptions.Center
+                };
+                grid.Add(flagLabel, 0, 0);
+
+                var infoStack = new VerticalStackLayout
+                {
+                    Spacing = 3,
+                    VerticalOptions = LayoutOptions.Center
+                };
+
+                var nameLabel = new Label
+                {
+                    Text = server.Location,
+                    FontFamily = "AppFontBold",
+                    FontSize = 13,
+                    TextColor = Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true ? (Color)tp : Colors.White
+                };
+                infoStack.Children.Add(nameLabel);
+
+                var badgeStack = new HorizontalStackLayout
+                {
+                    Spacing = 6,
+                    VerticalOptions = LayoutOptions.Center
+                };
+
+                var providerBadge = new Border
+                {
+                    Padding = new Thickness(5, 1),
+                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
+                    StrokeThickness = 0.6,
+                    BackgroundColor = Application.Current?.Resources.TryGetValue("AccentDim", out var ad) == true ? (Color)ad : Color.FromArgb("#1A00E5FF"),
+                    Stroke = Application.Current?.Resources.TryGetValue("Accent", out var ac) == true ? (Color)ac : Color.FromArgb("#00E5FF")
+                };
+
+                var providerLabel = new Label
+                {
+                    Text = GetServerProvider(server),
+                    FontFamily = "AppFontMedium",
+                    FontSize = 9,
+                    TextColor = Application.Current?.Resources.TryGetValue("Accent", out var act) == true ? (Color)act : Color.FromArgb("#00E5FF")
+                };
+                providerBadge.Content = providerLabel;
+                badgeStack.Children.Add(providerBadge);
+
+                var pingDot = new BoxView
+                {
+                    WidthRequest = 5,
+                    HeightRequest = 5,
+                    CornerRadius = 2.5,
+                    VerticalOptions = LayoutOptions.Center,
+                    Color = Application.Current?.Resources.TryGetValue("Success", out var sc) == true ? (Color)sc : Color.FromArgb("#10B981")
+                };
+                badgeStack.Children.Add(pingDot);
+
+                var pingText = _serverPings.TryGetValue(server.Ip, out var pingMs) ? $"{pingMs} ms" : "Онлайн";
+                var pingLabel = new Label
+                {
+                    Text = pingText,
+                    FontFamily = "AppFontMedium",
+                    FontSize = 10,
+                    TextColor = Application.Current?.Resources.TryGetValue("Success", out var sct) == true ? (Color)sct : Color.FromArgb("#10B981"),
+                    VerticalOptions = LayoutOptions.Center
+                };
+                badgeStack.Children.Add(pingLabel);
+
+                infoStack.Children.Add(badgeStack);
+                grid.Add(infoStack, 1, 0);
+
+                var statusIcon = new MauiIcon
+                {
+                    Icon = isSelected ? FluentIcons.Checkmark24 : FluentIcons.Circle24,
+                    IconColor = isSelected
+                        ? (Application.Current?.Resources.TryGetValue("Success", out var sic) == true ? (Color)sic : Color.FromArgb("#10B981"))
+                        : (Application.Current?.Resources.TryGetValue("BorderMedium", out var bic) == true ? (Color)bic : Color.FromArgb("#475569")),
+                    IconSize = isSelected ? 20 : 18,
+                    VerticalOptions = LayoutOptions.Center
+                };
+                grid.Add(statusIcon, 2, 0);
+
+                card.Content = grid;
+
+                var tap = new TapGestureRecognizer();
+                tap.Tapped += async (s, e) =>
+                {
+                    _ = card.BounceClickAsync();
+                    _selectedServer = server;
+                    Preferences.Set("selected_server_ip", server.Ip);
+                    Preferences.Set("selected_server_location", server.Location);
+                    Preferences.Set("selected_server_provider", GetServerProvider(server));
+                    Preferences.Set("selected_server_flag", GetServerFlag(server));
+                    UpdateSelectedServerDisplay();
+                    await CloseServerModalAsync();
+                };
+                card.GestureRecognizers.Add(tap);
+
+                ServerItemsContainer.Children.Add(card);
+            }
+        });
+    }
+
+    private async Task OpenServerModalAsync()
+    {
+        if (_cachedServers.Count == 0)
+        {
+            await RefreshServerListAsync();
+        }
+        else
+        {
+            PopulateServerList();
+            _ = Task.Run(PingCachedServersAsync);
+        }
+
+        ServerModalOverlay.IsVisible = true;
+        ServerModalOverlay.InputTransparent = false;
+        ServerModalCard.Scale = 0.95;
+        ServerModalCard.Opacity = 0.0;
+
+        _ = ServerModalOverlay.FadeToAsync(1.0, 200, Easing.CubicOut);
+        _ = ServerModalCard.FadeToAsync(1.0, 200, Easing.CubicOut);
+        _ = await ServerModalCard.ScaleToAsync(1.0, 250, Easing.CubicOut);
+    }
+
+    private async Task CloseServerModalAsync()
+    {
+        ServerModalOverlay.InputTransparent = true;
+        _ = ServerModalCard.ScaleToAsync(0.95, 180, Easing.CubicIn);
+        _ = ServerModalCard.FadeToAsync(0.0, 180, Easing.CubicIn);
+        _ = await ServerModalOverlay.FadeToAsync(0.0, 180, Easing.CubicIn);
+        ServerModalOverlay.IsVisible = false;
+    }
+
+    private void OnServerModalBackdropTapped(object? sender, EventArgs e) =>
+        _ = CloseServerModalAsync();
+
+    private void OnCloseServerModalClicked(object? sender, EventArgs e) =>
+        _ = CloseServerModalAsync();
+
+    private async void OnRefreshServersClickedAsync(object? sender, EventArgs e)
     {
         if (sender is VisualElement ve)
         {
             _ = ve.BounceClickAsync();
         }
+        await RefreshServerListAsync();
+    }
+
+    private async void OnServerSelectorTappedAsync(object? sender, EventArgs e)
+    {
+        if (ServerSelectorButton is not null)
+        {
+            _ = ServerSelectorButton.BounceClickAsync();
+        }
+        await OpenServerModalAsync();
     }
 
     private void HandleVpnLog(string logMsg) =>
@@ -821,17 +1155,29 @@ public sealed partial class VpnView : ContentView, IDisposable
             if (!success || servers is null || servers.Count == 0)
             {
                 servers = [
-                    new VpnServerDto(AppConfig.DirectServerIp, 443, "Основной узел (Прямой доступ)", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
+                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, null, "Vultr", "🇸🇪"),
+                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, null, "Vultr", "🇵🇱")
                 ];
             }
 
-            var candidateServers = await ProbeBestServerAsync(servers);
-            if (candidateServers.Count == 0)
+            _cachedServers = servers;
+
+            VpnServerDto targetServer;
+            if (_selectedServer is not null && servers.Any(s => s.Ip == _selectedServer.Ip))
             {
-                candidateServers = servers;
+                targetServer = servers.First(s => s.Ip == _selectedServer.Ip);
+            }
+            else
+            {
+                var candidateServers = await ProbeBestServerAsync(servers);
+                targetServer = candidateServers.Count > 0 ? candidateServers[0] : servers[0];
+                _selectedServer = targetServer;
+                UpdateSelectedServerDisplay();
             }
 
-            var targetServer = candidateServers[0];
+            var orderedCandidates = new List<VpnServerDto> { targetServer };
+            orderedCandidates.AddRange(servers.Where(s => s.Ip != targetServer.Ip));
+
             UpdateActiveNode(targetServer.Ip);
             if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
             {
@@ -846,7 +1192,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 }
             }
 
-            await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, candidateServers));
+            await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, orderedCandidates));
         }
         catch (Exception ex)
         {
@@ -2146,7 +2492,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         Card5.BackgroundColor = bgSurface;
         Card6.BackgroundColor = bgSurface;
         Card1Wrapper.BackgroundColor = bgSurface;
-        RayIndicatorBadge.BackgroundColor = bgElevated;
+        ServerSelectorButton.BackgroundColor = bgElevated;
     }
 
     private double _lastAllocatedW = -1;
@@ -2356,7 +2702,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             Card5.Stroke = borderSubtle;
             Card6.Stroke = borderSubtle;
             Card1Wrapper.Stroke = borderSubtle;
-            RayIndicatorBadge.Stroke = borderMedium;
+            ServerSelectorButton.Stroke = borderMedium;
 
             var hasCustom = !string.IsNullOrEmpty(_buttonImageIdlePath) ||
                             !string.IsNullOrEmpty(_buttonImageConnectingPath) ||

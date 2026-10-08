@@ -11,6 +11,11 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
+        "ya.ru",
+        "yandex.ru",
+        "dzen.ru",
+        "www.google.com",
+        "google.com",
         "obxodka.one",
         "www.obxodka.one",
         "api.octocore.dev"

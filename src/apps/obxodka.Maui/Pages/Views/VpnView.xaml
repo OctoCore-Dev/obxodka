@@ -382,32 +382,72 @@
                         VerticalOptions="Center">
 
                         <Border
-                            x:Name="RayIndicatorBadge"
+                            x:Name="ServerSelectorButton"
                             Grid.Row="0"
-                            Padding="{OnIdiom Desktop='14,7',
-                                              Phone='12,5',
-                                              Default='14,7'}"
+                            Padding="{OnIdiom Desktop='16,8',
+                                              Phone='14,7',
+                                              Default='16,8'}"
                             BackgroundColor="{DynamicResource BgElevated}"
                             HorizontalOptions="Center"
                             Stroke="{DynamicResource BorderMedium}"
-                            StrokeThickness="1">
+                            StrokeThickness="1.2">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="16" />
+                                <RoundRectangle CornerRadius="22" />
                             </Border.StrokeShape>
                             <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnRayIndicatorBadgeTappedAsync" />
+                                <TapGestureRecognizer Tapped="OnServerSelectorTappedAsync" />
                             </Border.GestureRecognizers>
-                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-                                <mi:MauiIcon
-                                    x:Name="RayIndicatorIcon"
-                                    Icon="{mi:Fluent Icon=ShieldCheckmark24}"
-                                    IconColor="{DynamicResource Accent}"
-                                    IconSize="16" />
+                            <HorizontalStackLayout Spacing="9" VerticalOptions="Center">
                                 <Label
-                                    x:Name="RayIndicatorLabel"
-                                    FontFamily="{DynamicResource AppFontMedium}"
-                                    FontSize="13"
-                                    Text="obxodka Stream • HTTP/2" />
+                                    x:Name="SelectedServerFlagLabel"
+                                    FontSize="{OnIdiom Desktop=19, Phone=17, Default=18}"
+                                    Text="🇸🇪"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                                    <Label
+                                        x:Name="SelectedServerLocationLabel"
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="{OnIdiom Desktop=13, Phone=12, Default=13}"
+                                        Text="Швеция, Стокгольм"
+                                        TextColor="{DynamicResource TextPrimary}"
+                                        VerticalOptions="Center" />
+                                    <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                        <Border
+                                            Padding="5,1"
+                                            BackgroundColor="{DynamicResource AccentDim}"
+                                            Stroke="{DynamicResource Accent}"
+                                            StrokeShape="RoundRectangle 4"
+                                            StrokeThickness="0.6"
+                                            VerticalOptions="Center">
+                                            <Label
+                                                x:Name="SelectedServerProviderLabel"
+                                                FontFamily="{DynamicResource AppFontMedium}"
+                                                FontSize="9"
+                                                Text="Vultr"
+                                                TextColor="{DynamicResource Accent}" />
+                                        </Border>
+                                        <BoxView
+                                            x:Name="SelectedServerPingDot"
+                                            CornerRadius="2.5"
+                                            HeightRequest="5"
+                                            VerticalOptions="Center"
+                                            WidthRequest="5"
+                                            Color="{DynamicResource Success}" />
+                                        <Label
+                                            x:Name="SelectedServerLatencyLabel"
+                                            FontFamily="{DynamicResource AppFontMedium}"
+                                            FontSize="10"
+                                            Text="Online"
+                                            TextColor="{DynamicResource Success}"
+                                            VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+                                </VerticalStackLayout>
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=ChevronDown16}"
+                                    IconColor="{DynamicResource TextSecondary}"
+                                    IconSize="14"
+                                    Margin="3,0,0,0"
+                                    VerticalOptions="Center" />
                             </HorizontalStackLayout>
                         </Border>
 
@@ -558,6 +598,99 @@
                 </Border>
             </Grid>
         </ScrollView>
+
+        <Grid
+            x:Name="ServerModalOverlay"
+            BackgroundColor="{DynamicResource BgOverlay}"
+            HorizontalOptions="Fill"
+            InputTransparent="True"
+            IsVisible="False"
+            Opacity="0"
+            VerticalOptions="Fill">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnServerModalBackdropTapped" />
+            </Grid.GestureRecognizers>
+
+            <Border
+                x:Name="ServerModalCard"
+                Margin="20"
+                Padding="22"
+                HorizontalOptions="Center"
+                MaximumHeightRequest="{OnIdiom Desktop=540, Phone=490, Default=520}"
+                MaximumWidthRequest="{OnIdiom Desktop=460, Phone=360, Default=420}"
+                Stroke="{DynamicResource BorderMedium}"
+                StrokeShape="RoundRectangle 20"
+                StrokeThickness="1.2"
+                Style="{StaticResource NeoCard}"
+                VerticalOptions="Center"
+                WidthRequest="{OnIdiom Desktop=440, Phone=340, Default=400}">
+                <Border.Shadow>
+                    <Shadow
+                        Brush="{DynamicResource Accent}"
+                        Opacity="0.4"
+                        Radius="24"
+                        Offset="0, 6" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+
+                <Grid RowDefinitions="Auto, Auto, *, Auto" RowSpacing="14">
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=Server24}"
+                                IconColor="{DynamicResource Accent}"
+                                IconSize="20"
+                                VerticalOptions="Center" />
+                            <Label
+                                FontFamily="{DynamicResource AppFontTitle}"
+                                FontSize="17"
+                                Text="Выбор сервера"
+                                TextColor="{DynamicResource TextPrimary}"
+                                VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+
+                        <Border
+                            Grid.Column="1"
+                            Padding="6"
+                            BackgroundColor="{DynamicResource BgElevated}"
+                            Stroke="{DynamicResource BorderMedium}"
+                            StrokeShape="RoundRectangle 14"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCloseServerModalClicked" />
+                            </Border.GestureRecognizers>
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=Dismiss16}"
+                                IconColor="{DynamicResource TextSecondary}"
+                                IconSize="14" />
+                        </Border>
+                    </Grid>
+
+                    <Label
+                        Grid.Row="1"
+                        FontFamily="{DynamicResource AppFontRegular}"
+                        FontSize="12"
+                        Text="Выберите оптимальную локацию для подключения:"
+                        TextColor="{DynamicResource TextSecondary}" />
+
+                    <ScrollView Grid.Row="2" HorizontalScrollBarVisibility="Never" VerticalScrollBarVisibility="Default">
+                        <VerticalStackLayout x:Name="ServerItemsContainer" Spacing="8" />
+                    </ScrollView>
+
+                    <Button
+                        x:Name="RefreshServersButton"
+                        Grid.Row="3"
+                        Clicked="OnRefreshServersClickedAsync"
+                        CornerRadius="10"
+                        HeightRequest="40"
+                        Style="{StaticResource BtnSecondary}"
+                        Text="Обновить список" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </ContentView>
 
