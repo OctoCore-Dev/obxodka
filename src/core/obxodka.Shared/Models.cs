@@ -102,7 +102,8 @@ public sealed record VpnServerDto(
     int LoadPercent,
     string? CertHash = null,
     string? Provider = "Vultr",
-    string? Flag = null);
+    string? Flag = null,
+    string? Role = "worker");
 
 public sealed record TelemetryDto(
     string Hwid,

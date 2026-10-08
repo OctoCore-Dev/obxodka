@@ -135,6 +135,10 @@
 		<Message Importance="high" Text="🐧 Linux detected: obxodka.Maui skipped successfully." />
 	</Target>
 	<Target Name="Publish" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(GITHUB_ACTIONS)' != 'true' and !$(TargetFramework.Contains('-android'))" />
+	<Target Name="_EnsureProguardProjectReferencesExists" BeforeTargets="_CompileToDalvik" Condition="$(TargetFramework.Contains('-android'))">
+		<MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_ProguardProjectConfiguration)'))" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')" />
+		<Touch Files="$(_ProguardProjectConfiguration)" AlwaysCreate="true" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')" />
+	</Target>
 
 </Project>
 

@@ -7,7 +7,8 @@
     "LoadPercent": 10,
     "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
     "Provider": "Vultr",
-    "Flag": "🇸🇪"
+    "Flag": "🇸🇪",
+    "Role": "main"
   },
   {
     "Ip": "70.34.246.53",
@@ -17,6 +18,7 @@
     "LoadPercent": 8,
     "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
     "Provider": "Vultr",
-    "Flag": "🇵🇱"
+    "Flag": "🇵🇱",
+    "Role": "worker"
   }
 ]
