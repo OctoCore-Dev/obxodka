@@ -5,6 +5,18 @@
     "Location": "Швеция, Стокгольм",
     "IsOnline": true,
     "LoadPercent": 10,
-    "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="
+    "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
+    "Provider": "Vultr",
+    "Flag": "🇸🇪"
+  },
+  {
+    "Ip": "70.34.246.53",
+    "Port": 443,
+    "Location": "Польша, Варшава",
+    "IsOnline": true,
+    "LoadPercent": 8,
+    "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
+    "Provider": "Vultr",
+    "Flag": "🇵🇱"
   }
 ]
