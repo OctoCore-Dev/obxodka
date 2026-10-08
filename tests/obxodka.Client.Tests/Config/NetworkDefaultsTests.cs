@@ -8,7 +8,7 @@ public class NetworkDefaultsTests
     {
         Assert.Equal(1360, NetworkDefaults.DefaultMtu);
         Assert.Equal(1280, NetworkDefaults.MinMtu);
-        Assert.Equal(1360, NetworkDefaults.MaxMtu);
+        Assert.Equal(1420, NetworkDefaults.MaxMtu);
         Assert.Equal("1.1.1.1", NetworkDefaults.PrimaryDns);
         Assert.Equal("1.0.0.1", NetworkDefaults.SecondaryDns);
         Assert.NotEmpty(NetworkDefaults.TrustedDnsServers);
@@ -25,11 +25,11 @@ public class NetworkDefaultsTests
     [InlineData(1280, 1280)]
     [InlineData(1350, 1350)]
     [InlineData(1360, 1360)]
-    [InlineData(1400, 1360)]
-    [InlineData(1420, 1360)]
-    [InlineData(1421, 1360)]
-    [InlineData(1500, 1360)]
-    [InlineData(9000, 1360)]
+    [InlineData(1400, 1400)]
+    [InlineData(1420, 1420)]
+    [InlineData(1421, 1420)]
+    [InlineData(1500, 1420)]
+    [InlineData(9000, 1420)]
     public void ClampMtuClampsCorrectly(int input, int expected)
     {
         var result = NetworkDefaults.ClampMtu(input);
@@ -57,6 +57,22 @@ public class NetworkDefaultsTests
         foreach (var server in servers)
         {
             Assert.True(IPAddress.TryParse(server, out _));
+        }
+    }
+
+    [Fact]
+    public void GenerateMtuScanCandidatesProducesDescendingScan()
+    {
+        var candidates = NetworkDefaults.MtuCandidates;
+        Assert.NotEmpty(candidates);
+        Assert.Equal(NetworkDefaults.MaxMtu, candidates[0]);
+        Assert.Equal(NetworkDefaults.MinMtu, candidates[^1]);
+
+        for (var i = 1; i < candidates.Length; i++)
+        {
+            Assert.True(candidates[i] < candidates[i - 1]);
+            Assert.True(candidates[i] >= NetworkDefaults.MinMtu);
+            Assert.True(candidates[i] <= NetworkDefaults.MaxMtu);
         }
     }
 }

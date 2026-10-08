@@ -1,4 +1,4 @@
-- Dual-Ray Hedging: real-time gaming UDP and ping redundancy across dual independent paths with zero-allocation deduplication.
-- Seamless VPN disconnection without network adapter flickering or connectivity drops.
-- Ultra-responsive ping monitoring (500ms) with adaptive latency jitter smoothing.
-- High-speed HTTP/2 stealth tunnel streaming with traffic camouflage.
+- Smart MTU discovery to bypass router and DPI restrictions.
+- Real-time duplex network check (TX/RX) preventing stalls.
+- Live connection diagnostics on the main screen.
+- Improved tunnel stability on Android and Windows.

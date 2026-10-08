@@ -3,8 +3,8 @@ namespace obxodka.Core.Transports;
 internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0, int delayMs = 0) : Stream
 {
     private readonly Stream _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
-    private readonly int _splitPosition = splitPosition > 0 ? splitPosition : Random.Shared.Next(1, 4);
-    private readonly int _delayMs = delayMs > 0 ? delayMs : Random.Shared.Next(18, 46);
+    private readonly int _splitPosition = splitPosition;
+    private readonly int _delayMs = delayMs;
     private bool _firstWrite = true;
 
     public override bool CanRead => _innerStream.CanRead;
@@ -34,45 +34,46 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        if (_firstWrite && buffer.Length > 4)
+        if (_firstWrite && buffer.Length > 5)
         {
             _firstWrite = false;
-            var isTlsHandshake = buffer[0] == 0x16 && buffer[1] == 0x03;
-            var p1 = _splitPosition > 0 ? Math.Min(_splitPosition, buffer.Length - 1) : Random.Shared.Next(1, 4);
-            var delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(15, 35);
-
-            if (isTlsHandshake && buffer.Length > 64 && _splitPosition == 0)
+            if (TryDetermineSplitPoints(buffer, out var split1, out var split2, out var d1, out var d2))
             {
-                var p2 = Random.Shared.Next(p1 + 8, Math.Min(buffer.Length - 16, p1 + 42));
-                var delay2 = Random.Shared.Next(10, 25);
-
-                _innerStream.Write(buffer[..p1]);
-                _innerStream.Flush();
-                Thread.Sleep(delay1);
-
-                _innerStream.Write(buffer[p1..p2]);
-                _innerStream.Flush();
-                Thread.Sleep(delay2);
-
-                _innerStream.Write(buffer[p2..]);
-                _innerStream.Flush();
-            }
-            else
-            {
-                _innerStream.Write(buffer[..p1]);
-                _innerStream.Flush();
-                if (delay1 > 0)
+                if (split2 > split1 && split2 < buffer.Length)
                 {
-                    Thread.Sleep(delay1);
+                    _innerStream.Write(buffer[..split1]);
+                    _innerStream.Flush();
+                    if (d1 > 0)
+                    {
+                        Thread.Sleep(d1);
+                    }
+
+                    _innerStream.Write(buffer[split1..split2]);
+                    _innerStream.Flush();
+                    if (d2 > 0)
+                    {
+                        Thread.Sleep(d2);
+                    }
+
+                    _innerStream.Write(buffer[split2..]);
+                    _innerStream.Flush();
+                    return;
                 }
-                _innerStream.Write(buffer[p1..]);
+
+                _innerStream.Write(buffer[..split1]);
                 _innerStream.Flush();
+                if (d1 > 0)
+                {
+                    Thread.Sleep(d1);
+                }
+
+                _innerStream.Write(buffer[split1..]);
+                _innerStream.Flush();
+                return;
             }
         }
-        else
-        {
-            _innerStream.Write(buffer);
-        }
+
+        _innerStream.Write(buffer);
     }
 
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
@@ -80,46 +81,160 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (_firstWrite && buffer.Length > 4)
+        if (_firstWrite && buffer.Length > 5)
         {
             _firstWrite = false;
-            var span = buffer.Span;
-            var isTlsHandshake = span[0] == 0x16 && span[1] == 0x03;
-            var p1 = _splitPosition > 0 ? Math.Min(_splitPosition, buffer.Length - 1) : Random.Shared.Next(1, 4);
-            var delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(15, 35);
-
-            if (isTlsHandshake && buffer.Length > 64 && _splitPosition == 0)
+            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var split2, out var d1, out var d2))
             {
-                var p2 = Random.Shared.Next(p1 + 8, Math.Min(buffer.Length - 16, p1 + 42));
-                var delay2 = Random.Shared.Next(10, 25);
-
-                await _innerStream.WriteAsync(buffer[..p1], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
-
-                await _innerStream.WriteAsync(buffer[p1..p2], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                await Task.Delay(delay2, cancellationToken).ConfigureAwait(false);
-
-                await _innerStream.WriteAsync(buffer[p2..], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                await _innerStream.WriteAsync(buffer[..p1], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                if (delay1 > 0)
+                if (split2 > split1 && split2 < buffer.Length)
                 {
-                    await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
+                    await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
+                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    if (d1 > 0)
+                    {
+                        await Task.Delay(d1, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await _innerStream.WriteAsync(buffer[split1..split2], cancellationToken).ConfigureAwait(false);
+                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    if (d2 > 0)
+                    {
+                        await Task.Delay(d2, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await _innerStream.WriteAsync(buffer[split2..], cancellationToken).ConfigureAwait(false);
+                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    return;
                 }
-                await _innerStream.WriteAsync(buffer[p1..], cancellationToken).ConfigureAwait(false);
+
+                await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
                 await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                if (d1 > 0)
+                {
+                    await Task.Delay(d1, cancellationToken).ConfigureAwait(false);
+                }
+
+                await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                return;
             }
         }
-        else
+
+        await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+    }
+
+    private bool TryDetermineSplitPoints(ReadOnlySpan<byte> span, out int split1, out int split2, out int delay1, out int delay2)
+    {
+        split1 = 0;
+        split2 = 0;
+        delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(25, 55);
+        delay2 = Random.Shared.Next(15, 35);
+
+        if (_splitPosition > 0 && _splitPosition < span.Length)
         {
-            await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+            split1 = _splitPosition;
+            return true;
         }
+
+        if (span.Length > 9 && span[0] == 0x16 && span[1] == 0x03 && span[5] == 0x01)
+        {
+            if (TryFindSniRange(span, out var sniStart, out var sniLen))
+            {
+                var mid = sniStart + (sniLen / 2);
+                split1 = Math.Clamp(mid, 1, span.Length - 1);
+                var headerCut = Random.Shared.Next(1, 4);
+                if (headerCut < split1)
+                {
+                    split2 = split1;
+                    split1 = headerCut;
+                }
+                return true;
+            }
+
+            split1 = Random.Shared.Next(1, 4);
+            split2 = Random.Shared.Next(split1 + 10, Math.Min(span.Length - 5, split1 + 45));
+            return true;
+        }
+
+        if (span.Length > 2)
+        {
+            split1 = 1;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryFindSniRange(ReadOnlySpan<byte> data, out int nameStart, out int nameLen)
+    {
+        nameStart = 0;
+        nameLen = 0;
+        if (data.Length < 44 || data[0] != 0x16 || data[1] != 0x03 || data[5] != 0x01)
+        {
+            return false;
+        }
+
+        var offset = 43;
+        if (offset >= data.Length)
+        {
+            return false;
+        }
+
+        var sessionIdLen = data[offset++];
+        offset += sessionIdLen;
+        if (offset + 2 > data.Length)
+        {
+            return false;
+        }
+
+        var cipherSuitesLen = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset, 2));
+        offset += 2 + cipherSuitesLen;
+        if (offset + 1 > data.Length)
+        {
+            return false;
+        }
+
+        var compMethodsLen = data[offset++];
+        offset += compMethodsLen;
+        if (offset + 2 > data.Length)
+        {
+            return false;
+        }
+
+        var extensionsLen = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset, 2));
+        offset += 2;
+        var extEnd = Math.Min(data.Length, offset + extensionsLen);
+
+        while (offset + 4 <= extEnd)
+        {
+            var extType = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset, 2));
+            var extLen = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset + 2, 2));
+            offset += 4;
+            if (offset + extLen > extEnd)
+            {
+                break;
+            }
+
+            if (extType == 0x0000 && extLen >= 5)
+            {
+                var nameType = data[offset + 2];
+                if (nameType == 0)
+                {
+                    var len = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset + 3, 2));
+                    var start = offset + 5;
+                    if (start + len <= offset + extLen && len > 1)
+                    {
+                        nameStart = start;
+                        nameLen = len;
+                        return true;
+                    }
+                }
+            }
+
+            offset += extLen;
+        }
+
+        return false;
     }
 
     public override async ValueTask DisposeAsync()

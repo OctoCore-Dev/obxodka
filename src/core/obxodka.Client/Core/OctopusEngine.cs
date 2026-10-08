@@ -26,7 +26,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public event Action? OnDeadConnectionDetected;
     public event Action<long, long>? OnTrafficUpdated;
     public event Action<long>? OnPingUpdated;
+    public event Action<string>? OnStatusMessage;
     public static event Action<string>? OnCertificateRevoked;
+
+    public void EmitStatus(string message)
+    {
+        OnStatusMessage?.Invoke(message);
+        Shared.Logging.AppLogger.Log(message);
+    }
 
     private long _totalBytesSent;
     private long _totalBytesReceived;
@@ -245,8 +252,18 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         var initialReceived = TotalBytesReceived;
         var initialSent = TotalBytesSent;
+
+        if (initialReceived > 0)
+        {
+            Shared.Logging.AppLogger.Log($"[PROBE SUCCESS] Downlink already active with {initialReceived}B received.");
+            return true;
+        }
+
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts?.Token ?? CancellationToken.None);
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var maxDiscoveredMtu = 0;
+
+        EmitStatus(VpnStatusMessages.ScanningMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, 8));
 
         void OnPacket(byte[] pkt, int len)
         {
@@ -254,13 +271,27 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 var proto = len >= 20 ? ((pkt[0] >> 4) == 4 ? $"IPv4(proto={pkt[9]})" : "IPv6") : "NonIP";
                 Shared.Logging.AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
+
+                if (len >= 28 && (pkt[0] >> 4) == 4 && pkt[9] == 1 && (pkt[0] & 0x0F) >= 5)
+                {
+                    var ihl = (pkt[0] & 0x0F) * 4;
+                    if (len >= ihl + 8 && pkt[ihl] == 0)
+                    {
+                        if (len > maxDiscoveredMtu && len <= NetworkDefaults.MaxMtu)
+                        {
+                            maxDiscoveredMtu = len;
+                            EmitStatus(VpnStatusMessages.MtuHoleFound(maxDiscoveredMtu));
+                        }
+                    }
+                }
+
                 _ = tcs.TrySetResult(true);
             }
         }
 
         void OnPing(long rtt)
         {
-            Shared.Logging.AppLogger.Log($"[PROBE RX] Received verified Pong probe (RTT={rtt}ms). Total RX={TotalBytesReceived}B");
+            EmitStatus(VpnStatusMessages.PingReceived(rtt));
             _ = tcs.TrySetResult(true);
         }
 
@@ -273,6 +304,16 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             async Task SendProbesAsync()
             {
                 var cycle = Interlocked.Increment(ref probeCycle);
+                var curTx = TotalBytesSent - initialSent;
+                var curRx = TotalBytesReceived - initialReceived;
+                if (curTx > 0)
+                {
+                    EmitStatus(VpnStatusMessages.ProbingDuplex(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, cycle, curTx, curRx));
+                }
+                else
+                {
+                    EmitStatus(VpnStatusMessages.ProbingMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, cycle));
+                }
                 try
                 {
                     await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
@@ -281,11 +322,22 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
                 try
                 {
-                    if (BuildIcmpProbePacket(AssignedIp, "1.1.1.1") is { } pIcmp1)
+                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", 28) is { } pIcmpSelf)
+                    {
+                        _ = SendPacketAsync(pIcmpSelf);
+                    }
+                    foreach (var candidateMtu in NetworkDefaults.MtuCandidates)
+                    {
+                        if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", candidateMtu) is { } pCandidate)
+                        {
+                            _ = SendPacketAsync(pCandidate);
+                        }
+                    }
+                    if (BuildIcmpProbePacket(AssignedIp, "1.1.1.1", 28) is { } pIcmp1)
                     {
                         _ = SendPacketAsync(pIcmp1);
                     }
-                    if (BuildIcmpProbePacket(AssignedIp, "8.8.8.8") is { } pIcmp8)
+                    if (BuildIcmpProbePacket(AssignedIp, "8.8.8.8", 28) is { } pIcmp8)
                     {
                         _ = SendPacketAsync(pIcmp8);
                     }
@@ -300,7 +352,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 }
                 catch { }
 
-                Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent Ping(0x99) + ICMP Echo + DNS Query. TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
+                Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent Ping(0x99) + MTU Probes({string.Join(",", NetworkDefaults.MtuCandidates)}) + DNS Query. TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
             }
 
             _ = Task.Run(SendProbesAsync, linkedCts.Token);
@@ -310,7 +362,16 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 if (TotalBytesReceived > initialReceived)
                 {
-                    Shared.Logging.AppLogger.Log($"[PROBE SUCCESS] Downlink confirmed! Total RX={TotalBytesReceived}B.");
+                    var curTx = TotalBytesSent - initialSent;
+                    var curRx = TotalBytesReceived - initialReceived;
+                    if (maxDiscoveredMtu >= NetworkDefaults.MinMtu)
+                    {
+                        NetworkDefaults.CurrentMtu = maxDiscoveredMtu;
+                        EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
+                        _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
+                        EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
+                    }
+                    EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
 
@@ -318,7 +379,16 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {
-                    Shared.Logging.AppLogger.Log($"[PROBE SUCCESS] Downlink confirmed via probe event! Total RX={TotalBytesReceived}B.");
+                    var curTx = TotalBytesSent - initialSent;
+                    var curRx = TotalBytesReceived - initialReceived;
+                    if (maxDiscoveredMtu >= NetworkDefaults.MinMtu)
+                    {
+                        NetworkDefaults.CurrentMtu = maxDiscoveredMtu;
+                        EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
+                        _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
+                        EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
+                    }
+                    EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
 
@@ -327,20 +397,46 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
-            if (deltaRx <= 0)
+            if (deltaTx <= 0)
             {
+                EmitStatus(VpnStatusMessages.TxTransmissionFailed);
+                Shared.Logging.AppLogger.LogError($"[PROBE TIMEOUT] Outgoing transmission failed (TX=0). Sockets or local firewall blocked packets.");
+            }
+            else if (deltaRx <= 0)
+            {
+                EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
                 Shared.Logging.AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server. Connection rejected to protect network routes.");
             }
-            return deltaRx > 0;
+            if (deltaRx > 0 && maxDiscoveredMtu >= NetworkDefaults.MinMtu)
+            {
+                NetworkDefaults.CurrentMtu = maxDiscoveredMtu;
+                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
+                _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
+                EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
+            }
+            return deltaRx > 0 && deltaTx > 0;
         }
         catch (OperationCanceledException)
         {
             var deltaRx = TotalBytesReceived - initialReceived;
-            if (deltaRx <= 0)
+            var deltaTx = TotalBytesSent - initialSent;
+            if (deltaTx <= 0)
             {
+                EmitStatus(VpnStatusMessages.TxTransmissionFailed);
+            }
+            else if (deltaRx <= 0)
+            {
+                EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
                 Shared.Logging.AppLogger.LogWarning($"[PROBE CANCELED] Verification canceled after sending {probeCycle} probe cycles without downlink response.");
             }
-            return deltaRx > 0;
+            if (deltaRx > 0 && maxDiscoveredMtu >= NetworkDefaults.MinMtu)
+            {
+                NetworkDefaults.CurrentMtu = maxDiscoveredMtu;
+                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
+                _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
+                EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
+            }
+            return deltaRx > 0 && deltaTx > 0;
         }
         finally
         {
@@ -349,20 +445,90 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
     }
 
-    private static byte[]? BuildIcmpProbePacket(string assignedIp, string targetIp = "100.64.0.1")
+    public async Task<int> ScanAndLockOptimalMtuAsync(CancellationToken ct = default)
     {
+        if (!IsConnected || _transport is null)
+        {
+            return NetworkDefaults.CurrentMtu;
+        }
+
+        EmitStatus(VpnStatusMessages.ScanningMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, 8));
+        var maxMtuDiscovered = 0;
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnPacket(byte[] pkt, int len)
+        {
+            if (len >= 28 && (pkt[0] >> 4) == 4 && pkt[9] == 1 && (pkt[0] & 0x0F) >= 5)
+            {
+                var ihl = (pkt[0] & 0x0F) * 4;
+                if (len >= ihl + 8 && pkt[ihl] == 0)
+                {
+                    if (len > maxMtuDiscovered && len <= NetworkDefaults.MaxMtu)
+                    {
+                        maxMtuDiscovered = len;
+                        EmitStatus(VpnStatusMessages.MtuHoleFound(maxMtuDiscovered));
+                    }
+                    _ = tcs.TrySetResult(true);
+                }
+            }
+        }
+
+        OnPacketReceived += OnPacket;
+        try
+        {
+            foreach (var candidate in NetworkDefaults.MtuCandidates)
+            {
+                if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", candidate) is { } probe)
+                {
+                    _ = SendPacketAsync(probe);
+                }
+            }
+
+            var deadline = Stopwatch.GetTimestamp() + (long)(3.0 * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < deadline && !ct.IsCancellationRequested)
+            {
+                var delay = Task.Delay(100, ct);
+                _ = await Task.WhenAny(tcs.Task, delay).ConfigureAwait(false);
+                if (maxMtuDiscovered == NetworkDefaults.MaxMtu)
+                {
+                    break;
+                }
+            }
+
+            if (maxMtuDiscovered >= NetworkDefaults.MinMtu)
+            {
+                NetworkDefaults.CurrentMtu = maxMtuDiscovered;
+                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
+                await (_transport?.SendMtuSyncAsync(maxMtuDiscovered) ?? Task.CompletedTask).ConfigureAwait(false);
+                EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
+            }
+
+            return NetworkDefaults.CurrentMtu;
+        }
+        finally
+        {
+            OnPacketReceived -= OnPacket;
+        }
+    }
+
+    private static byte[]? BuildIcmpProbePacket(string assignedIp, string targetIp = "100.64.0.1", int totalLen = 28)
+    {
+        if (totalLen < 28)
+        {
+            totalLen = 28;
+        }
+
         if (!IPAddress.TryParse(assignedIp, out var srcIp) || srcIp.AddressFamily != AddressFamily.InterNetwork ||
             !IPAddress.TryParse(targetIp, out var dstIp) || dstIp.AddressFamily != AddressFamily.InterNetwork)
         {
             return null;
         }
 
-        const int totalLen = 28;
         var packet = new byte[totalLen];
 
         packet[0] = 0x45;
         packet[1] = 0x00;
-        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2, 2), totalLen);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2, 2), (ushort)totalLen);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(4, 2), 0x7788);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(6, 2), 0x4000);
         packet[8] = 64;
@@ -370,7 +536,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         srcIp.GetAddressBytes().CopyTo(packet.AsSpan(12, 4));
         dstIp.GetAddressBytes().CopyTo(packet.AsSpan(16, 4));
 
-        var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
+        var ipChecksum = ComputeChecksum(packet.AsSpan(0, 20));
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
 
         packet[20] = 8;
@@ -379,7 +545,12 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(24, 2), 0x1337);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(26, 2), 1);
 
-        var icmpChecksum = ComputeIpChecksum(packet.AsSpan(20, 8));
+        for (var i = 28; i < totalLen; i++)
+        {
+            packet[i] = (byte)(i & 0xFF);
+        }
+
+        var icmpChecksum = ComputeChecksum(packet.AsSpan(20, totalLen - 20));
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), icmpChecksum);
 
         return packet;
@@ -415,7 +586,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         packet[18] = dstOctet == 8 ? (byte)8 : (byte)1;
         packet[19] = dstOctet == 8 ? (byte)8 : (byte)1;
 
-        var ipChecksum = ComputeIpChecksum(packet.AsSpan(0, 20));
+        var ipChecksum = ComputeChecksum(packet.AsSpan(0, 20));
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(10, 2), ipChecksum);
 
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(20, 2), 53535);
@@ -427,16 +598,19 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         return packet;
     }
 
-    private static ushort ComputeIpChecksum(ReadOnlySpan<byte> header)
+    private static ushort ComputeChecksum(ReadOnlySpan<byte> data)
     {
         uint sum = 0;
-        for (var i = 0; i < header.Length; i += 2)
+        for (var i = 0; i < data.Length; i += 2)
         {
-            if (i == 10)
+            if (i + 1 < data.Length)
             {
-                continue;
+                sum += (uint)((data[i] << 8) + data[i + 1]);
             }
-            sum += BinaryPrimitives.ReadUInt16BigEndian(header.Slice(i, 2));
+            else
+            {
+                sum += (uint)(data[i] << 8);
+            }
         }
         while ((sum >> 16) != 0)
         {

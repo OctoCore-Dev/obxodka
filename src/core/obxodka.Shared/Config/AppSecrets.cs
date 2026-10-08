@@ -11,7 +11,9 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
-        "obxodka.one"
+        "obxodka.one",
+        "www.obxodka.one",
+        "api.octocore.dev"
     ];
 
     public static string GetRandomSni() =>

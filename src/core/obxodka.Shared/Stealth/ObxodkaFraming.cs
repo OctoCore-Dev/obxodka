@@ -12,8 +12,9 @@ public static class ObxodkaFraming
     public const byte CmdHandshake = 0x04;
     public const byte CmdHandshakeResponse = 0x05;
     public const byte CmdDisconnect = 0x06;
+    public const byte CmdMtuSync = 0x07;
 
-    public const int HeaderSize = 5;
+    public const int HeaderSize = 6;
     public const int MaxFrameSize = 65535;
 
     private static readonly byte[] t_noiseBuffer = GC.AllocateUninitializedArray<byte>(8192, pinned: true);
@@ -21,24 +22,42 @@ public static class ObxodkaFraming
     static ObxodkaFraming() => RandomNumberGenerator.Fill(t_noiseBuffer);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryDecodeHeader(ReadOnlySpan<byte> header, out int totalLen, out int payloadLen, out byte command)
+    public static void MaskPayload(Span<byte> payload, byte salt)
+    {
+        for (var i = 0; i < payload.Length; i++)
+        {
+            payload[i] ^= (byte)(salt + (i * 37) + ((i >> 3) ^ 0x9D));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UnmaskPayload(Span<byte> payload, byte salt) => MaskPayload(payload, salt);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeHeader(ReadOnlySpan<byte> header, out int totalLen, out int payloadLen, out byte command, out byte salt)
     {
         totalLen = 0;
         payloadLen = 0;
         command = 0;
+        salt = 0;
 
         if (header.Length < HeaderSize)
         {
             return false;
         }
 
-        var rawTotal = BinaryPrimitives.ReadUInt16BigEndian(header[..2]);
-        var rawPayload = BinaryPrimitives.ReadUInt16BigEndian(header.Slice(2, 2));
-        var rawCmd = header[4];
+        salt = header[0];
+        var rawTotal = BinaryPrimitives.ReadUInt16BigEndian(header.Slice(1, 2));
+        var rawPayload = BinaryPrimitives.ReadUInt16BigEndian(header.Slice(3, 2));
+        var rawCmd = header[5];
 
-        var decTotal = (ushort)(rawTotal ^ TotalMask);
-        var decPayload = (ushort)(rawPayload ^ PayloadMask);
-        var decCmd = (byte)(rawCmd ^ CommandMask);
+        var totalMask = (ushort)(TotalMask ^ ((salt << 8) | salt));
+        var payloadMask = (ushort)(PayloadMask ^ ((salt << 8) | (salt ^ 0x5C)));
+        var cmdMask = (byte)(CommandMask ^ salt);
+
+        var decTotal = (ushort)(rawTotal ^ totalMask);
+        var decPayload = (ushort)(rawPayload ^ payloadMask);
+        var decCmd = (byte)(rawCmd ^ cmdMask);
 
         if (decTotal < HeaderSize || decPayload > decTotal - HeaderSize)
         {
@@ -52,11 +71,25 @@ public static class ObxodkaFraming
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeHeader(ReadOnlySpan<byte> header, out int totalLen, out int payloadLen, out byte command) =>
+        TryDecodeHeader(header, out totalLen, out payloadLen, out command, out _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CalculatePaddingLength(byte command, int payloadLength, int maxMtu = 1360)
     {
-        if (command is CmdData or CmdPong)
+        if (command is CmdPong or CmdMtuSync)
         {
             return 0;
+        }
+
+        if (command == CmdData)
+        {
+            var available = maxMtu - (HeaderSize + payloadLength);
+            return available <= 0
+                ? 0
+                : payloadLength <= 128
+                    ? Random.Shared.Next(8, Math.Min(available, 64))
+                    : Random.Shared.Next(0, Math.Min(available, 16));
         }
 
         if (payloadLength <= 100)
@@ -69,8 +102,8 @@ public static class ObxodkaFraming
             return Random.Shared.Next(16, 64);
         }
 
-        var available = maxMtu - (HeaderSize + payloadLength);
-        return available <= 0 ? 0 : Random.Shared.Next(0, Math.Min(available, 16));
+        var avail = maxMtu - (HeaderSize + payloadLength);
+        return avail <= 0 ? 0 : Random.Shared.Next(0, Math.Min(avail, 16));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -91,16 +124,24 @@ public static class ObxodkaFraming
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteFrame(Span<byte> destination, byte command, ReadOnlySpan<byte> payload, int paddingLen)
     {
+        var salt = (byte)Random.Shared.Next(0, 256);
         var totalLen = (ushort)(HeaderSize + payload.Length + paddingLen);
         var payloadLen = (ushort)payload.Length;
 
-        BinaryPrimitives.WriteUInt16BigEndian(destination[..2], (ushort)(totalLen ^ TotalMask));
-        BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(2, 2), (ushort)(payloadLen ^ PayloadMask));
-        destination[4] = (byte)(command ^ CommandMask);
+        destination[0] = salt;
+        var totalMask = (ushort)(TotalMask ^ ((salt << 8) | salt));
+        var payloadMask = (ushort)(PayloadMask ^ ((salt << 8) | (salt ^ 0x5C)));
+        var cmdMask = (byte)(CommandMask ^ salt);
+
+        BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(1, 2), (ushort)(totalLen ^ totalMask));
+        BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(3, 2), (ushort)(payloadLen ^ payloadMask));
+        destination[5] = (byte)(command ^ cmdMask);
 
         if (payloadLen > 0)
         {
-            payload.CopyTo(destination.Slice(HeaderSize, payloadLen));
+            var payloadDest = destination.Slice(HeaderSize, payloadLen);
+            payload.CopyTo(payloadDest);
+            MaskPayload(payloadDest, salt);
         }
 
         if (paddingLen > 0)

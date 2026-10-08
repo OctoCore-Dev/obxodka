@@ -213,7 +213,7 @@ public sealed class ApiService(HttpClient client)
                     lastEx = ex;
                     var innerInfo = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
                     Debug.WriteLine($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
-                    var isTlsBlock = ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.InnerException is System.Security.Authentication.AuthenticationException or System.Net.Sockets.SocketException);
+                    var isTlsBlock = ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.InnerException is AuthenticationException or SocketException);
                     if (isTlsBlock)
                     {
                         Debug.WriteLine($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");

@@ -486,7 +486,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 _ = builder
                     .SetSession("Obxodka")
                     .AddAddress(ip, 32)
-                    .SetMtu(NetworkDefaults.DefaultMtu)
+                    .SetMtu(NetworkDefaults.CurrentMtu)
                     .SetBlocking(true)
                     .AddRoute("0.0.0.0", 0);
 
@@ -558,7 +558,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     };
                     _rxThread.Start();
 
-                    System.Diagnostics.Debug.WriteLine($"[VPN ESTABLISH] TUN successfully established for {ip}/32 (MTU {NetworkDefaults.DefaultMtu})");
+                    System.Diagnostics.Debug.WriteLine($"[VPN ESTABLISH] TUN successfully established for {ip}/32 (MTU {NetworkDefaults.CurrentMtu})");
                     return true;
                 }
 

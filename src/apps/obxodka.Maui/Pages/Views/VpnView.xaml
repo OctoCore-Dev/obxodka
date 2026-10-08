@@ -549,6 +549,9 @@
                             FontSize="{OnIdiom Phone=13,
                                                Default=15}"
                             HorizontalOptions="Center"
+                            HorizontalTextAlignment="Center"
+                            LineBreakMode="TailTruncation"
+                            MaxLines="2"
                             Text="Не в сети"
                             TextColor="{DynamicResource PrimaryBright}" />
                     </Grid>

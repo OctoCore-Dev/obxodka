@@ -214,11 +214,13 @@ public sealed partial class VpnView : ContentView, IDisposable
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
         _vpnService.OnLogUpdated -= HandleVpnLog;
+        OctopusEngine.Current.OnStatusMessage -= HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
 
         _vpnService.OnStateChanged += HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred += HandleVpnError;
         _vpnService.OnLogUpdated += HandleVpnLog;
+        OctopusEngine.Current.OnStatusMessage += HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated += HandlePingUpdated;
 
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
@@ -237,6 +239,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             _vpnService.OnLogUpdated -= HandleVpnLog;
         }
 
+        OctopusEngine.Current.OnStatusMessage -= HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
@@ -544,11 +547,11 @@ public sealed partial class VpnView : ContentView, IDisposable
                     ResetPingIndicators();
                     TriggerShockwave(isConnect: false);
                     OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
+                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, t_grayText, t_grayText);
                     _activeConnectedNode = null;
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
-                    await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
+                    await SetNeonStateAsync(VpnStatusMessages.Disconnected, VpnStatusMessages.StartAction, AppVpnState.Disconnected);
                     ParentPage?.NotifyVpnDisconnected();
                     break;
 
@@ -561,11 +564,11 @@ public sealed partial class VpnView : ContentView, IDisposable
                     AnimateReactorMorph(1.0f, 650);
                     TriggerShockwave(isConnect: true);
                     OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? "Подключен", Colors.White, t_cyanAccent);
+                    UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? VpnStatusMessages.Connected, Colors.White, t_cyanAccent);
                     UpdateActiveNode(_activeConnectedNode);
                     ConnectButtonCore.IsEnabled = true;
                     UpdateRayIndicator();
-                    await SetNeonStateAsync("Защищено", "СТОП", AppVpnState.Connected);
+                    await SetNeonStateAsync(VpnStatusMessages.Protected, VpnStatusMessages.StopAction, AppVpnState.Connected);
                     ParentPage?.NotifyVpnConnected();
                     break;
 
@@ -577,13 +580,13 @@ public sealed partial class VpnView : ContentView, IDisposable
                     AnimateErrorMorph(1.0f, 350);
                     TriggerShockwave(isConnect: false);
                     OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
+                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, t_grayText, t_grayText);
                     _activeConnectedNode = null;
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
                     PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
-                    var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage) ? _lastErrorMessage : "Ошибка подключения";
-                    await SetNeonStateAsync(errDisplay, "ПОВТОРИТЬ", AppVpnState.Error);
+                    var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage) ? _lastErrorMessage : VpnStatusMessages.DefaultConnectionError;
+                    await SetNeonStateAsync(errDisplay, VpnStatusMessages.Retry, AppVpnState.Error);
                     ParentPage?.NotifyVpnDisconnected();
                     StopLoaderAnimation(animateExit: true);
                     break;
@@ -596,19 +599,19 @@ public sealed partial class VpnView : ContentView, IDisposable
                     ResetPingIndicators();
                     StartLoaderAnimation(animateEntrance: true);
                     ConnectButtonCore.IsEnabled = false;
-                    UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
+                    UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, t_cyanAccent, t_cyanAccent);
                     UpdateActiveNode();
-                    await SetNeonStateAsync("Подключение...", "ЖДИТЕ", state);
+                    await SetNeonStateAsync(VpnStatusMessages.Connecting, VpnStatusMessages.PleaseWait, state);
                     break;
 
                 case AppVpnState.Disconnecting:
                     StopGraphAnimation();
                     ResetPingIndicators();
                     ConnectButtonCore.IsEnabled = false;
-                    UpdateIpStatusDisplay("Отключение...", t_grayText, t_grayText);
-                    NodeHostLabel.Text = "Отключение...";
-                    StatusLabel.Text = "Отключение...";
-                    ConnectButtonText.Text = "ЖДИТЕ";
+                    UpdateIpStatusDisplay(VpnStatusMessages.Disconnecting, t_grayText, t_grayText);
+                    NodeHostLabel.Text = VpnStatusMessages.Disconnecting;
+                    StatusLabel.Text = VpnStatusMessages.Disconnecting;
+                    ConnectButtonText.Text = VpnStatusMessages.PleaseWait;
                     _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
                     AnimateReactorMorph(0.0f, 350);
                     SafeScaleTo(LoaderCanvas, 0.35, 400, Easing.CubicIn);

@@ -25,6 +25,7 @@ global using System.Text.Json.Serialization;
 global using System.Text.Json.Serialization.Metadata;
 global using System.Text.RegularExpressions;
 global using System.Threading;
+global using System.Threading.Channels;
 global using System.Threading.Tasks;
 global using obxodka.Client.Models;
 global using obxodka.Client.Platforms;

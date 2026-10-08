@@ -6,7 +6,23 @@ public static class NetworkDefaults
 {
     public const int DefaultMtu = 1360;
     public const int MinMtu = 1280;
-    public const int MaxMtu = 1360;
+    public const int MaxMtu = 1420;
+    public static int CurrentMtu { get; set; } = DefaultMtu;
+    public static int[] MtuCandidates => GenerateMtuScanCandidates(MaxMtu, MinMtu, 8);
+
+    public static int[] GenerateMtuScanCandidates(int max = MaxMtu, int min = MinMtu, int step = 8)
+    {
+        var candidates = new List<int>();
+        for (var m = max; m >= min; m -= step)
+        {
+            candidates.Add(m);
+        }
+        if (candidates.Count == 0 || candidates[^1] != min)
+        {
+            candidates.Add(min);
+        }
+        return [.. candidates];
+    }
 
     public static readonly string[] TrustedDnsServers =
     [

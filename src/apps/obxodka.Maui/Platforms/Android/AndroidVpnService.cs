@@ -26,6 +26,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
     private AndroidVpnService()
     {
+        OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
         OctopusEngine.OnCertificateRevoked += (msg) => OnForceLogoutRequested?.Invoke(msg);
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
@@ -48,18 +49,18 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             try
             {
                 Debug.WriteLine("[DEAD CONNECTION] Packet blackhole detected. Initiating smart failover...");
-                OnLogUpdated?.Invoke("[SMART CONNECT] Обнаружена блокировка передачи пакетов. Автопереключение...");
+                OnLogUpdated?.Invoke(VpnStatusMessages.PacketBlockDetected);
                 ChangeState(AppVpnState.Reconnecting);
 
                 try
                 {
                     await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
                     _ = OctopusVpnService.Instance?.EstablishTun();
-                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
+                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                     if (verified || OctopusEngine.Current.IsConnected)
                     {
                         ChangeState(AppVpnState.Connected);
-                        OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено через TCP/TLS!");
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestoredTls);
                         return;
                     }
                 }
@@ -92,16 +93,16 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             OctopusEngine.DynamicSslPublicKeyHash = nextServer.CertHash;
                         }
 
-                        OnLogUpdated?.Invoke($"[SMART CONNECT] Переключение на резервный сервер: {_currentServerIp}...");
+                        OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupServer(_currentServerIp));
                         try
                         {
                             await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
                             _ = OctopusVpnService.Instance?.EstablishTun();
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
                                 ChangeState(AppVpnState.Connected);
-                                OnLogUpdated?.Invoke("[SMART CONNECT] Подключение успешно переведено на новый сервер!");
+                                OnLogUpdated?.Invoke(VpnStatusMessages.SwitchedToBackupServerSuccess);
                                 return;
                             }
                         }
@@ -170,7 +171,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         {
                             await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
                             _ = OctopusVpnService.Instance?.EstablishTun();
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
                                 ChangeState(AppVpnState.Connected);
@@ -237,7 +238,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         Debug.WriteLine($"[NETWORK ROAMING] Fast reconnect attempt #{attempt}...");
                         await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
                         _ = OctopusVpnService.Instance?.EstablishTun();
-                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000), ct);
+                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000), ct);
                         if (verified || OctopusEngine.Current.IsConnected)
                         {
                             ChangeState(AppVpnState.Connected);
@@ -332,7 +333,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             }
         }
 
-        OnLogUpdated?.Invoke($"[DOMAINS] Traffic will route via domain: {originalHost}");
+        OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(originalHost));
 
         try
         {
@@ -349,7 +350,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
             if (serversToTry.Count > 1)
             {
-                OnLogUpdated?.Invoke("Поиск быстрейшего узла (Happy Eyeballs)...");
+                OnLogUpdated?.Invoke(VpnStatusMessages.ResolvingFastestNode);
                 serversToTry = [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
             }
 
@@ -408,10 +409,10 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     {
                         if (attempt > 1)
                         {
-                            OnLogUpdated?.Invoke($"Повтор подключения ({attempt}/2)...");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ReconnectingAttempt(attempt, 2));
                         }
 
-                        OnLogUpdated?.Invoke($"Подключение к серверу {candidateIp}:{candidatePort}...");
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToServer(candidateIp, candidatePort));
                         await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
 
                         var tunOk = OctopusVpnService.Instance?.EstablishTun() ?? false;
@@ -421,24 +422,29 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         }
 
                         OctopusEngine.Current.ResetTrafficCounters();
-                        OnLogUpdated?.Invoke($"Проверка соединения с сервером (RX={OctopusEngine.Current.TotalBytesReceived} B)...");
-                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
-                        if (verified)
-                        {
-                            OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Защищенное соединение установлено.");
-                        }
+                        OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
+                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                        var curTx = OctopusEngine.Current.TotalBytesSent;
+                        var curRx = OctopusEngine.Current.TotalBytesReceived;
 
-                        if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
+                        if ((verified || curRx > 0) && curTx > 0)
                         {
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedSecureDuplex(curTx, curRx));
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
                             ChangeState(AppVpnState.Connected);
                             connected = true;
                             break;
                         }
+                        else if (curTx <= 0)
+                        {
+                            OnLogUpdated?.Invoke(VpnStatusMessages.TxTransmissionFailed);
+                            throw new InvalidOperationException("Сбой исходящей передачи (TX=0). Проверьте системные разрешения VPN.");
+                        }
                         else
                         {
-                            throw new InvalidOperationException("Сервер не отвечает на тестовые пакеты (RX=0).");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.RxResponseTimeout(curTx));
+                            throw new InvalidOperationException($"Сервер не отвечает на тестовые пакеты (отправлено {curTx} Б, получено 0 Б).");
                         }
                     }
                     catch (UnauthorizedAccessException)
@@ -470,7 +476,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                 if (idx + 1 < serversToTry.Count)
                 {
-                    OnLogUpdated?.Invoke($"Сервер {candidateIp} недоступен или нет трафика. Пробуем запасной сервер...");
+                    OnLogUpdated?.Invoke(VpnStatusMessages.ServerUnavailableTryingBackup(candidateIp));
                     await Task.Delay(300);
                 }
             }

@@ -30,6 +30,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     public WindowsVpnService()
     {
+        OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
         _ = Task.Run(CleanupStaleRoutesAsync);
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
@@ -71,7 +72,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             try
             {
                 Debug.WriteLine($"[DEAD CONNECTION] Packet blackhole detected on Windows. Initiating failover for {_currentServerIp}:{_currentServerPort}...");
-                OnLogUpdated?.Invoke("[SMART CONNECT] Обнаружена потеря пакетов. Попытка восстановления маршрута...");
+                OnLogUpdated?.Invoke(VpnStatusMessages.PacketLossDetected);
                 UpdateState(AppVpnState.Reconnecting);
 
                 try
@@ -79,13 +80,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     await EnsureHostRouteAsync(_currentServerIp);
                     OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
                     await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
-                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
+                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                     if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                     {
                         OctopusEngine.Current.ResetTrafficCounters();
                         OctopusEngine.Current.ArmTrafficWatchdog();
                         UpdateState(AppVpnState.Connected);
-                        OnLogUpdated?.Invoke("[SMART CONNECT] Соединение восстановлено!");
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
                         return;
                     }
                 }
@@ -126,19 +127,19 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.DynamicSslPublicKeyHash = nextServer.CertHash;
                         }
 
-                        OnLogUpdated?.Invoke($"[SMART CONNECT] Переключение на резервный узел: {newIp}...");
+                        OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupNode(newIp));
                         try
                         {
                             await SwitchHostRouteAsync(oldIp, newIp);
                             OctopusEngine.Current.RegisterServerEndpoint(newIp);
                             await OctopusEngine.Current.ReconnectAsync(newIp, newPort);
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4000));
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
                                 OctopusEngine.Current.ResetTrafficCounters();
                                 OctopusEngine.Current.ArmTrafficWatchdog();
                                 UpdateState(AppVpnState.Connected);
-                                OnLogUpdated?.Invoke("[SMART CONNECT] Подключение успешно переведено на новый узел!");
+                                OnLogUpdated?.Invoke(VpnStatusMessages.SwitchedToBackupNodeSuccess);
                                 return;
                             }
                         }
@@ -196,7 +197,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             await EnsureHostRouteAsync(_currentServerIp);
                             OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
                             await OctopusEngine.Current.ConnectAsync(_currentServerIp, _currentServerPort);
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000));
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
                                 UpdateState(AppVpnState.Connected);
@@ -241,7 +242,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
 
             UpdateState(AppVpnState.Connecting);
-            OnLogUpdated?.Invoke("Очистка старых сетевых настроек...");
+            OnLogUpdated?.Invoke(VpnStatusMessages.CleaningOldSettings);
             await CleanupStaleRoutesAsync();
 
             var targetIp = serverIp;
@@ -293,7 +294,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             try
             {
                 LogNetworkDiagnostics(OnLogUpdated);
-                OnLogUpdated?.Invoke($"Построение маршрута через {originalHost}...");
+                OnLogUpdated?.Invoke(VpnStatusMessages.BuildingRoute(originalHost));
 
                 var connected = false;
                 Exception? lastException = null;
@@ -304,7 +305,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 if (serversToTry.Count > 1)
                 {
-                    OnLogUpdated?.Invoke("Поиск быстрейшего узла (Happy Eyeballs)...");
+                    OnLogUpdated?.Invoke(VpnStatusMessages.ResolvingFastestNode);
                     serversToTry = [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
                 }
 
@@ -381,7 +382,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         {
                             if (attempt > 1)
                             {
-                                OnLogUpdated?.Invoke($"Повтор подключения ({attempt}/2)...");
+                                OnLogUpdated?.Invoke(VpnStatusMessages.ReconnectingAttempt(attempt, 2));
                             }
 
                             foreach (var ipToRoute in _currentServerIpsToRoute)
@@ -390,7 +391,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 OctopusEngine.Current.RegisterServerEndpoint(ipToRoute);
                             }
 
-                            OnLogUpdated?.Invoke($"Подключение к {candidateIp}:{candidatePort}...");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(candidateIp, candidatePort));
                             await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
 
                             _cts?.Cancel();
@@ -404,33 +405,35 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 throw new InvalidOperationException("Получены некорректные IP-адреса от сервера.");
                             }
 
-                            OnLogUpdated?.Invoke($"Получен IP: {ip}");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
                             if (_adapter is null)
                             {
-                                OnLogUpdated?.Invoke("Инициализация виртуального адаптера Wintun...");
+                                OnLogUpdated?.Invoke(VpnStatusMessages.InitializingWintunAdapter);
                                 _adapter = await Task.Run(() => new WintunAdapter("Obxodka", "Obxodka"));
                             }
 
-                            OnLogUpdated?.Invoke($"Запуск адаптера ({_adapter.Name})...");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.StartingAdapter(_adapter.Name));
                             _adapter.StartSession();
 
-                            OnLogUpdated?.Invoke("Применение настроек сети...");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ApplyingNetworkSettings);
                             await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", ipv6);
-
-                            var (_, tcpPost) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetTCPConnection -RemoteAddress {candidateIp} -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State | Format-Table -AutoSize | Out-String\"");
-                            Shared.Logging.AppLogger.Log($"[POST-CONFIG TCP-STATE]\n{tcpPost.Trim()}");
-
-                            var (_, routePost) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0','{candidateIp}/32','100.64.0.0/10' -ErrorAction SilentlyContinue | Select-Object DestinationPrefix,NextHop,InterfaceIndex,RouteMetric | Format-Table -AutoSize | Out-String\"");
-                            Shared.Logging.AppLogger.Log($"[POST-CONFIG ROUTE-STATE]\n{routePost.Trim()}");
 
                             OctopusEngine.Current.ResetTrafficCounters();
 
-                            OnLogUpdated?.Invoke("Проверка готовности туннеля (RX)...");
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(6000), _cts.Token);
-                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
+                            OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(12000), _cts.Token);
+                            var curTx = OctopusEngine.Current.TotalBytesSent;
+                            var curRx = OctopusEngine.Current.TotalBytesReceived;
+
+                            if ((verified || curRx > 0) && curTx > 0)
                             {
-                                Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Downlink verified (RX={OctopusEngine.Current.TotalBytesReceived} B)! Activating routes and elevating adapter priority.");
-                                OnLogUpdated?.Invoke($"Связь подтверждена (RX={OctopusEngine.Current.TotalBytesReceived} B)! Активация...");
+                                Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={NetworkDefaults.CurrentMtu})! Activating routes and elevating adapter priority.");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                if (!string.IsNullOrWhiteSpace(ipv6))
+                                {
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                }
+                                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else
@@ -441,20 +444,29 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 var (_, routeFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0','{candidateIp}/32','100.64.0.0/10' -ErrorAction SilentlyContinue | Select-Object DestinationPrefix,NextHop,InterfaceIndex,RouteMetric | Format-Table -AutoSize | Out-String\"");
                                 Shared.Logging.AppLogger.LogError($"[PROBE-FAIL ROUTE-STATE]\n{routeFail.Trim()}");
 
-                                Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Downlink probe timeout (TX={OctopusEngine.Current.TotalBytesSent} B, RX={OctopusEngine.Current.TotalBytesReceived} B). No incoming packets over tunnel. Rejecting dead connection to prevent hijacking default routes.");
-                                OnLogUpdated?.Invoke($"Нет входящего трафика от сервера (0 RX). Переподключение ({attempt}/2)...");
-                                throw new InvalidOperationException("Сервер не отвечает на тестовые пакеты (0 RX).");
+                                if (curTx <= 0)
+                                {
+                                    Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Transmission failure (TX=0 B). Outgoing packets blocked.");
+                                    OnLogUpdated?.Invoke(VpnStatusMessages.TxTransmissionFailed);
+                                    throw new InvalidOperationException("Сбой исходящей передачи (TX=0). Сокет или брандмауэр блокирует отправку данных.");
+                                }
+                                else
+                                {
+                                    Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Downlink probe timeout (TX={curTx} B, RX={curRx} B). No incoming packets over tunnel. Rejecting dead connection to prevent hijacking default routes.");
+                                    OnLogUpdated?.Invoke(VpnStatusMessages.RxResponseTimeout(curTx));
+                                    throw new InvalidOperationException($"Сервер не отвечает на тестовые пакеты (отправлено {curTx} Б, получено 0 Б).");
+                                }
                             }
 
-                            OnLogUpdated?.Invoke("Перенаправление трафика в туннель...");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.RedirectingTraffic);
                             await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true);
-                            OnLogUpdated?.Invoke("Включение защиты от утечек DNS...");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.EnablingDnsProtection);
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
 
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
 
-                            OnLogUpdated?.Invoke("Защищенное соединение активно.");
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
                             UpdateState(AppVpnState.Connected);
                             connected = true;
                             return;
@@ -495,7 +507,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                     if (idx + 1 < serversToTry.Count)
                     {
-                        OnLogUpdated?.Invoke($"Сервер {candidateIp} недоступен или нет трафика. Пробуем запасной узел...");
+                        OnLogUpdated?.Invoke(VpnStatusMessages.NodeUnavailableTryingBackup(candidateIp));
                         await Task.Delay(300);
                     }
                 }
@@ -638,14 +650,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
+                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
                 Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
                 {
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.DefaultMtu} store=active");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
                     Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
                 }
@@ -665,7 +677,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ exit 1; }}
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 50 -NlMtuBytes {NetworkDefaults.DefaultMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 50 -NlMtuBytes {NetworkDefaults.CurrentMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 if ('{ipv6}' -ne '') {{ try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }} }}
             ";
@@ -836,7 +848,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     public async Task<string?> RunNetworkPreflightAsync()
     {
-        OnLogUpdated?.Invoke("Проверка доступа в интернет и DNS...");
+        OnLogUpdated?.Invoke(VpnStatusMessages.CheckingInternetAndDns);
 
         string[] referenceIps = ["77.88.55.242", "1.1.1.1", "8.8.8.8"];
         var referenceTasks = referenceIps.Select(ip => ProbeTcpAsync(ip, 443, 3000)).ToArray();
@@ -867,26 +879,26 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
         if (!serverOk)
         {
-            OnLogUpdated?.Invoke("Основной узел недоступен напрямую, пробуем резервные пути...");
+            OnLogUpdated?.Invoke(VpnStatusMessages.MainNodeUnavailableDirectly);
         }
 
         if (!dnsOk)
         {
-            OnLogUpdated?.Invoke("Обнаружен сбой системного DNS. Автовосстановление серверов...");
+            OnLogUpdated?.Invoke(VpnStatusMessages.DnsFailureDetected);
             await AutoHealAdapterDnsAsync().ConfigureAwait(false);
             dnsOk = await ProbeSystemDnsAsync("ya.ru", 2500).ConfigureAwait(false);
             if (dnsOk)
             {
-                OnLogUpdated?.Invoke("Системный DNS успешно восстановлен (Яндекс / Cloudflare).");
+                OnLogUpdated?.Invoke(VpnStatusMessages.DnsRestoredSuccessfully);
             }
             else
             {
-                OnLogUpdated?.Invoke("Обходка переключается на автономный защищённый DNS.");
+                OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToAutonomousDns);
             }
         }
         else
         {
-            OnLogUpdated?.Invoke("Интернет и системный DNS в порядке.");
+            OnLogUpdated?.Invoke(VpnStatusMessages.InternetAndDnsHealthy);
         }
 
         return null;
@@ -1062,7 +1074,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (IsConflictingAdapter(c))
                 {
                     Shared.Logging.AppLogger.Log($"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is Up. It may block Obxodka traffic via WFP firewall.");
-                    onLogUpdated?.Invoke($"[ВНИМАНИЕ] Обнаружен активный сторонний VPN: '{c.Name}'. Пожалуйста, отключите его!");
+                    onLogUpdated?.Invoke(VpnStatusMessages.ThirdPartyVpnWarning(c.Name));
                 }
             }
         }
@@ -1443,7 +1455,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
         try
         {
-            OnLogUpdated?.Invoke("Отключение VPN...");
+            OnLogUpdated?.Invoke(VpnStatusMessages.DisconnectingVpn);
 
             var adapterToDispose = _adapter;
             var adapterName = _adapter?.Name ?? "";
@@ -1452,7 +1464,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             try
             {
-                OnLogUpdated?.Invoke("Восстановление сетевых настроек и DNS...");
+                OnLogUpdated?.Invoke(VpnStatusMessages.RestoringNetworkSettings);
                 var routeTask = SetWindowsRoutesAsync(adapterName, _currentServerIpsToRoute.Count > 0 ? _currentServerIpsToRoute.ToArray() : (!string.IsNullOrEmpty(serverIp) ? [serverIp] : []), "", false);
                 var dnsTask = DisableDnsLeakProtectionAsync();
                 await Task.WhenAll(routeTask, dnsTask).ConfigureAwait(false);
@@ -1470,7 +1482,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
-                OnLogUpdated?.Invoke("[SYSTEM] VPN отключён.");
+                OnLogUpdated?.Invoke(VpnStatusMessages.VpnDisconnectedSystem);
             }
             catch (Exception ex)
             {
