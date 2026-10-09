@@ -324,16 +324,30 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private void LoadSavedServerSelection()
     {
-        var savedIp = Preferences.Get("selected_server_ip", string.Empty);
-        if (!string.IsNullOrEmpty(savedIp))
+        var cachedJson = Preferences.Get("cached_cluster_servers_json", string.Empty);
+        if (!string.IsNullOrEmpty(cachedJson))
         {
-            var savedLocation = Preferences.Get("selected_server_location", "Швеция, Стокгольм");
-            var savedProvider = Preferences.Get("selected_server_provider", "Vultr");
-            var savedFlag = Preferences.Get("selected_server_flag", "🇸🇪");
-            var savedRole = Preferences.Get("selected_server_role", savedIp == "70.34.201.253" ? "main" : "worker");
-            var savedCertHash = Preferences.Get("selected_server_cert_hash", "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=");
-            _selectedServer = new VpnServerDto(savedIp, 443, savedLocation, true, 10, savedCertHash, savedProvider, savedFlag, savedRole);
+            try
+            {
+                var cached = JsonSerializer.Deserialize(cachedJson, AppJsonContext.Default.ListVpnServerDto);
+                if (cached is { Count: > 0 })
+                {
+                    _cachedServers = cached;
+                }
+            }
+            catch { }
         }
+
+        var savedIp = Preferences.Get("selected_server_ip", string.Empty);
+        if (!string.IsNullOrEmpty(savedIp) && _cachedServers.Any(s => s.Ip == savedIp))
+        {
+            _selectedServer = _cachedServers.First(s => s.Ip == savedIp);
+        }
+        else if (_cachedServers.Count > 0)
+        {
+            _selectedServer = _cachedServers[0];
+        }
+
         UpdateSelectedServerDisplay();
     }
 
@@ -346,7 +360,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 return;
             }
 
-            var flagEmoji = _selectedServer != null ? GetServerFlag(_selectedServer) : "🇸🇪";
+            var flagEmoji = _selectedServer != null ? GetServerFlag(_selectedServer) : "🌐";
             var flagUrl = NetworkDefaults.GetFlagImageUrl(flagEmoji);
 
 #if WINDOWS
@@ -375,9 +389,9 @@ public sealed partial class VpnView : ContentView, IDisposable
 
             if (_selectedServer is null)
             {
-                SelectedServerLocationLabel.Text = "Швеция, Стокгольм";
-                SelectedServerProviderLabel.Text = "Vultr • Main";
-                SelectedServerLatencyLabel.Text = "Online";
+                SelectedServerLocationLabel.Text = "Выберите сервер";
+                SelectedServerProviderLabel.Text = "Нажмите для обновления";
+                SelectedServerLatencyLabel.Text = "--";
                 return;
             }
 
@@ -397,14 +411,11 @@ public sealed partial class VpnView : ContentView, IDisposable
             if (success && servers is { Count: > 0 })
             {
                 _cachedServers = servers;
-            }
-            else if (_cachedServers.Count == 0)
-            {
-                _cachedServers =
-                [
-                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇸🇪", "main"),
-                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇵🇱", "worker")
-                ];
+                try
+                {
+                    Preferences.Set("cached_cluster_servers_json", JsonSerializer.Serialize(servers, AppJsonContext.Default.ListVpnServerDto));
+                }
+                catch { }
             }
 
             if (_selectedServer is null && _cachedServers.Count > 0)
@@ -418,7 +429,10 @@ public sealed partial class VpnView : ContentView, IDisposable
 
             UpdateSelectedServerDisplay();
             PopulateServerList();
-            _ = Task.Run(PingCachedServersAsync);
+            if (_cachedServers.Count > 0)
+            {
+                _ = Task.Run(PingCachedServersAsync);
+            }
         }
         catch
         {
@@ -459,6 +473,57 @@ public sealed partial class VpnView : ContentView, IDisposable
             }
 
             ServerItemsContainer.Children.Clear();
+            if (_cachedServers.Count == 0)
+            {
+                var retryCard = new Border
+                {
+                    Padding = new Thickness(14, 18),
+                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14) },
+                    StrokeThickness = 1.0,
+                    BackgroundColor = Application.Current?.Resources.TryGetValue("BgCard", out var bgCd) == true ? (Color)bgCd : Color.FromArgb("#0F172A"),
+                    Stroke = Application.Current?.Resources.TryGetValue("BorderMedium", out var bColor) == true ? (Color)bColor : Color.FromArgb("#334155")
+                };
+
+                var retryStack = new VerticalStackLayout
+                {
+                    Spacing = 6,
+                    HorizontalOptions = LayoutOptions.Center
+                };
+
+                var retryLabel = new Label
+                {
+                    Text = "Список серверов пуст",
+                    FontFamily = "AppFontBold",
+                    FontSize = 13,
+                    TextColor = Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true ? (Color)tp : Colors.White,
+                    HorizontalTextAlignment = TextAlignment.Center
+                };
+                retryStack.Children.Add(retryLabel);
+
+                var retrySubLabel = new Label
+                {
+                    Text = "Нажмите, чтобы обновить",
+                    FontFamily = "AppFontMedium",
+                    FontSize = 11,
+                    TextColor = Application.Current?.Resources.TryGetValue("Accent", out var ac) == true ? (Color)ac : Color.FromArgb("#00E5FF"),
+                    HorizontalTextAlignment = TextAlignment.Center
+                };
+                retryStack.Children.Add(retrySubLabel);
+
+                retryCard.Content = retryStack;
+
+                var retryTap = new TapGestureRecognizer();
+                retryTap.Tapped += async (s, e) =>
+                {
+                    _ = retryCard.BounceClickAsync();
+                    await RefreshServerListAsync();
+                };
+                retryCard.GestureRecognizers.Add(retryTap);
+
+                ServerItemsContainer.Children.Add(retryCard);
+                return;
+            }
+
             var currentSelectedIp = _selectedServer?.Ip ?? (_cachedServers.Count > 0 ? _cachedServers[0].Ip : string.Empty);
 
             foreach (var server in _cachedServers)
@@ -1214,12 +1279,14 @@ public sealed partial class VpnView : ContentView, IDisposable
                 }
             }
 
-            if (!success || servers is null || servers.Count == 0)
+            if ((!success || servers is null || servers.Count == 0) && _cachedServers.Count > 0)
             {
-                servers = [
-                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇸🇪", "main"),
-                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇵🇱", "worker")
-                ];
+                servers = _cachedServers;
+            }
+
+            if (servers is null || servers.Count == 0)
+            {
+                throw new InvalidOperationException("Не удалось получить список серверов. Проверьте интернет и нажмите «СТАРТ» для повтора.");
             }
 
             _cachedServers = servers;
