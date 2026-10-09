@@ -92,39 +92,59 @@
                                         StrokeShape="RoundRectangle 6"
                                         StrokeThickness="1"
                                         VerticalOptions="Center">
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnCardIpTappedAsync" />
-                                        </Border.GestureRecognizers>
-                                        <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                                            <mi:MauiIcon
-                                                x:Name="IpStatusIcon"
-                                                Icon="{mi:Fluent Icon=ShieldCheckmark24}"
-                                                IconColor="{DynamicResource Accent}"
-                                                IconSize="11"
-                                                VerticalOptions="Center" />
-                                            <Label
-                                                x:Name="IpAddressLabel"
-                                                FontFamily="{DynamicResource AppFontBold}"
-                                                FontSize="11"
-                                                LineBreakMode="TailTruncation"
-                                                Text="Не назначен"
-                                                TextColor="{DynamicResource TextPrimary}"
-                                                VerticalOptions="Center" />
+                                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                            <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                                <HorizontalStackLayout.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnToggleIpVersionClicked" />
+                                                </HorizontalStackLayout.GestureRecognizers>
+                                                <mi:MauiIcon
+                                                    x:Name="IpStatusIcon"
+                                                    Icon="{mi:Fluent Icon=ShieldCheckmark24}"
+                                                    IconColor="{DynamicResource Accent}"
+                                                    IconSize="11"
+                                                    VerticalOptions="Center" />
+                                                <Label
+                                                    x:Name="IpAddressLabel"
+                                                    FontFamily="{DynamicResource AppFontBold}"
+                                                    FontSize="11"
+                                                    LineBreakMode="TailTruncation"
+                                                    Text="Не назначен"
+                                                    TextColor="{DynamicResource TextPrimary}"
+                                                    VerticalOptions="Center" />
+                                                <Border
+                                                    x:Name="IpVersionBadge"
+                                                    Padding="4,1"
+                                                    BackgroundColor="{DynamicResource AccentDim}"
+                                                    Stroke="{DynamicResource Accent}"
+                                                    StrokeShape="RoundRectangle 3"
+                                                    StrokeThickness="0.6"
+                                                    IsVisible="False"
+                                                    VerticalOptions="Center">
+                                                    <Label
+                                                        x:Name="IpVersionLabel"
+                                                        FontFamily="{DynamicResource AppFontBold}"
+                                                        FontSize="8"
+                                                        Text="v4"
+                                                        TextColor="{DynamicResource Accent}"
+                                                        VerticalOptions="Center" />
+                                                </Border>
+                                            </HorizontalStackLayout>
                                             <Border
-                                                x:Name="IpVersionBadge"
-                                                Padding="4,1"
-                                                BackgroundColor="{DynamicResource AccentDim}"
-                                                Stroke="{DynamicResource Accent}"
-                                                StrokeShape="RoundRectangle 3"
-                                                StrokeThickness="0.6"
+                                                x:Name="IpCopyButton"
+                                                Padding="3,1"
+                                                BackgroundColor="Transparent"
+                                                Stroke="Transparent"
+                                                StrokeShape="RoundRectangle 4"
                                                 IsVisible="False"
                                                 VerticalOptions="Center">
-                                                <Label
-                                                    x:Name="IpVersionLabel"
-                                                    FontFamily="{DynamicResource AppFontBold}"
-                                                    FontSize="8"
-                                                    Text="v4"
-                                                    TextColor="{DynamicResource Accent}"
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnCopyIpClickedAsync" />
+                                                </Border.GestureRecognizers>
+                                                <mi:MauiIcon
+                                                    x:Name="IpCopyIcon"
+                                                    Icon="{mi:Fluent Icon=Copy20}"
+                                                    IconColor="{DynamicResource TextSecondary}"
+                                                    IconSize="11"
                                                     VerticalOptions="Center" />
                                             </Border>
                                         </HorizontalStackLayout>
