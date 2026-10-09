@@ -420,8 +420,11 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke(VpnStatusMessages.ReconnectingAttempt(attempt, 2));
                         }
 
+                        var nodeRole = s.Role ?? "worker";
+                        Shared.Logging.AppLogger.Log($"[ANDROID-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                         OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToServer(candidateIp, candidatePort));
                         await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
+                        Shared.Logging.AppLogger.Log($"[ANDROID-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {OctopusEngine.Current.AssignedIp}");
 
                         var tunOk = OctopusVpnService.Instance?.EstablishTun() ?? false;
                         if (!tunOk)

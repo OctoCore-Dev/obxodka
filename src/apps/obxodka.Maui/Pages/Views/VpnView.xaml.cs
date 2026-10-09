@@ -313,50 +313,8 @@ public sealed partial class VpnView : ContentView, IDisposable
     {
     }
 
-    private static string GetServerFlag(VpnServerDto server)
-    {
-        if (!string.IsNullOrWhiteSpace(server.Flag))
-        {
-            return server.Flag;
-        }
-
-        var loc = server.Location ?? string.Empty;
-        if (loc.Contains("Швеция", StringComparison.OrdinalIgnoreCase) || loc.Contains("Стокгольм", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇸🇪";
-        }
-        if (loc.Contains("Польша", StringComparison.OrdinalIgnoreCase) || loc.Contains("Варшава", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇵🇱";
-        }
-        if (loc.Contains("Германия", StringComparison.OrdinalIgnoreCase) || loc.Contains("Франкфурт", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇩🇪";
-        }
-        if (loc.Contains("Нидерланды", StringComparison.OrdinalIgnoreCase) || loc.Contains("Амстердам", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇳🇱";
-        }
-        if (loc.Contains("Франция", StringComparison.OrdinalIgnoreCase) || loc.Contains("Париж", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇫🇷";
-        }
-        if (loc.Contains("Великобритания", StringComparison.OrdinalIgnoreCase) || loc.Contains("Лондон", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇬🇧";
-        }
-        if (loc.Contains("США", StringComparison.OrdinalIgnoreCase) || loc.Contains("USA", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇺🇸";
-        }
-        if (loc.Contains("Финляндия", StringComparison.OrdinalIgnoreCase) || loc.Contains("Хельсинки", StringComparison.OrdinalIgnoreCase))
-        {
-            return "🇫🇮";
-        }
-        return loc.Contains("Казахстан", StringComparison.OrdinalIgnoreCase) || loc.Contains("Алматы", StringComparison.OrdinalIgnoreCase)
-            ? "🇰🇿"
-            : "🌐";
-    }
+    private static string GetServerFlag(VpnServerDto server) =>
+        !string.IsNullOrWhiteSpace(server.Flag) ? server.Flag : "🌐";
 
     private static string GetServerProvider(VpnServerDto server) =>
         !string.IsNullOrWhiteSpace(server.Provider) ? server.Provider : "Vultr";
@@ -1225,6 +1183,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 }
             }
 
+            Shared.Logging.AppLogger.Log($"[VPN-TARGET] User initiated connect to: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port}) | Role: {targetServer.Role ?? "worker"} | Provider: {targetServer.Provider} | Flag: {targetServer.Flag}");
             await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, orderedCandidates));
         }
         catch (Exception ex)

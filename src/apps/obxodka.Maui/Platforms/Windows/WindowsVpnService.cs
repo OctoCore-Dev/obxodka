@@ -399,6 +399,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 OctopusEngine.Current.RegisterServerEndpoint(ipToRoute);
                             }
 
+                            var nodeRole = s.Role ?? "worker";
+                            Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                             OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(candidateIp, candidatePort));
                             await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
 
@@ -407,6 +409,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _cts = new CancellationTokenSource();
                             var ip = OctopusEngine.Current.AssignedIp;
                             var ipv6 = OctopusEngine.Current.AssignedIpV6;
+
+                            Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {ip}, IPv6: {ipv6}");
 
                             if (!IPAddress.TryParse(ip, out _) || !IPAddress.TryParse(ipv6, out _))
                             {

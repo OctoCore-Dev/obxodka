@@ -219,6 +219,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             ? targetSni
             : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null);
 
+        Shared.Logging.AppLogger.Log($"[OCTOPUS] Initializing transport to {serverIp}:{serverPort} with SNI '{effectiveSni ?? "none"}'");
         var transport = new ObxodkaStreamTransport(serverPort, effectiveSni);
         _transport = transport;
         ActiveProtocol = transport.ProtocolName;
@@ -233,6 +234,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
         AssignedIp = ip;
         AssignedIpV6 = ip6;
+        Shared.Logging.AppLogger.Log($"[OCTOPUS] Handshake complete with {serverIp}:{serverPort}! Assigned IPv4: {ip}, IPv6: {ip6}");
         StartTrafficMonitor();
     }
 

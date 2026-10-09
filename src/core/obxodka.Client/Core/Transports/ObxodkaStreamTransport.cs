@@ -161,6 +161,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     EffectivePort = port;
                     _ = Task.Run(() => RunSecondaryRayAsync(channelHost, ray1Port, thumbprint, _cts.Token), _cts.Token);
                     _ = Task.Run(() => DecoyTrafficLoopAsync(_httpClient0, channelHost, port, _cts.Token), _cts.Token);
+                    Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Successfully connected to node physical IP {serverIp}:{port} via {channelHost}. Established tunnel assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested && i + 1 < endpointCandidates.Count)
