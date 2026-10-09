@@ -361,6 +361,9 @@ public sealed partial class VpnView : ContentView, IDisposable
     private static string GetServerProvider(VpnServerDto server) =>
         !string.IsNullOrWhiteSpace(server.Provider) ? server.Provider : "Vultr";
 
+    private static string GetServerRole(VpnServerDto server) =>
+        string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase) ? "Main" : "Worker";
+
     private void LoadSavedServerSelection()
     {
         var savedIp = Preferences.Get("selected_server_ip", string.Empty);
@@ -369,7 +372,9 @@ public sealed partial class VpnView : ContentView, IDisposable
             var savedLocation = Preferences.Get("selected_server_location", "Швеция, Стокгольм");
             var savedProvider = Preferences.Get("selected_server_provider", "Vultr");
             var savedFlag = Preferences.Get("selected_server_flag", "🇸🇪");
-            _selectedServer = new VpnServerDto(savedIp, 443, savedLocation, true, 10, null, savedProvider, savedFlag);
+            var savedRole = Preferences.Get("selected_server_role", savedIp == "70.34.201.253" ? "main" : "worker");
+            var savedCertHash = Preferences.Get("selected_server_cert_hash", "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=");
+            _selectedServer = new VpnServerDto(savedIp, 443, savedLocation, true, 10, savedCertHash, savedProvider, savedFlag, savedRole);
         }
         UpdateSelectedServerDisplay();
     }
@@ -387,14 +392,14 @@ public sealed partial class VpnView : ContentView, IDisposable
             {
                 SelectedServerFlagLabel.Text = "🇸🇪";
                 SelectedServerLocationLabel.Text = "Швеция, Стокгольм";
-                SelectedServerProviderLabel.Text = "Vultr";
+                SelectedServerProviderLabel.Text = "Vultr • Main";
                 SelectedServerLatencyLabel.Text = "Online";
                 return;
             }
 
             SelectedServerFlagLabel.Text = GetServerFlag(_selectedServer);
             SelectedServerLocationLabel.Text = _selectedServer.Location;
-            SelectedServerProviderLabel.Text = GetServerProvider(_selectedServer);
+            SelectedServerProviderLabel.Text = $"{GetServerProvider(_selectedServer)} • {GetServerRole(_selectedServer)}";
             SelectedServerLatencyLabel.Text = _serverPings.TryGetValue(_selectedServer.Ip, out var pingMs)
                 ? $"{pingMs} ms"
                 : "Online";
@@ -414,8 +419,8 @@ public sealed partial class VpnView : ContentView, IDisposable
             {
                 _cachedServers =
                 [
-                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, null, "Vultr", "🇸🇪"),
-                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, null, "Vultr", "🇵🇱")
+                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇸🇪", "main"),
+                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇵🇱", "worker")
                 ];
             }
 
@@ -550,6 +555,26 @@ public sealed partial class VpnView : ContentView, IDisposable
                 providerBadge.Content = providerLabel;
                 badgeStack.Children.Add(providerBadge);
 
+                var isMainRole = string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase);
+                var roleBadge = new Border
+                {
+                    Padding = new Thickness(5, 1),
+                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
+                    StrokeThickness = 0.6,
+                    BackgroundColor = isMainRole ? Color.FromArgb("#267C3AED") : Color.FromArgb("#1A38BDF8"),
+                    Stroke = isMainRole ? Color.FromArgb("#A78BFA") : Color.FromArgb("#38BDF8")
+                };
+
+                var roleLabel = new Label
+                {
+                    Text = GetServerRole(server),
+                    FontFamily = "AppFontMedium",
+                    FontSize = 9,
+                    TextColor = isMainRole ? Color.FromArgb("#C4B5FD") : Color.FromArgb("#7DD3FC")
+                };
+                roleBadge.Content = roleLabel;
+                badgeStack.Children.Add(roleBadge);
+
                 var pingDot = new BoxView
                 {
                     WidthRequest = 5,
@@ -596,6 +621,14 @@ public sealed partial class VpnView : ContentView, IDisposable
                     Preferences.Set("selected_server_location", server.Location);
                     Preferences.Set("selected_server_provider", GetServerProvider(server));
                     Preferences.Set("selected_server_flag", GetServerFlag(server));
+                    if (!string.IsNullOrEmpty(server.Role))
+                    {
+                        Preferences.Set("selected_server_role", server.Role);
+                    }
+                    if (!string.IsNullOrEmpty(server.CertHash))
+                    {
+                        Preferences.Set("selected_server_cert_hash", server.CertHash);
+                    }
                     UpdateSelectedServerDisplay();
                     await CloseServerModalAsync();
                 };
@@ -1155,8 +1188,8 @@ public sealed partial class VpnView : ContentView, IDisposable
             if (!success || servers is null || servers.Count == 0)
             {
                 servers = [
-                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, null, "Vultr", "🇸🇪"),
-                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, null, "Vultr", "🇵🇱")
+                    new VpnServerDto("70.34.201.253", 443, "Швеция, Стокгольм", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇸🇪", "main"),
+                    new VpnServerDto("70.34.246.53", 443, "Польша, Варшава", true, 8, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=", "Vultr", "🇵🇱", "worker")
                 ];
             }
 

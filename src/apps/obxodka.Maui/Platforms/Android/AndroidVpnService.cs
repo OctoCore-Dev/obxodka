@@ -350,8 +350,16 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
             if (serversToTry.Count > 1)
             {
-                OnLogUpdated?.Invoke(VpnStatusMessages.ResolvingFastestNode);
-                serversToTry = [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
+                var selected = serversToTry.FirstOrDefault(s => s.Ip == targetIp);
+                var others = serversToTry.Where(s => s.Ip != targetIp).ToList();
+                if (others.Count > 1)
+                {
+                    OnLogUpdated?.Invoke(VpnStatusMessages.ResolvingFastestNode);
+                    others = [.. await NetworkDefaults.RankServersByLatencyAsync(others, 650).ConfigureAwait(false)];
+                }
+                serversToTry = selected != null
+                    ? [selected, .. others]
+                    : [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
             }
 
             for (var idx = 0; idx < serversToTry.Count; idx++)

@@ -6,7 +6,8 @@ public static class AppConfig
     public const string LegacyApiBaseUrl = "https://api.octocore.dev/";
     public const string DirectServerIp = "70.34.201.253";
     public const string DirectApiBaseUrl = "https://70.34.201.253/";
-    public const string RemoteServersDiscoveryUrl = "https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/servers.json";
+    public const string RemoteServersDiscoveryUrl = "https://raw.githubusercontent.com/OctoCore-Dev/obxodka/develop/servers.json";
+    public const string RemoteServersDiscoveryFallbackUrl = "https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/servers.json";
 
     public static readonly string[] KnownDomainBases =
     [

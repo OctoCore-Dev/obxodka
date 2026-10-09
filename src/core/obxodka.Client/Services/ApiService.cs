@@ -411,7 +411,16 @@ public sealed class ApiService(HttpClient client)
             using var rawCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             rawCts.CancelAfter(TimeSpan.FromSeconds(4));
             using var rawClient = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            var rawJson = await rawClient.GetStringAsync(AppConfig.RemoteServersDiscoveryUrl, rawCts.Token).ConfigureAwait(false);
+            string? rawJson = null;
+            try
+            {
+                rawJson = await rawClient.GetStringAsync(AppConfig.RemoteServersDiscoveryUrl, rawCts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                rawJson = await rawClient.GetStringAsync(AppConfig.RemoteServersDiscoveryFallbackUrl, rawCts.Token).ConfigureAwait(false);
+            }
+
             if (!string.IsNullOrWhiteSpace(rawJson))
             {
                 var discovered = JsonSerializer.Deserialize(rawJson, AppJsonContext.Default.ListVpnServerDto);
