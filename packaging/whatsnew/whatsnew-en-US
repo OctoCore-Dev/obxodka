@@ -1,4 +1,3 @@
-- Smart MTU discovery to bypass router and DPI restrictions.
-- Real-time duplex network check (TX/RX) preventing stalls.
-- Live connection diagnostics on the main screen.
-- Improved tunnel stability on Android and Windows.
+- Dual-Stack IPv4 & IPv6 support with instant toggle and copy.
+- Dynamic country flags and live connection diagnostics.
+- Multi-ray tunnel optimizations and improved stability on Android and Windows.
