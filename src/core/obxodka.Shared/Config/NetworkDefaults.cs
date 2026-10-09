@@ -182,4 +182,32 @@ public static class NetworkDefaults
             return (server, long.MaxValue, false);
         }
     }
+
+    public static string? FlagEmojiToCountryCode(string? emoji)
+    {
+        if (string.IsNullOrWhiteSpace(emoji) || emoji.Length < 4)
+        {
+            return null;
+        }
+
+        var cp1 = char.ConvertToUtf32(emoji, 0);
+        var cp2 = char.ConvertToUtf32(emoji, 2);
+
+        if (cp1 >= 0x1F1E6 && cp1 <= 0x1F1FF && cp2 >= 0x1F1E6 && cp2 <= 0x1F1FF)
+        {
+            var c1 = (char)('a' + (cp1 - 0x1F1E6));
+            var c2 = (char)('a' + (cp2 - 0x1F1E6));
+            return $"{c1}{c2}";
+        }
+
+        return null;
+    }
+
+    public static string? GetFlagImageUrl(string? emoji)
+    {
+        var code = FlagEmojiToCountryCode(emoji);
+        return !string.IsNullOrEmpty(code)
+            ? $"https://flagcdn.com/w80/{code}.png"
+            : null;
+    }
 }

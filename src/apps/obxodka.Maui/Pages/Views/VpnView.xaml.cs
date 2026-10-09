@@ -346,16 +346,47 @@ public sealed partial class VpnView : ContentView, IDisposable
                 return;
             }
 
+            var flagEmoji = _selectedServer != null ? GetServerFlag(_selectedServer) : "🇸🇪";
+            var flagUrl = NetworkDefaults.GetFlagImageUrl(flagEmoji);
+
+#if WINDOWS
+            if (SelectedServerFlagImage is not null && !string.IsNullOrEmpty(flagUrl))
+            {
+                SelectedServerFlagImage.Source = new UriImageSource
+                {
+                    Uri = new Uri(flagUrl),
+                    CachingEnabled = true,
+                    CacheValidity = TimeSpan.FromDays(30)
+                };
+                SelectedServerFlagImage.IsVisible = true;
+                SelectedServerFlagLabel.IsVisible = false;
+            }
+            else
+            {
+                SelectedServerFlagLabel.Text = flagEmoji;
+                SelectedServerFlagLabel.IsVisible = true;
+                if (SelectedServerFlagImage is not null)
+                {
+                    SelectedServerFlagImage.IsVisible = false;
+                }
+            }
+#else
+            SelectedServerFlagLabel.Text = flagEmoji;
+            SelectedServerFlagLabel.IsVisible = true;
+            if (SelectedServerFlagImage is not null)
+            {
+                SelectedServerFlagImage.IsVisible = false;
+            }
+#endif
+
             if (_selectedServer is null)
             {
-                SelectedServerFlagLabel.Text = "🇸🇪";
                 SelectedServerLocationLabel.Text = "Швеция, Стокгольм";
                 SelectedServerProviderLabel.Text = "Vultr • Main";
                 SelectedServerLatencyLabel.Text = "Online";
                 return;
             }
 
-            SelectedServerFlagLabel.Text = GetServerFlag(_selectedServer);
             SelectedServerLocationLabel.Text = _selectedServer.Location;
             SelectedServerProviderLabel.Text = $"{GetServerProvider(_selectedServer)} • {GetServerRole(_selectedServer)}";
             SelectedServerLatencyLabel.Text = _serverPings.TryGetValue(_selectedServer.Ip, out var pingMs)
@@ -465,13 +496,59 @@ public sealed partial class VpnView : ContentView, IDisposable
                     VerticalOptions = LayoutOptions.Center
                 };
 
-                var flagLabel = new Label
+                var flagEmoji = GetServerFlag(server);
+                var flagUrl = NetworkDefaults.GetFlagImageUrl(flagEmoji);
+
+                var flagBorder = new Border
                 {
-                    Text = GetServerFlag(server),
-                    FontSize = 22,
+                    WidthRequest = 28,
+                    HeightRequest = 19,
+                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(3) },
+                    StrokeThickness = 0.8,
+                    Stroke = Application.Current?.Resources.TryGetValue("BorderMedium", out var bColorFlag) == true ? (Color)bColorFlag : Color.FromArgb("#334155"),
                     VerticalOptions = LayoutOptions.Center
                 };
-                grid.Add(flagLabel, 0, 0);
+
+                var flagGrid = new Grid();
+
+#if WINDOWS
+                if (!string.IsNullOrEmpty(flagUrl))
+                {
+                    var flagImage = new Image
+                    {
+                        Aspect = Aspect.AspectFill,
+                        Source = new UriImageSource
+                        {
+                            Uri = new Uri(flagUrl),
+                            CachingEnabled = true,
+                            CacheValidity = TimeSpan.FromDays(30)
+                        }
+                    };
+                    flagGrid.Children.Add(flagImage);
+                }
+                else
+                {
+                    var flagFallback = new Label
+                    {
+                        Text = flagEmoji,
+                        FontSize = 14,
+                        HorizontalOptions = LayoutOptions.Center,
+                        VerticalOptions = LayoutOptions.Center
+                    };
+                    flagGrid.Children.Add(flagFallback);
+                }
+#else
+                var flagLabel = new Label
+                {
+                    Text = flagEmoji,
+                    FontSize = 18,
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center
+                };
+                flagGrid.Children.Add(flagLabel);
+#endif
+                flagBorder.Content = flagGrid;
+                grid.Add(flagBorder, 0, 0);
 
                 var infoStack = new VerticalStackLayout
                 {

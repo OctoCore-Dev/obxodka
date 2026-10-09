@@ -398,11 +398,26 @@
                                 <TapGestureRecognizer Tapped="OnServerSelectorTappedAsync" />
                             </Border.GestureRecognizers>
                             <HorizontalStackLayout Spacing="9" VerticalOptions="Center">
-                                <Label
-                                    x:Name="SelectedServerFlagLabel"
-                                    FontSize="{OnIdiom Desktop=19, Phone=17, Default=18}"
-                                    Text="🇸🇪"
-                                    VerticalOptions="Center" />
+                                <Border
+                                    x:Name="SelectedServerFlagBorder"
+                                    WidthRequest="25"
+                                    HeightRequest="17"
+                                    StrokeShape="RoundRectangle 3"
+                                    StrokeThickness="0.8"
+                                    Stroke="{DynamicResource BorderMedium}"
+                                    VerticalOptions="Center">
+                                    <Grid>
+                                        <Image
+                                            x:Name="SelectedServerFlagImage"
+                                            Aspect="AspectFill"
+                                            IsVisible="False" />
+                                        <Label
+                                            x:Name="SelectedServerFlagLabel"
+                                            FontSize="{OnIdiom Desktop=16, Phone=15, Default=15}"
+                                            HorizontalOptions="Center"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
                                 <VerticalStackLayout Spacing="1" VerticalOptions="Center">
                                     <Label
                                         x:Name="SelectedServerLocationLabel"
