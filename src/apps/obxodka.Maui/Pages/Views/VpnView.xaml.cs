@@ -341,7 +341,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (SelectedServerFlagLabel is null || SelectedServerLocationLabel is null || SelectedServerProviderLabel is null)
+            if (SelectedServerFlagLabel is null || SelectedServerLocationLabel is null || SelectedServerProviderLabel is null || SelectedServerFlagImage is null)
             {
                 return;
             }
@@ -350,7 +350,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             var flagUrl = NetworkDefaults.GetFlagImageUrl(flagEmoji);
 
 #if WINDOWS
-            if (SelectedServerFlagImage is not null && !string.IsNullOrEmpty(flagUrl))
+            if (!string.IsNullOrEmpty(flagUrl))
             {
                 SelectedServerFlagImage.Source = new UriImageSource
                 {
@@ -365,18 +365,12 @@ public sealed partial class VpnView : ContentView, IDisposable
             {
                 SelectedServerFlagLabel.Text = flagEmoji;
                 SelectedServerFlagLabel.IsVisible = true;
-                if (SelectedServerFlagImage is not null)
-                {
-                    SelectedServerFlagImage.IsVisible = false;
-                }
+                SelectedServerFlagImage.IsVisible = false;
             }
 #else
             SelectedServerFlagLabel.Text = flagEmoji;
             SelectedServerFlagLabel.IsVisible = true;
-            if (SelectedServerFlagImage is not null)
-            {
-                SelectedServerFlagImage.IsVisible = false;
-            }
+            SelectedServerFlagImage.IsVisible = false;
 #endif
 
             if (_selectedServer is null)
