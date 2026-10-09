@@ -412,10 +412,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                             Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {ip}, IPv6: {ipv6}");
 
-                            if (!IPAddress.TryParse(ip, out _) || !IPAddress.TryParse(ipv6, out _))
+                            if (!IPAddress.TryParse(ip, out _))
                             {
-                                throw new InvalidOperationException("Получены некорректные IP-адреса от сервера.");
+                                throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
                             }
+                            var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
                             if (_adapter is null)
@@ -428,7 +429,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _adapter.StartSession();
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.ApplyingNetworkSettings);
-                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", ipv6);
+                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", hasValidIpv6 ? ipv6 : null);
 
                             OctopusEngine.Current.ResetTrafficCounters();
 
@@ -471,7 +472,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             }
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.RedirectingTraffic);
-                            await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true);
+                            await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true, hasValidIpv6 ? ipv6 : null);
                             OnLogUpdated?.Invoke(VpnStatusMessages.EnablingDnsProtection);
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
 
@@ -1255,7 +1256,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    private static async Task SetWindowsRoutesAsync(string adapterName, IReadOnlyList<string> serverIps, string assignedIp, bool enable)
+    private static async Task SetWindowsRoutesAsync(string adapterName, IReadOnlyList<string> serverIps, string assignedIp, bool enable, string? assignedIpV6 = null)
     {
         var primaryIp = serverIps.FirstOrDefault(ip => !string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out _));
         var (gw, physicalIfIndex) = GetDefaultGatewayInfo(primaryIp);
@@ -1337,10 +1338,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
 
-                _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary", timeoutMs: 1500);
-                _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
-                _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
-                _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
+                if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out _))
+                {
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary", timeoutMs: 1500);
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
+                }
             }
             else
             {

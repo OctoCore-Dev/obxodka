@@ -491,7 +491,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     .AddRoute("0.0.0.0", 0);
 
                 var ip6 = OctopusEngine.Current.AssignedIpV6;
-                if (!string.IsNullOrEmpty(ip6))
+                if (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
                 {
                     try
                     {
