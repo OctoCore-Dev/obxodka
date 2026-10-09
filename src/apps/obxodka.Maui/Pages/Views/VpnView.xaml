@@ -95,7 +95,7 @@
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnCardIpTappedAsync" />
                                         </Border.GestureRecognizers>
-                                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
                                             <mi:MauiIcon
                                                 x:Name="IpStatusIcon"
                                                 Icon="{mi:Fluent Icon=ShieldCheckmark24}"
@@ -110,6 +110,23 @@
                                                 Text="Не назначен"
                                                 TextColor="{DynamicResource TextPrimary}"
                                                 VerticalOptions="Center" />
+                                            <Border
+                                                x:Name="IpVersionBadge"
+                                                Padding="4,1"
+                                                BackgroundColor="{DynamicResource AccentDim}"
+                                                Stroke="{DynamicResource Accent}"
+                                                StrokeShape="RoundRectangle 3"
+                                                StrokeThickness="0.6"
+                                                IsVisible="False"
+                                                VerticalOptions="Center">
+                                                <Label
+                                                    x:Name="IpVersionLabel"
+                                                    FontFamily="{DynamicResource AppFontBold}"
+                                                    FontSize="8"
+                                                    Text="v4"
+                                                    TextColor="{DynamicResource Accent}"
+                                                    VerticalOptions="Center" />
+                                            </Border>
                                         </HorizontalStackLayout>
                                     </Border>
 

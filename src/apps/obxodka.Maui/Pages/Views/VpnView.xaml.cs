@@ -41,6 +41,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     private ApiService _apiService = null!;
     private bool _isBusy;
     private bool _isErrorState;
+    private bool _showIpV6;
     private string? _activeConnectedNode;
     private string? _lastErrorMessage;
     private VpnServerDto? _selectedServer;
@@ -842,26 +843,58 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private void UpdateIpStatusDisplay(string text, Color textColor, Color iconColor)
     {
-        IpAddressLabel.Text = text;
-        IpAddressLabel.TextColor = textColor;
-        IpStatusIcon.IconColor = iconColor;
+        if (OctopusEngine.Current is { IsConnected: true })
+        {
+            var v4 = OctopusEngine.Current.AssignedIp;
+            var v6 = OctopusEngine.Current.AssignedIpV6;
+            var ip = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? v6 : v4;
+            var tag = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? "v6" : "v4";
+            IpAddressLabel.Text = !string.IsNullOrWhiteSpace(ip) ? ip : text;
+            IpAddressLabel.TextColor = textColor;
+            IpStatusIcon.IconColor = iconColor;
+            IpVersionBadge.IsVisible = true;
+            IpVersionLabel.Text = tag;
+        }
+        else
+        {
+            _showIpV6 = false;
+            IpAddressLabel.Text = text;
+            IpAddressLabel.TextColor = textColor;
+            IpStatusIcon.IconColor = iconColor;
+            IpVersionBadge.IsVisible = false;
+            IpVersionLabel.Text = "v4";
+        }
     }
 
     private async void OnCardIpTappedAsync(object? sender, EventArgs e)
     {
-        var ip = OctopusEngine.Current.AssignedIp;
-        if (!string.IsNullOrWhiteSpace(ip) && ip != "0.0.0.0")
+        if (!OctopusEngine.Current.IsConnected)
         {
-            await Clipboard.Default.SetTextAsync(ip);
-            var prevText = IpAddressLabel.Text;
-            var prevColor = IpAddressLabel.TextColor;
-            IpAddressLabel.Text = "Скопировано!";
+            return;
+        }
+
+        _showIpV6 = !_showIpV6;
+        var v4 = OctopusEngine.Current.AssignedIp;
+        var v6 = OctopusEngine.Current.AssignedIpV6;
+        var currentIp = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? v6 : v4;
+        var tag = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? "v6" : "v4";
+
+        if (!string.IsNullOrWhiteSpace(currentIp) && currentIp != "0.0.0.0")
+        {
+            await Clipboard.Default.SetTextAsync(currentIp);
+            IpAddressLabel.Text = $"{tag.ToUpperInvariant()} скопирован!";
             IpAddressLabel.TextColor = t_greenText;
-            await Task.Delay(1200);
+            IpVersionBadge.IsVisible = true;
+            IpVersionLabel.Text = tag;
+            await Task.Delay(1100);
             if (OctopusEngine.Current.IsConnected)
             {
-                IpAddressLabel.Text = OctopusEngine.Current.AssignedIp ?? prevText;
-                IpAddressLabel.TextColor = prevColor;
+                var refreshedV4 = OctopusEngine.Current.AssignedIp;
+                var refreshedV6 = OctopusEngine.Current.AssignedIpV6;
+                var refreshedIp = _showIpV6 && !string.IsNullOrWhiteSpace(refreshedV6) ? refreshedV6 : refreshedV4;
+                IpAddressLabel.Text = refreshedIp ?? "Подключен";
+                IpAddressLabel.TextColor = Colors.White;
+                IpVersionLabel.Text = tag;
             }
         }
     }
