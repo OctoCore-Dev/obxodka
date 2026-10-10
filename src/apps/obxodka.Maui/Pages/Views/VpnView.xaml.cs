@@ -710,6 +710,14 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var tap = new TapGestureRecognizer();
                 tap.Tapped += async (s, e) =>
                 {
+                    if (_vpnService.CurrentState is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting || _isBusy)
+                    {
+                        if (ParentPage is not null)
+                        {
+                            await ParentPage.DisplayAlertAsync("Смена сервера", "Отключите VPN перед сменой сервера.", "OK");
+                        }
+                        return;
+                    }
                     _ = card.BounceClickAsync();
                     _selectedServer = server;
                     Preferences.Set("selected_server_ip", server.Ip);
@@ -736,6 +744,14 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async Task OpenServerModalAsync()
     {
+        if (_vpnService.CurrentState is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting || _isBusy)
+        {
+            if (ParentPage is not null)
+            {
+                await ParentPage.DisplayAlertAsync("Смена сервера", "Отключите VPN перед сменой сервера.", "OK");
+            }
+            return;
+        }
         if (_cachedServers.Count == 0)
         {
             await RefreshServerListAsync();
@@ -782,6 +798,15 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async void OnServerSelectorTappedAsync(object? sender, EventArgs e)
     {
+        if (_vpnService.CurrentState is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting || _isBusy)
+        {
+            if (ParentPage is not null)
+            {
+                await ParentPage.DisplayAlertAsync("Смена сервера", "Отключите VPN перед сменой сервера.", "OK");
+            }
+            return;
+        }
+
         if (ServerSelectorButton is not null)
         {
             _ = ServerSelectorButton.BounceClickAsync();
@@ -1056,6 +1081,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         UpdateRayIndicator();
         MainThread.BeginInvokeOnMainThread(async () =>
         {
+            ServerSelectorButton.Opacity = state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting ? 0.55 : 1.0;
             switch (state)
             {
                 case AppVpnState.Disconnected:

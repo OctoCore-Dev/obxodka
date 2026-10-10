@@ -1,3 +1,4 @@
-- Dual-Stack IPv4 & IPv6 support with instant toggle and copy.
-- Dynamic country flags and live connection diagnostics.
-- Multi-ray tunnel optimizations and improved stability on Android and Windows.
+- Smart adaptive MTU escalation for optimal throughput across all ISPs.
+- Server selection guard during active VPN sessions.
+- Expanded 32-bit and 64-bit support for Android 10+ devices.
+- Tunnel stability improvements and disconnect fixes.
