@@ -184,4 +184,28 @@ public sealed class DynamicProtocolAndConnectivityTests
         Assert.Equal(expectedHash, deserialized.CertHash);
         Assert.Equal(AppConfig.DirectServerIp, deserialized.Ip);
     }
+
+    [Fact]
+    public void DynamicSniGenerationProducesValidSubdomains()
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var sni = AppSecrets.GetRandomSni();
+            Assert.False(string.IsNullOrWhiteSpace(sni));
+            Assert.True(
+                sni.EndsWith("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+                sni.EndsWith("octocore.dev", StringComparison.OrdinalIgnoreCase),
+                $"Generated SNI '{sni}' is not based on obxodka.one or octocore.dev");
+        }
+    }
+
+    [Fact]
+    public void GetCandidateSniListReturnsUniqueCandidates()
+    {
+        var candidates = AppSecrets.GetCandidateSniList(6);
+        Assert.Equal(6, candidates.Count);
+        Assert.Equal(candidates.Count, candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Contains("obxodka.one", candidates, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("api.octocore.dev", candidates, StringComparer.OrdinalIgnoreCase);
+    }
 }

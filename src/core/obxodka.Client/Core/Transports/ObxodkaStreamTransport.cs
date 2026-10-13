@@ -111,7 +111,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             sniCandidates.Add(defaultSni);
         }
 
-        foreach (var candidate in AppSecrets.AllowedSniPool)
+        foreach (var candidate in AppSecrets.GetCandidateSniList(6))
         {
             if (!sniCandidates.Contains(candidate, StringComparer.OrdinalIgnoreCase))
             {
