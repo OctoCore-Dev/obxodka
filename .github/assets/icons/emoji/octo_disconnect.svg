@@ -1,51 +1,78 @@
-<svg width="256" height="256" viewBox="20 20 216 216" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    <!-- 1. Фирменный градиент Obxodka -->
     <linearGradient id="octoGradient" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#00FFFF"/>
       <stop offset="50%" stop-color="#C084FC"/>
       <stop offset="100%" stop-color="#FF2E93"/>
     </linearGradient>
 
-    <filter id="plugGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#A855F7" flood-opacity="0.6"/>
-    </filter>
+    <!-- 2. Корпус коннекторов -->
+    <linearGradient id="plugBodyGrad" x1="128" y1="160" x2="128" y2="184" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
   </defs>
 
-  <!-- Octopus Body & Tentacles -->
+  <!-- ============================================================ -->
+  <!-- 1. ГОЛОВА И 4 БОКОВЫХ ЩУПАЛЬЦА (Чистый вектор, без обводок) -->
+  <!-- ============================================================ -->
   <g fill="url(#octoGradient)">
+    <!-- Голова маскота -->
     <path d="M128 55 C95 55 75 75 75 105 C75 125 88 138 100 142 C108 145 115 138 128 138 C141 138 148 145 156 142 C168 138 181 125 181 105 C181 75 161 55 128 55 Z"/>
-    
-    <ellipse cx="102" cy="118" rx="8" ry="7" fill="#0F172A" opacity="0.85"/>
-    <ellipse cx="154" cy="118" rx="8" ry="7" fill="#0F172A" opacity="0.85"/>
-    <circle cx="104" cy="116" r="2.5" fill="#FFFFFF"/>
-    <circle cx="156" cy="116" r="2.5" fill="#FFFFFF"/>
 
-    <path d="M116 140 C110 160 105 185 112 205 C115 212 124 212 126 205 C128 195 124 175 128 155 C132 175 128 195 130 205 C132 212 141 212 144 205 C151 185 146 160 140 140 Z"/>
+    <!-- Глазки (Симпатичные сфокусированные зрачки) -->
+    <path d="M102 112 C98 112 95 115 95 118 C95 121 98 124 102 124 C106 124 109 121 109 118 C109 115 106 112 102 112 Z" fill="#0B0F19"/>
+    <path d="M154 112 C150 112 147 115 147 118 C147 121 150 124 154 124 C158 124 161 121 161 118 C161 115 158 112 154 112 Z" fill="#0B0F19"/>
+
+    <!-- Левые боковые щупальца -->
     <path d="M92 136 C80 145 60 155 52 172 C46 185 54 198 66 194 C76 190 82 175 92 165 C96 161 100 148 95 142 Z"/>
     <path d="M80 118 C62 122 45 132 40 148 C36 162 46 172 56 166 C66 160 72 146 84 136 Z"/>
+
+    <!-- Правые боковые щупальца -->
     <path d="M164 136 C176 145 196 155 204 172 C210 185 202 198 190 194 C180 190 174 175 164 165 C160 161 156 148 161 142 Z"/>
     <path d="M176 118 C194 122 211 132 216 148 C220 162 210 172 200 166 C190 160 184 146 172 136 Z"/>
   </g>
 
-  <!-- Disconnected Power/Network Plugs (Zero-Flicker Disconnect) -->
-  <g filter="url(#plugGlow)">
-    <!-- Left Plug -->
-    <rect x="96" y="168" width="16" height="18" rx="4" fill="#0F172A" stroke="#00FFFF" stroke-width="2"/>
-    <rect x="112" y="171" width="6" height="3" fill="#00FFFF"/>
-    <rect x="112" y="180" width="6" height="3" fill="#00FFFF"/>
+  <!-- ============================================================ -->
+  <!-- 2. РАЗОМКНУТЫЕ СЕТЕВЫЕ КАБЕЛИ И ИСКРА (Без тени/обводки тела) -->
+  <!-- ============================================================ -->
+  <g>
+    <!-- Левый штекер (Циан) -->
+    <rect x="94" y="162" width="20" height="20" rx="4" fill="url(#plugBodyGrad)"/>
+    <rect x="94" y="162" width="4" height="20" rx="2" fill="#00FFFF"/>
+    <!-- Штыри штекера -->
+    <rect x="114" y="166" width="7" height="3.5" rx="1" fill="#00FFFF"/>
+    <rect x="114" y="174.5" width="7" height="3.5" rx="1" fill="#00FFFF"/>
 
-    <!-- Right Socket -->
-    <rect x="144" y="168" width="16" height="18" rx="4" fill="#0F172A" stroke="#FF2E93" stroke-width="2"/>
-    <rect x="138" y="171" width="6" height="3" fill="#FF2E93"/>
-    <rect x="138" y="180" width="6" height="3" fill="#FF2E93"/>
+    <!-- Правый разъём/гнездо (Маджента) -->
+    <rect x="142" y="162" width="20" height="20" rx="4" fill="url(#plugBodyGrad)"/>
+    <rect x="158" y="162" width="4" height="20" rx="2" fill="#FF2E93"/>
+    <!-- Контактные пазы -->
+    <rect x="135" y="164.5" width="7" height="15" rx="2" fill="#0B0F19"/>
+    <rect x="137" y="166.5" width="3" height="3" rx="0.5" fill="#FF2E93"/>
+    <rect x="137" y="174.5" width="3" height="3" rx="0.5" fill="#FF2E93"/>
 
-    <!-- Small Spark Between Plugs -->
-    <path d="M128 165 L129 173 L126 175 L130 183 L128 178 L131 176 Z" fill="#FACC15"/>
+    <!-- Электрическая искра в зазоре -->
+    <path d="M128 160 L131 169 L125 171 L131 182 L128 176 L133 173 Z" fill="#FACC15"/>
+    <circle cx="128.5" cy="171" r="1.5" fill="#FFFFFF"/>
   </g>
 
-  <!-- Front Gripping Tentacles -->
+  <!-- ============================================================ -->
+  <!-- 3. ЛАПКИ-ШАРИКИ (Держат кабели по бокам)                     -->
+  <!-- ============================================================ -->
   <g fill="url(#octoGradient)">
-    <path d="M92 174 C88 179 92 186 98 184 C102 183 103 178 99 174 Z"/>
-    <path d="M164 174 C168 179 164 186 158 184 C154 183 153 178 157 174 Z"/>
+    <path d="M100 142 C94 150 90 160 88 170 C93 168 98 156 104 146 Z"/>
+    <path d="M156 142 C162 150 166 160 168 170 C163 168 158 156 152 146 Z"/>
+  </g>
+
+  <g>
+    <!-- Левый шарик (держит левый коннектор) -->
+    <circle cx="88" cy="172" r="8.5" fill="url(#octoGradient)"/>
+    <circle cx="86" cy="170" r="2.2" fill="#FFFFFF" opacity="0.75"/>
+
+    <!-- Правый шарик (держит правый коннектор) -->
+    <circle cx="168" cy="172" r="8.5" fill="url(#octoGradient)"/>
+    <circle cx="166" cy="170" r="2.2" fill="#FFFFFF" opacity="0.75"/>
   </g>
 </svg>
