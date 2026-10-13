@@ -425,9 +425,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     }
                     else if (command == ObxodkaFraming.CmdPong)
                     {
-                        if (payloadLen >= 8)
+                        var tsSpan = (payloadLen >= 10 && payloadSpan[0] == 0xAA && payloadSpan[1] == 0xBB)
+                            ? payloadSpan.Slice(2, 8)
+                            : (payloadLen >= 8 ? payloadSpan[..8] : default);
+
+                        if (!tsSpan.IsEmpty)
                         {
-                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(payloadSpan[..8]);
+                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(tsSpan);
                             var now = Stopwatch.GetTimestamp();
                             var elapsedMs = (long)((now - sendTs) * 1000.0 / Stopwatch.Frequency);
                             if (elapsedMs is >= 0 and < 5000)
