@@ -31,6 +31,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     private bool _disposed;
     private int _downlinkPacketCount;
     private int _activeRays = 1;
+    private int _pingLoopStarted;
 
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
 
@@ -40,9 +41,8 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         {
             ConnectTimeout = TimeSpan.FromSeconds(15),
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-            KeepAlivePingDelay = TimeSpan.FromSeconds(15),
-            KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
-            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+            KeepAlivePingDelay = Timeout.InfiniteTimeSpan,
+            KeepAlivePingTimeout = Timeout.InfiniteTimeSpan,
             EnableMultipleHttp2Connections = true,
             InitialHttp2StreamWindowSize = 4194304,
             SslOptions = new SslClientAuthenticationOptions
@@ -63,11 +63,12 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 OnSocketCreated?.Invoke(socket);
                 _protectAction?.Invoke(socket);
 
-                var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
-                    ? (EndPoint)new IPEndPoint(ipAddr, port)
-                    : context.DnsEndPoint;
+                var effectivePort = context.DnsEndPoint?.Port > 0 ? context.DnsEndPoint.Port : port;
+                var connectTarget = (IPAddress.TryParse(serverIp, out var ipAddr)
+                    ? (EndPoint)new IPEndPoint(ipAddr, effectivePort)
+                    : context.DnsEndPoint) ?? new DnsEndPoint(targetHost, effectivePort);
 
-                Shared.Logging.AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={port})...");
+                Shared.Logging.AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={effectivePort})...");
                 var sw = Stopwatch.StartNew();
                 try
                 {
@@ -158,18 +159,18 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' (Timeout: {attemptTimeoutSeconds}s)...");
 
             _cts = new CancellationTokenSource();
-            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
-            attemptCts.CancelAfter(TimeSpan.FromSeconds(attemptTimeoutSeconds));
-
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             var ray1Port = port == 443 ? 8443 : 443;
             (_httpClient0, _handler0) = CreateHttpClient(targetHost, serverIp, port);
             (_httpClient1, _handler1) = CreateHttpClient(targetHost, serverIp, ray1Port);
 
-            _ = RunStreamAsync(0, _httpClient0, channelHost, port, thumbprint, attemptCts.Token);
+            using var attemptTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(attemptTimeoutSeconds));
+            using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptTimeoutCts.Token);
 
-            using (attemptCts.Token.Register(() => _ipTcs.TrySetCanceled()))
+            _ = Task.Run(() => RunPrimaryRayLoopAsync(channelHost, port, thumbprint, _cts.Token), _cts.Token);
+
+            using (handshakeCts.Token.Register(() => _ipTcs.TrySetCanceled()))
             {
                 try
                 {
@@ -197,6 +198,49 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         }
 
         throw lastException ?? new TimeoutException("Failed to connect through available SNI and port pool.");
+    }
+
+    private async Task RunPrimaryRayLoopAsync(string channelHost, int initialPort, string thumbprint, CancellationToken ct)
+    {
+        int[] primaryPorts = initialPort == 443 ? [443, 8443, 2053] : [initialPort, 443, 8443];
+        var portIdx = 0;
+
+        while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
+        {
+            var activePort = primaryPorts[portIdx % primaryPorts.Length];
+            try
+            {
+                await RunStreamAsync(0, _httpClient0!, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                if (Volatile.Read(ref _connected))
+                {
+                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 dropped on port {activePort}: {ex.Message}. Reconnecting in 1s...");
+                }
+                portIdx++;
+            }
+
+            if (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
+            {
+                try
+                {
+                    await Task.Delay(1000, ct).ConfigureAwait(false);
+                }
+                catch
+                {
+                    break;
+                }
+            }
+            else if (!_ipTcs.Task.IsCompleted)
+            {
+                break;
+            }
+        }
     }
 
     private async Task RunSecondaryRayAsync(string channelHost, int initialPort, string thumbprint, CancellationToken ct)
@@ -318,52 +362,60 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
             var duplexContent = new PushStreamContent(async (stream, token) =>
             {
-                var hsPayload = Encoding.UTF8.GetBytes(thumbprint);
-                var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
                 try
                 {
-                    await stream.WriteAsync(hsFrame.AsMemory(0, hsTotalLen), token).ConfigureAwait(false);
-                    await stream.FlushAsync(token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(hsFrame);
-                }
-
-                var reader = _txChannels[ray].Reader;
-                while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
-                {
-                    while (reader.TryRead(out var item))
+                    var hsPayload = Encoding.UTF8.GetBytes(thumbprint);
+                    var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
+                    try
                     {
-                        var (packet, length) = item;
-                        if (packet == null || length <= 0)
-                        {
-                            continue;
-                        }
+                        await stream.WriteAsync(hsFrame.AsMemory(0, hsTotalLen), token).ConfigureAwait(false);
+                        await stream.FlushAsync(token).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(hsFrame);
+                    }
 
-                        try
+                    var reader = _txChannels[ray].Reader;
+                    while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
+                    {
+                        while (reader.TryRead(out var item))
                         {
-                            var isMtu = length == 4 && packet[0] == 0xCC && packet[1] == 0xDD;
-                            var isPing = (length == 10 && packet[0] == 0xAA && packet[1] == 0xBB) || length == 8;
-                            var cmd = isMtu ? ObxodkaFraming.CmdMtuSync : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData);
-                            var payloadSpan = isMtu ? packet.AsSpan(2, 2) : ((length == 10 && packet[0] == 0xAA && packet[1] == 0xBB) ? packet.AsSpan(2, 8) : packet.AsSpan(0, length));
-                            var frame = ObxodkaFraming.Pack(cmd, payloadSpan, out var totalLen, maxMtu: NetworkDefaults.CurrentMtu);
+                            var (packet, length) = item;
+                            if (packet == null || length <= 0)
+                            {
+                                continue;
+                            }
+
                             try
                             {
-                                await stream.WriteAsync(frame.AsMemory(0, totalLen), token).ConfigureAwait(false);
+                                var isMtu = length == 4 && packet[0] == 0xCC && packet[1] == 0xDD;
+                                var isPing = (length == 10 && packet[0] == 0xAA && packet[1] == 0xBB) || length == 8;
+                                var cmd = isMtu ? ObxodkaFraming.CmdMtuSync : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData);
+                                var payloadSpan = isMtu ? packet.AsSpan(2, 2) : ((length == 10 && packet[0] == 0xAA && packet[1] == 0xBB) ? packet.AsSpan(2, 8) : packet.AsSpan(0, length));
+                                var frame = ObxodkaFraming.Pack(cmd, payloadSpan, out var totalLen, maxMtu: NetworkDefaults.CurrentMtu);
+                                try
+                                {
+                                    await stream.WriteAsync(frame.AsMemory(0, totalLen), token).ConfigureAwait(false);
+                                }
+                                finally
+                                {
+                                    ArrayPool<byte>.Shared.Return(frame);
+                                }
                             }
                             finally
                             {
-                                ArrayPool<byte>.Shared.Return(frame);
+                                ArrayPool<byte>.Shared.Return(packet);
                             }
                         }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(packet);
-                        }
-                    }
 
-                    await stream.FlushAsync(token).ConfigureAwait(false);
+                        await stream.FlushAsync(token).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-TX] Ray #{ray} upload pump stopped: {ex.Message}");
                 }
             });
 
@@ -407,33 +459,37 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
                     if (command == ObxodkaFraming.CmdHandshakeResponse)
                     {
-                        if (ray == 0)
+                        var info = Encoding.UTF8.GetString(payloadSpan);
+                        if (info.StartsWith("IP:", StringComparison.OrdinalIgnoreCase))
                         {
-                            var info = Encoding.UTF8.GetString(payloadSpan);
-                            if (info.StartsWith("IP:", StringComparison.OrdinalIgnoreCase))
+                            var parts = info[3..].Split('|');
+                            var assignedIp = parts[0];
+                            var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
+                            foreach (var part in parts)
                             {
-                                var parts = info[3..].Split('|');
-                                var assignedIp = parts[0];
-                                var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                                foreach (var part in parts)
+                                if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
+                                    int.TryParse(part[4..], out var sMtu) &&
+                                    sMtu >= NetworkDefaults.MinMtu && sMtu <= NetworkDefaults.MaxMtu)
                                 {
-                                    if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                                        int.TryParse(part[4..], out var sMtu) &&
-                                        sMtu >= NetworkDefaults.MinMtu && sMtu <= NetworkDefaults.MaxMtu)
-                                    {
-                                        NetworkDefaults.CurrentMtu = sMtu;
-                                    }
+                                    NetworkDefaults.CurrentMtu = sMtu;
                                 }
-                                Volatile.Write(ref _connected, true);
-                                _ = _ipTcs.TrySetResult((assignedIp, assignedIpV6));
-                                Shared.Logging.AppLogger.Log($"[OBXODKA-ESTABLISHED] Tunnel online. IPv4={assignedIp}, IPv6={assignedIpV6}, MTU={NetworkDefaults.CurrentMtu}");
-                                _ = Task.Run(() => PingLoopAsync(_cts!.Token), _cts!.Token);
                             }
-                        }
-                        else
-                        {
-                            Volatile.Write(ref _activeRays, 2);
-                            Shared.Logging.AppLogger.Log("[OBXODKA-STREAM] Ray #1 online and synchronized.");
+                            Volatile.Write(ref _connected, true);
+                            _ = _ipTcs.TrySetResult((assignedIp, assignedIpV6));
+
+                            if (ray == 0)
+                            {
+                                Shared.Logging.AppLogger.Log($"[OBXODKA-ESTABLISHED] Tunnel online. IPv4={assignedIp}, IPv6={assignedIpV6}, MTU={NetworkDefaults.CurrentMtu}");
+                                if (Interlocked.Exchange(ref _pingLoopStarted, 1) == 0)
+                                {
+                                    _ = Task.Run(() => PingLoopAsync(_cts!.Token), _cts!.Token);
+                                }
+                            }
+                            else
+                            {
+                                Volatile.Write(ref _activeRays, 2);
+                                Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Ray #1 online and synchronized on port {port}.");
+                            }
                         }
                     }
                     else if (command == ObxodkaFraming.CmdData)
@@ -492,7 +548,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         catch (Exception ex)
         {
             Shared.Logging.AppLogger.LogError($"[OBXODKA-STREAM ERROR] Ray #{ray} stream terminated: {ex.Message}");
-            if (ray == 0)
+            if (ray == 0 && !_ipTcs.Task.IsCompleted)
             {
                 _ = _ipTcs.TrySetException(ex);
             }
@@ -502,8 +558,22 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         {
             if (ray == 0)
             {
-                Volatile.Write(ref _connected, false);
-                OnConnectionDropped?.Invoke();
+                if (!Volatile.Read(ref _connected) || _cts?.IsCancellationRequested == true)
+                {
+                    Volatile.Write(ref _connected, false);
+                    OnConnectionDropped?.Invoke();
+                }
+                else
+                {
+                    Volatile.Write(ref _activeRays, 1);
+                    while (_txChannels[0].Reader.TryRead(out var leftover))
+                    {
+                        if (!_txChannels[1].Writer.TryWrite(leftover))
+                        {
+                            ArrayPool<byte>.Shared.Return(leftover.buffer);
+                        }
+                    }
+                }
             }
             else
             {

@@ -1456,6 +1456,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
+                _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Set-DnsClientServerAddress -InterfaceIndex {ifIndex} -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue }} catch {{ }}\"").ConfigureAwait(false);
+                _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+                _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Clear-DnsClientCache -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
 
                 if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
@@ -1676,6 +1679,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 addTasks.Add(RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {tunGateway} metric 1{ifArg}"));
             }
             await Task.WhenAll(addTasks).ConfigureAwait(false);
+            _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
