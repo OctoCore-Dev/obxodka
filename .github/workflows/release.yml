@@ -287,6 +287,12 @@ jobs:
           whatsNewDirectory: packaging/whatsnew
           status: 'completed'
 
+      - name: 📝 Sync Google Play Store Listings (Descriptions)
+        if: ${{ env.PLAY_CONFIG_JSON != '' }}
+        shell: pwsh
+        run: |
+          pwsh tools/scripts/sync_playstore_listing.ps1
+
   # ==========================================
   # 🚀 ЭТАП 5: ДЕПЛОЙ WINDOWS В MICROSOFT STORE
   # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)

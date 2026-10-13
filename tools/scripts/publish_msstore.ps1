@@ -200,6 +200,16 @@ $whatsNewEn = Join-Path $whatsNewDir "whatsnew-en-US"
 $notesRu = if (Test-Path $whatsNewRu) { (Get-Content $whatsNewRu -Raw).Trim() } else { $null }
 $notesEn = if (Test-Path $whatsNewEn) { (Get-Content $whatsNewEn -Raw).Trim() } else { $null }
 
+$storeDir = Join-Path $PSScriptRoot "../../packaging/store"
+if (-not (Test-Path $storeDir)) {
+    $storeDir = Join-Path (Get-Location) "packaging/store"
+}
+$descRuFile = Join-Path $storeDir "ru-RU/full_description.txt"
+$descEnFile = Join-Path $storeDir "en-US/full_description.txt"
+
+$descRu = if (Test-Path $descRuFile) { (Get-Content $descRuFile -Raw).Trim() } else { $null }
+$descEn = if (Test-Path $descEnFile) { (Get-Content $descEnFile -Raw).Trim() } else { $null }
+
 if ($subData.listings) {
     foreach ($prop in $subData.listings.PSObject.Properties) {
         $lang = $prop.Name.ToLowerInvariant()
@@ -227,6 +237,32 @@ if ($subData.listings) {
             }
             catch {
                 Log-Info "Warning: could not attach releaseNotes for $($lang): $_"
+            }
+        }
+
+        $targetDesc = $null
+        if ($lang -match "ru" -and $descRu) {
+            $targetDesc = $descRu
+        }
+        elseif ($descEn) {
+            $targetDesc = $descEn
+        }
+        elseif ($descRu) {
+            $targetDesc = $descRu
+        }
+
+        if ($targetDesc) {
+            try {
+                if ($listing -is [System.Collections.IDictionary]) {
+                    $listing["description"] = $targetDesc
+                }
+                else {
+                    $listing | Add-Member -NotePropertyName "description" -NotePropertyValue $targetDesc -Force
+                }
+                Log-Info "Attached full description to Microsoft Store listing ($lang)."
+            }
+            catch {
+                Log-Info "Warning: could not attach description for $($lang): $_"
             }
         }
     }
