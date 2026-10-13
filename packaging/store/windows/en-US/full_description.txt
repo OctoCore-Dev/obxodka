@@ -9,14 +9,14 @@ Enjoy lightning-fast connection speeds, instant response times in online gaming,
 🛡️ Mutual TLS (mTLS) & AES-256-GCM
 Individual client X.509 certificates authenticate every transport-level connection. All payload packets are secured with AES-256-GCM encryption. Private keys remain protected in your OS certificate store.
 
-🙈 DPI & ISP Filtering Resilience (Advanced Traffic Stealth)
-Your network traffic avoids traditional VPN signatures. Encapsulated in native gRPC over HTTP/2 (TCP) or HTTP/3 QUIC (UDP), it mimics standard browser HTTPS requests to cloud endpoints.
+🙈 OBXODKA-STREAM Protocol (Next-Gen Traffic Stealth)
+Your network traffic avoids traditional VPN signatures. Encapsulated in optimized duplex HTTP/2 streams over TLS 1.3, it mimics standard browser web sessions. Micro-segmentation desynchronization (DpiBypassStream) and dynamic SNI pools keep the tunnel undetectable by deep packet inspection (DPI) filters.
 
-🐙 Octopus Multi-Ray Architecture (8 Concurrent Rays)
-The high-performance Kestrel core parallelizes traffic across independent Rays, reducing bufferbloat and maximizing throughput up to 150+ Mbps.
+🐙 Dual-Ray Hedging Architecture (Multi-Stream Packet Redundancy)
+The Octopus engine parallelizes and hedges packets across independent streams (Rays), eliminating bufferbloat and gaming packet loss. If an ISP drops packets on one channel, duplicates arrive instantaneously via the secondary ray.
 
-⚡ HTTP/3 QUIC & HTTP/2 Support
-Seamlessly switch protocols. QUIC eliminates Head-of-Line blocking, ensuring rock-solid stability even on jittery cellular connections.
+⚡ Smart Adaptive MTU Escalation
+Automated in-tunnel MTU probing discovers the optimal maximum packet size for your network provider, avoiding carrier packet black holes and maximizing transfer speeds.
 
 ---
 

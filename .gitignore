@@ -10,7 +10,10 @@
 *.userosscache
 *.sln.docstates
 .agents/
+.agents/**
 skills-lock.json
+.gemini/
+.claude/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
