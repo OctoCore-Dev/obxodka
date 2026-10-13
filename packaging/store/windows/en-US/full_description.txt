@@ -1,0 +1,40 @@
+Obxodka is a modern, ultra-fast, and secure next-generation VPN client built on C# (.NET), engineered to deliver online privacy, seamless network resilience, and low-latency access to global web resources.
+
+Enjoy lightning-fast connection speeds, instant response times in online gaming, and a sleek dark theme perfectly tailored for Windows 10/11.
+
+---
+
+🔒 TECHNICAL ADVANTAGES & ARCHITECTURE:
+
+🛡️ Mutual TLS (mTLS) & AES-256-GCM
+Individual client X.509 certificates authenticate every transport-level connection. All payload packets are secured with AES-256-GCM encryption. Private keys remain protected in your OS certificate store.
+
+🙈 DPI & ISP Filtering Resilience (Advanced Traffic Stealth)
+Your network traffic avoids traditional VPN signatures. Encapsulated in native gRPC over HTTP/2 (TCP) or HTTP/3 QUIC (UDP), it mimics standard browser HTTPS requests to cloud endpoints.
+
+🐙 Octopus Multi-Ray Architecture (8 Concurrent Rays)
+The high-performance Kestrel core parallelizes traffic across independent Rays, reducing bufferbloat and maximizing throughput up to 150+ Mbps.
+
+⚡ HTTP/3 QUIC & HTTP/2 Support
+Seamlessly switch protocols. QUIC eliminates Head-of-Line blocking, ensuring rock-solid stability even on jittery cellular connections.
+
+---
+
+🌟 KEY BENEFITS:
+• Gaming-grade performance: direct routing minimizes jitter and ping spikes.
+• Full privacy: no activity logs, your browsing remains strictly confidential.
+• Secure public Wi-Fi: protection in cafes, hotels, and airports.
+• One-click connectivity: intuitive interface with zero complex configuration.
+• Flexible access: pay only for the connection time you actually use.
+
+---
+
+💳 PRICING & PAYMENT INFORMATION:
+The application includes optional paid access time purchases. Payments are processed through third-party billing outside the Microsoft Store.
+
+🎁 New users receive a complimentary 1-hour trial upon registration.
+
+---
+
+⚠️ SYSTEM REQUIREMENTS:
+Administrator privileges (UAC) are required to install the virtual network adapter (Wintun) and configure routing tables.

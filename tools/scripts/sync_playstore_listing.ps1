@@ -19,10 +19,14 @@ if (-not (Test-Path $storeDir)) {
     $storeDir = Join-Path (Get-Location) "packaging/store"
 }
 
-$ruFull = Join-Path $storeDir "ru-RU/full_description.txt"
-$ruShort = Join-Path $storeDir "ru-RU/short_description.txt"
-$enFull = Join-Path $storeDir "en-US/full_description.txt"
-$enShort = Join-Path $storeDir "en-US/short_description.txt"
+$ruFull = Join-Path $storeDir "android/ru-RU/full_description.txt"
+if (-not (Test-Path $ruFull)) { $ruFull = Join-Path $storeDir "ru-RU/full_description.txt" }
+$ruShort = Join-Path $storeDir "android/ru-RU/short_description.txt"
+if (-not (Test-Path $ruShort)) { $ruShort = Join-Path $storeDir "ru-RU/short_description.txt" }
+$enFull = Join-Path $storeDir "android/en-US/full_description.txt"
+if (-not (Test-Path $enFull)) { $enFull = Join-Path $storeDir "en-US/full_description.txt" }
+$enShort = Join-Path $storeDir "android/en-US/short_description.txt"
+if (-not (Test-Path $enShort)) { $enShort = Join-Path $storeDir "en-US/short_description.txt" }
 
 if (-not (Test-Path $ruFull) -and -not (Test-Path $enFull)) {
     Log-Warning "No store listing files found in $storeDir. Skipping."

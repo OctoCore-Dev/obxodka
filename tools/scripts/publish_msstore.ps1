@@ -204,8 +204,10 @@ $storeDir = Join-Path $PSScriptRoot "../../packaging/store"
 if (-not (Test-Path $storeDir)) {
     $storeDir = Join-Path (Get-Location) "packaging/store"
 }
-$descRuFile = Join-Path $storeDir "ru-RU/full_description.txt"
-$descEnFile = Join-Path $storeDir "en-US/full_description.txt"
+$descRuFile = Join-Path $storeDir "windows/ru-RU/full_description.txt"
+if (-not (Test-Path $descRuFile)) { $descRuFile = Join-Path $storeDir "ru-RU/full_description.txt" }
+$descEnFile = Join-Path $storeDir "windows/en-US/full_description.txt"
+if (-not (Test-Path $descEnFile)) { $descEnFile = Join-Path $storeDir "en-US/full_description.txt" }
 
 $descRu = if (Test-Path $descRuFile) { (Get-Content $descRuFile -Raw).Trim() } else { $null }
 $descEn = if (Test-Path $descEnFile) { (Get-Content $descEnFile -Raw).Trim() } else { $null }
