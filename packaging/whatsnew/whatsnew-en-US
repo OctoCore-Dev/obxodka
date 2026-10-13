@@ -1,4 +1,3 @@
-- Smart adaptive MTU escalation for optimal throughput across all ISPs.
-- Server selection guard during active VPN sessions.
-- Expanded 32-bit and 64-bit support for Android 10+ devices.
-- Tunnel stability improvements and disconnect fixes.
+- Connection stability and network protocol improvements.
+- Adaptive MTU tuning for mobile networks.
+- UI and connect button enhancements.
