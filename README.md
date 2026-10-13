@@ -43,20 +43,20 @@
 
 ---
 
-## <img src=".github/assets/icons/zap.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Почему Obxodka?
+## <img src=".github/assets/icons/emoji/octo_zap.svg" width="26" height="26" alt="Молния" style="vertical-align: -5px;" /> Почему Obxodka?
 
 Традиционные протоколы (WireGuard, OpenVPN, IPsec) используют специфические фиксированные заголовки пакетов и порты UDP, которые мгновенно распознаются и блокируются современными государственными и провайдерскими системами анализа трафика (**DPI / ТСПУ**).
 
 **Obxodka** решает эту проблему принципиально иначе благодаря проприетарному транспортному движку **OBXODKA-STREAM**:
-1. <img src=".github/assets/icons/stealth.svg" width="16" height="16" alt="" style="vertical-align: -2px;" /> **Полная невидимость для DPI:** Трафик инкапсулируется в стандартные дуплексные потоки **HTTP/2 поверх TLS 1.3 (порты 443, 8443, 2053)** с генерацией динамических поддоменов (3.4M+ вариаций `*.obxodka.one` и `*.octocore.dev`), ранними имитационными запросами Early Decoy (`GET /`, `GET /favicon.ico`) и 3-этапной микросегментацией `ClientHello` в `DpiBypassStream`. Для систем фильтрации сессия неотличима от обычного браузерного серфинга Chrome.
-2. <img src=".github/assets/icons/game.svg" width="16" height="16" alt="" style="vertical-align: -2px;" /> **Dual-Ray Hedging (Удвоение лучей для игр и пинга):** Клиент и сервер одновременно открывают два параллельных независимых TCP-канала (`Ray 0` и `Ray 1`). Критически важные пакеты реального времени (игровой UDP и ICMP-пинги) **клонируются по обоим лучам**. Аппаратный дедупликатор `PacketDeduplicator` в скользящем окне 500 мс на лету отбрасывает дубликаты с нулевыми аллокациями памяти. Если провайдер сбрасывает пакеты на одном TCP-потоке — дубликат мгновенно долетает по второму лучу, полностью ликвидируя игровой джиттер и пакетлосс!
-3. <img src=".github/assets/icons/ping.svg" width="16" height="16" alt="" style="vertical-align: -2px;" /> **Sub-Second 500ms Ping Probing:** Высокочастотное зондирование задержки каждые 500 мс обеспечивает мгновенную калибровку RTT, удерживает сотовые NAT-таблицы живыми и исключает зависание стримов.
-4. <img src=".github/assets/icons/disconnect.svg" width="16" height="16" alt="" style="vertical-align: -2px;" /> **Zero-Flicker Seamless Disconnect:** Интеллектуальный механизм отключения не сбрасывает сетевой стек Windows и не дергает системные адаптеры. При отключении VPN физический интернет не «моргает», а локальные приложения и игры продолжают работать без разрыва сокетов.
-5. <img src=".github/assets/icons/mtu.svg" width="16" height="16" alt="" style="vertical-align: -2px;" /> **Адаптивный MTU и защита от черных дыр ТСПУ:** Базовый безопасный MTU 1280 байт с динамическим зондированием (1200–1440 байт) и серверным TCPMSS Clamping (1240 байт) гарантируют мгновенное открытие тяжелых сайтов и стримов без фрагментации на мобильных сетях (Yota, MegaFon, MTS, Beeline).
+1. <img src=".github/assets/icons/emoji/octo_stealth.svg" width="20" height="20" alt="Стелс" style="vertical-align: -3px;" /> **Полная невидимость для DPI:** Трафик инкапсулируется в стандартные дуплексные потоки **HTTP/2 поверх TLS 1.3 (порты 443, 8443, 2053)** с генерацией динамических поддоменов (3.4M+ вариаций `*.obxodka.one` и `*.octocore.dev`), ранними имитационными запросами Early Decoy (`GET /`, `GET /favicon.ico`) и 3-этапной микросегментацией `ClientHello` в `DpiBypassStream`. Для систем фильтрации сессия неотличима от обычного браузерного серфинга Chrome.
+2. <img src=".github/assets/icons/emoji/octo_game.svg" width="20" height="20" alt="Игры" style="vertical-align: -3px;" /> **Dual-Ray Hedging (Удвоение лучей для игр и пинга):** Клиент и сервер одновременно открывают два параллельных независимых TCP-канала (`Ray 0` и `Ray 1`). Критически важные пакеты реального времени (игровой UDP и ICMP-пинги) **клонируются по обоим лучам**. Аппаратный дедупликатор `PacketDeduplicator` в скользящем окне 500 мс на лету отбрасывает дубликаты с нулевыми аллокациями памяти. Если провайдер сбрасывает пакеты на одном TCP-потоке — дубликат мгновенно долетает по второму лучу, полностью ликвидируя игровой джиттер и пакетлосс!
+3. <img src=".github/assets/icons/emoji/octo_ping.svg" width="20" height="20" alt="Пинг" style="vertical-align: -3px;" /> **Sub-Second 500ms Ping Probing:** Высокочастотное зондирование задержки каждые 500 мс обеспечивает мгновенную калибровку RTT, удерживает сотовые NAT-таблицы живыми и исключает зависание стримов.
+4. <img src=".github/assets/icons/emoji/octo_disconnect.svg" width="20" height="20" alt="Отключение" style="vertical-align: -3px;" /> **Zero-Flicker Seamless Disconnect:** Интеллектуальный механизм отключения не сбрасывает сетевой стек Windows и не дергает системные адаптеры. При отключении VPN физический интернет не «моргает», а локальные приложения и игры продолжают работать без разрыва сокетов.
+5. <img src=".github/assets/icons/emoji/octo_mtu.svg" width="20" height="20" alt="MTU" style="vertical-align: -3px;" /> **Адаптивный MTU и защита от черных дыр ТСПУ:** Базовый безопасный MTU 1280 байт с динамическим зондированием (1200–1440 байт) и серверным TCPMSS Clamping (1240 байт) гарантируют мгновенное открытие тяжелых сайтов и стримов без фрагментации на мобильных сетях (Yota, MegaFon, MTS, Beeline).
 
 ---
 
-## <img src=".github/assets/icons/server.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Архитектура движка Octopus Engine (OBXODKA-STREAM)
+## <img src=".github/assets/icons/emoji/octo_server.svg" width="26" height="26" alt="Сервер" style="vertical-align: -5px;" /> Архитектура движка Octopus Engine (OBXODKA-STREAM)
 
 Динамическая схема прохождения сетевых пакетов через конвейер маскировки и двойной туннель:
 
@@ -105,7 +105,7 @@ flowchart LR
 
 ---
 
-## <img src=".github/assets/icons/lock.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Протокол аутентификации mTLS Zero-Trust
+## <img src=".github/assets/icons/emoji/octo_lock.svg" width="26" height="26" alt="mTLS Замок" style="vertical-align: -5px;" /> Протокол аутентификации mTLS Zero-Trust
 
 Никаких статических паролей и общих ключей: каждое устройство проходит динамическую взаимную верификацию сертификата:
 
@@ -132,10 +132,10 @@ sequenceDiagram
 
 | Протокол / Технология | Устойчивость к DPI / ТСПУ | Скорость и игровой пинг | Шифрование сессии | Мультиплексирование | Защита от блокировок |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| <img src=".github/assets/icons/octo.svg" width="16" height="16" style="vertical-align:-2px;"/> **Obxodka (OBXODKA-STREAM)** | <img src=".github/assets/icons/check.svg" width="16" height="16" style="vertical-align:-2px;"/> **100% (Не детектируется)** | <img src=".github/assets/icons/zap.svg" width="16" height="16" style="vertical-align:-2px;"/> **< 1ms задержка (Dual-Ray)** | <img src=".github/assets/icons/lock.svg" width="16" height="16" style="vertical-align:-2px;"/> **TLS 1.3 + AES-256-GCM** | **Dual-Ray Duplex HTTP/2** | **Максимальная** |
-| **WireGuard** | <img src=".github/assets/icons/cross.svg" width="16" height="16" style="vertical-align:-2px;"/> 0% (Блокируется по UDP) | Высокая (но уязвим к дропу) | ChaCha20-Poly1305 | Нет | Блокируется |
-| **OpenVPN** | <img src=".github/assets/icons/cross.svg" width="16" height="16" style="vertical-align:-2px;"/> 10% (Легко детектируется) | Низкая (TAP Overhead) | TLS / AES-CBC | Нет | Блокируется |
-| **Shadowsocks / VLESS** | <img src=".github/assets/icons/warning.svg" width="16" height="16" style="vertical-align:-2px;"/> 60% (Частично блокируется) | Высокая | AEAD / TLS | Ограничено | Частичная |
+| <img src=".github/assets/icons/octo.svg" width="16" height="16" style="vertical-align:-2px;"/> **Obxodka (OBXODKA-STREAM)** | <img src=".github/assets/icons/emoji/octo_check.svg" width="18" height="18" style="vertical-align:-3px;"/> **100% (Не детектируется)** | <img src=".github/assets/icons/emoji/octo_zap.svg" width="18" height="18" style="vertical-align:-3px;"/> **< 1ms задержка (Dual-Ray)** | <img src=".github/assets/icons/emoji/octo_lock.svg" width="18" height="18" style="vertical-align:-3px;"/> **TLS 1.3 + AES-256-GCM** | **Dual-Ray Duplex HTTP/2** | **Максимальная** |
+| **WireGuard** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> 0% (Блокируется по UDP) | Высокая (но уязвим к дропу) | ChaCha20-Poly1305 | Нет | Блокируется |
+| **OpenVPN** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> 10% (Легко детектируется) | Низкая (TAP Overhead) | TLS / AES-CBC | Нет | Блокируется |
+| **Shadowsocks / VLESS** | <img src=".github/assets/icons/emoji/octo_warning.svg" width="18" height="18" style="vertical-align:-3px;"/> 60% (Частично блокируется) | Высокая | AEAD / TLS | Ограничено | Частичная |
 
 ---
 
@@ -144,14 +144,14 @@ sequenceDiagram
 В **Obxodka** интегрирована передовая аппаратная система защиты от шпионских SDK, трекеров телеметрии и детекции туннеля на **Windows** и **Android**:
 
 - <img src=".github/assets/icons/dns.svg" width="16" height="16" style="vertical-align:-2px;"/> **Аппаратный L3 DNS Sinkhole (Windows & Android):** Встроенный в драйвер Wintun и TUN-ядро перехватчик сетевых запросов. Все попытки фоновой телеметрии (`AppMetrica`, `Yandex Metrika`, `VK Stats`, `Mail.ru`, аналитика Сбера, Госуслуг, трекеры `AppsFlyer` / `Adjust`) перехватываются на L3-уровне и за **`0.05 мс` гасятся ответом `0.0.0.0`**. Шпионский пакет физически не покидает оперативную память устройства.
-- <img src=".github/assets/icons/ping.svg" width="16" height="16" style="vertical-align:-2px;"/> **Happy Eyeballs & Auto-Best-Node:** Параллельное неблокирующее зондирование серверов кластера при подключении. Клиент автоматически выбирает узел с минимальным RTT и наименьшей нагрузкой, исключая таймауты и зависания.
-- <img src=".github/assets/icons/stealth.svg" width="16" height="16" style="vertical-align:-2px;"/> **Адаптивный обход DPI (Multi-Stage TLS Splitting):** Динамическое расщепление первого сегмента TLS ClientHello на 1–5 байт с паузой 15–35 мс и фрагментацией тела. Системы ТСПУ и DPI не способны восстановить сигнатуру рукопожатия и пропускают трафик без замедлений.
-- <img src=".github/assets/icons/zap.svg" width="16" height="16" style="vertical-align:-2px;"/> **Zero-Handoff Seamless Switching:** Бесшовное переключение серверов и сетевой роуминг (Wi-Fi ↔ LTE) без сброса TCP-соединений, потери пакетов или прыжков интернет-трафика.
-- <img src=".github/assets/icons/disconnect.svg" width="16" height="16" style="vertical-align:-2px;"/> **Zero-Flicker Disconnect:** Бесшовное отключение туннеля без сброса базового сетевого адаптера ОС — интернет не мигает, фоновые закачки и локальные соединения не обрываются.
+- <img src=".github/assets/icons/emoji/octo_ping.svg" width="18" height="18" style="vertical-align:-3px;"/> **Happy Eyeballs & Auto-Best-Node:** Параллельное неблокирующее зондирование серверов кластера при подключении. Клиент автоматически выбирает узел с минимальным RTT и наименьшей нагрузкой, исключая таймауты и зависания.
+- <img src=".github/assets/icons/emoji/octo_stealth.svg" width="18" height="18" style="vertical-align:-3px;"/> **Адаптивный обход DPI (Multi-Stage TLS Splitting):** Динамическое расщепление первого сегмента TLS ClientHello на 1–5 байт с паузой 15–35 мс и фрагментацией тела. Системы ТСПУ и DPI не способны восстановить сигнатуру рукопожатия и пропускают трафик без замедлений.
+- <img src=".github/assets/icons/emoji/octo_zap.svg" width="18" height="18" style="vertical-align:-3px;"/> **Zero-Handoff Seamless Switching:** Бесшовное переключение серверов и сетевой роуминг (Wi-Fi ↔ LTE) без сброса TCP-соединений, потери пакетов или прыжков интернет-трафика.
+- <img src=".github/assets/icons/emoji/octo_disconnect.svg" width="18" height="18" style="vertical-align:-3px;"/> **Zero-Flicker Disconnect:** Бесшовное отключение туннеля без сброса базового сетевого адаптера ОС — интернет не мигает, фоновые закачки и локальные соединения не обрываются.
 - <img src=".github/assets/icons/shield.svg" width="16" height="16" style="vertical-align:-2px;"/> **Защита от утечек DNS (NRPT & Auto-Heal):** Принудительная изоляция через таблицу политик разрешения имен Windows (NRPT), сброс кэша резолвера и автоматическое восстановление поврежденного физического DNS при аварийном завершении других VPN.
-- <img src=".github/assets/icons/zap.svg" width="16" height="16" style="vertical-align:-2px;"/> **Адаптивный Mobile NAT Keep-Alive (Android):** Умный таймер поддержания сотовых NAT-таблиц (25 сек в покое / 3 сек при активности), снижающий нагрузку на радиомодуль и экономящий до 90% заряда батареи.
-- <img src=".github/assets/icons/stealth.svg" width="16" height="16" style="vertical-align:-2px;"/> **Smart App Cloaking (Android):** Автоматическая изоляция отечественных банков, Госуслуг, такси и маркетплейсов (`AddDisallowedApplication`). Операционная система Android рапортует приложениям: **`TRANSPORT_VPN: FALSE`** — банки не блокируют переводы и работают на максимальной скорости сотового оператора без капчи.
-- <img src=".github/assets/icons/lock.svg" width="16" height="16" style="vertical-align:-2px;"/> **Zero-Leak & Hardware Kill-Switch (Windows & Android):** Принудительная блокировка утечек IPv6 (`fd00::/8`), изоляция WebRTC/STUN портов (`3478` / `5349`) и аппаратная блокировка пакетов при разрывах связи (`SetBlocking(true)` на Android и охватывающие префиксы Wintun с метрикой 1 на Windows).
+- <img src=".github/assets/icons/emoji/octo_zap.svg" width="18" height="18" style="vertical-align:-3px;"/> **Адаптивный Mobile NAT Keep-Alive (Android):** Умный таймер поддержания сотовых NAT-таблиц (25 сек в покое / 3 сек при активности), снижающий нагрузку на радиомодуль и экономящий до 90% заряда батареи.
+- <img src=".github/assets/icons/emoji/octo_stealth.svg" width="18" height="18" style="vertical-align:-3px;"/> **Smart App Cloaking (Android):** Автоматическая изоляция отечественных банков, Госуслуг, такси и маркетплейсов (`AddDisallowedApplication`). Операционная система Android рапортует приложениям: **`TRANSPORT_VPN: FALSE`** — банки не блокируют переводы и работают на максимальной скорости сотового оператора без капчи.
+- <img src=".github/assets/icons/emoji/octo_lock.svg" width="18" height="18" style="vertical-align:-3px;"/> **Zero-Leak & Hardware Kill-Switch (Windows & Android):** Принудительная блокировка утечек IPv6 (`fd00::/8`), изоляция WebRTC/STUN портов (`3478` / `5349`) и аппаратная блокировка пакетов при разрывах связи (`SetBlocking(true)` на Android и охватывающие префиксы Wintun с метрикой 1 на Windows).
 
 ---
 

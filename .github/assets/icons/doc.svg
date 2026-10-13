@@ -1,10 +1,70 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="docGrad" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00e5ff" />
-      <stop offset="100%" stop-color="#0078d4" />
+    <!-- 1. Фирменный градиент Obxodka -->
+    <linearGradient id="octoGradient" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#FF2E93"/>
+    </linearGradient>
+
+    <!-- 2. Градиент листа спецификации -->
+    <linearGradient id="docDarkGrad" x1="128" y1="144" x2="128" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E1B4B"/>
+      <stop offset="100%" stop-color="#0B0F19"/>
     </linearGradient>
   </defs>
-  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="url(#docGrad)" stroke-width="1.8" fill="rgba(0, 120, 212, 0.08)" stroke-linejoin="round"/>
-  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke="#00e5ff" stroke-width="1.6" stroke-linecap="round"/>
+
+  <!-- ============================================================ -->
+  <!-- 1. ГОЛОВА И 4 БОКОВЫХ ЩУПАЛЬЦА (Чистый вектор, без обводок) -->
+  <!-- ============================================================ -->
+  <g fill="url(#octoGradient)">
+    <!-- Голова маскота -->
+    <path d="M128 55 C95 55 75 75 75 105 C75 125 88 138 100 142 C108 145 115 138 128 138 C141 138 148 145 156 142 C168 138 181 125 181 105 C181 75 161 55 128 55 Z"/>
+
+    <!-- Глазки -->
+    <path d="M102 112 C98 112 95 115 95 118 C95 121 98 124 102 124 C106 124 109 121 109 118 C109 115 106 112 102 112 Z" fill="#0B0F19"/>
+    <path d="M154 112 C150 112 147 115 147 118 C147 121 150 124 154 124 C158 124 161 121 161 118 C161 115 158 112 154 112 Z" fill="#0B0F19"/>
+
+    <!-- Левые боковые щупальца -->
+    <path d="M92 136 C80 145 60 155 52 172 C46 185 54 198 66 194 C76 190 82 175 92 165 C96 161 100 148 95 142 Z"/>
+    <path d="M80 118 C62 122 45 132 40 148 C36 162 46 172 56 166 C66 160 72 146 84 136 Z"/>
+
+    <!-- Правые боковые щупальца -->
+    <path d="M164 136 C176 145 196 155 204 172 C210 185 202 198 190 194 C180 190 174 175 164 165 C160 161 156 148 161 142 Z"/>
+    <path d="M176 118 C194 122 211 132 216 148 C220 162 210 172 200 166 C190 160 184 146 172 136 Z"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- 2. ДОКУМЕНТ / СПЕЦИФИКАЦИЯ ПО ЦЕНТРУ (Без тени/обводки тела)   -->
+  <!-- ============================================================ -->
+  <g>
+    <!-- Карточка документа -->
+    <rect x="104" y="146" width="48" height="56" rx="6" fill="url(#docDarkGrad)"/>
+    <path d="M110 148 H146" stroke="#00FFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Строчки документа -->
+    <rect x="112" y="157" width="22" height="3" rx="1.5" fill="#00FFFF"/>
+    <rect x="112" y="165" width="32" height="3" rx="1.5" fill="#94A3B8"/>
+    <rect x="112" y="173" width="28" height="3" rx="1.5" fill="#94A3B8"/>
+    <rect x="112" y="181" width="25" height="3" rx="1.5" fill="#FF2E93"/>
+    <rect x="112" y="189" width="18" height="3" rx="1.5" fill="#10B981"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- 3. ЛАПКИ-ШАРИКИ (Держат документ по бокам)                  -->
+  <!-- ============================================================ -->
+  <g fill="url(#octoGradient)">
+    <path d="M106 138 C102 146 102 156 100 168 C105 166 110 154 114 144 Z"/>
+    <path d="M150 138 C154 146 154 156 156 168 C151 166 146 154 142 144 Z"/>
+  </g>
+
+  <g>
+    <!-- Левый шарик -->
+    <circle cx="100" cy="172" r="8.5" fill="url(#octoGradient)"/>
+    <circle cx="98" cy="170" r="2.2" fill="#FFFFFF" opacity="0.75"/>
+
+    <!-- Правый шарик -->
+    <circle cx="156" cy="172" r="8.5" fill="url(#octoGradient)"/>
+    <circle cx="154" cy="170" r="2.2" fill="#FFFFFF" opacity="0.75"/>
+  </g>
 </svg>

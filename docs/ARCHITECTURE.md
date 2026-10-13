@@ -161,7 +161,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/stealth.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 2. Ядро маскировки и транспорт OBXODKA-STREAM
+## <img src="../.github/assets/icons/emoji/octo_stealth.svg" width="26" height="26" alt="Стелс" style="vertical-align: -5px;" /> 2. Ядро маскировки и транспорт OBXODKA-STREAM
 
 ### 2.1. Спецификация бинарного протокола OBXODKA-STREAM
 В отличие от тяжеловесного gRPC с накладными расходами сериализации Protobuf, транспорт **OBXODKA-STREAM** работает напрямую поверх полнодуплексного потока HTTP/2 (`PushStreamContent` / `ReadAsStreamAsync`):
@@ -238,7 +238,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/zap.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 3. Эволюционная ретроспектива: От FECHSUE и gRPC к OBXODKA-STREAM
+## <img src="../.github/assets/icons/emoji/octo_zap.svg" width="26" height="26" alt="Молния" style="vertical-align: -5px;" /> 3. Эволюционная ретроспектива: От FECHSUE и gRPC к OBXODKA-STREAM
 
 В истории развития архитектуры Obxodka ключевыми поворотными моментами стали два масштабных рефакторинга:
 
