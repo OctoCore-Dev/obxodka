@@ -1,0 +1,65 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Authentic Obxodka Brand Gradient -->
+    <linearGradient id="octoGradient" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#FF2E93"/>
+    </linearGradient>
+
+    <!-- Cyber Visor Gradient -->
+    <linearGradient id="visorCyan3D" x1="88" y1="106" x2="168" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+
+    <filter id="visorGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#00FFFF" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <!-- BASE OCTOPUS: 100% Authentic Geometry (appiconfg.svg) -->
+  <g fill="url(#octoGradient)">
+    <path d="M128 55 C95 55 75 75 75 105 C75 125 88 138 100 142 C108 145 115 138 128 138 C141 138 148 145 156 142 C168 138 181 125 181 105 C181 75 161 55 128 55 Z"/>
+    
+    <path d="M102 112 C98 112 95 115 95 118 C95 121 98 124 102 124 C106 124 109 121 109 118 C109 115 106 112 102 112 Z" fill="#0B0F19"/>
+    <path d="M154 112 C150 112 147 115 147 118 C147 121 150 124 154 124 C158 124 161 121 161 118 C161 115 158 112 154 112 Z" fill="#0B0F19"/>
+
+    <path d="M116 140 C110 160 105 185 112 205 C115 212 124 212 126 205 C128 195 124 175 128 155 C132 175 128 195 130 205 C132 212 141 212 144 205 C151 185 146 160 140 140 Z"/>
+    <path d="M92 136 C80 145 60 155 52 172 C46 185 54 198 66 194 C76 190 82 175 92 165 C96 161 100 148 95 142 Z"/>
+    <path d="M80 118 C62 122 45 132 40 148 C36 162 46 172 56 166 C66 160 72 146 84 136 Z"/>
+    <path d="M164 136 C176 145 196 155 204 172 C210 185 202 198 190 194 C180 190 174 175 164 165 C160 161 156 148 161 142 Z"/>
+    <path d="M176 118 C194 122 211 132 216 148 C220 162 210 172 200 166 C190 160 184 146 172 136 Z"/>
+  </g>
+
+  <!-- ACTION: Chunky Cyber Stealth Visor over Eyes + DPI Radar Hologram -->
+  <g filter="url(#visorGlow)">
+    <!-- Cyber Visor -->
+    <path d="M88 108 C88 104 96 102 128 102 C160 102 168 104 168 108 L166 124 C166 128 158 130 128 130 C98 130 90 128 90 124 Z" 
+          fill="#0B0F19" 
+          stroke="url(#visorCyan3D)" 
+          stroke-width="3.5"/>
+    <line x1="96" y1="116" x2="160" y2="116" stroke="#00FFFF" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Stealth DPI Hologram Badge held in front -->
+    <circle cx="128" cy="174" r="28" 
+            fill="#0B0F19" 
+            stroke="#00FFFF" 
+            stroke-width="4.5"/>
+    <circle cx="128" cy="174" r="18" fill="none" stroke="#00FFFF" stroke-width="2" stroke-dasharray="4 4"/>
+    <circle cx="128" cy="174" r="9" fill="none" stroke="#00FFFF" stroke-width="1.8"/>
+    <!-- Radar Sweep Dot -->
+    <circle cx="138" cy="166" r="3.5" fill="#FF2E93"/>
+  </g>
+
+  <!-- NATURAL GRIP: Tentacle tips curling over the radar badge -->
+  <g fill="url(#octoGradient)">
+    <path d="M100 174 C96 180 100 187 107 185 C111 184 112 178 108 174 Z" 
+          stroke="#0B0F19" 
+          stroke-width="2"/>
+    <path d="M156 174 C160 180 156 187 149 185 C145 184 144 178 148 174 Z" 
+          stroke="#0B0F19" 
+          stroke-width="2"/>
+  </g>
+</svg>

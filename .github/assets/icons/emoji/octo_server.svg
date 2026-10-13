@@ -1,0 +1,46 @@
+<svg width="256" height="256" viewBox="20 20 216 216" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="octoGradient" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#FF2E93"/>
+    </linearGradient>
+
+    <filter id="serverGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#10B981" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Octopus Body & Tentacles -->
+  <g fill="url(#octoGradient)">
+    <path d="M128 55 C95 55 75 75 75 105 C75 125 88 138 100 142 C108 145 115 138 128 138 C141 138 148 145 156 142 C168 138 181 125 181 105 C181 75 161 55 128 55 Z"/>
+    
+    <ellipse cx="102" cy="118" rx="8" ry="7" fill="#0F172A" opacity="0.85"/>
+    <ellipse cx="154" cy="118" rx="8" ry="7" fill="#0F172A" opacity="0.85"/>
+    <circle cx="104" cy="116" r="2.5" fill="#FFFFFF"/>
+    <circle cx="156" cy="116" r="2.5" fill="#FFFFFF"/>
+
+    <path d="M116 140 C110 160 105 185 112 205 C115 212 124 212 126 205 C128 195 124 175 128 155 C132 175 128 195 130 205 C132 212 141 212 144 205 C151 185 146 160 140 140 Z"/>
+    <path d="M92 136 C80 145 60 155 52 172 C46 185 54 198 66 194 C76 190 82 175 92 165 C96 161 100 148 95 142 Z"/>
+    <path d="M80 118 C62 122 45 132 40 148 C36 162 46 172 56 166 C66 160 72 146 84 136 Z"/>
+    <path d="M164 136 C176 145 196 155 204 172 C210 185 202 198 190 194 C180 190 174 175 164 165 C160 161 156 148 161 142 Z"/>
+    <path d="M176 118 C194 122 211 132 216 148 C220 162 210 172 200 166 C190 160 184 146 172 136 Z"/>
+  </g>
+
+  <!-- Mini Server Rack Node -->
+  <g filter="url(#serverGlow)">
+    <rect x="98" y="156" width="60" height="36" rx="5" fill="#0F172A" stroke="#10B981" stroke-width="2.5"/>
+    <!-- Blade 1 -->
+    <line x1="104" y1="168" x2="140" y2="168" stroke="#334155" stroke-width="2"/>
+    <circle cx="148" cy="168" r="2.5" fill="#00FF88"/>
+    <!-- Blade 2 -->
+    <line x1="104" y1="180" x2="140" y2="180" stroke="#334155" stroke-width="2"/>
+    <circle cx="148" cy="180" r="2.5" fill="#00FFFF"/>
+  </g>
+
+  <!-- Front Gripping Tentacles -->
+  <g fill="url(#octoGradient)">
+    <path d="M94 170 C90 175 94 182 100 180 C104 179 105 174 101 170 Z"/>
+    <path d="M162 170 C166 175 162 182 156 180 C152 179 151 174 155 170 Z"/>
+  </g>
+</svg>
