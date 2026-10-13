@@ -486,7 +486,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             try
             {
                 _ = SendPacketAsync(probe);
-                var timeoutMs = Math.Clamp((int)(_smoothedPing > 0 ? _smoothedPing * 2.5 : 180), 140, 300);
+                var timeoutMs = Math.Clamp((int)(_smoothedPing > 0 ? _smoothedPing * 2.5 : 750), 350, 1500);
                 var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {

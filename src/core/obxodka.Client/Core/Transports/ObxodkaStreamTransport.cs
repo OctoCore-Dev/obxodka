@@ -111,7 +111,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             sniCandidates.Add(defaultSni);
         }
 
-        foreach (var candidate in AppSecrets.AllowedSniPool)
+        foreach (var candidate in AppSecrets.GetCandidateSniList(6))
         {
             if (!sniCandidates.Contains(candidate, StringComparer.OrdinalIgnoreCase))
             {
@@ -219,13 +219,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     private async Task DecoyTrafficLoopAsync(HttpClient client, string channelHost, int port, CancellationToken ct)
     {
-        string[] decoyPaths = ["/", "/api/v1/health", "/favicon.ico", "/robots.txt"];
+        string[] decoyPaths = ["/", "/favicon.ico", "/api/v1/health", "/robots.txt"];
+        var isFirst = true;
         while (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
         {
             try
             {
-                var delaySeconds = Random.Shared.Next(25, 55);
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct).ConfigureAwait(false);
+                var delayMs = isFirst ? Random.Shared.Next(60, 180) : Random.Shared.Next(20000, 45000);
+                isFirst = false;
+                await Task.Delay(delayMs, ct).ConfigureAwait(false);
 
                 if (!Volatile.Read(ref _connected))
                 {
@@ -425,9 +427,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     }
                     else if (command == ObxodkaFraming.CmdPong)
                     {
-                        if (payloadLen >= 8)
+                        var tsSpan = (payloadLen >= 10 && payloadSpan[0] == 0xAA && payloadSpan[1] == 0xBB)
+                            ? payloadSpan.Slice(2, 8)
+                            : (payloadLen >= 8 ? payloadSpan[..8] : default);
+
+                        if (!tsSpan.IsEmpty)
                         {
-                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(payloadSpan[..8]);
+                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(tsSpan);
                             var now = Stopwatch.GetTimestamp();
                             var elapsedMs = (long)((now - sendTs) * 1000.0 / Stopwatch.Frequency);
                             if (elapsedMs is >= 0 and < 5000)

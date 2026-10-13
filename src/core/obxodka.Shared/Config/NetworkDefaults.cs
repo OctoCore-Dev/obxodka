@@ -4,11 +4,11 @@ namespace obxodka.Shared.Config;
 
 public static class NetworkDefaults
 {
-    public const int DefaultMtu = 1360;
-    public const int MinMtu = 1280;
-    public const int MaxMtu = 1420;
+    public const int DefaultMtu = 1280;
+    public const int MinMtu = 1200;
+    public const int MaxMtu = 1440;
     public static int CurrentMtu { get; set; } = DefaultMtu;
-    public static readonly int[] MtuEscalationSteps = [1320, 1360, 1380, 1400, 1412, 1420];
+    public static readonly int[] MtuEscalationSteps = [1240, 1280, 1320, 1360, 1380, 1400, 1420, 1440];
     public static int[] MtuCandidates => GenerateMtuScanCandidates(MaxMtu, MinMtu, 8);
 
     public static int[] GenerateMtuScanCandidates(int max = MaxMtu, int min = MinMtu, int step = 8)

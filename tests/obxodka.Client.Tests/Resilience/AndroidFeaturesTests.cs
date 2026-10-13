@@ -48,10 +48,12 @@ public class AndroidFeaturesTests
 
     [Theory]
     [InlineData(1420, 1420)]
-    [InlineData(1500, 1420)]
-    [InlineData(1600, 1420)]
+    [InlineData(1440, 1440)]
+    [InlineData(1500, 1440)]
+    [InlineData(1600, 1440)]
     [InlineData(1280, 1280)]
-    [InlineData(1000, 1280)]
+    [InlineData(1200, 1200)]
+    [InlineData(1000, 1200)]
     public void SafeMobileMtuClamping(int rawMtu, int expectedSafeMtu)
     {
         var clamped = NetworkDefaults.ClampMtu(rawMtu);

@@ -11,18 +11,79 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
-        "ya.ru",
-        "yandex.ru",
-        "dzen.ru",
-        "www.google.com",
-        "google.com",
         "obxodka.one",
         "www.obxodka.one",
         "api.octocore.dev"
     ];
 
-    public static string GetRandomSni() =>
-        AllowedSniPool[Random.Shared.Next(AllowedSniPool.Length)];
+    public static readonly string[] BaseDomains =
+    [
+        "obxodka.one",
+        "octocore.dev"
+    ];
+
+    public static readonly string[] SubdomainPrefixes =
+    [
+        "api",
+        "auth",
+        "cdn",
+        "edge",
+        "static",
+        "sync",
+        "core",
+        "telemetry",
+        "portal",
+        "gateway",
+        "node",
+        "cluster",
+        "stream",
+        "v133",
+        "speed",
+        "cloud",
+        "proxy",
+        "ingress",
+        "relay",
+        "mesh"
+    ];
+
+    public static string GetRandomSni()
+    {
+        if (Random.Shared.Next(100) < 15)
+        {
+            return AllowedSniPool[Random.Shared.Next(AllowedSniPool.Length)];
+        }
+
+        var domain = BaseDomains[Random.Shared.Next(BaseDomains.Length)];
+        var prefix = SubdomainPrefixes[Random.Shared.Next(SubdomainPrefixes.Length)];
+
+        var style = Random.Shared.Next(3);
+        return style switch
+        {
+            0 => $"{prefix}.{domain}",
+            1 => $"{prefix}{Random.Shared.Next(1, 10):D2}.{domain}",
+            _ => $"{prefix}-{Random.Shared.Next(0x1000, 0xFFFF):x4}.{domain}"
+        };
+    }
+
+    public static List<string> GetCandidateSniList(int count = 6)
+    {
+        var result = new List<string>(count)
+        {
+            "obxodka.one",
+            "api.octocore.dev"
+        };
+
+        while (result.Count < count)
+        {
+            var candidate = GetRandomSni();
+            if (!result.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(candidate);
+            }
+        }
+
+        return result;
+    }
 
     private static readonly byte[] t_obfuscatedSecret =
     [
