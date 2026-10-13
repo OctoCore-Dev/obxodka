@@ -18,7 +18,7 @@
             <Setter Property="BorderThickness" Value="2.5" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="RenderTransform" Value="scale(1.0)" />
+            <Setter Property="RenderTransform" Value="scale(2)" />
             <Setter Property="Transitions">
                 <Transitions>
                     <BrushTransition Property="Background" Duration="0:0:0.25" />
@@ -30,14 +30,14 @@
 
         <!-- Наведение курсора -->
         <Style Selector="ToggleButton.connect-btn:pointerover">
-            <Setter Property="RenderTransform" Value="scale(1.04)" />
+            <Setter Property="RenderTransform" Value="scale(2.04)" />
             <Setter Property="Background" Value="#252836" />
             <Setter Property="BorderBrush" Value="#60A5FA" />
         </Style>
 
         <!-- Нажатие (эффект пружины / клика) -->
         <Style Selector="ToggleButton.connect-btn:pressed">
-            <Setter Property="RenderTransform" Value="scale(0.93)" />
+            <Setter Property="RenderTransform" Value="scale(1.04)" />
         </Style>
 
         <!-- Активное состояние (когда нажали и включили) -->
@@ -48,7 +48,7 @@
         <Style Selector="ToggleButton.connect-btn:checked:pointerover">
             <Setter Property="Background" Value="#1A382E" />
             <Setter Property="BorderBrush" Value="#34D399" />
-            <Setter Property="RenderTransform" Value="scale(1.04)" />
+            <Setter Property="RenderTransform" Value="scale(2.0)" />
         </Style>
         <Style Selector="ToggleButton.connect-btn:checked Path">
             <Setter Property="Stroke" Value="#34D399" />
@@ -58,16 +58,26 @@
         </Style>
     </UserControl.Styles>
 
+    <!-- Плашка позади кнопки по технологии сайдбара: растягивается за окном, отступы сохраняются -->
+    <Border Margin="26"
+            Padding="4"
+            CornerRadius="15"
+            Background="#20242E"
+            ClipToBounds="True">
+
+        <!-- Внутренний фон -->
+        <Border Background="#20242E" CornerRadius="10" ClipToBounds="True" Padding="20">
+
     <!-- Основной контейнер кнопки подключения -->
     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
         
         <!-- Внешнее декоративное кольцо -->
-        <Border Width="164" 
-                Height="164" 
-                CornerRadius="82" 
-                Background="#0D3B82F6" 
-                BorderBrush="#263B82F6" 
-                BorderThickness="1.5"
+        <Border Width="600" 
+                Height="895" 
+                CornerRadius="6" 
+                Background="#20242E" 
+                BorderBrush="#040f20f6" 
+                BorderThickness="1"
                 HorizontalAlignment="Center">
 
             <!-- Кнопка-переключатель с плавной анимацией нажатия и переключения -->
@@ -96,27 +106,9 @@
             </ToggleButton>
         </Border>
 
-        <!-- Индикатор статуса под кнопкой -->
-        <StackPanel HorizontalAlignment="Center" Spacing="5">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-                <Ellipse Width="9" 
-                         Height="9" 
-                         Fill="#94A3B8" 
-                         VerticalAlignment="Center" />
-                
-                <TextBlock Text="VPN"
-                           FontSize="13"
-                           FontWeight="Medium"
-                           Foreground="#94A3B8"
-                           VerticalAlignment="Center" />
-            </StackPanel>
-
-            <TextBlock Text="Нажмите для подключения"
-                       FontSize="11"
-                       Foreground="#64748B"
-                       HorizontalAlignment="Center" />
-        </StackPanel>
-
     </StackPanel>
+
+        </Border>
+    </Border>
 
 </UserControl>
