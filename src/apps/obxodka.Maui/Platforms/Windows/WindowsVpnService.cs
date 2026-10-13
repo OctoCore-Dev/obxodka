@@ -26,6 +26,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
+    private readonly List<string> _suspendedConflictingAdapters = [];
+    private readonly List<string> _suspendedServices = [];
     public static SplitTunnelPolicy SplitTunnelPolicy { get; } = new();
 
     public WindowsVpnService()
@@ -244,6 +246,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             UpdateState(AppVpnState.Connecting);
             OnLogUpdated?.Invoke(VpnStatusMessages.CleaningOldSettings);
             await CleanupStaleRoutesAsync();
+            await SuppressConflictingVpnAdaptersAsync().ConfigureAwait(false);
 
             var targetIp = serverIp;
             if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
@@ -529,6 +532,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 if (!connected)
                 {
+                    await RestoreSuppressedAdaptersAsync().ConfigureAwait(false);
                     if (_isExplicitlyStopped)
                     {
                         UpdateState(AppVpnState.Disconnected);
@@ -543,6 +547,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
             catch (Exception ex)
             {
+                await RestoreSuppressedAdaptersAsync().ConfigureAwait(false);
                 Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN FATAL] Connection pipeline failed completely: {ex.Message}", ex);
                 UpdateState(AppVpnState.Error);
                 var errMsg = ex is TimeoutException || ex.InnerException is TimeoutException
@@ -1017,44 +1022,172 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private static bool IsConflictingAdapter(NetworkInterface c)
     {
         if (c.OperationalStatus != OperationalStatus.Up ||
-            c.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-            c.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
-            c.Name.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
-            c.Description.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
-            c.Description.Contains("Famatech", StringComparison.OrdinalIgnoreCase))
+            c.NetworkInterfaceType == NetworkInterfaceType.Loopback)
         {
             return false;
         }
 
         var name = c.Name;
         var desc = c.Description;
+
+        if (name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
+            desc.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (name.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
+            desc.Contains("Radmin", StringComparison.OrdinalIgnoreCase) ||
+            desc.Contains("Famatech", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (c.NetworkInterfaceType is NetworkInterfaceType.Tunnel or NetworkInterfaceType.Ppp)
+        {
+            return true;
+        }
+
         var isConflicting = desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
                             desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
                             desc.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                            desc.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Amnezia", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("CloudflareWARP", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("WARP", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Mullvad", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("OpenVPN", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Proton", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase);
+                            name.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Hiddify", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Neko", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Outline", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("AdGuard", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Kaspersky", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("NordVPN", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Surfshark", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("ExpressVPN", StringComparison.OrdinalIgnoreCase);
 
         if (!isConflicting)
         {
-            var props = c.GetIPProperties();
-            foreach (var gw in props.GatewayAddresses)
+            try
             {
-                var gwStr = gw.Address.ToString();
-                if (gwStr is "0.0.0.0" or "::")
+                var props = c.GetIPProperties();
+                foreach (var gw in props.GatewayAddresses)
                 {
-                    isConflicting = true;
-                    break;
+                    var gwStr = gw.Address.ToString();
+                    if (gwStr is "0.0.0.0" or "::")
+                    {
+                        isConflicting = true;
+                        break;
+                    }
                 }
             }
+            catch { }
         }
 
         return isConflicting;
+    }
+
+    private async Task SuppressConflictingVpnAdaptersAsync()
+    {
+        try
+        {
+            _suspendedConflictingAdapters.Clear();
+            _suspendedServices.Clear();
+
+            string[] competingServicePatterns = ["AmneziaVPN-service", "WireGuardTunnel$*"];
+            foreach (var pattern in competingServicePatterns)
+            {
+                try
+                {
+                    var (_, output) = await RunCmdAsync("powershell",
+                        $"-NoProfile -Command \"(Get-Service -Name '{pattern}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Status -eq 'Running' }}).Name\"").ConfigureAwait(false);
+                    var names = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var svc in names)
+                    {
+                        if (!string.IsNullOrWhiteSpace(svc) && !_suspendedServices.Contains(svc))
+                        {
+                            Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found active competing VPN service '{svc}'. Stopping it...");
+                            _ = await RunCmdAsync("net", $"stop \"{svc}\" /y").ConfigureAwait(false);
+                            _suspendedServices.Add(svc);
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (IsConflictingAdapter(card))
+                {
+                    var adapterName = card.Name;
+                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found competing VPN adapter '{adapterName}' ({card.Description}). Suppressing it...");
+                    OnLogUpdated?.Invoke($"Отключение конкурирующего VPN ({adapterName})...");
+
+                    var (exitCode, output) = await RunCmdAsync("netsh", $"interface set interface name=\"{adapterName}\" admin=DISABLED").ConfigureAwait(false);
+                    if (exitCode != 0)
+                    {
+                        _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"Disable-NetAdapter -Name '{adapterName}' -Confirm:$false -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
+                    }
+
+                    _suspendedConflictingAdapters.Add(adapterName);
+                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Competing adapter '{adapterName}' suspended.");
+                }
+            }
+
+            if (_suspendedConflictingAdapters.Count > 0 || _suspendedServices.Count > 0)
+            {
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Obxodka dominance active: {_suspendedConflictingAdapters.Count} adapter(s) and {_suspendedServices.Count} service(s) suppressed. Waiting 300ms for network stack...");
+                await Task.Delay(300).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Shared.Logging.AppLogger.LogError($"[VPN-TAKEOVER] Error suppressing competing VPNs: {ex.Message}");
+        }
+    }
+
+    private async Task RestoreSuppressedAdaptersAsync()
+    {
+        if (_suspendedConflictingAdapters.Count == 0 && _suspendedServices.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Restoring suppressed adapters ({_suspendedConflictingAdapters.Count}) and services ({_suspendedServices.Count})...");
+
+            foreach (var adapterName in _suspendedConflictingAdapters)
+            {
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Re-enabling adapter '{adapterName}'...");
+                var (exitCode, _) = await RunCmdAsync("netsh", $"interface set interface name=\"{adapterName}\" admin=ENABLED").ConfigureAwait(false);
+                if (exitCode != 0)
+                {
+                    _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"Enable-NetAdapter -Name '{adapterName}' -Confirm:$false -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
+                }
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Adapter '{adapterName}' re-enabled.");
+            }
+
+            foreach (var svc in _suspendedServices)
+            {
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Re-starting service '{svc}'...");
+                _ = await RunCmdAsync("net", $"start \"{svc}\"").ConfigureAwait(false);
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Service '{svc}' restarted.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Shared.Logging.AppLogger.LogError($"[VPN-TAKEOVER] Error restoring suppressed VPNs: {ex.Message}");
+        }
+        finally
+        {
+            _suspendedConflictingAdapters.Clear();
+            _suspendedServices.Clear();
+        }
     }
 
     public string? DetectConflictingVpn()
@@ -1501,6 +1634,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 await OctopusEngine.Current.DisposeAsync();
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
+                await RestoreSuppressedAdaptersAsync().ConfigureAwait(false);
                 OnLogUpdated?.Invoke(VpnStatusMessages.VpnDisconnectedSystem);
             }
             catch (Exception ex)

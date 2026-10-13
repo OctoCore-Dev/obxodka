@@ -72,19 +72,40 @@ internal sealed partial class WintunAdapter : IDisposable
         Name = name;
         Pool = pool;
 
-        var guid = t_defaultGuid;
-        _adapter = WintunCreateAdapter(pool, name, ref guid, out _);
-
-        if (_adapter == IntPtr.Zero)
+        // 1. Try opening an existing adapter first
+        _adapter = WintunOpenAdapter(pool, name);
+        if (_adapter != IntPtr.Zero)
         {
-            _adapter = WintunOpenAdapter(pool, name);
+            Shared.Logging.AppLogger.Log($"[WINTUN] Successfully opened existing Wintun adapter '{name}'.");
+            return;
         }
 
-        if (_adapter == IntPtr.Zero)
+        var openErr = Marshal.GetLastPInvokeError();
+
+        // 2. Try creating adapter with a fresh unique GUID
+        var freshGuid = Guid.NewGuid();
+        _adapter = WintunCreateAdapter(pool, name, ref freshGuid, out _);
+        if (_adapter != IntPtr.Zero)
         {
-            var err = Marshal.GetLastPInvokeError();
-            throw new InvalidOperationException($"Не удалось создать или открыть адаптер Wintun (Код Win32: {err}). Убедитесь, что запущен только один экземпляр программы и есть права администратора.");
+            Shared.Logging.AppLogger.Log($"[WINTUN] Successfully created new Wintun adapter '{name}' (GUID: {freshGuid}).");
+            return;
         }
+
+        var createErrFresh = Marshal.GetLastPInvokeError();
+        Shared.Logging.AppLogger.LogWarning($"[WINTUN] Create with fresh GUID failed (Win32 {createErrFresh}). Trying default GUID...");
+
+        // 3. Fallback to default GUID
+        var defaultGuid = t_defaultGuid;
+        _adapter = WintunCreateAdapter(pool, name, ref defaultGuid, out _);
+        if (_adapter != IntPtr.Zero)
+        {
+            Shared.Logging.AppLogger.Log($"[WINTUN] Successfully created Wintun adapter '{name}' with default GUID.");
+            return;
+        }
+
+        var createErrDefault = Marshal.GetLastPInvokeError();
+        Shared.Logging.AppLogger.LogError($"[WINTUN FATAL] Failed to create or open Wintun adapter '{name}'. OpenErr={openErr}, CreateErrFresh={createErrFresh}, CreateErrDefault={createErrDefault}");
+        throw new InvalidOperationException($"Не удалось создать или открыть адаптер Wintun (Код Win32: {createErrFresh}, OpenErr: {openErr}). Убедитесь, что запущен только один экземпляр программы и есть права администратора.");
     }
 
     public void StartSession(uint capacity = 0x4000000)
