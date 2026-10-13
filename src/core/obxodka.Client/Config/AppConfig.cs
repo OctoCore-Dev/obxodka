@@ -3,7 +3,6 @@ namespace obxodka.Config;
 public static class AppConfig
 {
     public const string DefaultApiBaseUrl = "https://obxodka.one/";
-    public const string LegacyApiBaseUrl = "https://api.octocore.dev/";
     public const string DirectServerIp = "70.34.201.253";
     public const string DirectApiBaseUrl = "https://70.34.201.253/";
     public const string RemoteServersDiscoveryUrl = "https://raw.githubusercontent.com/OctoCore-Dev/obxodka/develop/servers.json";
@@ -12,7 +11,7 @@ public static class AppConfig
     public static readonly string[] KnownDomainBases =
     [
         DefaultApiBaseUrl,
-        LegacyApiBaseUrl
+        DirectApiBaseUrl
     ];
 
     public static readonly List<VpnServerDto> BootstrapServers =

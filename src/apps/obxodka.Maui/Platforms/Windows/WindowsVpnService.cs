@@ -673,6 +673,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
+                _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue }} catch {{ }}\"").ConfigureAwait(false);
+                _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
                 Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
@@ -680,6 +684,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary");
                     Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
                 }
 

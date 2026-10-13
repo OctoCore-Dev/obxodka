@@ -12,14 +12,12 @@ public static class AppSecrets
     public static readonly string[] AllowedSniPool =
     [
         "obxodka.one",
-        "www.obxodka.one",
-        "api.octocore.dev"
+        "www.obxodka.one"
     ];
 
     public static readonly string[] BaseDomains =
     [
-        "obxodka.one",
-        "octocore.dev"
+        "obxodka.one"
     ];
 
     public static readonly string[] SubdomainPrefixes =
@@ -70,7 +68,7 @@ public static class AppSecrets
         var result = new List<string>(count)
         {
             "obxodka.one",
-            "api.octocore.dev"
+            "www.obxodka.one"
         };
 
         while (result.Count < count)
