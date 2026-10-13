@@ -18,6 +18,7 @@ public static class AppLogger
     private static StreamWriter? t_backupWriter;
     private static bool t_isInitialized;
     private static readonly Lock t_lock = new();
+    private static readonly List<string> t_recentLogs = new(500);
 
     [ModuleInitializer]
     public static void AutoInitialize() => Initialize();
@@ -175,6 +176,16 @@ public static class AppLogger
                     t_htmlWriter.WriteLine($"<div class='entry info'><span class='ts'>[{ts}]</span>{htmlEncoded}</div>");
                 }
             }
+
+            lock (t_lock)
+            {
+                var formatted = $"[{(item.IsError ? "ERR" : "INF")} {ts}] {item.Message}";
+                if (t_recentLogs.Count >= 500)
+                {
+                    t_recentLogs.RemoveAt(0);
+                }
+                t_recentLogs.Add(formatted);
+            }
         }
         catch { }
     }
@@ -192,6 +203,59 @@ public static class AppLogger
                 LogError($"[UNOBSERVED TASK EXCEPTION] {e.Exception}");
         }
         catch { }
+    }
+
+    public static string GetRecentLogs(int maxLines = 150)
+    {
+        lock (t_lock)
+        {
+            if (t_recentLogs.Count == 0)
+            {
+                return "Журнал логов пока пуст.";
+            }
+
+            var start = Math.Max(0, t_recentLogs.Count - maxLines);
+            var count = t_recentLogs.Count - start;
+            return string.Join(Environment.NewLine, t_recentLogs.Skip(start).Take(count));
+        }
+    }
+
+    public static void OpenLogFile()
+    {
+        try
+        {
+            var targetPath = !string.IsNullOrEmpty(LogFilePath) && File.Exists(LogFilePath)
+                ? LogFilePath
+                : (!string.IsNullOrEmpty(BackupLogFilePath) && File.Exists(BackupLogFilePath) ? BackupLogFilePath : string.Empty);
+
+            if (!string.IsNullOrEmpty(targetPath) && File.Exists(targetPath))
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    _ = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = targetPath,
+                        UseShellExecute = true
+                    });
+                }
+            }
+            else
+            {
+                var dir = !string.IsNullOrEmpty(BackupLogFilePath) ? Path.GetDirectoryName(BackupLogFilePath) : null;
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir) && OperatingSystem.IsWindows())
+                {
+                    _ = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = dir,
+                        UseShellExecute = true
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"[AppLogger] Failed to open log file via shell: {ex.Message}");
+        }
     }
 
     public static void Log(string message)

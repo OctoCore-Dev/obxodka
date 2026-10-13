@@ -1411,7 +1411,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VPN CONNECT ERROR] {ex.Message}");
+            Shared.Logging.AppLogger.LogError($"[VPN CONNECT ERROR] {ex.Message}", ex);
             StopLoaderAnimation();
             ConnectButtonCore.IsEnabled = true;
             UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
@@ -1421,7 +1421,10 @@ public sealed partial class VpnView : ContentView, IDisposable
                 : "Произошла ошибка при подключении/отключении";
             if (ParentPage is not null)
             {
-                await ParentPage.DisplayAlertAsync("Ошибка", friendlyMsg, "OK");
+                var logHint = !string.IsNullOrEmpty(Shared.Logging.AppLogger.LogFilePath)
+                    ? $"\n\nПодробный лог сохранен в:\n{Shared.Logging.AppLogger.LogFilePath}"
+                    : "";
+                await ParentPage.DisplayAlertAsync("Ошибка подключения", $"{friendlyMsg}{logHint}", "OK");
             }
         }
         finally

@@ -15,6 +15,32 @@ public static class AppConfig
         LegacyApiBaseUrl
     ];
 
+    public static readonly List<VpnServerDto> BootstrapServers =
+    [
+        new(
+            Ip: "70.34.201.253",
+            Port: 443,
+            Location: "Швеция, Стокгольм",
+            IsOnline: true,
+            LoadPercent: 10,
+            CertHash: "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
+            Provider: "Vultr",
+            Flag: "🇸🇪",
+            Role: "main"
+        ),
+        new(
+            Ip: "70.34.246.53",
+            Port: 443,
+            Location: "Польша, Варшава",
+            IsOnline: true,
+            LoadPercent: 8,
+            CertHash: "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
+            Provider: "Vultr",
+            Flag: "🇵🇱",
+            Role: "worker"
+        )
+    ];
+
     public static string BaseUrl => ApiBaseUrl;
 
     public static string ApiBaseUrl

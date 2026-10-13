@@ -67,7 +67,22 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     ? (EndPoint)new IPEndPoint(ipAddr, port)
                     : context.DnsEndPoint;
 
-                await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
+                Shared.Logging.AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={port})...");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
+                    sw.Stop();
+                    Shared.Logging.AppLogger.Log($"[TCP OK] Connected to {connectTarget} in {sw.ElapsedMilliseconds}ms.");
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Shared.Logging.AppLogger.LogError($"[TCP FAIL] Socket failed to connect to {connectTarget} after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                    socket.Dispose();
+                    throw;
+                }
+
                 var netStream = new NetworkStream(socket, ownsSocket: true);
                 return IPAddress.TryParse(serverIp, out var parsedIp) && !IPAddress.IsLoopback(parsedIp)
                     ? new DpiBypassStream(netStream)
@@ -139,9 +154,11 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             var (targetHost, port) = endpointCandidates[i];
             var channelHost = targetHost;
 
+            var attemptTimeoutSeconds = (i == 0 && endpointCandidates.Count > 1) ? 5 : 10;
+            Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' (Timeout: {attemptTimeoutSeconds}s)...");
+
             _cts = new CancellationTokenSource();
             using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
-            var attemptTimeoutSeconds = (i == 0 && endpointCandidates.Count > 1) ? 5 : 10;
             attemptCts.CancelAfter(TimeSpan.FromSeconds(attemptTimeoutSeconds));
 
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -167,7 +184,8 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 catch (Exception ex) when (!ct.IsCancellationRequested && i + 1 < endpointCandidates.Count)
                 {
                     lastException = ex;
-                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Handshake failed on '{targetHost}:{port}' ({ex.Message}). Hopping to next endpoint in pool...");
+                    var inner = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
+                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Handshake attempt #{i + 1} failed on '{targetHost}:{port}' ({ex.GetType().Name}: {ex.Message}{inner}). Hopping to next endpoint in pool...");
                     _cts.Cancel();
                     _httpClient0?.Dispose();
                     _handler0?.Dispose();
@@ -351,8 +369,16 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
             request.Content = duplexContent;
 
+            Shared.Logging.AppLogger.Log($"[H2 STREAM] Ray #{ray} initiating duplex tunnel POST to https://{channelHost}:{port}/api/v1/sync (MTU={NetworkDefaults.CurrentMtu})...");
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            _ = response.EnsureSuccessStatusCode();
+            Shared.Logging.AppLogger.Log($"[H2 RESPONSE] Ray #{ray} received HTTP {(int)response.StatusCode} {response.ReasonPhrase} (Version={response.Version}).");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawErr = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                Shared.Logging.AppLogger.LogError($"[H2 ERROR] Ray #{ray} server rejected stream: HTTP {(int)response.StatusCode} - {rawErr}");
+                _ = response.EnsureSuccessStatusCode();
+            }
 
             using var responseStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             var header = new byte[ObxodkaFraming.HeaderSize];

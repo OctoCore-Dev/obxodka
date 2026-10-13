@@ -88,6 +88,7 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             {
                 if (split2 > split1 && split2 < buffer.Length)
                 {
+                    Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 3-stage TLS ClientHello segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={split2 - split1}B, Slice3={buffer.Length - split2}B, Delay1={d1}ms, Delay2={d2}ms)");
                     await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
                     await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                     if (d1 > 0)
@@ -107,6 +108,7 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
                     return;
                 }
 
+                Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 2-stage TLS ClientHello segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Delay={d1}ms)");
                 await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
                 await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 if (d1 > 0)
@@ -117,6 +119,10 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
                 await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
                 await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 return;
+            }
+            else
+            {
+                Shared.Logging.AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
             }
         }
 

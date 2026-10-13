@@ -30,12 +30,15 @@ public static class CertificateValidator
                 ? dynamicPinningHash
                 : OctopusEngine.DynamicSslPublicKeyHash;
 
+            var pubKey = cert2.GetPublicKey();
+            var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
+            Shared.Logging.AppLogger.Log($"[CERT] Validating server certificate: Subject='{cert2.Subject}', Thumbprint='{cert2.Thumbprint}', PubKeyHash='{hash}', NotAfter='{cert2.NotAfter:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
+
             if (!string.IsNullOrWhiteSpace(expectedPin))
             {
-                var pubKey = cert2.GetPublicKey();
-                var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
                 if (string.Equals(hash, expectedPin, StringComparison.Ordinal))
                 {
+                    Shared.Logging.AppLogger.Log($"[CERT OK] Matched dynamic public key hash '{expectedPin}'");
                     return true;
                 }
 
@@ -45,12 +48,14 @@ public static class CertificateValidator
                     var spkiHash = Convert.ToBase64String(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
                     if (string.Equals(spkiHash, expectedPin, StringComparison.Ordinal))
                     {
+                        Shared.Logging.AppLogger.Log($"[CERT OK] Matched SPKI public key hash '{expectedPin}'");
                         return true;
                     }
                 }
 
                 if (string.Equals(cert2.Thumbprint, expectedPin, StringComparison.OrdinalIgnoreCase))
                 {
+                    Shared.Logging.AppLogger.Log($"[CERT OK] Matched thumbprint '{expectedPin}'");
                     return true;
                 }
             }
@@ -59,6 +64,7 @@ public static class CertificateValidator
             {
                 if (string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase))
                 {
+                    Shared.Logging.AppLogger.Log($"[CERT OK] Matched hardcoded backup thumbprint '{backupHash}'");
                     return true;
                 }
             }
@@ -99,6 +105,7 @@ public static class CertificateValidator
                     verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                     if (verifyChain.Build(cert2))
                     {
+                        Shared.Logging.AppLogger.Log("[CERT OK] Trusted domain chain verified successfully.");
                         return true;
                     }
 
@@ -107,6 +114,7 @@ public static class CertificateValidator
                         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                         if (chain.Build(cert2))
                         {
+                            Shared.Logging.AppLogger.Log("[CERT OK] Trusted domain passed via outer chain.");
                             return true;
                         }
                     }
@@ -119,6 +127,7 @@ public static class CertificateValidator
                 verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                 if (verifyChain.Build(cert2))
                 {
+                    Shared.Logging.AppLogger.Log("[CERT OK] Default system root CA chain verified.");
                     return true;
                 }
 
@@ -127,6 +136,7 @@ public static class CertificateValidator
                     chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                     if (chain.Build(cert2))
                     {
+                        Shared.Logging.AppLogger.Log("[CERT OK] Default outer chain verified.");
                         return true;
                     }
                 }
@@ -134,15 +144,18 @@ public static class CertificateValidator
 
             if (!string.IsNullOrWhiteSpace(expectedPin))
             {
-                var pubKey = cert2.GetPublicKey();
-                var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
-                Debug.WriteLine($"[CERT PINNING MISMATCH] Expected: {expectedPin}, Actual: {hash}, Errors: {errors}");
+                Shared.Logging.AppLogger.LogError($"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
+            }
+            else
+            {
+                Shared.Logging.AppLogger.LogError($"[CERT REJECTED] Server certificate did not match trusted pins or trusted root CA. Errors: '{errors}'");
             }
 
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            Shared.Logging.AppLogger.LogError($"[CERT ERROR] Exception during certificate validation: {ex.Message}", ex);
             return false;
         }
     }

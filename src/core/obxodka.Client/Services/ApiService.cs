@@ -212,11 +212,11 @@ public sealed class ApiService(HttpClient client)
                 {
                     lastEx = ex;
                     var innerInfo = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
-                    Debug.WriteLine($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
+                    Shared.Logging.AppLogger.LogWarning($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
                     var isTlsBlock = ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.InnerException is AuthenticationException or SocketException);
                     if (isTlsBlock)
                     {
-                        Debug.WriteLine($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");
+                        Shared.Logging.AppLogger.LogWarning($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");
                         break;
                     }
                 }
@@ -290,7 +290,7 @@ public sealed class ApiService(HttpClient client)
             catch (Exception ex)
             {
                 lastEx = ex;
-                Debug.WriteLine($"[API DIRECT DPI ERROR] {method} {directHost}: {ex.Message}");
+                Shared.Logging.AppLogger.LogError($"[API DIRECT DPI ERROR] {method} {directHost}: {ex.Message}", ex);
             }
         }
 
@@ -430,9 +430,13 @@ public sealed class ApiService(HttpClient client)
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Shared.Logging.AppLogger.LogWarning($"[API-DISCOVERY] Remote discovery attempt failed: {ex.Message}");
+        }
 
-        return (false, null, "Не удалось получить список нод");
+        Shared.Logging.AppLogger.LogWarning($"[API-DISCOVERY] Remote servers discovery failed. Falling back to {AppConfig.BootstrapServers.Count} built-in bootstrap servers.");
+        return (true, AppConfig.BootstrapServers, null);
     }
 
     public async Task<(bool Success, CertHashResponse? Data, string? Error)> GetCertHashAsync(CancellationToken ct = default) =>

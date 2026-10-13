@@ -1,3 +1,5 @@
+using obxodka.Shared.Logging;
+
 namespace obxodka.Views;
 
 public sealed partial class ConfigurationView : ContentView, IDisposable
@@ -36,6 +38,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     public ConfigurationView()
     {
         InitializeComponent();
+
+        LogPathLabel.Text = AppLogger.LogFilePath;
 
         AutoReconnectToggle.IsToggled = Preferences.Get("AutoReconnect", true);
         KillSwitchToggle.IsToggled = Preferences.Get("KillSwitch", false);
@@ -599,6 +603,37 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     {
         _ = ThemesSettingsCard?.BounceClickAsync();
         ThemesRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async void OnCopyLogsClickedAsync(object? sender, EventArgs e)
+    {
+        _ = CopyLogsBtn?.BounceClickAsync();
+        try
+        {
+            var logs = AppLogger.GetRecentLogs(150);
+            if (string.IsNullOrWhiteSpace(logs))
+            {
+                logs = "[Лог пуст]";
+            }
+            await Clipboard.Default.SetTextAsync(logs);
+            if (CopyLogsBtnText is not null)
+            {
+                var oldText = CopyLogsBtnText.Text;
+                CopyLogsBtnText.Text = "СКОПИРОВАНО!";
+                await Task.Delay(1500);
+                CopyLogsBtnText.Text = oldText;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"Не удалось скопировать логи: {ex.Message}");
+        }
+    }
+
+    private void OnOpenLogClicked(object? sender, EventArgs e)
+    {
+        _ = OpenLogBtn?.BounceClickAsync();
+        AppLogger.OpenLogFile();
     }
 
     public void Dispose()

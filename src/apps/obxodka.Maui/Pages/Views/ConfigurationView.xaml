@@ -149,6 +149,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Border
@@ -390,6 +391,88 @@
                                 IconColor="{DynamicResource TextMuted}"
                                 IconSize="18"
                                 VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="DiagnosticLogsCard"
+                        Grid.Row="{OnIdiom Desktop=4,
+                                           Phone=5}"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="{OnIdiom Desktop=2,
+                                                  Phone=1}"
+                        Padding="{OnIdiom Desktop='12,10',
+                                          Phone='16'}"
+                        HeightRequest="{OnIdiom Desktop=66,
+                                                Default=-1}"
+                        Style="{StaticResource NeoCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Bug24}"
+                                IconColor="{DynamicResource Accent}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=13,
+                                                       Default=15}"
+                                    LineBreakMode="TailTruncation"
+                                    Text="Журнал и диагностика" />
+                                <Label
+                                    x:Name="LogPathLabel"
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    LineBreakMode="MiddleTruncation"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Лог работы и обхода блокировок ТСПУ." />
+                            </VerticalStackLayout>
+                            <HorizontalStackLayout
+                                Grid.Column="2"
+                                Spacing="6"
+                                VerticalOptions="Center">
+                                <Border
+                                    x:Name="CopyLogsBtn"
+                                    Padding="10,6"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    Stroke="{DynamicResource BorderSubtle}"
+                                    StrokeShape="RoundRectangle 6"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCopyLogsClickedAsync" />
+                                    </Border.GestureRecognizers>
+                                    <Label
+                                        x:Name="CopyLogsBtnText"
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="11"
+                                        Text="СКОПИРОВАТЬ"
+                                        TextColor="{DynamicResource TextPrimary}"
+                                        VerticalOptions="Center" />
+                                </Border>
+                                <Border
+                                    x:Name="OpenLogBtn"
+                                    Padding="10,6"
+                                    BackgroundColor="{DynamicResource PrimaryDim}"
+                                    Stroke="{DynamicResource Primary}"
+                                    StrokeShape="RoundRectangle 6"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnOpenLogClicked" />
+                                    </Border.GestureRecognizers>
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="11"
+                                        Text="ОТКРЫТЬ ЛОГ"
+                                        TextColor="{DynamicResource PrimaryBright}"
+                                        VerticalOptions="Center" />
+                                </Border>
+                            </HorizontalStackLayout>
                         </Grid>
                     </Border>
                 </Grid>

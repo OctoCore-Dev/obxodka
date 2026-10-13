@@ -487,11 +487,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         catch (UnauthorizedAccessException ex)
                         {
                             lastException = ex;
+                            Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN AUTH ERROR] Unauthorized access / invalid certificate: {ex.Message}", ex);
                             break;
                         }
                         catch (Exception ex)
                         {
                             lastException = ex;
+                            Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN ATTEMPT #{attempt} FAILED on {candidateIp}:{candidatePort}] {ex.GetType().Name}: {ex.Message}", ex);
                             _cts?.Cancel();
                             await Task.Delay(60);
                             try
@@ -541,6 +543,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
             catch (Exception ex)
             {
+                Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN FATAL] Connection pipeline failed completely: {ex.Message}", ex);
                 UpdateState(AppVpnState.Error);
                 var errMsg = ex is TimeoutException || ex.InnerException is TimeoutException
                     ? ex.Message
