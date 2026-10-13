@@ -1,10 +1,10 @@
-# <img src="../.github/assets/icons/doc.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Архитектура и спецификация экосистемы Obxodka
+# <img src="../.github/assets/icons/octo_doc.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Архитектура и спецификация экосистемы Obxodka
 
 Данный документ содержит полное, объективное и детальное техническое описание архитектуры клиентской и серверной частей **Obxodka** — высокоскоростного стелс-VPN нового поколения, разработанного для обхода систем глубокого анализа пакетов (**DPI / ТСПУ**) с нулевыми потерями скорости, ультра-низким игровым пингом (**Dual-Ray Hedging**), кристальной маскировкой под легитимный веб-трафик и строгой политикой **Zero-Log**.
 
 ---
 
-## <img src="../.github/assets/icons/chart.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Актуальная высокоуровневая архитектурная схема (v5.9+)
+## <img src="../.github/assets/icons/octo_chart.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Актуальная высокоуровневая архитектурная схема (v5.9+)
 
 ```
 +========================================================================================+
@@ -102,7 +102,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 1. Клиентская подсистема (Client Architecture)
+## <img src="../.github/assets/icons/octo_terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 1. Клиентская подсистема (Client Architecture)
 
 ### 1.1. Платформенный уровень Windows (Wintun Layer 3 Driver)
 * **Интерфейс драйвера (`Platforms/Windows/WintunAdapter.cs`):**
@@ -161,7 +161,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/emoji/octo_stealth.svg" width="26" height="26" alt="Стелс" style="vertical-align: -5px;" /> 2. Ядро маскировки и транспорт OBXODKA-STREAM
+## <img src="../.github/assets/icons/octo_stealth.svg" width="26" height="26" alt="Стелс" style="vertical-align: -5px;" /> 2. Ядро маскировки и транспорт OBXODKA-STREAM
 
 ### 2.1. Спецификация бинарного протокола OBXODKA-STREAM
 В отличие от тяжеловесного gRPC с накладными расходами сериализации Protobuf, транспорт **OBXODKA-STREAM** работает напрямую поверх полнодуплексного потока HTTP/2 (`PushStreamContent` / `ReadAsStreamAsync`):
@@ -238,7 +238,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/emoji/octo_zap.svg" width="26" height="26" alt="Молния" style="vertical-align: -5px;" /> 3. Эволюционная ретроспектива: От FECHSUE и gRPC к OBXODKA-STREAM
+## <img src="../.github/assets/icons/octo_zap.svg" width="26" height="26" alt="Молния" style="vertical-align: -5px;" /> 3. Эволюционная ретроспектива: От FECHSUE и gRPC к OBXODKA-STREAM
 
 В истории развития архитектуры Obxodka ключевыми поворотными моментами стали два масштабных рефакторинга:
 
@@ -262,7 +262,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 4. Графическая подсистема SkiaSharp 120 FPS и Living UI Engine
+## <img src="../.github/assets/icons/octo_terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 4. Графическая подсистема SkiaSharp 120 FPS и Living UI Engine
 
 Пользовательский интерфейс Obxodka построен на прямом векторном рендеринге через **SkiaSharp** с аппаратным ускорением на 60 / 120 Гц:
 
@@ -284,7 +284,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/tools.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 5. Система тем оформления (Theme Ecosystem & Extensibility)
+## <img src="../.github/assets/icons/octo_tools.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 5. Система тем оформления (Theme Ecosystem & Extensibility)
 
 Экосистема тем Obxodka поддерживает богатую кастомизацию интерфейса авторами сообщества через открытый репозиторий [OctoCore-Dev/themes](https://github.com/OctoCore-Dev/themes):
 
@@ -296,7 +296,7 @@
 
 ---
 
-## <img src="../.github/assets/icons/doc.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 6. Юридическая документация и диагностика
+## <img src="../.github/assets/icons/octo_doc.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> 6. Юридическая документация и диагностика
 
 * **Политика конфиденциальности и No-Logs гарантия:** [PRIVACY_POLICY.md](../PRIVACY_POLICY.md)
 * **Пользовательское соглашение и условия использования:** [TERMS_OF_SERVICE.md](../TERMS_OF_SERVICE.md)

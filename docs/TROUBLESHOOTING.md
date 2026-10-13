@@ -1,10 +1,10 @@
-# <img src="../.github/assets/icons/tools.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Руководство по диагностике и устранению неполадок (Troubleshooting Guide)
+# <img src="../.github/assets/icons/octo_tools.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Руководство по диагностике и устранению неполадок (Troubleshooting Guide)
 
 Данный документ содержит полное техническое руководство по локализации и устранению проблем, возникающих при установке, подключении, игровом процессе и эксплуатации VPN-клиента **Obxodka** на платформах Windows и Android.
 
 ---
 
-## <img src="../.github/assets/icons/doc.svg" width="20" height="20" alt="" style="vertical-align: -3px;" /> Содержание
+## <img src="../.github/assets/icons/octo_doc.svg" width="20" height="20" alt="" style="vertical-align: -3px;" /> Содержание
 
 1. [Предварительная диагностика сети (Preflight Health Check)](#1-предварительная-диагностика-сети-preflight-health-check)
 2. [Dual-Ray Hedging, игровой пинг и потеря пакетов](#2-dual-ray-hedging-игровой-пинг-и-потеря-пакетов)

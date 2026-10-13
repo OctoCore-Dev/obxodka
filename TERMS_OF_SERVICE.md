@@ -1,4 +1,4 @@
-# <img src=".github/assets/icons/doc.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Пользовательское соглашение и Условия использования (Terms of Service & EULA)
+# <img src=".github/assets/icons/octo_doc.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Пользовательское соглашение и Условия использования (Terms of Service & EULA)
 
 **Дата вступления в силу:** 7 октября 2026 г.  
 **Версия документа:** 2.0 (Редакция для магазинов приложений и протокола OBXODKA-STREAM)  

@@ -1,4 +1,4 @@
-# <img src=".github/assets/icons/shield.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Политика конфиденциальности и Положение о нулевом ведении логов (Privacy & No-Logs Policy)
+# <img src=".github/assets/icons/octo_shield.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Политика конфиденциальности и Положение о нулевом ведении логов (Privacy & No-Logs Policy)
 
 **Дата последнего обновления:** 7 октября 2026 г.  
 **Версия документа:** 2.0 (Редакция под протокол OBXODKA-STREAM)  
@@ -29,13 +29,13 @@
 
 | Категория информации | Статус сбора | Техническое обоснование и гарантия |
 | :--- | :---: | :--- |
-| **История посещенных сайтов (Browsing History)** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Мы не регистрируем URL, домены или страницы, которые вы посещаете через туннель. |
-| **IP-адреса назначения (Destination IPs)** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Маршрутизация трафика в Linux TUN-интерфейсе осуществляется ядром ОС в памяти без сохранения истории сокетов. |
-| **DNS-запросы (DNS Queries)** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Все DNS-запросы либо фильтруются локальным аппаратным Sinkhole на устройстве, либо разрешаются анонимными доверенными резолверами (Cloudflare/Google) без логирования. |
-| **Содержимое сетевых пакетов (Payload)** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Весь трафик шифруется сквозными алгоритмами (TLS 1.3 / AES-256-GCM / ChaCha20-Poly1305). Сервер не расшифровывает пользовательский payload прикладного уровня. |
-| **Исходный реальный IP-адрес пользователя** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОХРАНЯЕТСЯ** | Реальный IP используется исключительно для поддержания активной TCP-сессии и мгновенно стирается из памяти сразу после завершения подключения. |
-| **Метаданные сессий и длительность соединений** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОХРАНЯЮТСЯ** | В БД отсутствуют временные метки начала и конца конкретных сессий, соотносящие трафик с личностью пользователя. |
-| **Идентификаторы оборудования (Device Fingerprints)** | <img src=".github/assets/icons/emoji/octo_cross.svg" width="18" height="18" style="vertical-align:-3px;"/> **НЕ СОБИРАЮТСЯ** | Мы не считываем и не сохраняем IMEI, MAC-адреса, серийные номера процессора или рекламные ID (GAID / IDFA). |
+| **История посещенных сайтов (Browsing History)** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Мы не регистрируем URL, домены или страницы, которые вы посещаете через туннель. |
+| **IP-адреса назначения (Destination IPs)** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Маршрутизация трафика в Linux TUN-интерфейсе осуществляется ядром ОС в памяти без сохранения истории сокетов. |
+| **DNS-запросы (DNS Queries)** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Все DNS-запросы либо фильтруются локальным аппаратным Sinkhole на устройстве, либо разрешаются анонимными доверенными резолверами (Cloudflare/Google) без логирования. |
+| **Содержимое сетевых пакетов (Payload)** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОБИРАЕТСЯ** | Весь трафик шифруется сквозными алгоритмами (TLS 1.3 / AES-256-GCM / ChaCha20-Poly1305). Сервер не расшифровывает пользовательский payload прикладного уровня. |
+| **Исходный реальный IP-адрес пользователя** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОХРАНЯЕТСЯ** | Реальный IP используется исключительно для поддержания активной TCP-сессии и мгновенно стирается из памяти сразу после завершения подключения. |
+| **Метаданные сессий и длительность соединений** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОХРАНЯЮТСЯ** | В БД отсутствуют временные метки начала и конца конкретных сессий, соотносящие трафик с личностью пользователя. |
+| **Идентификаторы оборудования (Device Fingerprints)** | <img src=".github/assets/icons/octo_cross.svg" width="20" height="20" style="vertical-align:-3px;"/> **НЕ СОБИРАЮТСЯ** | Мы не считываем и не сохраняем IMEI, MAC-адреса, серийные номера процессора или рекламные ID (GAID / IDFA). |
 
 ---
 
