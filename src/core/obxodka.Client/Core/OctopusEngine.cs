@@ -221,6 +221,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         Shared.Logging.AppLogger.Log($"[OCTOPUS] Initializing transport to {serverIp}:{serverPort} with SNI '{effectiveSni ?? "none"}'");
         var transport = new ObxodkaStreamTransport(serverPort, effectiveSni);
+        if (_protectAction != null)
+        {
+            transport.ProtectSockets(_protectAction);
+        }
         _transport = transport;
         ActiveProtocol = transport.ProtocolName;
         transport.OnPacketReceived += (pkt, len) =>
@@ -764,5 +768,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    public void ProtectTransportSockets(Action<Socket> protectAction) => _transport?.ProtectSockets(protectAction);
+    private Action<Socket>? _protectAction;
+
+    public void ProtectTransportSockets(Action<Socket> protectAction)
+    {
+        _protectAction = protectAction;
+        _transport?.ProtectSockets(protectAction);
+    }
 }

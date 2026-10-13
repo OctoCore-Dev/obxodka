@@ -1098,7 +1098,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             _suspendedConflictingAdapters.Clear();
             _suspendedServices.Clear();
 
-            string[] competingServicePatterns = ["AmneziaVPN-service", "WireGuardTunnel$*"];
+            string[] competingServicePatterns = ["AmneziaVPN-service", "WireGuardTunnel$*", "AmneziaWGTunnel$*", "AmneziaWireGuard$*"];
             foreach (var pattern in competingServicePatterns)
             {
                 try
@@ -1124,7 +1124,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (IsConflictingAdapter(card))
                 {
                     var adapterName = card.Name;
-                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found competing VPN adapter '{adapterName}' ({card.Description}). Suppressing it...");
+                    var ifIndex = card.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found competing VPN adapter '{adapterName}' (Index: {ifIndex}, {card.Description}). Suppressing it...");
                     OnLogUpdated?.Invoke($"Отключение конкурирующего VPN ({adapterName})...");
 
                     var (exitCode, output) = await RunCmdAsync("netsh", $"interface set interface name=\"{adapterName}\" admin=DISABLED").ConfigureAwait(false);
@@ -1133,8 +1134,19 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"Disable-NetAdapter -Name '{adapterName}' -Confirm:$false -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
                     }
 
+                    // Deprioritize competing adapter metric and clear its default routes to prevent hijacking Obxodka
+                    _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=5000").ConfigureAwait(false);
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=5000").ConfigureAwait(false);
+                    if (ifIndex > 0)
+                    {
+                        _ = await RunCmdAsync("route", $"delete 0.0.0.0 if {ifIndex}").ConfigureAwait(false);
+                        _ = await RunCmdAsync("route", $"delete 128.0.0.0 if {ifIndex}").ConfigureAwait(false);
+                        _ = await RunCmdAsync("route", $"delete 0.0.0.0 mask 128.0.0.0 if {ifIndex}").ConfigureAwait(false);
+                        _ = await RunCmdAsync("route", $"delete 128.0.0.0 mask 128.0.0.0 if {ifIndex}").ConfigureAwait(false);
+                    }
+
                     _suspendedConflictingAdapters.Add(adapterName);
-                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Competing adapter '{adapterName}' suspended.");
+                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Competing adapter '{adapterName}' suppressed and deprioritized (metric=5000).");
                 }
             }
 
@@ -1169,7 +1181,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 {
                     _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"Enable-NetAdapter -Name '{adapterName}' -Confirm:$false -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
                 }
-                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Adapter '{adapterName}' re-enabled.");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=default").ConfigureAwait(false);
+                _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=default").ConfigureAwait(false);
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Adapter '{adapterName}' restored.");
             }
 
             foreach (var svc in _suspendedServices)

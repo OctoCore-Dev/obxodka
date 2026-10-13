@@ -146,25 +146,32 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         {
             if (TryFindSniRange(span, out var sniStart, out var sniLen))
             {
+                // Never cut the 5-byte TLS record header (0..5) or 4-byte Handshake header (5..9).
+                // Split cleanly around/inside SNI extension (Zapret / GoodbyeDPI standard).
                 var mid = sniStart + (sniLen / 2);
-                split1 = Math.Clamp(mid, 1, span.Length - 1);
-                var headerCut = Random.Shared.Next(1, 4);
-                if (headerCut < split1)
+                if (sniStart > 9 && mid < span.Length - 1)
                 {
-                    split2 = split1;
-                    split1 = headerCut;
+                    split1 = sniStart;
+                    split2 = mid;
+                }
+                else
+                {
+                    split1 = Math.Clamp(mid, 10, span.Length - 1);
                 }
                 return true;
             }
 
-            split1 = Random.Shared.Next(1, 4);
-            split2 = Random.Shared.Next(split1 + 10, Math.Min(span.Length - 5, split1 + 45));
-            return true;
+            // Fallback: split well after TLS record header (byte 16+)
+            if (span.Length > 32)
+            {
+                split1 = Random.Shared.Next(16, Math.Min(32, span.Length - 5));
+                return true;
+            }
         }
 
-        if (span.Length > 2)
+        if (span.Length > 16)
         {
-            split1 = 1;
+            split1 = 8;
             return true;
         }
 

@@ -32,6 +32,9 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     private int _downlinkPacketCount;
     private int _activeRays = 1;
     private int _pingLoopStarted;
+    private int _preferredRay;
+    private long _lastRxTicks0;
+    private long _lastRxTicks1;
 
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
 
@@ -41,14 +44,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         {
             ConnectTimeout = TimeSpan.FromSeconds(15),
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-            KeepAlivePingDelay = Timeout.InfiniteTimeSpan,
-            KeepAlivePingTimeout = Timeout.InfiniteTimeSpan,
+            KeepAlivePingDelay = TimeSpan.FromSeconds(12),
+            KeepAlivePingTimeout = TimeSpan.FromSeconds(15),
+            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
             EnableMultipleHttp2Connections = true,
             InitialHttp2StreamWindowSize = 4194304,
             SslOptions = new SslClientAuthenticationOptions
             {
                 TargetHost = targetHost,
-                ApplicationProtocols = [SslApplicationProtocol.Http2],
+                ApplicationProtocols = [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11],
                 EnabledSslProtocols = SslProtocols.Tls13 | SslProtocols.Tls12,
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
                     CertificateValidator.ValidateServerCertificate(certificate, chain, errors)
@@ -178,7 +182,6 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     _activeRays = 1;
                     EffectivePort = port;
                     _ = Task.Run(() => RunSecondaryRayAsync(channelHost, ray1Port, thumbprint, _cts.Token), _cts.Token);
-                    _ = Task.Run(() => DecoyTrafficLoopAsync(_httpClient0, channelHost, port, _cts.Token), _cts.Token);
                     Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Successfully connected to node physical IP {serverIp}:{port} via {channelHost}. Established tunnel assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
                 }
@@ -278,66 +281,6 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             }
         }
     }
-
-    private async Task DecoyTrafficLoopAsync(HttpClient client, string channelHost, int port, CancellationToken ct)
-    {
-        string[] decoyPaths = ["/", "/favicon.ico", "/api/v1/health", "/robots.txt"];
-        var isFirst = true;
-        while (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
-        {
-            try
-            {
-                var delayMs = isFirst ? Random.Shared.Next(60, 180) : Random.Shared.Next(20000, 45000);
-                isFirst = false;
-                await Task.Delay(delayMs, ct).ConfigureAwait(false);
-
-                if (!Volatile.Read(ref _connected))
-                {
-                    break;
-                }
-
-                var path = decoyPaths[Random.Shared.Next(decoyPaths.Length)];
-                var nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                var decoyUri = $"https://{channelHost}:{port}{path}?_t={nowSec}";
-                using var req = new HttpRequestMessage(HttpMethod.Get, decoyUri)
-                {
-                    Version = HttpVersion.Version20,
-                    VersionPolicy = HttpVersionPolicy.RequestVersionExact
-                };
-                req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36");
-                req.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8");
-                _ = req.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"");
-                _ = req.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
-                _ = req.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
-                _ = req.Headers.TryAddWithoutValidation("sec-fetch-dest", path == "/" ? "document" : "empty");
-                _ = req.Headers.TryAddWithoutValidation("sec-fetch-mode", path == "/" ? "navigate" : "cors");
-                _ = req.Headers.TryAddWithoutValidation("sec-fetch-site", "same-origin");
-
-                using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-                if (resp.IsSuccessStatusCode)
-                {
-                    using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    var buf = ArrayPool<byte>.Shared.Rent(512);
-                    try
-                    {
-                        _ = await stream.ReadAsync(buf.AsMemory(0, 512), ct).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(buf);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch
-            {
-            }
-        }
-    }
-
     private async Task RunStreamAsync(int ray, HttpClient client, string channelHost, int port, string thumbprint, CancellationToken ct)
     {
         try
@@ -456,6 +399,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
                     var payloadSpan = frameBuf.AsSpan(0, payloadLen);
                     ObxodkaFraming.UnmaskPayload(payloadSpan, salt);
+
+                    if (ray == 0)
+                    {
+                        Volatile.Write(ref _lastRxTicks0, Stopwatch.GetTimestamp());
+                    }
+                    else if (ray == 1)
+                    {
+                        Volatile.Write(ref _lastRxTicks1, Stopwatch.GetTimestamp());
+                    }
 
                     if (command == ObxodkaFraming.CmdHandshakeResponse)
                     {
@@ -604,6 +556,45 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
             var nowTs = Stopwatch.GetTimestamp();
 
+            var rx0 = Volatile.Read(ref _lastRxTicks0);
+            var rx1 = Volatile.Read(ref _lastRxTicks1);
+            if (rx0 > 0 && rx1 > 0 && Volatile.Read(ref _activeRays) > 1)
+            {
+                var silence0Ms = (nowTs - rx0) * 1000.0 / Stopwatch.Frequency;
+                var silence1Ms = (nowTs - rx1) * 1000.0 / Stopwatch.Frequency;
+
+                if (silence0Ms > 3500 && silence1Ms < 3000)
+                {
+                    Shared.Logging.AppLogger.LogWarning($"[RAY-HEALTH] Ray #0 stalled (silence {silence0Ms:F0}ms). Shifting 100% traffic to Ray #1.");
+                    Volatile.Write(ref _activeRays, 1);
+                    Volatile.Write(ref _preferredRay, 1);
+                    while (_txChannels[0].Reader.TryRead(out var leftover))
+                    {
+                        if (!_txChannels[1].Writer.TryWrite(leftover))
+                        {
+                            ArrayPool<byte>.Shared.Return(leftover.buffer);
+                        }
+                    }
+                }
+                else if (silence1Ms > 3500 && silence0Ms < 3000)
+                {
+                    Shared.Logging.AppLogger.LogWarning($"[RAY-HEALTH] Ray #1 stalled (silence {silence1Ms:F0}ms). Shifting 100% traffic to Ray #0.");
+                    Volatile.Write(ref _activeRays, 1);
+                    Volatile.Write(ref _preferredRay, 0);
+                    while (_txChannels[1].Reader.TryRead(out var leftover))
+                    {
+                        if (!_txChannels[0].Writer.TryWrite(leftover))
+                        {
+                            ArrayPool<byte>.Shared.Return(leftover.buffer);
+                        }
+                    }
+                }
+                else if (silence0Ms < 2000 && silence1Ms < 2000 && Volatile.Read(ref _activeRays) < 2)
+                {
+                    Volatile.Write(ref _activeRays, 2);
+                }
+            }
+
             var pingBuf0 = ArrayPool<byte>.Shared.Rent(10);
             pingBuf0[0] = 0xAA;
             pingBuf0[1] = 0xBB;
@@ -613,16 +604,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 ArrayPool<byte>.Shared.Return(pingBuf0);
             }
 
-            if (_activeRays > 1)
+            var pingBuf1 = ArrayPool<byte>.Shared.Rent(10);
+            pingBuf1[0] = 0xAA;
+            pingBuf1[1] = 0xBB;
+            BinaryPrimitives.WriteInt64LittleEndian(pingBuf1.AsSpan(2, 8), nowTs);
+            if (!_txChannels[1].Writer.TryWrite((pingBuf1, 10)))
             {
-                var pingBuf1 = ArrayPool<byte>.Shared.Rent(10);
-                pingBuf1[0] = 0xAA;
-                pingBuf1[1] = 0xBB;
-                BinaryPrimitives.WriteInt64LittleEndian(pingBuf1.AsSpan(2, 8), nowTs);
-                if (!_txChannels[1].Writer.TryWrite((pingBuf1, 10)))
-                {
-                    ArrayPool<byte>.Shared.Return(pingBuf1);
-                }
+                ArrayPool<byte>.Shared.Return(pingBuf1);
             }
         }
     }
@@ -636,6 +624,16 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         }
 
         var activeRays = Volatile.Read(ref _activeRays);
+        if (activeRays <= 1)
+        {
+            var targetRay = Volatile.Read(ref _preferredRay);
+            if (!_txChannels[targetRay].Writer.TryWrite((packet, length)))
+            {
+                ArrayPool<byte>.Shared.Return(packet);
+            }
+            return;
+        }
+
         PacketRouter.GetRays(packet.AsSpan(0, length), activeRays, out var primaryRay, out var secondaryRay);
 
         var ray0 = primaryRay % activeRays;
