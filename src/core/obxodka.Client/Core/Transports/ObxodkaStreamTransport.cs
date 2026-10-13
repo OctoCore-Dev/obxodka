@@ -219,13 +219,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     private async Task DecoyTrafficLoopAsync(HttpClient client, string channelHost, int port, CancellationToken ct)
     {
-        string[] decoyPaths = ["/", "/api/v1/health", "/favicon.ico", "/robots.txt"];
+        string[] decoyPaths = ["/", "/favicon.ico", "/api/v1/health", "/robots.txt"];
+        var isFirst = true;
         while (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
         {
             try
             {
-                var delaySeconds = Random.Shared.Next(25, 55);
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct).ConfigureAwait(false);
+                var delayMs = isFirst ? Random.Shared.Next(60, 180) : Random.Shared.Next(20000, 45000);
+                isFirst = false;
+                await Task.Delay(delayMs, ct).ConfigureAwait(false);
 
                 if (!Volatile.Read(ref _connected))
                 {
