@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <defs>
+    <linearGradient id="lockGrad" x1="4" y1="10" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00e5ff" />
+      <stop offset="100%" stop-color="#0078d4" />
+    </linearGradient>
+    <filter id="lockGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="#00e5ff" flood-opacity="0.4" />
+    </filter>
+  </defs>
+  <rect x="5" y="10" width="14" height="11" rx="2.5" fill="rgba(0, 229, 255, 0.15)" stroke="url(#lockGrad)" stroke-width="1.8" filter="url(#lockGlow)"/>
+  <path d="M8 10V7a4 4 0 1 1 8 0v3" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="12" cy="15" r="1.5" fill="#00ff88"/>
+  <path d="M12 16.5v2" stroke="#00ff88" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

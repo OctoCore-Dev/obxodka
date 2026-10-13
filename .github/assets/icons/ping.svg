@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <defs>
+    <linearGradient id="pingGrad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00e5ff" />
+      <stop offset="100%" stop-color="#00ff88" />
+    </linearGradient>
+  </defs>
+  <circle cx="12" cy="12" r="9" stroke="url(#pingGrad)" stroke-width="1.8" fill="rgba(0, 229, 255, 0.06)"/>
+  <circle cx="12" cy="12" r="5" stroke="#00e5ff" stroke-width="1.2" stroke-dasharray="2 3"/>
+  <circle cx="12" cy="12" r="2" fill="#00ff88"/>
+  <path d="M12 12l4-4" stroke="#00ff88" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

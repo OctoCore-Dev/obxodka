@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <defs>
+    <filter id="warnGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="#ffb700" flood-opacity="0.6" />
+    </filter>
+  </defs>
+  <path d="M12 3L2 20h20L12 3z" fill="rgba(255, 183, 0, 0.12)" stroke="#ffb700" stroke-width="1.8" stroke-linejoin="round" filter="url(#warnGlow)"/>
+  <path d="M12 9v5m0 3v.5" stroke="#ffb700" stroke-width="2" stroke-linecap="round"/>
+</svg>

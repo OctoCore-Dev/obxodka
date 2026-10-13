@@ -1,4 +1,4 @@
-# 📜 Пользовательское соглашение и Условия использования (Terms of Service & EULA)
+# <img src=".github/assets/icons/doc.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Пользовательское соглашение и Условия использования (Terms of Service & EULA)
 
 **Дата вступления в силу:** 7 октября 2026 г.  
 **Версия документа:** 2.0 (Редакция для магазинов приложений и протокола OBXODKA-STREAM)  
@@ -129,6 +129,6 @@
 
 По всем вопросам, связанным с настоящим Соглашением, лицензированием или условиями обслуживания, вы можете связаться с нами:
 
-* 📧 **Электронная почта поддержки и юр. службы:** [contact@octocore.dev](mailto:contact@octocore.dev)
-* 🌐 **Официальный сайт:** [https://obxodka.one](https://obxodka.one)
-* 🐙 **Репозиторий проекта:** [https://github.com/OctoCore-Dev/obxodka](https://github.com/OctoCore-Dev/obxodka)
+* **Электронная почта поддержки и юр. службы:** [contact@octocore.dev](mailto:contact@octocore.dev)
+* **Официальный сайт:** [https://obxodka.one](https://obxodka.one)
+* **Репозиторий проекта:** [https://github.com/OctoCore-Dev/obxodka](https://github.com/OctoCore-Dev/obxodka)

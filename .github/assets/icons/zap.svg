@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <defs>
+    <linearGradient id="zapGrad" x1="13" y1="2" x2="11" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60cdff" />
+      <stop offset="50%" stop-color="#00e5ff" />
+      <stop offset="100%" stop-color="#00ff88" />
+    </linearGradient>
+    <filter id="zapGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.2" flood-color="#00e5ff" flood-opacity="0.6" />
+    </filter>
+  </defs>
+  <path d="M13 2L3 14h8l-1 8 11-13h-8l1-7z" fill="url(#zapGrad)" filter="url(#zapGlow)" stroke="#00e5ff" stroke-width="0.8" stroke-linejoin="round"/>
+</svg>
