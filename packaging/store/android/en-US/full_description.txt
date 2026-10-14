@@ -1,13 +1,24 @@
-Obxodka VPN — your ultimate digital privacy and online freedom.
+Obxodka VPN is a modern, high-performance solution engineered to safeguard digital privacy and ensure continuous, unrestricted internet access.
 
-Eliminate ISP throttling and connection drops. Our client leverages cutting-edge Stealth Mode technology to deliver consistent, lightning-fast access in a single tap.
+Designed to prevent ISP throttling and connection drops, Obxodka delivers fast data transfer speeds and enterprise-grade encryption in a single tap.
 
-Why Choose Obxodka VPN:
-• Ultra-fast speeds: stream 4K video, game online, and download without buffering.
-• Maximum privacy: strict No-Logs policy. Your browsing is protected by enterprise-grade encryption.
-• Intelligent traffic stealth: proprietary protocol masking avoids deep packet inspection filters.
-• Built-in ad & tracker blocking: one-tap protection for faster, cleaner browsing.
-• Split Tunneling: customize which apps route through the VPN and which connect directly.
-• Multi-platform account: manage all your devices from a single personal dashboard.
 
-One tap to stay protected. Experience unrestricted internet with Obxodka VPN!
+KEY ADVANTAGES:
+
+1. High Speed and Low Latency
+An optimized network stack and direct routing ensure smooth high-resolution streaming, fast file downloads, and lag-free online mobile gaming.
+
+2. Privacy and Data Protection
+Strict No-Logs policy. All connection traffic is protected with modern cryptographic ciphers (AES-256-GCM / ChaCha20-Poly1305), keeping your sensitive information safe on public Wi-Fi networks.
+
+3. Resistance to Deep Packet Inspection (DPI)
+Proprietary traffic masking with a dynamic pool of trusted SNIs keeps the encrypted tunnel resilient against carrier-grade deep packet inspection filters.
+
+4. Split Tunneling
+Custom routing control: choose which applications route through the secure tunnel and which connect directly to your local carrier network.
+
+5. Adaptive MTU Calibration
+Intelligent MTU sizing automatically adapts to mobile cellular networks (LTE/5G/Wi-Fi), avoiding packet fragmentation and dropped packets during cell handovers.
+
+6. One-Tap Simplicity
+Intuitive and minimalist interface requiring zero manual configuration.

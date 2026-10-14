@@ -46,10 +46,52 @@ env:
 
 jobs:
   # ==========================================
+  # 🚦 ЭТАП 0: ДВОЙНАЯ ПРОВЕРКА ВЕРСИИ (PRE-FLIGHT)
+  # ==========================================
+  check-version:
+    name: 🚦 Pre-Flight Version Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+
+      - name: 🔍 Validate Version Bump
+        shell: bash
+        run: |
+          PROPS="version.props"
+          if [ ! -f "$PROPS" ]; then
+            echo "❌ $PROPS not found!"
+            exit 1
+          fi
+
+          CUR_VER=$(grep -oPm1 "(?<=<AppVersion>)[^<]+" "$PROPS" || true)
+          CUR_BUILD=$(grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" "$PROPS" || true)
+          echo "📦 Current AppVersion: $CUR_VER, Build Code: $CUR_BUILD"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            PREV_PROPS=$(git show HEAD~1:"$PROPS" 2>/dev/null || echo "")
+            if [ -n "$PREV_PROPS" ]; then
+              PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
+              echo "⏮️ Previous Build Code on main: $PREV_BUILD"
+              if [ -n "$PREV_BUILD" ] && [ "$CUR_BUILD" -le "$PREV_BUILD" ] 2>/dev/null; then
+                echo "::error::🚨 [ОШИБКА ДЕПЛОЯ] ВЫ ЗАБЫЛИ ПОВЫСИТЬ ВЕРСИЮ / НОМЕР СБОРКИ В version.props!"
+                echo "::error::Текущий номер сборки ($CUR_BUILD) меньше или равен предыдущему ($PREV_BUILD)."
+                echo "::error::Google Play и Microsoft Store гарантированно отклонят релиз как дубликат."
+                echo "::error::Пожалуйста, увеличьте <AppVersion> и <AppBuildNumber> в version.props перед деплоем в main!"
+                exit 1
+              fi
+            fi
+          fi
+          echo "✅ Pre-flight version validation passed: v$CUR_VER (Build $CUR_BUILD)"
+
+  # ==========================================
   # 🧪 ЭТАП 1: АВТОМАТИЧЕСКИЕ ТЕСТЫ И ВАЛИДАЦИЯ
   # ==========================================
   run-tests:
     name: 🧪 Automated Unit & Security Tests
+    needs: [check-version]
     runs-on: windows-latest
 
     steps:
@@ -278,6 +320,8 @@ jobs:
 
       - name: 📲 Upload to Google Play Store
         if: ${{ env.PLAY_CONFIG_JSON != '' }}
+        id: upload_play
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
@@ -287,8 +331,19 @@ jobs:
           whatsNewDirectory: packaging/whatsnew
           status: 'completed'
 
+      - name: 🔍 Check Google Play Upload Result
+        if: ${{ env.PLAY_CONFIG_JSON != '' && steps.upload_play.outcome == 'failure' }}
+        shell: bash
+        run: |
+          echo "::error::🚨 [ОШИБКА ДЕПЛОЯ GOOGLE PLAY]"
+          echo "::error::Загрузка сборки в Google Play Console завершилась ошибкой."
+          echo "::error::Наиболее частая причина: номер сборки (Version Code) уже был использован для предыдущего релиза!"
+          echo "::error::Убедитесь, что вы увеличили <AppBuildNumber> в version.props (текущий: $(grep -oPm1 '(?<=<AppBuildNumber>)[^<]+' version.props))."
+          echo "::error::Также проверьте валидность service account ключа и права доступа."
+          exit 1
+
       - name: 📝 Sync Google Play Store Listings (Descriptions)
-        if: ${{ env.PLAY_CONFIG_JSON != '' }}
+        if: ${{ env.PLAY_CONFIG_JSON != '' && steps.upload_play.outcome == 'success' }}
         shell: pwsh
         run: |
           pwsh tools/scripts/sync_playstore_listing.ps1

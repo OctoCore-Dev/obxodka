@@ -1,40 +1,36 @@
-Obxodka is a modern, ultra-fast, and secure next-generation VPN client built on C# (.NET), engineered to deliver online privacy, seamless network resilience, and low-latency access to global web resources.
+Obxodka is a modern, high-performance VPN client built on C# (.NET), engineered to deliver privacy, connection resilience, and low-latency network performance.
 
-Enjoy lightning-fast connection speeds, instant response times in online gaming, and a sleek dark theme perfectly tailored for Windows 10/11.
+Enjoy low connection latency, zero packet loss, and a clean Fluent Design interface tailored for Windows 10 and Windows 11.
 
----
 
-🔒 TECHNICAL ADVANTAGES & ARCHITECTURE:
+TECHNICAL HIGHLIGHTS & ARCHITECTURE:
 
-🛡️ Mutual TLS (mTLS) & AES-256-GCM
-Individual client X.509 certificates authenticate every transport-level connection. All payload packets are secured with AES-256-GCM encryption. Private keys remain protected in your OS certificate store.
+1. Mutual TLS (mTLS) & AES-256-GCM Encryption
+Individual client X.509 certificates authenticate every transport-level connection (L4). All payload packets are secured with AES-256-GCM encryption. Private keys remain protected in your operating system certificate store.
 
-🙈 OBXODKA-STREAM Protocol (Next-Gen Traffic Stealth)
-Your network traffic avoids traditional VPN signatures. Encapsulated in optimized duplex HTTP/2 streams over TLS 1.3, it mimics standard browser web sessions. Micro-segmentation desynchronization (DpiBypassStream) and dynamic SNI pools keep the tunnel undetectable by deep packet inspection (DPI) filters.
+2. OBXODKA-STREAM Protocol & DPI Bypass
+Network traffic is encapsulated in optimized duplex HTTP/2 streams over TLS 1.3, masquerading as regular web browsing sessions. Micro-segmentation packet desynchronization (DpiBypassStream) and a dynamic trusted SNI pool ensure tunnel resilience against deep packet inspection (DPI) systems.
 
-🐙 Dual-Ray Hedging Architecture (Multi-Stream Packet Redundancy)
-The Octopus engine parallelizes and hedges packets across independent streams (Rays), eliminating bufferbloat and gaming packet loss. If an ISP drops packets on one channel, duplicates arrive instantaneously via the secondary ray.
+3. Dual-Ray Hedging Architecture (Stream Redundancy)
+The Octopus networking engine parallelizes and hedges packets across independent streams (Rays), minimizing bufferbloat and gaming packet loss. If packets are dropped on one route, duplicate frames arrive instantaneously via the secondary ray.
 
-⚡ Smart Adaptive MTU Escalation
-Automated in-tunnel MTU probing discovers the optimal maximum packet size for your network provider, avoiding carrier packet black holes and maximizing transfer speeds.
+4. Smart Adaptive MTU Calibration
+Automated in-tunnel MTU probing continuously determines the optimal packet size for your network provider, preventing packet fragmentation black holes and maximizing throughput.
 
----
 
-🌟 KEY BENEFITS:
-• Gaming-grade performance: direct routing minimizes jitter and ping spikes.
-• Full privacy: no activity logs, your browsing remains strictly confidential.
-• Secure public Wi-Fi: protection in cafes, hotels, and airports.
-• One-click connectivity: intuitive interface with zero complex configuration.
-• Flexible access: pay only for the connection time you actually use.
+KEY FEATURES:
+• Low latency: direct routing minimizes jitter and ping spikes for online services and games.
+• High throughput: asynchronous network pipeline with optimized ring buffers.
+• Public Wi-Fi protection: strong transport encryption secures data on open wireless networks.
+• One-click connection: streamlined controls with zero complex manual configuration.
+• Flexible access: pay only for the connection time you actually use without hidden recurring fees.
 
----
 
-💳 PRICING & PAYMENT INFORMATION:
-The application includes optional paid access time purchases. Payments are processed through third-party billing outside the Microsoft Store.
+PRICING & PAYMENT INFORMATION:
+The application includes optional paid access time purchases. Payments are processed via secure external billing outside the Microsoft Store.
 
-🎁 New users receive a complimentary 1-hour trial upon registration.
+New users receive a complimentary 1-hour trial upon registration.
 
----
 
-⚠️ SYSTEM REQUIREMENTS:
+SYSTEM REQUIREMENTS:
 Administrator privileges (UAC) are required to install the virtual network adapter (Wintun) and configure routing tables.

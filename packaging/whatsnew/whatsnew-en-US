@@ -1,3 +1,4 @@
-- Connection stability and network protocol improvements.
-- Adaptive MTU tuning for mobile networks.
-- UI and connect button enhancements.
+- Dynamic trusted SNI pool and traffic stealth masking.
+- Fixed UI layout and element alignment on Android.
+- Dual-Ray multi-stream latency optimizations.
+- Adaptive MTU calibration for connection stability.

@@ -170,25 +170,32 @@ if ($tempZip -ne $PackagePath -and (Test-Path $tempZip)) {
 Log-Info "Updating submission packages list with $($pkgItem.Name)..."
 $updatedPackages = @()
 $matchedExisting = $false
-if ($subData.applicationPackages) {
-    foreach ($pkg in $subData.applicationPackages) {
-        if ($pkg.fileName -eq $pkgItem.Name) {
-            $pkg.fileStatus = "PendingUpload"
-            $updatedPackages += $pkg
-            $matchedExisting = $true
-        } else {
-            $pkg.fileStatus = "PendingDelete"
-            $updatedPackages += $pkg
-        }
+
+# In MS Store Ingestion API, packages list can be in 'packages' or 'applicationPackages'
+$existingList = if ($subData.packages) { $subData.packages } elseif ($subData.applicationPackages) { $subData.applicationPackages } else { @() }
+
+foreach ($pkg in $existingList) {
+    if ($pkg.fileName -eq $pkgItem.Name) {
+        $pkg.fileStatus = "PendingUpload"
+        $updatedPackages += $pkg
+        $matchedExisting = $true
+    } else {
+        $pkg.fileStatus = "PendingDelete"
+        $updatedPackages += $pkg
     }
 }
+
 if (-not $matchedExisting) {
     $updatedPackages += @{
         fileName   = $pkgItem.Name
         fileStatus = "PendingUpload"
     }
 }
-$subData.applicationPackages = $updatedPackages
+
+$subData.packages = $updatedPackages
+if ($subData.applicationPackages) {
+    $subData.applicationPackages = $updatedPackages
+}
 
 $whatsNewDir = Join-Path $PSScriptRoot "../../packaging/whatsnew"
 if (-not (Test-Path $whatsNewDir)) {
@@ -272,8 +279,35 @@ if ($subData.listings) {
 
 $updateUri = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$AppId/submissions/$subId"
 $updateJson = $subData | ConvertTo-Json -Depth 10
-$updatedSub = Invoke-RestMethod -Method Put -Uri $updateUri -Headers $authHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($updateJson)) -ContentType "application/json; charset=utf-8"
-Log-Success "Submission metadata updated successfully!"
+
+try {
+    $updatedSub = Invoke-RestMethod -Method Put -Uri $updateUri -Headers $authHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($updateJson)) -ContentType "application/json; charset=utf-8"
+    Log-Success "Submission metadata updated successfully!"
+}
+catch {
+    $rawError = ""
+    if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+        $rawError = $_.ErrorDetails.Message
+    }
+    elseif ($_.Exception -and $_.Exception.Response) {
+        try {
+            $stream = $_.Exception.Response.GetResponseStream()
+            $reader = New-Object System.IO.StreamReader($stream)
+            $rawError = $reader.ReadToEnd()
+        } catch { }
+    }
+    if (-not $rawError) { $rawError = $_.ToString() }
+
+    if ($rawError -match "version.*already exists" -or $rawError -match "Package with version" -or $rawError -match "missing in your update" -or $rawError -match "InvalidParameterValue") {
+        Log-Error "🚨 [MICROSOFT STORE DEPLOY ERROR] Ошибка пакета / Версия уже опубликована в Microsoft Store!"
+        Log-Error "Детали ошибки от Microsoft Dev Center: $rawError"
+        Log-Error "👉 Пожалуйста, увеличьте версию приложения (<AppVersion> в version.props) перед отправкой!"
+    }
+    else {
+        Log-Error "🚨 [MICROSOFT STORE API ERROR]: $rawError"
+    }
+    exit 1
+}
 
 # 6. Commit submission for certification
 Log-Info "Submitting to Microsoft certification pipeline (POST /commit)..."
@@ -287,7 +321,13 @@ $commitResp = $httpClient.SendAsync($commitReq).GetAwaiter().GetResult()
 $commitBody = $commitResp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
 
 if (-not $commitResp.IsSuccessStatusCode) {
-    Log-Error "Failed to commit submission: $($commitResp.StatusCode) - $commitBody"
+    if ($commitBody -match "version.*already exists" -or $commitBody -match "already published") {
+        Log-Error "🚨 [MICROSOFT STORE ERROR] Версия уже опубликована в Microsoft Store!"
+        Log-Error "Детали: $commitBody"
+        Log-Error "👉 Увеличьте <AppVersion> в version.props!"
+    } else {
+        Log-Error "Failed to commit submission: $($commitResp.StatusCode) - $commitBody"
+    }
     exit 1
 }
 
