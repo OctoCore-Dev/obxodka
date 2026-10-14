@@ -11,13 +11,18 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
-        "obxodka.one",
-        "www.obxodka.one"
+        "dl.google.com",
+        "ajax.googleapis.com",
+        "fonts.gstatic.com",
+        "cdn.jsdelivr.net",
+        "www.microsoft.com"
     ];
 
     public static readonly string[] BaseDomains =
     [
-        "obxodka.one"
+        "gstatic.com",
+        "googleapis.com",
+        "jsdelivr.net"
     ];
 
     public static readonly string[] SubdomainPrefixes =
@@ -44,40 +49,23 @@ public static class AppSecrets
         "mesh"
     ];
 
-    public static string GetRandomSni()
-    {
-        if (Random.Shared.Next(100) < 15)
-        {
-            return AllowedSniPool[Random.Shared.Next(AllowedSniPool.Length)];
-        }
-
-        var domain = BaseDomains[Random.Shared.Next(BaseDomains.Length)];
-        var prefix = SubdomainPrefixes[Random.Shared.Next(SubdomainPrefixes.Length)];
-
-        var style = Random.Shared.Next(3);
-        return style switch
-        {
-            0 => $"{prefix}.{domain}",
-            1 => $"{prefix}{Random.Shared.Next(1, 10):D2}.{domain}",
-            _ => $"{prefix}-{Random.Shared.Next(0x1000, 0xFFFF):x4}.{domain}"
-        };
-    }
+    public static string GetRandomSni() =>
+        AllowedSniPool[Random.Shared.Next(AllowedSniPool.Length)];
 
     public static List<string> GetCandidateSniList(int count = 6)
     {
-        var result = new List<string>(count)
+        var result = new List<string>(count);
+        foreach (var sni in AllowedSniPool)
         {
-            "obxodka.one",
-            "www.obxodka.one"
-        };
-
-        while (result.Count < count)
-        {
-            var candidate = GetRandomSni();
-            if (!result.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+            if (result.Count < count && !result.Contains(sni, StringComparer.OrdinalIgnoreCase))
             {
-                result.Add(candidate);
+                result.Add(sni);
             }
+        }
+
+        if (result.Count < count && !result.Contains("obxodka.one", StringComparer.OrdinalIgnoreCase))
+        {
+            result.Add("obxodka.one");
         }
 
         return result;
@@ -112,4 +100,3 @@ public static class AppSecrets
         return Encoding.UTF8.GetString(decrypted);
     }
 }
-

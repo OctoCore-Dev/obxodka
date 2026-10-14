@@ -12,6 +12,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     private IVpnTransport? _transport;
     private X509Certificate2? _clientCert;
     private CancellationTokenSource? _cts;
+    private Action<Socket>? _protectAction;
     public static string? DynamicSslPublicKeyHash { get; set; }
 
     public int ActiveRays { get; private set; } = 1;
@@ -213,6 +214,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _cts = new CancellationTokenSource();
 
         var configuredRays = Preferences.Get("BatteryMode", 1);
+        _ = configuredRays;
         ActiveRays = 2;
 
         var effectiveSni = !string.IsNullOrWhiteSpace(targetSni)
@@ -221,7 +223,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         Shared.Logging.AppLogger.Log($"[OCTOPUS] Initializing transport to {serverIp}:{serverPort} with SNI '{effectiveSni ?? "none"}'");
         var transport = new ObxodkaStreamTransport(serverPort, effectiveSni);
-        if (_protectAction != null)
+        if (_protectAction is not null)
         {
             transport.ProtectSockets(_protectAction);
         }
@@ -262,17 +264,12 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         if (initialReceived > 0)
         {
             Shared.Logging.AppLogger.Log($"[PROBE SUCCESS] Downlink already active with {initialReceived}B received.");
-            var optimalMtu = await EscalateMtuAsync(NetworkDefaults.MinMtu, ct).ConfigureAwait(false);
-            NetworkDefaults.CurrentMtu = optimalMtu;
-            _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
+            _ = _transport.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
             return true;
         }
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts?.Token ?? CancellationToken.None);
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var maxDiscoveredMtu = 0;
-
-        EmitStatus(VpnStatusMessages.ScanningMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, 8));
 
         void OnPacket(byte[] pkt, int len)
         {
@@ -280,16 +277,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 var proto = len >= 20 ? ((pkt[0] >> 4) == 4 ? $"IPv4(proto={pkt[9]})" : "IPv6") : "NonIP";
                 Shared.Logging.AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
-
-                if (IsIcmpEchoReply(pkt, len))
-                {
-                    if (len > maxDiscoveredMtu && len <= NetworkDefaults.MaxMtu)
-                    {
-                        maxDiscoveredMtu = len;
-                        EmitStatus(VpnStatusMessages.MtuHoleFound(maxDiscoveredMtu));
-                    }
-                }
-
                 _ = tcs.TrySetResult(true);
             }
         }
@@ -309,19 +296,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             async Task SendProbesAsync()
             {
                 var cycle = Interlocked.Increment(ref probeCycle);
-                var curTx = TotalBytesSent - initialSent;
-                var curRx = TotalBytesReceived - initialReceived;
-                if (curTx > 0)
-                {
-                    EmitStatus(VpnStatusMessages.ProbingDuplex(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, cycle, curTx, curRx));
-                }
-                else
-                {
-                    EmitStatus(VpnStatusMessages.ProbingMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, cycle));
-                }
                 try
                 {
-                    await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask);
+                    await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask).ConfigureAwait(false);
                 }
                 catch { }
 
@@ -331,30 +308,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     {
                         _ = SendPacketAsync(pIcmpSelf);
                     }
-                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", NetworkDefaults.MinMtu) is { } pCandidate)
-                    {
-                        _ = SendPacketAsync(pCandidate);
-                    }
-                    if (BuildIcmpProbePacket(AssignedIp, "1.1.1.1", 28) is { } pIcmp1)
-                    {
-                        _ = SendPacketAsync(pIcmp1);
-                    }
-                    if (BuildIcmpProbePacket(AssignedIp, "8.8.8.8", 28) is { } pIcmp8)
-                    {
-                        _ = SendPacketAsync(pIcmp8);
-                    }
-                    if (BuildDnsProbePacket(AssignedIp, 1) is { } p1)
+                    if (cycle % 2 == 1 && BuildDnsProbePacket(AssignedIp, 1) is { } p1)
                     {
                         _ = SendPacketAsync(p1);
-                    }
-                    if (BuildDnsProbePacket(AssignedIp, 8) is { } p8)
-                    {
-                        _ = SendPacketAsync(p8);
                     }
                 }
                 catch { }
 
-                Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent Ping(0x99) + Base MTU({NetworkDefaults.MinMtu}) + DNS Query. TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
+                Shared.Logging.AppLogger.Log($"[PROBE TX #{cycle}] Sent lightweight Ping + ICMP(28B). TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
             }
 
             _ = Task.Run(SendProbesAsync, linkedCts.Token);
@@ -366,24 +327,18 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    var optimalMtu = await EscalateMtuAsync(maxDiscoveredMtu > 0 ? maxDiscoveredMtu : NetworkDefaults.MinMtu, linkedCts.Token).ConfigureAwait(false);
-                    NetworkDefaults.CurrentMtu = optimalMtu;
-                    EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
                     _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
                     EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
 
-                var delayTask = Task.Delay(250, linkedCts.Token);
+                var delayTask = Task.Delay(400, linkedCts.Token);
                 var completed = await Task.WhenAny(tcs.Task, delayTask).ConfigureAwait(false);
                 if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    var optimalMtu = await EscalateMtuAsync(maxDiscoveredMtu > 0 ? maxDiscoveredMtu : NetworkDefaults.MinMtu, linkedCts.Token).ConfigureAwait(false);
-                    NetworkDefaults.CurrentMtu = optimalMtu;
-                    EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
                     _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
                     EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
@@ -398,18 +353,15 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             if (deltaTx <= 0)
             {
                 EmitStatus(VpnStatusMessages.TxTransmissionFailed);
-                Shared.Logging.AppLogger.LogError($"[PROBE TIMEOUT] Outgoing transmission failed (TX=0). Sockets or local firewall blocked packets.");
+                Shared.Logging.AppLogger.LogError("[PROBE TIMEOUT] Outgoing transmission failed (TX=0). Sockets or local firewall blocked packets.");
             }
             else if (deltaRx <= 0)
             {
                 EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
-                Shared.Logging.AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server. Connection rejected to protect network routes.");
+                Shared.Logging.AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server.");
             }
-            if (deltaRx > 0)
+            else
             {
-                var optimalMtu = await EscalateMtuAsync(maxDiscoveredMtu > 0 ? maxDiscoveredMtu : NetworkDefaults.MinMtu, linkedCts.Token).ConfigureAwait(false);
-                NetworkDefaults.CurrentMtu = optimalMtu;
-                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
                 _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
                 EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
             }
@@ -419,20 +371,8 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
-            if (deltaTx <= 0)
-            {
-                EmitStatus(VpnStatusMessages.TxTransmissionFailed);
-            }
-            else if (deltaRx <= 0)
-            {
-                EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
-                Shared.Logging.AppLogger.LogWarning($"[PROBE CANCELED] Verification canceled after sending {probeCycle} probe cycles without downlink response.");
-            }
             if (deltaRx > 0)
             {
-                var optimalMtu = await EscalateMtuAsync(maxDiscoveredMtu > 0 ? maxDiscoveredMtu : NetworkDefaults.MinMtu, CancellationToken.None).ConfigureAwait(false);
-                NetworkDefaults.CurrentMtu = optimalMtu;
-                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
                 _ = _transport?.SendMtuSyncAsync(NetworkDefaults.CurrentMtu);
                 EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
             }
@@ -767,8 +707,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         GC.SuppressFinalize(this);
     }
-
-    private Action<Socket>? _protectAction;
 
     public void ProtectTransportSockets(Action<Socket> protectAction)
     {

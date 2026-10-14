@@ -32,6 +32,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     public WindowsVpnService()
     {
+        OctopusEngine.Current.ProtectTransportSockets(BindSocketToPhysicalAdapter);
         OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
         _ = Task.Run(CleanupStaleRoutesAsync);
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
@@ -462,7 +463,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                                 if (curTx <= 0)
                                 {
-                                    Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Transmission failure (TX=0 B). Outgoing packets blocked.");
+                                    Shared.Logging.AppLogger.LogError("[WINDOWS-VPN] Transmission failure (TX=0 B). Outgoing packets blocked.");
                                     OnLogUpdated?.Invoke(VpnStatusMessages.TxTransmissionFailed);
                                     throw new InvalidOperationException("Сбой исходящей передачи (TX=0). Сокет или брандмауэр блокирует отправку данных.");
                                 }
@@ -673,8 +674,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             {
                 var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary validate=no");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2 validate=no");
                 _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue }} catch {{ }}\"").ConfigureAwait(false);
                 _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
                 Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}");
@@ -684,7 +685,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
                     Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
                 }
 
@@ -704,6 +705,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 50 -NlMtuBytes {NetworkDefaults.CurrentMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 if ('{ipv6}' -ne '') {{ try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }} }}
             ";
@@ -845,6 +847,23 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     private static string t_savedPhysicalGateway = "";
     private static int t_savedPhysicalIfIndex;
+    private static IPAddress? t_savedPhysicalLocalIp;
+
+    private static void BindSocketToPhysicalAdapter(Socket socket)
+    {
+        try
+        {
+            var localIp = t_savedPhysicalLocalIp;
+            if (localIp is not null && localIp.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(localIp))
+            {
+                socket.Bind(new IPEndPoint(localIp, 0));
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SOCKET BIND WARN] Could not bind transport socket to physical IP: {ex.Message}");
+        }
+    }
 
     private static bool IsInSameSubnet(IPAddress ip, IPAddress gw, IPAddress? mask)
     {
@@ -982,8 +1001,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             foreach (var name in targetNames)
             {
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{name}\" static 77.88.8.8 primary");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{name}\" 1.1.1.1 index=2");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{name}\" static 77.88.8.8 primary validate=no");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{name}\" 1.1.1.1 index=2 validate=no");
             }
 
             _ = await RunCmdAsync("ipconfig", "/flushdns");
@@ -1133,13 +1152,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found competing VPN adapter '{adapterName}' (Index: {ifIndex}, {card.Description}). Suppressing it...");
                     OnLogUpdated?.Invoke($"Отключение конкурирующего VPN ({adapterName})...");
 
-                    var (exitCode, output) = await RunCmdAsync("netsh", $"interface set interface name=\"{adapterName}\" admin=DISABLED").ConfigureAwait(false);
+                    var (exitCode, _) = await RunCmdAsync("netsh", $"interface set interface name=\"{adapterName}\" admin=DISABLED").ConfigureAwait(false);
                     if (exitCode != 0)
                     {
                         _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"Disable-NetAdapter -Name '{adapterName}' -Confirm:$false -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
                     }
 
-                    // Deprioritize competing adapter metric and clear its default routes to prevent hijacking Obxodka
                     _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=5000").ConfigureAwait(false);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=5000").ConfigureAwait(false);
                     if (ifIndex > 0)
@@ -1225,7 +1243,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
         return null;
     }
-
 
     private static void LogNetworkDiagnostics(Action<string>? onLogUpdated = null)
     {
@@ -1314,6 +1331,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 Shared.Logging.AppLogger.Log($"[GATEWAY] Kernel socket FIB routed {targetStr} -> Local {localIp}, IfIndex: {ifIndex}, Gateway: {gw}");
                                 t_savedPhysicalGateway = gw;
                                 t_savedPhysicalIfIndex = ifIndex;
+                                t_savedPhysicalLocalIp = localIp;
                                 return (gw, ifIndex);
                             }
                         }
@@ -1472,8 +1490,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var results = await Task.WhenAll(r2Task, r3Task).ConfigureAwait(false);
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={results[0].exitCode}, R3={results[1].exitCode}");
 
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary validate=no");
+                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2 validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
                 _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Set-DnsClientServerAddress -InterfaceIndex {ifIndex} -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue }} catch {{ }}\"").ConfigureAwait(false);
                 _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
@@ -1498,7 +1516,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out _))
                 {
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary", timeoutMs: 1500);
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
@@ -1675,7 +1693,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             catch { }
         }
     }
-
 
     private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
     {
