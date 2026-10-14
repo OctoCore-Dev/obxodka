@@ -192,10 +192,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         {
             var sni = AppSecrets.GetRandomSni();
             Assert.False(string.IsNullOrWhiteSpace(sni));
-            Assert.True(
-                sni.EndsWith("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
-                sni.EndsWith("octocore.dev", StringComparison.OrdinalIgnoreCase),
-                $"Generated SNI '{sni}' is not based on obxodka.one or octocore.dev");
+            Assert.Contains(sni, AppSecrets.AllowedSniPool, StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -205,7 +202,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         var candidates = AppSecrets.GetCandidateSniList(6);
         Assert.Equal(6, candidates.Count);
         Assert.Equal(candidates.Count, candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count());
-        Assert.Contains("obxodka.one", candidates, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("api.octocore.dev", candidates, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("dl.google.com", candidates, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("cdn.jsdelivr.net", candidates, StringComparer.OrdinalIgnoreCase);
     }
 }

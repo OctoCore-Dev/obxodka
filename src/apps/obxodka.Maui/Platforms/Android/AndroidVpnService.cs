@@ -307,15 +307,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             }
         }
 
-        var originalHost = serverIp;
-        if (Uri.CheckHostName(serverIp) != UriHostNameType.Dns)
-        {
-            try
-            {
-                originalHost = new Uri(AppConfig.ApiBaseUrl).Host;
-            }
-            catch { }
-        }
+        var stealthHost = AppSecrets.AllowedSniPool[0];
 
         _currentServerIp = targetIp;
         _currentServerPort = serverPort;
@@ -333,7 +325,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             }
         }
 
-        OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(originalHost));
+        OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(stealthHost));
 
         try
         {

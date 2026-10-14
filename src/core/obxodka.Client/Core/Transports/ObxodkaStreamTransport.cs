@@ -21,6 +21,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     private readonly string? _configuredSni = configuredSni;
     private readonly int _serverPort = serverPort;
     private Action<Socket>? _protectAction;
+    public string ActiveSni { get; private set; } = AppSecrets.AllowedSniPool[0];
 
     private HttpClient? _httpClient0;
     private SocketsHttpHandler? _handler0;
@@ -128,11 +129,16 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         var defaultSni = AppSecrets.AllowedSniPool[0];
 
         var sniCandidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(_configuredSni) && !IPAddress.TryParse(_configuredSni, out _))
+        if (!string.IsNullOrWhiteSpace(_configuredSni) &&
+            !IPAddress.TryParse(_configuredSni, out _) &&
+            !_configuredSni.Contains("obxodka", StringComparison.OrdinalIgnoreCase) &&
+            !_configuredSni.Contains("octocore", StringComparison.OrdinalIgnoreCase))
         {
             sniCandidates.Add(_configuredSni);
         }
-        else if (!IPAddress.TryParse(serverIp, out _))
+        else if (!IPAddress.TryParse(serverIp, out _) &&
+                 !serverIp.Contains("obxodka", StringComparison.OrdinalIgnoreCase) &&
+                 !serverIp.Contains("octocore", StringComparison.OrdinalIgnoreCase))
         {
             sniCandidates.Add(serverIp);
         }
@@ -192,6 +198,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 try
                 {
                     var result = await _ipTcs.Task.ConfigureAwait(false);
+                    ActiveSni = channelHost;
                     Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Successfully connected to node physical IP {serverIp}:{EffectivePort} via {channelHost}. Established tunnel assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
                 }

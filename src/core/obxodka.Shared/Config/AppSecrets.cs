@@ -15,7 +15,8 @@ public static class AppSecrets
         "ajax.googleapis.com",
         "fonts.gstatic.com",
         "cdn.jsdelivr.net",
-        "www.microsoft.com"
+        "www.microsoft.com",
+        "cdnjs.cloudflare.com"
     ];
 
     public static readonly string[] BaseDomains =
@@ -61,11 +62,6 @@ public static class AppSecrets
             {
                 result.Add(sni);
             }
-        }
-
-        if (result.Count < count && !result.Contains("obxodka.one", StringComparer.OrdinalIgnoreCase))
-        {
-            result.Add("obxodka.one");
         }
 
         return result;

@@ -281,15 +281,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 throw new InvalidOperationException($"Некорректный IP адрес сервера: '{targetIp}'");
             }
 
-            var originalHost = serverIp;
-            if (Uri.CheckHostName(serverIp) != UriHostNameType.Dns)
-            {
-                try
-                {
-                    originalHost = new Uri(AppConfig.ApiBaseUrl).Host;
-                }
-                catch { }
-            }
+            var stealthHost = AppSecrets.AllowedSniPool[0];
 
             _currentServerIp = targetIp;
             _currentServerPort = serverPort;
@@ -298,7 +290,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             try
             {
                 LogNetworkDiagnostics(OnLogUpdated);
-                OnLogUpdated?.Invoke(VpnStatusMessages.BuildingRoute(originalHost));
+                OnLogUpdated?.Invoke(VpnStatusMessages.BuildingRoute(stealthHost));
 
                 var connected = false;
                 Exception? lastException = null;

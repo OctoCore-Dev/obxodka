@@ -843,23 +843,20 @@ public sealed partial class VpnView : ContentView, IDisposable
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(host))
-            {
-                _activeConnectedNode = host;
-            }
+            _activeConnectedNode = !string.IsNullOrWhiteSpace(host) &&
+                !IPAddress.TryParse(host, out _) &&
+                !host.Contains("obxodka", StringComparison.OrdinalIgnoreCase) &&
+                !host.Contains("octocore", StringComparison.OrdinalIgnoreCase)
+                ? host
+                : OctopusEngine.Current?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
 
             var displayHost = _activeConnectedNode;
-
-            if (string.IsNullOrWhiteSpace(displayHost))
+            if (string.IsNullOrWhiteSpace(displayHost) ||
+                IPAddress.TryParse(displayHost, out _) ||
+                displayHost.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
+                displayHost.Contains("octocore", StringComparison.OrdinalIgnoreCase))
             {
-                displayHost = Uri.TryCreate(AppConfig.ApiBaseUrl, UriKind.Absolute, out var uri)
-                    ? uri.Host
-                    : AppConfig.ApiBaseUrl;
-            }
-
-            if (string.IsNullOrWhiteSpace(displayHost))
-            {
-                displayHost = "obxodka.one";
+                displayHost = OctopusEngine.Current?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
             }
 
             NodeHostLabel?.Text = displayHost;
@@ -1392,7 +1389,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             var orderedCandidates = new List<VpnServerDto> { targetServer };
             orderedCandidates.AddRange(servers.Where(s => s.Ip != targetServer.Ip));
 
-            UpdateActiveNode(targetServer.Ip);
+            UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
             if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
             {
                 OctopusEngine.DynamicSslPublicKeyHash = targetServer.CertHash;

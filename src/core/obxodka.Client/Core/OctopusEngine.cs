@@ -42,6 +42,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public long TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
     public string ActiveProtocol { get; private set; } = "AUTO";
+    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
 
     private long _watchdogArmedTicks;
 
