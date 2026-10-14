@@ -603,7 +603,8 @@ public sealed partial class VpnView : ContentView, IDisposable
                     Text = flagEmoji,
                     FontSize = 18,
                     HorizontalOptions = LayoutOptions.Center,
-                    VerticalOptions = LayoutOptions.Center
+                    VerticalOptions = LayoutOptions.Center,
+                    Margin = new Thickness(0, -2, 0, 0)
                 };
                 flagGrid.Children.Add(flagLabel);
 #endif

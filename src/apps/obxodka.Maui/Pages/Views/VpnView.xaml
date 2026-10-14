@@ -439,6 +439,7 @@
                                     x:Name="SelectedServerFlagBorder"
                                     WidthRequest="25"
                                     HeightRequest="17"
+                                    Margin="{OnPlatform Android='0,-2.5,0,0', Default='0'}"
                                     StrokeShape="RoundRectangle 3"
                                     StrokeThickness="0.8"
                                     Stroke="{DynamicResource BorderMedium}"
@@ -451,6 +452,7 @@
                                         <Label
                                             x:Name="SelectedServerFlagLabel"
                                             FontSize="{OnIdiom Desktop=16, Phone=15, Default=15}"
+                                            Margin="{OnPlatform Android='0,-1.5,0,0', Default='0'}"
                                             HorizontalOptions="Center"
                                             VerticalOptions="Center" />
                                     </Grid>
