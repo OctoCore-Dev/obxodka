@@ -11,6 +11,8 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
+        "login.live.com",
+        "update.code.visualstudio.com",
         "gateway.icloud.com",
         "client.wns.windows.com",
         "dl.google.com",
@@ -18,9 +20,7 @@ public static class AppSecrets
         "www.microsoft.com",
         "fonts.googleapis.com",
         "weather-data.apple.com",
-        "login.live.com",
-        "ajax.googleapis.com",
-        "update.code.visualstudio.com"
+        "ajax.googleapis.com"
     ];
 
     public static readonly string[] BaseDomains =

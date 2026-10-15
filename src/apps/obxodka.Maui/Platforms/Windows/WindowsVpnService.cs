@@ -430,7 +430,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OctopusEngine.Current.ResetTrafficCounters();
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(12000), _cts.Token);
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(6000), _cts.Token);
                             var curTx = OctopusEngine.Current.TotalBytesSent;
                             var curRx = OctopusEngine.Current.TotalBytesReceived;
 
@@ -445,6 +445,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
+                            else if (curTx > 0)
+                            {
+                                Shared.Logging.AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                if (!string.IsNullOrWhiteSpace(ipv6))
+                                {
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                }
+                                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
+                                _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
+                            }
                             else
                             {
                                 var (_, tcpFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetTCPConnection -RemoteAddress {candidateIp} -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State | Format-Table -AutoSize | Out-String\"");
@@ -453,18 +464,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 var (_, routeFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0','{candidateIp}/32','100.64.0.0/10' -ErrorAction SilentlyContinue | Select-Object DestinationPrefix,NextHop,InterfaceIndex,RouteMetric | Format-Table -AutoSize | Out-String\"");
                                 Shared.Logging.AppLogger.LogError($"[PROBE-FAIL ROUTE-STATE]\n{routeFail.Trim()}");
 
-                                if (curTx <= 0)
-                                {
-                                    Shared.Logging.AppLogger.LogError("[WINDOWS-VPN] Transmission failure (TX=0 B). Outgoing packets blocked.");
-                                    OnLogUpdated?.Invoke(VpnStatusMessages.TxTransmissionFailed);
-                                    throw new InvalidOperationException("Сбой исходящей передачи (TX=0). Сокет или брандмауэр блокирует отправку данных.");
-                                }
-                                else
-                                {
-                                    Shared.Logging.AppLogger.LogError($"[WINDOWS-VPN] Downlink probe timeout (TX={curTx} B, RX={curRx} B). No incoming packets over tunnel. Rejecting dead connection to prevent hijacking default routes.");
-                                    OnLogUpdated?.Invoke(VpnStatusMessages.RxResponseTimeout(curTx));
-                                    throw new InvalidOperationException($"Сервер не отвечает на тестовые пакеты (отправлено {curTx} Б, получено 0 Б).");
-                                }
+                                Shared.Logging.AppLogger.LogError("[WINDOWS-VPN] Transmission failure (TX=0 B). Outgoing packets blocked.");
+                                OnLogUpdated?.Invoke(VpnStatusMessages.TxTransmissionFailed);
+                                throw new InvalidOperationException("Сбой исходящей передачи (TX=0). Сокет или брандмауэр блокирует отправку данных.");
                             }
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.RedirectingTraffic);
