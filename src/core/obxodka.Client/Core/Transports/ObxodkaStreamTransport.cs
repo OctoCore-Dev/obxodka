@@ -43,11 +43,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
 
-    private (HttpClient client, SocketsHttpHandler handler) CreateHttpClient(string targetHost, string serverIp, int port)
+    private (HttpClient client, SocketsHttpHandler handler) CreateHttpClient(string targetHost, string serverIp, int port, bool enableDpiBypass = true)
     {
         var handler = new SocketsHttpHandler
         {
-            ConnectTimeout = TimeSpan.FromSeconds(10),
+            UseProxy = false,
+            Proxy = null,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
             KeepAlivePingDelay = Timeout.InfiniteTimeSpan,
             KeepAlivePingTimeout = Timeout.InfiniteTimeSpan,
@@ -71,10 +73,10 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 OnSocketCreated?.Invoke(socket);
                 _protectAction?.Invoke(socket);
 
-                var effectivePort = context.DnsEndPoint?.Port > 0 ? context.DnsEndPoint.Port : port;
-                var connectTarget = (IPAddress.TryParse(serverIp, out var ipAddr)
+                var effectivePort = port;
+                var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
                     ? (EndPoint)new IPEndPoint(ipAddr, effectivePort)
-                    : context.DnsEndPoint) ?? new DnsEndPoint(targetHost, effectivePort);
+                    : (context.DnsEndPoint ?? new DnsEndPoint(targetHost, effectivePort));
 
                 Shared.Logging.AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={effectivePort})...");
                 var sw = Stopwatch.StartNew();
@@ -93,8 +95,8 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 }
 
                 var netStream = new NetworkStream(socket, ownsSocket: true);
-                return IPAddress.TryParse(serverIp, out var parsedIp) && !IPAddress.IsLoopback(parsedIp)
-                    ? new DpiBypassStream(netStream)
+                return (enableDpiBypass && IPAddress.TryParse(serverIp, out var parsedIp) && !IPAddress.IsLoopback(parsedIp))
+                    ? new DpiBypassStream(netStream, bypassEnabled: true)
                     : netStream;
             }
         };
@@ -107,19 +109,19 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         return (client, handler);
     }
 
-    private HttpClient ResetRayHttpClient(int ray, string targetHost, int port)
+    private HttpClient ResetRayHttpClient(int ray, string targetHost, int port, bool enableDpiBypass = true)
     {
         if (ray == 0)
         {
             _httpClient0?.Dispose();
             _handler0?.Dispose();
-            (_httpClient0, _handler0) = CreateHttpClient(targetHost, _activeServerIp, port);
+            (_httpClient0, _handler0) = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
             return _httpClient0;
         }
 
         _httpClient1?.Dispose();
         _handler1?.Dispose();
-        (_httpClient1, _handler1) = CreateHttpClient(targetHost, _activeServerIp, port);
+        (_httpClient1, _handler1) = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
         return _httpClient1;
     }
 
@@ -147,7 +149,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             sniCandidates.Add(defaultSni);
         }
 
-        foreach (var candidate in AppSecrets.GetCandidateSniList(6))
+        foreach (var candidate in AppSecrets.GetCandidateSniList(8))
         {
             if (!sniCandidates.Contains(candidate, StringComparer.OrdinalIgnoreCase))
             {
@@ -156,15 +158,22 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         }
 
         int[] portCandidates = _serverPort == 443
-            ? [443, 8443, 2053]
+            ? [443, 8443]
             : [_serverPort, 443, 8443];
 
-        var endpointCandidates = new List<(string host, int port)>();
+        var endpointCandidates = new List<(string host, int port, bool enableDpi)>();
         foreach (var port in portCandidates)
         {
-            foreach (var sni in sniCandidates)
+            for (var sIdx = 0; sIdx < sniCandidates.Count; sIdx++)
             {
-                endpointCandidates.Add((sni, port));
+                var sni = sniCandidates[sIdx];
+                // Reality SNI with Clean 2-stage Zapret DPI bypass
+                endpointCandidates.Add((sni, port, true));
+                // Resilient fallback: For the top 2 SNIs, also test direct unsplit stream to beat anti-fragmentation filters
+                if (sIdx < 2 && port == 443)
+                {
+                    endpointCandidates.Add((sni, port, false));
+                }
             }
         }
 
@@ -172,11 +181,12 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
         for (var i = 0; i < endpointCandidates.Count; i++)
         {
-            var (targetHost, port) = endpointCandidates[i];
+            var (targetHost, port, enableDpi) = endpointCandidates[i];
             var channelHost = targetHost;
 
-            var attemptTimeoutSeconds = (i == 0 && endpointCandidates.Count > 1) ? 5 : 10;
-            Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' (Timeout: {attemptTimeoutSeconds}s)...");
+            var attemptTimeoutSeconds = (i == 0 && endpointCandidates.Count > 1) ? 3 : 4;
+            var dpiModeStr = enableDpi ? "Clean-Split DPI" : "Direct Stream";
+            Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' [{dpiModeStr}] (Timeout: {attemptTimeoutSeconds}s)...");
 
             _cts = new CancellationTokenSource();
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -184,14 +194,14 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             Volatile.Write(ref _lastRxTicks1, 0);
 
             var ray1Port = port == 443 ? 8443 : 443;
-            (_httpClient0, _handler0) = CreateHttpClient(targetHost, serverIp, port);
-            (_httpClient1, _handler1) = CreateHttpClient(targetHost, serverIp, ray1Port);
+            (_httpClient0, _handler0) = CreateHttpClient(targetHost, serverIp, port, enableDpi);
+            (_httpClient1, _handler1) = CreateHttpClient(targetHost, serverIp, ray1Port, enableDpi);
 
             using var attemptTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(attemptTimeoutSeconds));
             using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptTimeoutCts.Token);
 
-            _ = Task.Run(() => RunPrimaryRayLoopAsync(channelHost, port, thumbprint, _cts.Token), _cts.Token);
-            _ = Task.Run(() => RunSecondaryRayAsync(channelHost, ray1Port, thumbprint, _cts.Token), _cts.Token);
+            _ = Task.Run(() => RunPrimaryRayLoopAsync(channelHost, port, thumbprint, enableDpi, _cts.Token), _cts.Token);
+            _ = Task.Run(() => RunSecondaryRayAsync(channelHost, ray1Port, thumbprint, enableDpi, _cts.Token), _cts.Token);
 
             using (handshakeCts.Token.Register(() => _ipTcs.TrySetCanceled()))
             {
@@ -206,13 +216,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 {
                     lastException = ex;
                     var inner = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
-                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Handshake attempt #{i + 1} failed on '{targetHost}:{port}' ({ex.GetType().Name}: {ex.Message}{inner}). Hopping to next endpoint in pool...");
+                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Handshake attempt #{i + 1} failed on '{targetHost}:{port}' [{dpiModeStr}] ({ex.GetType().Name}: {ex.Message}{inner}). Hopping to next endpoint in pool...");
                     _cts.Cancel();
                     _httpClient0?.Dispose();
                     _handler0?.Dispose();
                     _httpClient1?.Dispose();
                     _handler1?.Dispose();
-                    await Task.Delay(80, ct).ConfigureAwait(false);
+                    await Task.Delay(50, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -220,15 +230,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         throw lastException ?? new TimeoutException("Failed to connect through available SNI and port pool.");
     }
 
-    private async Task RunPrimaryRayLoopAsync(string channelHost, int initialPort, string thumbprint, CancellationToken ct)
+    private async Task RunPrimaryRayLoopAsync(string channelHost, int initialPort, string thumbprint, bool enableDpi, CancellationToken ct)
     {
-        int[] primaryPorts = initialPort == 443 ? [443, 8443, 2053] : [initialPort, 443, 8443];
+        int[] primaryPorts = initialPort == 443 ? [443, 8443] : [initialPort, 443, 8443];
         var portIdx = 0;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = primaryPorts[portIdx % primaryPorts.Length];
-            var client = portIdx == 0 && _httpClient0 != null ? _httpClient0 : ResetRayHttpClient(0, channelHost, activePort);
+            var client = portIdx == 0 && _httpClient0 != null ? _httpClient0 : ResetRayHttpClient(0, channelHost, activePort, enableDpi);
             try
             {
                 await RunStreamAsync(0, client, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);
@@ -269,15 +279,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         }
     }
 
-    private async Task RunSecondaryRayAsync(string channelHost, int initialPort, string thumbprint, CancellationToken ct)
+    private async Task RunSecondaryRayAsync(string channelHost, int initialPort, string thumbprint, bool enableDpi, CancellationToken ct)
     {
-        int[] secondaryPorts = initialPort == 8443 ? [8443, 2053, 443] : [initialPort, 8443, 2053];
+        int[] secondaryPorts = initialPort == 8443 ? [8443, 443] : [initialPort, 8443, 443];
         var portIdx = 0;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = secondaryPorts[portIdx % secondaryPorts.Length];
-            var client = portIdx == 0 && _httpClient1 != null ? _httpClient1 : ResetRayHttpClient(1, channelHost, activePort);
+            var client = portIdx == 0 && _httpClient1 != null ? _httpClient1 : ResetRayHttpClient(1, channelHost, activePort, enableDpi);
             try
             {
                 await RunStreamAsync(1, client, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);

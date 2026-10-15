@@ -1,10 +1,11 @@
 namespace obxodka.Core.Transports;
 
-internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0, int delayMs = 0) : Stream
+internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0, int delayMs = 0, bool bypassEnabled = true) : Stream
 {
     private readonly Stream _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
     private readonly int _splitPosition = splitPosition;
     private readonly int _delayMs = delayMs;
+    private readonly bool _bypassEnabled = bypassEnabled;
     private bool _firstWrite = true;
 
     public override bool CanRead => _innerStream.CanRead;
@@ -34,32 +35,11 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        if (_firstWrite && buffer.Length > 5)
+        if (_bypassEnabled && _firstWrite && buffer.Length > 32)
         {
             _firstWrite = false;
-            if (TryDetermineSplitPoints(buffer, out var split1, out var split2, out var d1, out var d2))
+            if (TryDetermineSplitPoints(buffer, out var split1, out var d1))
             {
-                if (split2 > split1 && split2 < buffer.Length)
-                {
-                    _innerStream.Write(buffer[..split1]);
-                    _innerStream.Flush();
-                    if (d1 > 0)
-                    {
-                        Thread.Sleep(d1);
-                    }
-
-                    _innerStream.Write(buffer[split1..split2]);
-                    _innerStream.Flush();
-                    if (d2 > 0)
-                    {
-                        Thread.Sleep(d2);
-                    }
-
-                    _innerStream.Write(buffer[split2..]);
-                    _innerStream.Flush();
-                    return;
-                }
-
                 _innerStream.Write(buffer[..split1]);
                 _innerStream.Flush();
                 if (d1 > 0)
@@ -81,34 +61,12 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (_firstWrite && buffer.Length > 5)
+        if (_bypassEnabled && _firstWrite && buffer.Length > 32)
         {
             _firstWrite = false;
-            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var split2, out var d1, out var d2))
+            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var d1))
             {
-                if (split2 > split1 && split2 < buffer.Length)
-                {
-                    Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 3-stage TLS ClientHello segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={split2 - split1}B, Slice3={buffer.Length - split2}B, Delay1={d1}ms, Delay2={d2}ms)");
-                    await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
-                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    if (d1 > 0)
-                    {
-                        await Task.Delay(d1, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    await _innerStream.WriteAsync(buffer[split1..split2], cancellationToken).ConfigureAwait(false);
-                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    if (d2 > 0)
-                    {
-                        await Task.Delay(d2, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    await _innerStream.WriteAsync(buffer[split2..], cancellationToken).ConfigureAwait(false);
-                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 2-stage TLS ClientHello segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Delay={d1}ms)");
+                Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 2-stage TLS ClientHello segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, MicroDelay={d1}ms)");
                 await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
                 await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 if (d1 > 0)
@@ -129,12 +87,10 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 
-    private bool TryDetermineSplitPoints(ReadOnlySpan<byte> span, out int split1, out int split2, out int delay1, out int delay2)
+    private bool TryDetermineSplitPoints(ReadOnlySpan<byte> span, out int split1, out int delay1)
     {
         split1 = 0;
-        split2 = 0;
-        delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(25, 55);
-        delay2 = Random.Shared.Next(15, 35);
+        delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(1, 3); // 1-2 ms microdelay
 
         if (_splitPosition > 0 && _splitPosition < span.Length)
         {
@@ -144,34 +100,26 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
         if (span.Length > 9 && span[0] == 0x16 && span[1] == 0x03 && span[5] == 0x01)
         {
-            if (TryFindSniRange(span, out var sniStart, out var sniLen))
+            if (TryFindSniRange(span, out var sniStart, out _))
             {
-                // Never cut the 5-byte TLS record header (0..5) or 4-byte Handshake header (5..9).
-                // Split cleanly around/inside SNI extension (Zapret / GoodbyeDPI standard).
-                var mid = sniStart + (sniLen / 2);
-                if (sniStart > 9 && mid < span.Length - 1)
-                {
-                    split1 = sniStart;
-                    split2 = mid;
-                }
-                else
-                {
-                    split1 = Math.Clamp(mid, 10, span.Length - 1);
-                }
+                // Zapret/GoodbyeDPI standard:
+                // Split cleanly right before the SNI extension or hostname to omit SNI from packet #1.
+                // Packet #1 gets standard TLS record prefix (>100B), Packet #2 gets SNI and subsequent extensions.
+                split1 = Math.Clamp(sniStart - 2, 16, span.Length - 16);
                 return true;
             }
 
-            // Fallback: split well after TLS record header (byte 16+)
-            if (span.Length > 32)
+            // Fallback: split well after TLS record header (byte 24+)
+            if (span.Length > 48)
             {
-                split1 = Random.Shared.Next(16, Math.Min(32, span.Length - 5));
+                split1 = Random.Shared.Next(24, Math.Min(48, span.Length - 16));
                 return true;
             }
         }
 
-        if (span.Length > 16)
+        if (span.Length > 32)
         {
-            split1 = 8;
+            split1 = 16;
             return true;
         }
 

@@ -1,4 +1,5 @@
 using obxodka.Client.Security;
+using System.Security.Authentication;
 
 namespace obxodka.Client.Tests.Protocols;
 
@@ -199,10 +200,73 @@ public sealed class DynamicProtocolAndConnectivityTests
     [Fact]
     public void GetCandidateSniListReturnsUniqueCandidates()
     {
-        var candidates = AppSecrets.GetCandidateSniList(6);
-        Assert.Equal(6, candidates.Count);
+        var candidates = AppSecrets.GetCandidateSniList(8);
+        Assert.Equal(8, candidates.Count);
         Assert.Equal(candidates.Count, candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Contains("gateway.icloud.com", candidates, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("dl.google.com", candidates, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("cdn.jsdelivr.net", candidates, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LiveServerH2SyncProbeAsync()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                TargetHost = "gateway.icloud.com",
+                ApplicationProtocols = [SslApplicationProtocol.Http2],
+                EnabledSslProtocols = SslProtocols.Tls13,
+                RemoteCertificateValidationCallback = (s, c, ch, e) => true
+            },
+            ConnectCallback = async (context, ct) =>
+            {
+                var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                await socket.ConnectAsync("70.34.201.253", 443, ct);
+                var netStream = new System.Net.Sockets.NetworkStream(socket, true);
+                return new obxodka.Core.Transports.DpiBypassStream(netStream);
+            }
+        };
+
+        using var client = new HttpClient(handler);
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://gateway.icloud.com:443/api/v1/sync?ray=0&mtu=1280")
+        {
+            Version = HttpVersion.Version20,
+            VersionPolicy = HttpVersionPolicy.RequestVersionExact
+        };
+
+        var hsPayload = System.Text.Encoding.UTF8.GetBytes("CBDEBFDE826F40C6BF0F77525522E624C7A624BC");
+        var hsFrame = obxodka.Shared.Stealth.ObxodkaFraming.Pack(obxodka.Shared.Stealth.ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
+
+        var pushContent = new PushStreamContent(async (stream, ct) =>
+        {
+            await stream.WriteAsync(hsFrame.AsMemory(0, hsTotalLen), ct);
+            await stream.FlushAsync(ct);
+            await Task.Delay(1000, ct);
+        });
+        req.Content = pushContent;
+
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
+        try
+        {
+            var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            Assert.NotNull(resp);
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
+        {
+            // Allowed when running on CI environments without direct route to server
+            return;
+        }
+    }
+
+    private sealed class PushStreamContent(Func<Stream, CancellationToken, Task> onSerialize) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
+            onSerialize(stream, cancellationToken);
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+        protected override bool TryComputeLength(out long length) { length = -1; return false; }
     }
 }

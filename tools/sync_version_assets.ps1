@@ -3,6 +3,7 @@ param(
     [string]$Version = ""
 )
 
+$RootDir = $RootDir.Trim('"', "'", ' ')
 $propsPath = Join-Path $RootDir "version.props"
 $svgPath = Join-Path $RootDir ".github\assets\animated_header.svg"
 

@@ -11,12 +11,16 @@ public static class AppSecrets
 
     public static readonly string[] AllowedSniPool =
     [
+        "gateway.icloud.com",
+        "client.wns.windows.com",
         "dl.google.com",
-        "ajax.googleapis.com",
-        "fonts.gstatic.com",
-        "cdn.jsdelivr.net",
+        "configuration.apple.com",
         "www.microsoft.com",
-        "cdnjs.cloudflare.com"
+        "fonts.googleapis.com",
+        "weather-data.apple.com",
+        "login.live.com",
+        "ajax.googleapis.com",
+        "update.code.visualstudio.com"
     ];
 
     public static readonly string[] BaseDomains =
@@ -53,7 +57,7 @@ public static class AppSecrets
     public static string GetRandomSni() =>
         AllowedSniPool[Random.Shared.Next(AllowedSniPool.Length)];
 
-    public static List<string> GetCandidateSniList(int count = 6)
+    public static List<string> GetCandidateSniList(int count = 8)
     {
         var result = new List<string>(count);
         foreach (var sni in AllowedSniPool)
