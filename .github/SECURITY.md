@@ -1,10 +1,10 @@
-# <img src="assets/icons/lock.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Политика безопасности и Спецификация криптографии (Security Specification)
+# <img src="assets/icons/octo_lock.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Политика безопасности и Спецификация криптографии (Security Specification)
 
 Команда **Obxodka** со всей ответственностью относится к безопасности пользователей, шифрованию сетевого трафика и защите персональных данных. Данный документ подробно описывает используемые криптографические протоколы, принципы **Zero-Trust / Zero-Log**, архитектуру **OBXODKA-STREAM** и процесс ответственного раскрытия уязвимостей (Responsible Disclosure).
 
 ---
 
-## <img src="assets/icons/shield.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Криптографический стек и протоколы защиты
+## <img src="assets/icons/octo_shield.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Криптографический стек и протоколы защиты
 
 | Уровень защиты | Технология / Алгоритм | Описание и назначение |
 | :--- | :--- | :--- |
@@ -20,7 +20,7 @@
 
 ---
 
-## <img src="assets/icons/shield.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Zero-Trust & Zero-Log Архитектура
+## <img src="assets/icons/octo_shield.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Zero-Trust & Zero-Log Архитектура
 
 Архитектура Obxodka построена на строгом физическом и логическом разделении данных в соответствии с [Политикой конфиденциальности](../PRIVACY_POLICY.md):
 
@@ -41,7 +41,7 @@
 
 ---
 
-## <img src="assets/icons/warning.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Как сообщить об уязвимости (Responsible Disclosure)
+## <img src="assets/icons/octo_warning.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Как сообщить об уязвимости (Responsible Disclosure)
 
 Если вы обнаружили потенциальную уязвимость в безопасности или баг в криптографической подсистеме Obxodka:
 

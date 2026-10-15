@@ -1,10 +1,10 @@
-# <img src="assets/icons/tools.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Руководство по участию в разработке (Contributing to Obxodka)
+# <img src="assets/icons/octo_tools.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Руководство по участию в разработке (Contributing to Obxodka)
 
 Спасибо за интерес к развитию проекта **Obxodka**! Мы рады любому конструктивному вкладу: от отчётов об ошибках и предложений новых функций до оптимизации низкоуровневого кода, скинов и улучшения документации.
 
 ---
 
-## <img src="assets/icons/terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Требования для локальной разработки
+## <img src="assets/icons/octo_terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Требования для локальной разработки
 
 * **.NET 10 SDK** (версия 10.0.100 или новее)
 * **Visual Studio 2026 / Rider / VS Code** с расширениями для C# 14 и .NET MAUI
@@ -17,7 +17,7 @@ dotnet workload install maui-windows maui-android
 
 ---
 
-## <img src="assets/icons/zap.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Процесс разработки и сборки (Workflow)
+## <img src="assets/icons/octo_zap.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Процесс разработки и сборки (Workflow)
 
 1. **Форкните** репозиторий [OctoCore-Dev/obxodka](https://github.com/OctoCore-Dev/obxodka) на GitHub.
 2. Создайте свою ветку от `develop`:
@@ -48,13 +48,13 @@ dotnet workload install maui-windows maui-android
 
 ---
 
-## <img src="assets/icons/doc.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Соглашение и лицензия
+## <img src="assets/icons/octo_doc.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Соглашение и лицензия
 
 Отправляя код в проект Obxodka, вы подтверждаете согласие с условиями [Лицензии (Source-Available)](../LICENSE), [Политикой конфиденциальности](../PRIVACY_POLICY.md) и [Условиями использования](../TERMS_OF_SERVICE.md).
 
 ---
 
-## <img src="assets/icons/tools.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Сообщения об ошибках (Issues)
+## <img src="assets/icons/octo_tools.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Сообщения об ошибках (Issues)
 
 Если вы обнаружили баг:
 1. Проверьте существующие [Issues](https://github.com/OctoCore-Dev/obxodka/issues), чтобы убедиться, что проблема ещё не зарегистрирована.
@@ -63,7 +63,7 @@ dotnet workload install maui-windows maui-android
 
 ---
 
-## <img src="assets/icons/globe.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Связь с командой
+## <img src="assets/icons/octo_globe.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Связь с командой
 
 * **Email:** [contact@octocore.dev](mailto:contact@octocore.dev)
 * **Сайт:** [https://obxodka.one](https://obxodka.one)

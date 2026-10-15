@@ -30,7 +30,6 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     private CancellationTokenSource? _cts;
     private bool _connected;
     private bool _disposed;
-    private int _downlinkPacketCount;
     private int _activeRays = 1;
     private int _pingLoopStarted;
     private int _preferredRay;
@@ -531,12 +530,6 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     {
                         if (payloadLen >= 20 && !_deduplicator.IsDuplicate(payloadSpan))
                         {
-                            var count = Interlocked.Increment(ref _downlinkPacketCount);
-                            if (count <= 3 || count % 100 == 0)
-                            {
-                                var proto = (payloadSpan[0] >> 4) == 4 ? $"IPv4(proto={payloadSpan[9]})" : "IPv6";
-                                Shared.Logging.AppLogger.Log($"[OBXODKA-RX] Downlink packet #{count} (Ray #{ray}): len={payloadLen}B, type={proto}");
-                            }
                             var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
                             payloadSpan.CopyTo(rented);
                             OnPacketReceived?.Invoke(rented, payloadLen);

@@ -166,6 +166,7 @@ public static class AppLogger
             }
             else
             {
+#if DEBUG
                 var txtLine = $"[{ts}] {item.Message}";
                 t_txtWriter?.WriteLine(txtLine);
                 t_backupWriter?.WriteLine(txtLine);
@@ -175,6 +176,24 @@ public static class AppLogger
                     var htmlEncoded = WebUtility.HtmlEncode(item.Message);
                     t_htmlWriter.WriteLine($"<div class='entry info'><span class='ts'>[{ts}]</span>{htmlEncoded}</div>");
                 }
+#else
+                if (item.Message.StartsWith("[WARN]", StringComparison.OrdinalIgnoreCase) ||
+                    item.Message.StartsWith("[OBXODKA-ESTABLISHED]", StringComparison.OrdinalIgnoreCase) ||
+                    item.Message.StartsWith("[WINDOWS-VPN]", StringComparison.OrdinalIgnoreCase) ||
+                    item.Message.StartsWith("[ANDROID-VPN]", StringComparison.OrdinalIgnoreCase) ||
+                    item.Message.StartsWith("[CERT PINNING]", StringComparison.OrdinalIgnoreCase))
+                {
+                    var txtLine = $"[{ts}] {item.Message}";
+                    t_txtWriter?.WriteLine(txtLine);
+                    t_backupWriter?.WriteLine(txtLine);
+
+                    if (t_htmlWriter != null)
+                    {
+                        var htmlEncoded = WebUtility.HtmlEncode(item.Message);
+                        t_htmlWriter.WriteLine($"<div class='entry info'><span class='ts'>[{ts}]</span>{htmlEncoded}</div>");
+                    }
+                }
+#endif
             }
 
             lock (t_lock)
@@ -220,10 +239,35 @@ public static class AppLogger
         }
     }
 
+    public static void FlushRecentLogsToFile()
+    {
+        lock (t_lock)
+        {
+            try
+            {
+                if (t_htmlWriter != null && t_recentLogs.Count > 0)
+                {
+                    t_htmlWriter.WriteLine($"<hr style='border: 1px solid #333; margin: 12px 0;'><h3 style='color:#60cdff;'>Diagnostics Snapshot ({DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)})</h3>");
+                    foreach (var log in t_recentLogs)
+                    {
+                        var htmlEncoded = WebUtility.HtmlEncode(log);
+                        var isErr = log.StartsWith("[ERR", StringComparison.OrdinalIgnoreCase);
+                        t_htmlWriter.WriteLine($"<div class='entry {(isErr ? "error" : "info")}'>{htmlEncoded}</div>");
+                    }
+                    t_htmlWriter.Flush();
+                    t_txtWriter?.Flush();
+                    t_backupWriter?.Flush();
+                }
+            }
+            catch { }
+        }
+    }
+
     public static void OpenLogFile()
     {
         try
         {
+            FlushRecentLogsToFile();
             var targetPath = !string.IsNullOrEmpty(LogFilePath) && File.Exists(LogFilePath)
                 ? LogFilePath
                 : (!string.IsNullOrEmpty(BackupLogFilePath) && File.Exists(BackupLogFilePath) ? BackupLogFilePath : string.Empty);
@@ -289,18 +333,22 @@ public static class AppLogger
     {
         public override void Write(string? message)
         {
+#if DEBUG
             if (!string.IsNullOrEmpty(message))
             {
                 Log(message);
             }
+#endif
         }
 
         public override void WriteLine(string? message)
         {
+#if DEBUG
             if (!string.IsNullOrEmpty(message))
             {
                 Log(message);
             }
+#endif
         }
     }
 }
