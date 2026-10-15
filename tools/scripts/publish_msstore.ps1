@@ -192,9 +192,14 @@ if (-not $matchedExisting) {
     }
 }
 
-$subData.packages = $updatedPackages
-if ($subData.applicationPackages) {
+if ($subData.PSObject.Properties['applicationPackages']) {
     $subData.applicationPackages = $updatedPackages
+}
+elseif ($subData.PSObject.Properties['packages']) {
+    $subData.packages = $updatedPackages
+}
+else {
+    $subData | Add-Member -NotePropertyName "applicationPackages" -NotePropertyValue $updatedPackages -Force
 }
 
 $whatsNewDir = Join-Path $PSScriptRoot "../../packaging/whatsnew"
