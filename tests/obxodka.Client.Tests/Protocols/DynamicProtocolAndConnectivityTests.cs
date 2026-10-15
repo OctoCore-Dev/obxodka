@@ -256,7 +256,6 @@ public sealed class DynamicProtocolAndConnectivityTests
         }
         catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
         {
-            // Allowed when running on CI environments without direct route to server
             return;
         }
     }

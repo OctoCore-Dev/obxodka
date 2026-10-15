@@ -167,9 +167,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             for (var sIdx = 0; sIdx < sniCandidates.Count; sIdx++)
             {
                 var sni = sniCandidates[sIdx];
-                // Reality SNI with Clean 2-stage Zapret DPI bypass
                 endpointCandidates.Add((sni, port, true));
-                // Resilient fallback: For the top 2 SNIs, also test direct unsplit stream to beat anti-fragmentation filters
                 if (sIdx < 2 && port == 443)
                 {
                     endpointCandidates.Add((sni, port, false));
@@ -647,8 +645,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             var connTicks = Volatile.Read(ref _connectedAtTicks);
             var activeRays = Volatile.Read(ref _activeRays);
 
-            // Если один из лучей даже не завершил хендшейк (rx == 0) спустя 4 сек после старта туннеля — сбрасываем его на следующий порт
-            if (connTicks > 0 && ((nowTs - connTicks) * 1000.0 / Stopwatch.Frequency) > 4000)
+            if (connTicks > 0 && ((nowTs - connTicks) * 1000.0 / Stopwatch.Frequency) > 8000)
             {
                 if (rx0 == 0 && rx1 > 0 && _rayCts[0] != null)
                 {
@@ -673,7 +670,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 var silence0Ms = (nowTs - rx0) * 1000.0 / Stopwatch.Frequency;
                 var silence1Ms = (nowTs - rx1) * 1000.0 / Stopwatch.Frequency;
 
-                if (silence0Ms > 3500 && silence1Ms < 3000)
+                if (silence0Ms > 8000 && silence1Ms < 3000)
                 {
                     Shared.Logging.AppLogger.LogWarning($"[RAY-HEALTH] Ray #0 stalled (silence {silence0Ms:F0}ms). Aborting Ray #0 socket & shifting 100% traffic to Ray #1.");
                     Volatile.Write(ref _activeRays, 1);
@@ -689,7 +686,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         }
                     }
                 }
-                else if (silence1Ms > 3500 && silence0Ms < 3000)
+                else if (silence1Ms > 8000 && silence0Ms < 3000)
                 {
                     Shared.Logging.AppLogger.LogWarning($"[RAY-HEALTH] Ray #1 stalled (silence {silence1Ms:F0}ms). Aborting Ray #1 socket & shifting 100% traffic to Ray #0.");
                     Volatile.Write(ref _activeRays, 1);
@@ -705,7 +702,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         }
                     }
                 }
-                else if (silence0Ms < 2000 && silence1Ms < 2000 && activeRays < 2)
+                else if (silence0Ms < 3000 && silence1Ms < 3000 && activeRays < 2)
                 {
                     Volatile.Write(ref _activeRays, 2);
                 }
@@ -717,7 +714,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 if (rxPref > 0)
                 {
                     var silenceMs = (nowTs - rxPref) * 1000.0 / Stopwatch.Frequency;
-                    if (silenceMs > 4500)
+                    if (silenceMs > 25000)
                     {
                         Shared.Logging.AppLogger.LogWarning($"[RAY-HEALTH] Active Ray #{pref} stalled (silence {silenceMs:F0}ms). Aborting socket to trigger port failover.");
                         Volatile.Write(ref pref == 0 ? ref _lastRxTicks0 : ref _lastRxTicks1, nowTs);
@@ -729,11 +726,11 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             }
 
             byte rxAliveMask = 0;
-            if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 3500)
+            if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 10000)
             {
                 rxAliveMask |= 0x01;
             }
-            if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < 3500)
+            if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < 10000)
             {
                 rxAliveMask |= 0x02;
             }

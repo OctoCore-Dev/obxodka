@@ -73,7 +73,7 @@ public class ThemeSecurityTests
     [Fact]
     public void VerifyMagicBytes_JsonValidation()
     {
-        var validJson = /*lang=json,strict*/ "{\n  \"name\": \"Test Theme\"\n}"u8.ToArray();
+        var validJson = "{\n  \"name\": \"Test Theme\"\n}"u8.ToArray();
         Assert.True(SafeThemeExtractor.VerifyMagicBytes(".json", validJson, validJson.Length));
 
         var invalidJson = "MZ\x90\x00SomeBinaryContent"u8.ToArray();

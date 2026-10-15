@@ -72,7 +72,6 @@ internal sealed partial class WintunAdapter : IDisposable
         Name = name;
         Pool = pool;
 
-        // 1. Try opening an existing adapter first
         _adapter = WintunOpenAdapter(pool, name);
         if (_adapter != IntPtr.Zero)
         {
@@ -82,7 +81,6 @@ internal sealed partial class WintunAdapter : IDisposable
 
         var openErr = Marshal.GetLastPInvokeError();
 
-        // 2. Try creating adapter with a fresh unique GUID
         var freshGuid = Guid.NewGuid();
         _adapter = WintunCreateAdapter(pool, name, ref freshGuid, out _);
         if (_adapter != IntPtr.Zero)
@@ -94,7 +92,6 @@ internal sealed partial class WintunAdapter : IDisposable
         var createErrFresh = Marshal.GetLastPInvokeError();
         Shared.Logging.AppLogger.LogWarning($"[WINTUN] Create with fresh GUID failed (Win32 {createErrFresh}). Trying default GUID...");
 
-        // 3. Fallback to default GUID
         var defaultGuid = t_defaultGuid;
         _adapter = WintunCreateAdapter(pool, name, ref defaultGuid, out _);
         if (_adapter != IntPtr.Zero)

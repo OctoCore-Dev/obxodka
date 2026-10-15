@@ -90,7 +90,7 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     private bool TryDetermineSplitPoints(ReadOnlySpan<byte> span, out int split1, out int delay1)
     {
         split1 = 0;
-        delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(1, 3); // 1-2 ms microdelay
+        delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(1, 3);
 
         if (_splitPosition > 0 && _splitPosition < span.Length)
         {
@@ -102,14 +102,10 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         {
             if (TryFindSniRange(span, out var sniStart, out _))
             {
-                // Zapret/GoodbyeDPI standard:
-                // Split cleanly right before the SNI extension or hostname to omit SNI from packet #1.
-                // Packet #1 gets standard TLS record prefix (>100B), Packet #2 gets SNI and subsequent extensions.
                 split1 = Math.Clamp(sniStart - 2, 16, span.Length - 16);
                 return true;
             }
 
-            // Fallback: split well after TLS record header (byte 24+)
             if (span.Length > 48)
             {
                 split1 = Random.Shared.Next(24, Math.Min(48, span.Length - 16));
