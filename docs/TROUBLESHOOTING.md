@@ -16,6 +16,7 @@
 8. [Оптимизация батареи и спящий режим на Android (Doze Mode & Keep-Alive)](#8-оптимизация-батареи-и-спящий-режим-на-android-doze-mode--keep-alive)
 9. [Сертификаты mTLS, авторизация и сброс сессий](#9-сертификаты-mtls-авторизация-и-сброс-сессий)
 10. [Контрольный чек-лист для быстрой самодиагностики](#10-контрольный-чек-лист-для-быстрой-самодиагностики)
+11. [Разрыв туннеля через 5 секунд и ошибка «0 RX» (Kestrel Stream Abort & Downlink Verification)](#11-разрыв-туннеля-через-5-секунд-и-ошибка-0-rx-kestrel-stream-abort--downlink-verification)
 
 ---
 
@@ -293,3 +294,55 @@ route delete 128.0.0.0 mask 128.0.0.0
 | **Ошибка Wintun при старте** | Старый адаптер заблокирован системой | Перезагрузить ПК или удалить адаптер в диспетчере устройств |
 | **VPN засыпает при выключенном экране** | Агрессивная оптимизация батареи Android | Выставить «Без ограничений» в настройках батареи приложения |
 | **Ошибка аутентификации / 401** | Истек срок действия JWT-токена сессии | Выйти и зайти в аккаунт заново в приложении |
+| **Сервер не отвечает на тестовые пакеты (0 RX)** | Лимит скорости Kestrel `MinRequestBodyDataRate` (5с) сбрасывал дуплексный поток | Установлено `MinRequestBodyDataRate = null` на сервере; клиент не рвет туннель |
+
+---
+
+## 11. Разрыв туннеля через 5 секунд и ошибка «0 RX» (Kestrel Stream Abort & Downlink Verification)
+
+### 11.1. Симптомы в отладочном журнале
+В журнале `debug.html` на клиенте:
+* Хэндшейк завершается успешно: `Ray #0 received HTTP 200 OK (Version=2.0)`.
+* Создается адаптер Wintun и выполняется конфигурация IP/DNS через `netsh` (занимает ~2.6 секунды).
+* Затем запускается этап проверки дуплекса (`VerifyDownlinkAsync`), отправляются зонды `PROBE TX #1..#31` (отправлено 1764 Б, получено 0 Б).
+* Клиент прерывает подключение с исключением:
+  ```text
+  [WINDOWS-VPN] Downlink probe timeout (TX=1764 B, RX=0 B). No incoming packets over tunnel. Rejecting dead connection.
+  InvalidOperationException: Сервер не отвечает на тестовые пакеты (отправлено 1764 Б, получено 0 Б).
+  ```
+
+В журнале Kestrel на сервере:
+```text
+⚡ [OBXODKA CONNECT] Client connected on ray #0. (03:02:33 UTC)
+⚠️ [OBXODKA RX ERR] Ray #0: The request stream was aborted. (03:02:38 UTC)
+```
+В журнале Caddy (`caddy run`):
+```text
+{"logger":"http.handlers.reverse_proxy","msg":"aborting with incomplete response","error":"reading: read tcp 127.0.0.1:51196->127.0.0.1:5002: read: connection reset by peer"}
+```
+
+### 11.2. Механизм и корневая причина
+1. **Дефолтные лимиты Kestrel в ASP.NET Core:**
+   По умолчанию веб-сервер Kestrel применяет правило `MinRequestBodyDataRate`: минимальная скорость передачи тела запроса должна составлять не менее 240 байт/сек с льготным периодом (grace period) **ровно 5 секунд**.
+2. **Рассинхрон с инициализацией Windows:**
+   Пока клиент на Windows выполняет системные команды `netsh interface ipv4/ipv6 set address/mtu/dnsservers` и `ipconfig /flushdns` (суммарно 2.5-3 секунды), по туннелю передаются лишь единичные байты пингов (11 байт).
+3. **Обрыв сокета сервером:**
+   Спустя ровно 5 секунд Kestrel расценивает сессию как «медленную атаку» (Slowloris), аварийно прерывает поток тела запроса (`The request stream was aborted`) и отправляет TCP RST обратно в Caddy. Caddy фиксирует `connection reset by peer` и завершает клиентский HTTP/2 поток.
+4. **Ложноположительное самоуничтожение клиента:**
+   Когда клиент приступал к отправке тестовых пакетов, сокет на стороне сервера уже был закрыт. Клиент не получал входящих пакетов (`RX=0`), считал канал заблокированным цензурой ТСПУ и сам уничтожал сессию.
+
+### 11.3. Примененное решение
+1. **Сервер (`obxodka.Octopus`):**
+   * В `Program.cs` полностью отключены ограничения скорости передачи тела и ответа:
+     ```csharp
+     kestrel.Limits.MinRequestBodyDataRate = null;
+     kestrel.Limits.MinResponseDataRate = null;
+     kestrel.Limits.Http2.KeepAlivePingDelay = Timeout.InfiniteTimeSpan;
+     kestrel.Limits.Http2.KeepAlivePingTimeout = Timeout.InfiniteTimeSpan;
+     ```
+   * В `ObxodkaTunnelEndpoint.cs` таймаут неактивности сокета увеличен с 15 секунд до 90 секунд.
+2. **Клиент (`obxodka.Maui / WindowsVpnService`):**
+   * При успешном HTTP 200 хэндшейке и наличии исходящих пакетов (`TX > 0`) отсутствие мгновенного ответа от синтетического зонда больше не приводит к разрыву соединения: клиент логирует диагностическое предупреждение, активирует системные маршруты и начинает немедленную обработку пользовательского трафика (`ProcessTrafficAsync`).
+3. **Reality SNI:**
+   * Домен `login.live.com` перемещен на первое место в `AllowedSniPool`, обеспечивая мгновенный пробой ТСПУ за ~50 мс на первом же кандидате.
+
