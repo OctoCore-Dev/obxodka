@@ -29,6 +29,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public event Action<long, long>? OnTrafficUpdated;
     public event Action<long>? OnPingUpdated;
     public event Action<string>? OnStatusMessage;
+    public event Action<int>? OnMtuUpdated;
     public static event Action<string>? OnCertificateRevoked;
 
     public void EmitStatus(string message)
@@ -404,10 +405,23 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
 
         EmitStatus(VpnStatusMessages.ScanningMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, 8));
-        var optimalMtu = await EscalateMtuAsync(NetworkDefaults.MinMtu, ct).ConfigureAwait(false);
+        var burstResults = await _transport.MeasureBurstMtuAsync(ct).ConfigureAwait(false);
+        int optimalMtu;
+        if (burstResults.Length > 0)
+        {
+            var maxWireMtu = burstResults.Max();
+            optimalMtu = maxWireMtu >= 1500 ? 1400 : Math.Clamp(maxWireMtu - 80, NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
+            EmitStatus(VpnStatusMessages.MtuHoleFound(optimalMtu));
+        }
+        else
+        {
+            optimalMtu = await EscalateMtuAsync(NetworkDefaults.CurrentMtu, ct).ConfigureAwait(false);
+        }
+
         NetworkDefaults.CurrentMtu = optimalMtu;
         EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
         await (_transport?.SendMtuSyncAsync(optimalMtu) ?? Task.CompletedTask).ConfigureAwait(false);
+        OnMtuUpdated?.Invoke(optimalMtu);
         EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
         return NetworkDefaults.CurrentMtu;
     }
@@ -418,45 +432,47 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         var steps = NetworkDefaults.MtuEscalationSteps.Where(s => s > bestMtu).OrderBy(s => s);
         foreach (var candidate in steps)
         {
-            if (ct.IsCancellationRequested)
+            if (ct.IsCancellationRequested || !IsConnected)
             {
                 break;
             }
 
-            if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", candidate) is not { } probe)
+            var transportOk = await (_transport?.ProbeMtuAsync(candidate, ct) ?? Task.FromResult(false)).ConfigureAwait(false);
+            if (!transportOk)
             {
-                continue;
+                break;
             }
 
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            void OnStepPacket(byte[] pkt, int len)
+            if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", candidate) is { } probe)
             {
-                if (len == candidate && IsIcmpEchoReply(pkt, len))
+                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                void OnStepPacket(byte[] pkt, int len)
                 {
-                    _ = tcs.TrySetResult(true);
+                    if (len == candidate && IsIcmpEchoReply(pkt, len))
+                    {
+                        _ = tcs.TrySetResult(true);
+                    }
+                }
+
+                OnProbePacketInspect += OnStepPacket;
+                try
+                {
+                    _ = SendPacketAsync(probe);
+                    var timeoutMs = Math.Clamp((int)(_smoothedPing > 0 ? _smoothedPing * 2.5 : 750), 350, 1500);
+                    var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
+                    if (completed != tcs.Task || !await tcs.Task.ConfigureAwait(false))
+                    {
+                        break;
+                    }
+                }
+                finally
+                {
+                    OnProbePacketInspect -= OnStepPacket;
                 }
             }
 
-            OnProbePacketInspect += OnStepPacket;
-            try
-            {
-                _ = SendPacketAsync(probe);
-                var timeoutMs = Math.Clamp((int)(_smoothedPing > 0 ? _smoothedPing * 2.5 : 750), 350, 1500);
-                var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
-                if (completed == tcs.Task && await tcs.Task.ConfigureAwait(false))
-                {
-                    bestMtu = candidate;
-                    EmitStatus(VpnStatusMessages.MtuHoleFound(bestMtu));
-                }
-                else
-                {
-                    break;
-                }
-            }
-            finally
-            {
-                OnProbePacketInspect -= OnStepPacket;
-            }
+            bestMtu = candidate;
+            EmitStatus(VpnStatusMessages.MtuHoleFound(bestMtu));
         }
 
         return bestMtu;

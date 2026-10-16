@@ -475,6 +475,18 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                 if (connected)
                 {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await Task.Delay(3000).ConfigureAwait(false);
+                            if (OctopusEngine.Current.IsConnected)
+                            {
+                                _ = await OctopusEngine.Current.ScanAndLockOptimalMtuAsync().ConfigureAwait(false);
+                            }
+                        }
+                        catch { }
+                    });
                     break;
                 }
 

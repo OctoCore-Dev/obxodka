@@ -13,6 +13,8 @@ public interface IVpnTransport : IDisposable, IAsyncDisposable
     public void SendPacketFromPool(byte[] packet, int length);
     public Task SendDisconnectSignalAsync();
     public Task SendPingProbeAsync();
+    public Task<bool> ProbeMtuAsync(int size, CancellationToken ct) => Task.FromResult(true);
+    public Task<int[]> MeasureBurstMtuAsync(CancellationToken ct) => Task.FromResult(Array.Empty<int>());
     public Task SendMtuSyncAsync(int mtu) => Task.CompletedTask;
     public void ProtectSockets(Action<Socket> protectAction);
 }

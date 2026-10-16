@@ -39,6 +39,9 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     private long _connectedAtTicks;
     private string _activeServerIp = string.Empty;
     private readonly CancellationTokenSource?[] _rayCts = new CancellationTokenSource?[2];
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<int>> _pendingMtuProbes = new();
+    private readonly List<int> _receivedBurstMtus = [];
+    private volatile string? _assignedIp;
 
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
 
@@ -281,7 +284,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             {
                 try
                 {
-                    await Task.Delay(1000, ct).ConfigureAwait(false);
+                    await Task.Delay(500, ct).ConfigureAwait(false);
                 }
                 catch
                 {
@@ -327,7 +330,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             {
                 try
                 {
-                    await Task.Delay(2000, ct).ConfigureAwait(false);
+                    await Task.Delay(500, ct).ConfigureAwait(false);
                 }
                 catch
                 {
@@ -375,7 +378,8 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
                 try
                 {
-                    var hsPayload = Encoding.UTF8.GetBytes(thumbprint);
+                    var handshakeStr = string.IsNullOrEmpty(_assignedIp) ? thumbprint : $"{thumbprint}|{_assignedIp}";
+                    var hsPayload = Encoding.UTF8.GetBytes(handshakeStr);
                     var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
                     try
                     {
@@ -403,13 +407,16 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                             try
                             {
                                 var isMtu = length == 4 && packet[0] == 0xCC && packet[1] == 0xDD;
+                                var isBurstReq = length == 2 && packet[0] == 0xEE && packet[1] == 0x77;
                                 var isPing = (length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB) || length == 8;
-                                var cmd = isMtu ? ObxodkaFraming.CmdMtuSync : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData);
+                                var cmd = isMtu ? ObxodkaFraming.CmdMtuSync : (isBurstReq ? ObxodkaFraming.CmdMtuBurstRequest : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData));
                                 var payloadSpan = isMtu
                                     ? packet.AsSpan(2, 2)
-                                    : ((length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB)
-                                        ? packet.AsSpan(2, length - 2)
-                                        : packet.AsSpan(0, length));
+                                    : (isBurstReq
+                                        ? ReadOnlySpan<byte>.Empty
+                                        : ((length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB)
+                                            ? packet.AsSpan(2, length - 2)
+                                            : packet.AsSpan(0, length)));
 
                                 var frame = ObxodkaFraming.Pack(cmd, payloadSpan, out var totalLen, maxMtu: NetworkDefaults.CurrentMtu);
                                 try
@@ -524,6 +531,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                                     NetworkDefaults.CurrentMtu = sMtu;
                                 }
                             }
+                            _assignedIp = assignedIp;
                             Volatile.Write(ref _connected, true);
                             var isFirst = _ipTcs.TrySetResult((assignedIp, assignedIpV6));
 
@@ -569,6 +577,11 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                             {
                                 OnPingUpdated?.Invoke(elapsedMs);
                             }
+
+                            if (_pendingMtuProbes.TryRemove(sendTs, out var probeTcs))
+                            {
+                                _ = probeTcs.TrySetResult(payloadLen);
+                            }
                         }
                     }
                     else if (command == ObxodkaFraming.CmdMtuSync)
@@ -577,6 +590,17 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         {
                             var ackMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan[..2]);
                             Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Server confirmed locked MTU {ackMtu}B");
+                        }
+                    }
+                    else if (command == ObxodkaFraming.CmdMtuBurstPayload)
+                    {
+                        if (payloadLen >= 4 && payloadSpan[0] == 0xEE && payloadSpan[1] == 0x55)
+                        {
+                            var targetMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
+                            lock (_receivedBurstMtus)
+                            {
+                                _receivedBurstMtus.Add(targetMtu);
+                            }
                         }
                     }
                     else if (command == ObxodkaFraming.CmdDisconnect)
@@ -832,10 +856,104 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         return Task.CompletedTask;
     }
 
+    public async Task<bool> ProbeMtuAsync(int size, CancellationToken ct)
+    {
+        if (!IsConnected || _cts?.IsCancellationRequested == true)
+        {
+            return false;
+        }
+
+        var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var nowTs = Stopwatch.GetTimestamp();
+        _pendingMtuProbes[nowTs] = tcs;
+
+        var buf = ArrayPool<byte>.Shared.Rent(size);
+        try
+        {
+            buf[0] = 0xAA;
+            buf[1] = 0xBB;
+            BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(2, 8), nowTs);
+
+            var rx0 = Volatile.Read(ref _lastRxTicks0);
+            var rx1 = Volatile.Read(ref _lastRxTicks1);
+            byte rxAliveMask = 0;
+            if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 3500)
+            {
+                rxAliveMask |= 0x01;
+            }
+            if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < 3500)
+            {
+                rxAliveMask |= 0x02;
+            }
+            if (rxAliveMask == 0)
+            {
+                rxAliveMask = (byte)(1 << Volatile.Read(ref _preferredRay));
+            }
+            buf[10] = rxAliveMask;
+            Random.Shared.NextBytes(buf.AsSpan(11, size - 11));
+
+            var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Volatile.Read(ref _preferredRay);
+            if (!_txChannels[targetRay].Writer.TryWrite((buf, size)))
+            {
+                return false;
+            }
+
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linkedCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
+            using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
+
+            var returnedLen = await tcs.Task.ConfigureAwait(false);
+            return returnedLen >= size - 2;
+        }
+        finally
+        {
+            if (_pendingMtuProbes.TryRemove(nowTs, out _))
+            {
+            }
+        }
+    }
+
     public Task SendDisconnectSignalAsync()
     {
         _cts?.Cancel();
         return Task.CompletedTask;
+    }
+
+    public async Task<int[]> MeasureBurstMtuAsync(CancellationToken ct = default)
+    {
+        if (!IsConnected || _cts?.IsCancellationRequested == true)
+        {
+            return [];
+        }
+
+        lock (_receivedBurstMtus)
+        {
+            _receivedBurstMtus.Clear();
+        }
+
+        var buf = ArrayPool<byte>.Shared.Rent(2);
+        buf[0] = 0xEE;
+        buf[1] = 0x77;
+
+        var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Volatile.Read(ref _preferredRay);
+        if (!_txChannels[targetRay].Writer.TryWrite((buf, 2)))
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+            return [];
+        }
+
+        try
+        {
+            await Task.Delay(400, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        lock (_receivedBurstMtus)
+        {
+            return [.. _receivedBurstMtus];
+        }
     }
 
     public Task SendMtuSyncAsync(int mtu)

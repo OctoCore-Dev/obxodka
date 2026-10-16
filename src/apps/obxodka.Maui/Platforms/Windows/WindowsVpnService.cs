@@ -481,6 +481,25 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
                             UpdateState(AppVpnState.Connected);
                             connected = true;
+
+                            var curAdapter = _adapter.Name;
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await Task.Delay(3000, _cts.Token).ConfigureAwait(false);
+                                    if (OctopusEngine.Current.IsConnected)
+                                    {
+                                        var optimalMtu = await OctopusEngine.Current.ScanAndLockOptimalMtuAsync(_cts.Token).ConfigureAwait(false);
+                                        if (!string.IsNullOrEmpty(curAdapter))
+                                        {
+                                            await UpdateAdapterMtuAsync(curAdapter, optimalMtu).ConfigureAwait(false);
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }, _cts.Token);
+
                             return;
                         }
                         catch (UnauthorizedAccessException ex)
@@ -734,6 +753,20 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
 
         throw new InvalidOperationException($"Не удалось настроить адаптер '{adapterName}'. Ошибка PS: {lastError}");
+    }
+
+    private static async Task UpdateAdapterMtuAsync(string adapterName, int mtu)
+    {
+        try
+        {
+            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={mtu} store=active").ConfigureAwait(false);
+            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={mtu} store=active").ConfigureAwait(false);
+            Shared.Logging.AppLogger.Log($"[MTU ADAPTER] Updated Wintun adapter '{adapterName}' MTU to {mtu}B");
+        }
+        catch (Exception ex)
+        {
+            Shared.Logging.AppLogger.LogError($"[MTU ADAPTER ERR] Failed to update MTU: {ex.Message}");
+        }
     }
 
     private static async Task<(int exitCode, string output)> RunCmdAsync(

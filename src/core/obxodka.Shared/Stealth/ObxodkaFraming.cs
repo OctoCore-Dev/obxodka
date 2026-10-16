@@ -15,6 +15,8 @@ public static class ObxodkaFraming
     public const byte CmdHandshakeResponse = 0x05;
     public const byte CmdDisconnect = 0x06;
     public const byte CmdMtuSync = 0x07;
+    public const byte CmdMtuBurstRequest = 0x08;
+    public const byte CmdMtuBurstPayload = 0x09;
 
     public const int HeaderSize = 6;
     public const int MaxFrameSize = 65535;
@@ -119,7 +121,7 @@ public static class ObxodkaFraming
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CalculatePaddingLength(byte command, int payloadLength, int maxMtu = 1360)
     {
-        if (command is CmdPong or CmdMtuSync)
+        if (command is CmdPong or CmdMtuSync or CmdMtuBurstRequest or CmdMtuBurstPayload)
         {
             return 0;
         }
