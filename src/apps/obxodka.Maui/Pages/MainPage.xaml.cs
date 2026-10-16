@@ -28,6 +28,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
     {
         Current = this;
         InitializeComponent();
+        if (SeasonSchedule.IsHalloweenSeason())
+        {
+            SplashIcon.Source = "splash_logo_halloween.png";
+        }
         VpnService = vpnService;
         _apiService = apiService;
         _appManager = appManager;
@@ -299,6 +303,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        if (SeasonSchedule.IsHalloweenSeason())
+        {
+            SplashIcon.Source = "splash_logo_halloween.png";
+        }
         _ = AnimateSplashIconAsync();
 
         _ = Task.Run(async () =>

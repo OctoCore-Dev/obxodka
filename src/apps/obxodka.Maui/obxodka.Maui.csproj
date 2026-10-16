@@ -73,9 +73,9 @@
     </PropertyGroup>
 
 	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
-        <MauiIcon Condition="$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#FFFFFF" />
-        <MauiIcon Condition="!$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appiconfg.svg" />
-        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="Transparent" />
+        <MauiIcon Condition="$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appicon_halloween.svg" ForegroundScale="0.65" Color="#FFFFFF" />
+        <MauiIcon Condition="!$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appicon_halloween.svg" />
+        <MauiSplashScreen Include="Resources\Splash\splash_halloween.svg" Color="Transparent" />
 		<MauiImage Include="Resources\Images\**\*" Exclude="Resources\Images\Previews\**\*" />
 		<MauiFont Include="Resources\Fonts\**\*" />
 		<MauiAsset Include="Resources\Raw\**\*" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />

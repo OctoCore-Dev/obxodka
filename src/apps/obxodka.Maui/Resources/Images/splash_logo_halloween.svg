@@ -1,0 +1,108 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="octoGradient" x1="10" y1="10" x2="246" y2="246" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#FF2E93"/>
+    </linearGradient>
+
+    <linearGradient id="halloweenShieldBg" x1="128" y1="4" x2="128" y2="252" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0D031D"/>
+      <stop offset="50%" stop-color="#1C0736"/>
+      <stop offset="100%" stop-color="#2D0B50"/>
+    </linearGradient>
+
+    <linearGradient id="halloweenBorder" x1="6" y1="4" x2="250" y2="252" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF5500"/>
+      <stop offset="45%" stop-color="#FF2E93"/>
+      <stop offset="100%" stop-color="#00FFFF"/>
+    </linearGradient>
+
+    <linearGradient id="pumpkinLobeCenter" x1="128" y1="135" x2="128" y2="225" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFA000"/>
+      <stop offset="100%" stop-color="#E65100"/>
+    </linearGradient>
+    <linearGradient id="pumpkinLobeMid" x1="128" y1="135" x2="128" y2="225" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB8C00"/>
+      <stop offset="100%" stop-color="#D84315"/>
+    </linearGradient>
+    <linearGradient id="pumpkinLobeSide" x1="128" y1="135" x2="128" y2="225" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F57C00"/>
+      <stop offset="100%" stop-color="#BF360C"/>
+    </linearGradient>
+    <linearGradient id="witchHatGrad" x1="90" y1="5" x2="175" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2C0F4A"/>
+      <stop offset="100%" stop-color="#0F041C"/>
+    </linearGradient>
+
+    <radialGradient id="spookyMoon" cx="128" cy="90" r="75" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFE082" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#FF9800" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#FF5722" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <path d="M128 6 L8 40 V130 C8 208 128 250 128 250 C128 250 248 208 248 130 V40 L128 6 Z" 
+        fill="url(#halloweenShieldBg)" 
+        stroke="url(#halloweenBorder)" 
+        stroke-width="10" 
+        stroke-linejoin="round"/>
+
+  <circle cx="128" cy="95" r="72" fill="url(#spookyMoon)"/>
+
+  <g stroke="#00FFFF" stroke-width="1.4" opacity="0.3" stroke-linecap="round">
+    <path d="M8 40 L65 40 M8 40 L8 95 M8 40 L52 82"/>
+    <path d="M26 40 Q26 56 8 56 M44 40 Q44 72 8 72 M62 40 Q62 88 8 88"/>
+    <path d="M248 40 L191 40 M248 40 L248 95 M248 40 L204 82"/>
+    <path d="M230 40 Q230 56 248 56 M212 40 Q212 72 248 72 M194 40 Q194 88 248 88"/>
+  </g>
+
+  <path d="M48 76 Q56 66 64 71 Q72 66 80 76 Q72 80 64 76 Q56 80 48 76 Z" fill="#070210" opacity="0.7"/>
+  <path d="M176 70 Q184 60 192 65 Q200 60 208 70 Q200 74 192 70 Q184 74 176 70 Z" fill="#070210" opacity="0.7"/>
+
+  <g fill="url(#octoGradient)">
+    <path d="M128 42 C86 42 60 68 60 106 C60 132 76 148 92 153 C102 156 112 148 128 148 C144 148 154 156 164 153 C180 148 196 132 196 106 C196 68 170 42 128 42 Z"/>
+    <path d="M66 122 C44 126 24 138 18 156 C14 172 24 184 38 178 C50 172 58 156 72 144 Z"/>
+    <path d="M190 122 C212 126 232 138 238 156 C242 172 232 184 218 178 C206 172 198 156 184 144 Z"/>
+    <path d="M82 144 C66 154 44 166 34 186 C28 202 38 216 54 212 C66 208 74 190 86 178 C92 174 96 158 88 150 Z"/>
+    <path d="M174 144 C190 154 212 166 222 186 C228 202 218 216 202 212 C190 208 182 190 170 178 C164 174 160 158 168 150 Z"/>
+  </g>
+
+  <path d="M86 114 Q97 102 108 114" stroke="#080210" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M148 114 Q159 102 170 114" stroke="#080210" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="78" cy="124" r="7" fill="#FF2E93" opacity="0.6"/>
+  <circle cx="178" cy="124" r="7" fill="#FF2E93" opacity="0.6"/>
+
+  <ellipse cx="128" cy="48" rx="60" ry="14" fill="#080210" opacity="0.5"/>
+  <ellipse cx="128" cy="46" rx="58" ry="13" fill="#140624" stroke="#FF5500" stroke-width="2.5"/>
+  <path d="M88 45 C96 22 118 6 162 0 C146 16 154 32 168 45 Z" fill="url(#witchHatGrad)" stroke="#A855F7" stroke-width="2"/>
+  <path d="M96 42 C108 36 148 36 160 42 L164 47 C150 42 106 42 92 47 Z" fill="#00FFFF"/>
+  <rect x="122" y="38" width="12" height="9" rx="2.5" fill="#FFAA00" stroke="#FFE082" stroke-width="1.2"/>
+
+  <path d="M60 155 C52 170 54 196 68 212 C82 225 98 227 106 220 C94 207 86 182 92 155 C78 148 66 148 60 155 Z" fill="url(#pumpkinLobeSide)"/>
+  <path d="M196 155 C204 170 202 196 188 212 C174 225 158 227 150 220 C162 207 170 182 164 155 C178 148 190 148 196 155 Z" fill="url(#pumpkinLobeSide)"/>
+
+  <path d="M84 146 C74 162 76 200 90 220 C102 232 116 232 122 222 C110 204 106 172 110 146 C98 142 88 142 84 146 Z" fill="url(#pumpkinLobeMid)"/>
+  <path d="M172 146 C182 162 180 200 166 220 C154 232 140 232 134 222 C146 204 150 172 146 146 C158 142 168 142 172 146 Z" fill="url(#pumpkinLobeMid)"/>
+
+  <path d="M108 142 C102 168 108 210 128 228 C148 210 154 168 148 142 C136 139 120 139 108 142 Z" fill="url(#pumpkinLobeCenter)"/>
+
+  <g fill="#00FFFF">
+    <polygon points="90,166 108,172 96,184"/>
+    <polygon points="166,166 148,172 160,184"/>
+    <polygon points="128,176 122,185 134,185"/>
+    <path d="M82 192 L92 196 L98 189 L108 196 L116 188 L128 197 L140 188 L148 196 L158 189 L164 196 L174 192 L167 205 L154 212 L142 205 L128 214 L114 205 L102 212 L89 205 Z"/>
+  </g>
+
+  <polygon points="93,169 105,173 97,181" fill="#FFFFFF"/>
+  <polygon points="163,169 151,173 159,181" fill="#FFFFFF"/>
+  <polygon points="128,179 124,184 132,184" fill="#FFFFFF"/>
+  <path d="M86 193 L93 196 L98 191 L108 196 L116 190 L128 197 L140 190 L148 196 L158 191 L163 196 L170 193 L165 203 L154 209 L142 203 L128 211 L114 203 L102 209 L91 203 Z" fill="#FFFFFF" opacity="0.85"/>
+
+  <g fill="url(#octoGradient)">
+    <circle cx="86" cy="202" r="8"/>
+    <circle cx="170" cy="202" r="8"/>
+    <circle cx="84" cy="200" r="2.5" fill="#FFFFFF" opacity="0.8"/>
+    <circle cx="168" cy="200" r="2.5" fill="#FFFFFF" opacity="0.8"/>
+  </g>
+</svg>

@@ -1459,13 +1459,62 @@ public sealed class ThemeManager
         OnThemeReset?.Invoke();
     }
 
+    private const string SeasonalHalloweenThemeId = "halloween_seasonal_default";
+
+    public static ThemeManifest CreateHalloweenSeasonalManifest() => new()
+    {
+        Id = SeasonalHalloweenThemeId,
+        Name = "Halloween Edition",
+        Author = "OctoCore",
+        Version = "1.0.0",
+        Description = "Праздничная хэллоуинская тема",
+        Core = new CoreThemeTokens
+        {
+            Colors = new ThemeColors
+            {
+                BgBase = "#0D031D",
+                BgSurface = "#180730",
+                BgElevated = "#260C45",
+                BgInput = "#120524",
+                Primary = "#FF6600",
+                PrimaryBright = "#FF8800",
+                PrimaryDim = "#331500",
+                Accent = "#00FFFF",
+                BorderSubtle = "#38125E",
+                BorderMedium = "#521A8A",
+                SolidBorderDark = "#38125E",
+                TextPrimary = "#FFFFFF",
+                TextSecondary = "#E9D5FF",
+                TextMuted = "#A855F7"
+            },
+            Gradients = new ThemeGradients
+            {
+                PrimaryGradient = new GradientDefinition
+                {
+                    Stops = ["#FF5500", "#FF2E93", "#A855F7"]
+                }
+            }
+        }
+    };
+
     public void RestoreActiveThemeAtStartup()
     {
         EnsureDefaultResourcesCaptured();
 
         var activeId = Preferences.Default.Get<string?>(ActiveThemeKey, null);
-        if (string.IsNullOrWhiteSpace(activeId))
+        if (string.IsNullOrWhiteSpace(activeId) || activeId == SeasonalHalloweenThemeId)
         {
+            if (SeasonSchedule.IsHalloweenSeason())
+            {
+                _ = ApplyTheme(CreateHalloweenSeasonalManifest());
+                return;
+            }
+
+            if (activeId == SeasonalHalloweenThemeId)
+            {
+                Preferences.Default.Remove(ActiveThemeKey);
+                ResetToDefault();
+            }
             return;
         }
 
@@ -1473,6 +1522,10 @@ public sealed class ThemeManager
         if (!File.Exists(manifestPath))
         {
             Preferences.Default.Remove(ActiveThemeKey);
+            if (SeasonSchedule.IsHalloweenSeason())
+            {
+                _ = ApplyTheme(CreateHalloweenSeasonalManifest());
+            }
             return;
         }
 
@@ -1488,6 +1541,10 @@ public sealed class ThemeManager
         catch
         {
             Preferences.Default.Remove(ActiveThemeKey);
+            if (SeasonSchedule.IsHalloweenSeason())
+            {
+                _ = ApplyTheme(CreateHalloweenSeasonalManifest());
+            }
         }
     }
 

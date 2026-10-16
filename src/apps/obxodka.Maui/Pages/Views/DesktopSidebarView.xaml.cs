@@ -20,7 +20,11 @@ public sealed partial class DesktopSidebarView : ContentView
     {
         InitializeComponent();
         AppVersionLabel.Text = $"v{AppInfo.Current.VersionString}";
+        UpdateSeasonalLogo();
     }
+
+    public void UpdateSeasonalLogo() =>
+        AppLogoImage.Source = SeasonSchedule.IsHalloweenSeason() ? "app_logo_halloween.png" : "app_logo.png";
 
     public async Task PlayEntranceAnimationAsync()
     {

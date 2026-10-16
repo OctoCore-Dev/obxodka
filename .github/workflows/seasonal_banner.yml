@@ -1,0 +1,53 @@
+name: Seasonal Banner Auto-Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-banner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Evaluate Season and Update Banner
+        shell: pwsh
+        run: |
+          $now = [DateTime]::UtcNow
+          $month = $now.Month
+          $day = $now.Day
+
+          $isHalloween = ($month -eq 10 -and $day -ge 15) -or ($month -eq 11 -and $day -le 5)
+
+          $targetFile = if ($isHalloween) {
+              ".github/assets/banner_halloween.png"
+          } else {
+              ".github/assets/banner_default.png"
+          }
+
+          $activeFile = ".github/assets/banner.png"
+
+          if (!(Test-Path $targetFile)) {
+              Write-Host "Target file $targetFile does not exist, skipping."
+              exit 0
+          }
+
+          $targetHash = (Get-FileHash $targetFile).Hash
+          $activeHash = if (Test-Path $activeFile) { (Get-FileHash $activeFile).Hash } else { "" }
+
+          if ($targetHash -ne $activeHash) {
+              Copy-Item $targetFile $activeFile -Force
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add $activeFile
+              git commit -m "chore(assets): update seasonal banner [skip ci]"
+              git push
+              Write-Host "Banner updated to $targetFile and pushed."
+          } else {
+              Write-Host "Active banner already matches seasonal target ($targetFile)."
+          }
