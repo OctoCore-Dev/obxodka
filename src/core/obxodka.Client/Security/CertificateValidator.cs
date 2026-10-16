@@ -13,9 +13,10 @@ public static class CertificateValidator
             return false;
         }
 
+        X509Certificate2? ownedCert = null;
         try
         {
-            using var cert2 = certificate as X509Certificate2 ?? new X509Certificate2(certificate);
+            var cert2 = certificate as X509Certificate2 ?? (ownedCert = new X509Certificate2(certificate));
 
             var nowUtc = DateTime.UtcNow;
             var notBeforeUtc = cert2.NotBefore.ToUniversalTime();
@@ -42,7 +43,7 @@ public static class CertificateValidator
                     return true;
                 }
 
-                var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey();
+                using var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey();
                 if (key is not null)
                 {
                     var spkiHash = Convert.ToBase64String(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
@@ -69,32 +70,13 @@ public static class CertificateValidator
                 }
             }
 
-            var isTrustedDomain = cert2.Subject.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
-                                  cert2.Subject.Contains("octocore.dev", StringComparison.OrdinalIgnoreCase);
-            if (!isTrustedDomain)
+            if (!string.IsNullOrWhiteSpace(dynamicPinningHash))
             {
-                foreach (var ext in cert2.Extensions)
-                {
-                    if (ext is X509SubjectAlternativeNameExtension sanExt)
-                    {
-                        foreach (var dns in sanExt.EnumerateDnsNames())
-                        {
-                            if (dns.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
-                                dns.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase) ||
-                                dns.Equals("octocore.dev", StringComparison.OrdinalIgnoreCase) ||
-                                dns.EndsWith(".octocore.dev", StringComparison.OrdinalIgnoreCase))
-                            {
-                                isTrustedDomain = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (isTrustedDomain)
-                    {
-                        break;
-                    }
-                }
+                Shared.Logging.AppLogger.LogError($"[CERT PINNING MISMATCH] Expected explicit pin: '{dynamicPinningHash}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}'");
+                return false;
             }
+
+            var isTrustedDomain = IsTrustedObxodkaCertificate(cert2);
 
             if (isTrustedDomain)
             {
@@ -158,5 +140,35 @@ public static class CertificateValidator
             Shared.Logging.AppLogger.LogError($"[CERT ERROR] Exception during certificate validation: {ex.Message}", ex);
             return false;
         }
+        finally
+        {
+            ownedCert?.Dispose();
+        }
     }
+
+    private static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
+    {
+        foreach (var ext in cert2.Extensions)
+        {
+            if (ext is X509SubjectAlternativeNameExtension sanExt)
+            {
+                foreach (var dns in sanExt.EnumerateDnsNames())
+                {
+                    if (IsTrustedHostName(dns))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        var simpleName = cert2.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
+        return !string.IsNullOrWhiteSpace(simpleName) && IsTrustedHostName(simpleName.Trim());
+    }
+
+    private static bool IsTrustedHostName(string host) =>
+        host.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("octocore.dev", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".octocore.dev", StringComparison.OrdinalIgnoreCase);
 }

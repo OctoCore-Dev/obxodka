@@ -186,7 +186,7 @@ public static class NetworkDefaults
 
     public static string? FlagEmojiToCountryCode(string? emoji)
     {
-        if (string.IsNullOrWhiteSpace(emoji) || emoji.Length < 4)
+        if (string.IsNullOrWhiteSpace(emoji) || emoji.Length < 4 || !char.IsSurrogatePair(emoji, 0) || !char.IsSurrogatePair(emoji, 2))
         {
             return null;
         }

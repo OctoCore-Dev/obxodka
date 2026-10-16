@@ -6,6 +6,7 @@
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
 
     <Grid
+        x:Name="RootDeleteGrid"
         Padding="{OnIdiom Desktop='32,28',
                           Default='20,16'}"
         HorizontalOptions="Fill"

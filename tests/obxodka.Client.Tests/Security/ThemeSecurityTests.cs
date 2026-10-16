@@ -1,7 +1,3 @@
-#pragma warning disable CA1707, IDE0065
-using System.IO.Compression;
-using System.Security;
-
 namespace obxodka.Client.Tests;
 
 [Trait("Category", "Unit")]
@@ -20,7 +16,7 @@ public class ThemeSecurityTests
     [InlineData(".ttf", new byte[] { 0x00, 0x01, 0x00, 0x00 })]
     [InlineData(".ttf", new byte[] { 0x74, 0x72, 0x75, 0x65 })]
     [InlineData(".otf", new byte[] { 0x4F, 0x54, 0x54, 0x4F })]
-    public void VerifyMagicBytes_ValidSignatures_ReturnsTrue(string extension, byte[] header)
+    public void VerifyMagicBytesValidSignaturesReturnsTrue(string extension, byte[] header)
     {
         var isValid = SafeThemeExtractor.VerifyMagicBytes(extension, header, header.Length);
         Assert.True(isValid);
@@ -34,7 +30,7 @@ public class ThemeSecurityTests
     [InlineData(".webm")]
     [InlineData(".wav")]
     [InlineData(".mp3")]
-    public void VerifyMagicBytes_DosPeExecutableHeader_AlwaysRejected(string extension)
+    public void VerifyMagicBytesDosPeExecutableHeaderAlwaysRejected(string extension)
     {
         var fakeExe = new byte[] { 0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00 };
         var isValid = SafeThemeExtractor.VerifyMagicBytes(extension, fakeExe, fakeExe.Length);
@@ -45,7 +41,7 @@ public class ThemeSecurityTests
     [InlineData(".png")]
     [InlineData(".mp4")]
     [InlineData(".webm")]
-    public void VerifyMagicBytes_ElfExecutableHeader_AlwaysRejected(string extension)
+    public void VerifyMagicBytesElfExecutableHeaderAlwaysRejected(string extension)
     {
         var elfBinary = new byte[] { 0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00 };
         var isValid = SafeThemeExtractor.VerifyMagicBytes(extension, elfBinary, elfBinary.Length);
@@ -55,7 +51,7 @@ public class ThemeSecurityTests
     [Theory]
     [InlineData(".png")]
     [InlineData(".mp4")]
-    public void VerifyMagicBytes_ShebangScript_AlwaysRejected(string extension)
+    public void VerifyMagicBytesShebangScriptAlwaysRejected(string extension)
     {
         var script = Encoding.UTF8.GetBytes("#!/bin/bash\nrm -rf /\n");
         var isValid = SafeThemeExtractor.VerifyMagicBytes(extension, script, script.Length);
@@ -63,7 +59,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public void VerifyMagicBytes_ZeroLengthBuffer_ReturnsFalse()
+    public void VerifyMagicBytesZeroLengthBufferReturnsFalse()
     {
         Assert.False(SafeThemeExtractor.VerifyMagicBytes(".png", [], 0));
         Assert.False(SafeThemeExtractor.VerifyMagicBytes(".mp4", [], 0));
@@ -71,9 +67,9 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public void VerifyMagicBytes_JsonValidation()
+    public void VerifyMagicBytesJsonValidation()
     {
-        var validJson = "{\n  \"name\": \"Test Theme\"\n}"u8.ToArray();
+        var validJson = /*lang=json,strict*/ "{\n  \"name\": \"Test Theme\"\n}"u8.ToArray();
         Assert.True(SafeThemeExtractor.VerifyMagicBytes(".json", validJson, validJson.Length));
 
         var invalidJson = "MZ\x90\x00SomeBinaryContent"u8.ToArray();
@@ -95,7 +91,7 @@ public class ThemeSecurityTests
     [InlineData("app.exe", false)]
     [InlineData("payload.dll", false)]
     [InlineData("vector.svg", false)]
-    public void IsSafeRelativePath_ValidatesCorrectly(string path, bool expectedSafe)
+    public void IsSafeRelativePathValidatesCorrectly(string path, bool expectedSafe)
     {
         var isSafe = ThemeValidator.IsSafeRelativePath(path);
         Assert.Equal(expectedSafe, isSafe);
@@ -114,14 +110,14 @@ public class ThemeSecurityTests
     [InlineData("1.0.0", null, false)]
     [InlineData("", "1.0.0", true)]
     [InlineData("1.0.0", "1.0.0.0", false)]
-    public void IsVersionNewer_EvaluatesCorrectly(string? current, string? remote, bool expectedNewer)
+    public void IsVersionNewerEvaluatesCorrectly(string? current, string? remote, bool expectedNewer)
     {
         var isNewer = ThemeValidator.IsVersionNewer(current, remote);
         Assert.Equal(expectedNewer, isNewer);
     }
 
     [Fact]
-    public void ValidateManifest_PathTraversalInVideo_FailsValidation()
+    public void ValidateManifestPathTraversalInVideoFailsValidation()
     {
         var manifest = new ThemeManifest
         {
@@ -143,7 +139,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public void ValidateManifest_DangerousId_FailsValidation()
+    public void ValidateManifestDangerousIdFailsValidation()
     {
         var manifest = new ThemeManifest
         {
@@ -165,11 +161,11 @@ public class ThemeSecurityTests
     [InlineData("assets/aux.mp4")]
     [InlineData("com1.webp")]
     [InlineData("lpt1.ttf")]
-    public void IsSafeRelativePath_DosDeviceNames_AlwaysRejected(string dosPath) =>
+    public void IsSafeRelativePathDosDeviceNamesAlwaysRejected(string dosPath) =>
         Assert.False(ThemeValidator.IsSafeRelativePath(dosPath));
 
     [Fact]
-    public void ValidateManifest_NullManifestOrNullColors_ReturnsFalseWithoutThrowing()
+    public void ValidateManifestNullManifestOrNullColorsReturnsFalseWithoutThrowing()
     {
         Assert.False(ThemeValidator.ValidateManifest(null!, out var err1));
         Assert.NotNull(err1);
@@ -185,7 +181,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public void ValidateManifest_PathTraversalInMissingFields_FailsValidation()
+    public void ValidateManifestPathTraversalInMissingFieldsFailsValidation()
     {
         var m1 = new ThemeManifest
         {
@@ -225,7 +221,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public async Task ExtractZipSafelyAsync_TooManyEntries_ThrowsSecurityExceptionAsync()
+    public async Task ExtractZipSafelyAsyncTooManyEntriesThrowsSecurityExceptionAsync()
     {
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
@@ -254,7 +250,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public async Task ExtractZipSafelyAsync_ZipSlipTraversal_ThrowsSecurityExceptionAsync()
+    public async Task ExtractZipSafelyAsyncZipSlipTraversalThrowsSecurityExceptionAsync()
     {
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
@@ -280,7 +276,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public async Task ExtractZipSafelyAsync_ProhibitedExtension_ThrowsSecurityExceptionAsync()
+    public async Task ExtractZipSafelyAsyncProhibitedExtensionThrowsSecurityExceptionAsync()
     {
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
@@ -306,7 +302,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public void ValidateManifest_FrameSlice_ValidatesBounds()
+    public void ValidateManifestFrameSliceValidatesBounds()
     {
         var validManifest = new ThemeManifest
         {
@@ -347,7 +343,7 @@ public class ThemeSecurityTests
     }
 
     [Fact]
-    public void FrameSlice_JsonSerialization_WorksCorrectly()
+    public void FrameSliceJsonSerializationWorksCorrectly()
     {
         var manifest = new ThemeManifest
         {

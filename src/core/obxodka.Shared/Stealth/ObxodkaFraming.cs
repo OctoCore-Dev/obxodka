@@ -1,3 +1,5 @@
+using System.Runtime.Intrinsics;
+
 namespace obxodka.Shared.Stealth;
 
 public static class ObxodkaFraming
@@ -18,15 +20,55 @@ public static class ObxodkaFraming
     public const int MaxFrameSize = 65535;
 
     private static readonly byte[] t_noiseBuffer = GC.AllocateUninitializedArray<byte>(8192, pinned: true);
+    private static readonly byte[] t_baseMask = GC.AllocateUninitializedArray<byte>(MaxFrameSize, pinned: true);
 
-    static ObxodkaFraming() => RandomNumberGenerator.Fill(t_noiseBuffer);
+    static ObxodkaFraming()
+    {
+        RandomNumberGenerator.Fill(t_noiseBuffer);
+        for (var i = 0; i < t_baseMask.Length; i++)
+        {
+            t_baseMask[i] = (byte)((i * 37) + ((i >> 3) ^ 0x9D));
+        }
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void MaskPayload(Span<byte> payload, byte salt)
     {
-        for (var i = 0; i < payload.Length; i++)
+        var len = payload.Length;
+        if (len <= 0)
         {
-            payload[i] ^= (byte)(salt + (i * 37) + ((i >> 3) ^ 0x9D));
+            return;
+        }
+
+        ref var dstRef = ref MemoryMarshal.GetReference(payload);
+        ref var maskRef = ref MemoryMarshal.GetArrayDataReference(t_baseMask);
+        var i = 0;
+
+        if (Vector256.IsHardwareAccelerated && len >= 32)
+        {
+            var vSalt = Vector256.Create(salt);
+            for (; i <= len - 32; i += 32)
+            {
+                var vBase = Vector256.LoadUnsafe(ref Unsafe.Add(ref maskRef, i));
+                var vData = Vector256.LoadUnsafe(ref Unsafe.Add(ref dstRef, i));
+                (vData ^ (vBase + vSalt)).StoreUnsafe(ref Unsafe.Add(ref dstRef, i));
+            }
+        }
+
+        if (Vector128.IsHardwareAccelerated && i <= len - 16)
+        {
+            var vSalt128 = Vector128.Create(salt);
+            for (; i <= len - 16; i += 16)
+            {
+                var vBase = Vector128.LoadUnsafe(ref Unsafe.Add(ref maskRef, i));
+                var vData = Vector128.LoadUnsafe(ref Unsafe.Add(ref dstRef, i));
+                (vData ^ (vBase + vSalt128)).StoreUnsafe(ref Unsafe.Add(ref dstRef, i));
+            }
+        }
+
+        for (; i < len; i++)
+        {
+            Unsafe.Add(ref dstRef, i) ^= (byte)(Unsafe.Add(ref maskRef, i) + salt);
         }
     }
 

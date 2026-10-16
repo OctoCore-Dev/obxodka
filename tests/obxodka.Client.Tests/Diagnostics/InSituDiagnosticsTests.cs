@@ -1,6 +1,3 @@
-using obxodka.Client.Diagnostics;
-using Xunit;
-
 namespace obxodka.Client.Tests.Diagnostics;
 
 [Trait("Category", "Unit")]

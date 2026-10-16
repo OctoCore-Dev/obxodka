@@ -7,17 +7,22 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _low = new();
     private readonly SemaphoreSlim _semaphore = new(0, 50000);
     private int _count;
+    private int _highStreak;
     private readonly int _maxCount = maxCapacity;
+    private readonly int _controlHeadroom = Math.Min(maxCapacity + 64, 49900);
 
     public bool TryEnqueue(byte[] buffer, int length)
     {
-        if (Interlocked.Increment(ref _count) > _maxCount)
+        var isControl = length < 20 || (length <= 32 && buffer.Length >= 9 && buffer[8] == 0x99);
+        var limit = isControl ? _controlHeadroom : _maxCount;
+
+        if (Interlocked.Increment(ref _count) > limit)
         {
             _ = Interlocked.Decrement(ref _count);
             return false;
         }
 
-        if (IsHighPriority(buffer, length))
+        if (isControl || IsHighPriority(buffer, length))
         {
             _high.Enqueue((buffer, length));
         }
@@ -38,16 +43,9 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             {
                 await _semaphore.WaitAsync(ct).ConfigureAwait(false);
 
-                if (_high.TryDequeue(out var highItem))
+                if (TryPopFair(out var item))
                 {
-                    _ = Interlocked.Decrement(ref _count);
-                    return highItem;
-                }
-
-                if (_low.TryDequeue(out var lowItem))
-                {
-                    _ = Interlocked.Decrement(ref _count);
-                    return lowItem;
+                    return item;
                 }
 
                 _ = _semaphore.Release();
@@ -64,15 +62,8 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         {
             if (_semaphore.Wait(0))
             {
-                if (_high.TryDequeue(out item))
+                if (TryPopFair(out item))
                 {
-                    _ = Interlocked.Decrement(ref _count);
-                    return true;
-                }
-
-                if (_low.TryDequeue(out item))
-                {
-                    _ = Interlocked.Decrement(ref _count);
                     return true;
                 }
 
@@ -85,12 +76,43 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryPopFair(out (byte[] buffer, int length) item)
+    {
+        var streak = Interlocked.Increment(ref _highStreak);
+        if ((streak & 7) == 0 && _low.TryDequeue(out item))
+        {
+            _ = Interlocked.Decrement(ref _count);
+            return true;
+        }
+
+        if (_high.TryDequeue(out item))
+        {
+            _ = Interlocked.Decrement(ref _count);
+            return true;
+        }
+
+        if (_low.TryDequeue(out item))
+        {
+            _ = Interlocked.Exchange(ref _highStreak, 0);
+            _ = Interlocked.Decrement(ref _count);
+            return true;
+        }
+
+        item = default;
+        return false;
+    }
+
     public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
     {
+        while (_semaphore.Wait(0))
+        {
+        }
+
         while (_high.TryDequeue(out var item))
         {
             _ = Interlocked.Decrement(ref _count);
-            if (item.buffer != null && item.buffer.Length > 0)
+            if (item.buffer is { Length: > 0 })
             {
                 returnBuffer?.Invoke(item.buffer);
             }
@@ -99,11 +121,13 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         while (_low.TryDequeue(out var item))
         {
             _ = Interlocked.Decrement(ref _count);
-            if (item.buffer != null && item.buffer.Length > 0)
+            if (item.buffer is { Length: > 0 })
             {
                 returnBuffer?.Invoke(item.buffer);
             }
         }
+
+        Volatile.Write(ref _count, 0);
     }
 
     public int Count => Volatile.Read(ref _count);
@@ -132,13 +156,13 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         if (version == 4)
         {
             var ihl = (packet[offset] & 0x0F) * 4;
-            if (innerLen < ihl)
+            if (ihl < 20 || innerLen < ihl)
             {
                 return false;
             }
 
             var protocol = packet[offset + 9];
-            if (protocol is 17 or 1)
+            if (protocol == 1 || (protocol == 17 && innerLen <= 320))
             {
                 return true;
             }
@@ -163,7 +187,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             }
 
             var nextHeader = packet[offset + 6];
-            if (nextHeader is 17 or 58)
+            if (nextHeader == 58 || (nextHeader == 17 && innerLen <= 320))
             {
                 return true;
             }

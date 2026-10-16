@@ -24,15 +24,12 @@ public static class DnsAdBlocker
         "adfox.ru",
         "banners.adfox.ru",
         "ads.adfox.ru",
-        "yandex.ru/ads",
         "stat.vk.com",
         "top-fwz1.mail.ru",
         "r3.mail.ru",
         "rs.mail.ru",
         "ad.mail.ru",
         "ads.vk.com",
-        "vk.com/ads",
-        "vk.com/rtrg",
         "tns-counter.ru",
         "counter.yadro.ru",
         "yadro.ru",
@@ -81,7 +78,6 @@ public static class DnsAdBlocker
         "pagead2.googlesyndication.com",
         "google-analytics.com",
         "ssl.google-analytics.com",
-        "youtube.com/api/stats/ads",
         "metrics.apple.com",
         "ads.tiktok.com",
         "analytics.tiktok.com",
@@ -336,16 +332,15 @@ public static class DnsAdBlocker
             return true;
         }
 
-        foreach (var blocked in t_blockedDomains)
+        var dotIdx = domain.IndexOf('.');
+        while (dotIdx >= 0 && dotIdx + 1 < domain.Length)
         {
-            if (domain.EndsWith(blocked, StringComparison.OrdinalIgnoreCase))
+            var parent = domain[(dotIdx + 1)..];
+            if (t_blockedDomains.Contains(parent))
             {
-                var prefixLen = domain.Length - blocked.Length;
-                if (prefixLen == 0 || domain[prefixLen - 1] == '.')
-                {
-                    return true;
-                }
+                return true;
             }
+            dotIdx = domain.IndexOf('.', dotIdx + 1);
         }
 
         return false;
@@ -389,7 +384,10 @@ public static class DnsAdBlocker
 
     private static byte[] CreateDnsResponse(byte[] req, int ipHdrLen, int udpOffset, int dnsOffset, int qNameLen, bool isIpv4)
     {
-        var totalLen = dnsOffset + 12 + qNameLen + 4 + 16;
+        var qType = BinaryPrimitives.ReadUInt16BigEndian(req.AsSpan(dnsOffset + 12 + qNameLen, 2));
+        var isAaaa = qType == 28;
+        var ansLen = isAaaa ? 0 : 16;
+        var totalLen = dnsOffset + 12 + qNameLen + 4 + ansLen;
         var resp = new byte[totalLen];
 
         Buffer.BlockCopy(req, 0, resp, 0, ipHdrLen);
@@ -418,21 +416,24 @@ public static class DnsAdBlocker
         var dnsSpan = resp.AsSpan(dnsOffset);
 
         BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(2, 2), 0x8180);
-        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), 1);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), isAaaa ? (ushort)0 : (ushort)1);
 
-        var ansOffset = dnsOffset + 12 + qNameLen + 4;
-        var ansSpan = resp.AsSpan(ansOffset);
+        if (!isAaaa)
+        {
+            var ansOffset = dnsOffset + 12 + qNameLen + 4;
+            var ansSpan = resp.AsSpan(ansOffset);
 
-        BinaryPrimitives.WriteUInt16BigEndian(ansSpan[..2], 0xC00C);
-        BinaryPrimitives.WriteUInt16BigEndian(ansSpan.Slice(2, 2), 1);
-        BinaryPrimitives.WriteUInt16BigEndian(ansSpan.Slice(4, 2), 1);
-        BinaryPrimitives.WriteUInt32BigEndian(ansSpan.Slice(6, 4), 300);
-        BinaryPrimitives.WriteUInt16BigEndian(ansSpan.Slice(10, 2), 4);
+            BinaryPrimitives.WriteUInt16BigEndian(ansSpan[..2], 0xC00C);
+            BinaryPrimitives.WriteUInt16BigEndian(ansSpan.Slice(2, 2), 1);
+            BinaryPrimitives.WriteUInt16BigEndian(ansSpan.Slice(4, 2), 1);
+            BinaryPrimitives.WriteUInt32BigEndian(ansSpan.Slice(6, 4), 300);
+            BinaryPrimitives.WriteUInt16BigEndian(ansSpan.Slice(10, 2), 4);
 
-        ansSpan[12] = 0;
-        ansSpan[13] = 0;
-        ansSpan[14] = 0;
-        ansSpan[15] = 0;
+            ansSpan[12] = 0;
+            ansSpan[13] = 0;
+            ansSpan[14] = 0;
+            ansSpan[15] = 0;
+        }
 
         ComputeChecksums(resp, ipHdrLen, udpOffset, totalLen, isIpv4);
         return resp;

@@ -69,9 +69,6 @@ public static class ClientHelloBuilder
 
     private static void WriteExtensions(byte[] buffer, ref int offset, ReadOnlySpan<byte> sni, ReadOnlySpan<byte> pskBinder)
     {
-        var extStart = offset;
-        offset += 2;
-
         WriteServerName(buffer, ref offset, sni);
         WriteSupportedVersions(buffer, ref offset);
         WriteSupportedGroups(buffer, ref offset);
@@ -84,9 +81,6 @@ public static class ClientHelloBuilder
         WriteRecordSizeLimit(buffer, ref offset);
         WriteApplicationSettings(buffer, ref offset);
         WriteCompressCertificate(buffer, ref offset);
-
-        var extLength = offset - extStart - 2;
-        BinaryPrimitives.WriteUInt16BigEndian(new Span<byte>(buffer, extStart, 2), (ushort)extLength);
     }
 
     private static void WriteServerName(byte[] buffer, ref int offset, ReadOnlySpan<byte> sni)
@@ -156,7 +150,7 @@ public static class ClientHelloBuilder
         offset += 2;
 
         var group = 0x0017;
-        var ecdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var ecdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var publicKey = ecdh.PublicKey.ExportSubjectPublicKeyInfo();
         var rawPublicKey = publicKey.AsSpan(26);
 

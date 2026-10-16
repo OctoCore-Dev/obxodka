@@ -24,18 +24,15 @@ public static class PacketRouter
         {
             var protocol = packet[9];
             var ihl = (packet[0] & 0x0F) * 4;
+            if (ihl < 20 || length < ihl)
+            {
+                primaryRay = 0;
+                return;
+            }
 
-            if (protocol is 1 or 17)
+            if (protocol == 1 || (protocol == 17 && length <= 256))
             {
                 isRealtimeGaming = true;
-            }
-            else if (protocol == 6 && length >= ihl + 20)
-            {
-                var tcpHeaderLen = (packet[ihl + 12] >> 4) * 4;
-                if (length <= ihl + tcpHeaderLen)
-                {
-                    isRealtimeGaming = true;
-                }
             }
 
             var srcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(12, 4));
@@ -55,17 +52,9 @@ public static class PacketRouter
         {
             var nextHeader = packet[6];
 
-            if (nextHeader is 58 or 17)
+            if (nextHeader == 58 || (nextHeader == 17 && length <= 256))
             {
                 isRealtimeGaming = true;
-            }
-            else if (nextHeader == 6 && length >= 60)
-            {
-                var tcpHeaderLen = (packet[40 + 12] >> 4) * 4;
-                if (length <= 40 + tcpHeaderLen)
-                {
-                    isRealtimeGaming = true;
-                }
             }
 
             var srcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(20, 4));

@@ -13,8 +13,8 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     private readonly Channel<(byte[] buffer, int length)>[] _txChannels =
     [
-        Channel.CreateUnbounded<(byte[] buffer, int length)>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false }),
-        Channel.CreateUnbounded<(byte[] buffer, int length)>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false })
+        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait }),
+        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait })
     ];
     private readonly PacketDeduplicator _deduplicator = new();
     private TaskCompletionSource<(string ip, string ip6)> _ipTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -231,11 +231,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     {
         int[] primaryPorts = initialPort == 443 ? [443, 8443] : [initialPort, 443, 8443];
         var portIdx = 0;
+        var consecutiveDrops = 0;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = primaryPorts[portIdx % primaryPorts.Length];
             var client = portIdx == 0 && _httpClient0 != null ? _httpClient0 : ResetRayHttpClient(0, channelHost, activePort, enableDpi);
+            var rxBefore = Volatile.Read(ref _lastRxTicks0);
             try
             {
                 await RunStreamAsync(0, client, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);
@@ -256,6 +258,23 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 dropped on port {activePort}: {ex.Message}. Reconnecting in 1s...");
                 }
                 portIdx++;
+            }
+
+            if (Volatile.Read(ref _lastRxTicks0) > rxBefore)
+            {
+                consecutiveDrops = 0;
+            }
+            else
+            {
+                consecutiveDrops++;
+            }
+
+            if (consecutiveDrops >= primaryPorts.Length && _rayCts[1] == null && Volatile.Read(ref _connected) && !ct.IsCancellationRequested)
+            {
+                Shared.Logging.AppLogger.LogWarning("[OBXODKA-STREAM] Both rays dropped across all ports. Signaling connection drop.");
+                Volatile.Write(ref _connected, false);
+                OnConnectionDropped?.Invoke();
+                break;
             }
 
             if (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
@@ -587,16 +606,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             var otherRay = ray == 0 ? 1 : 0;
             var isOtherAlive = _rayCts[otherRay] != null;
 
-            if (!Volatile.Read(ref _connected) || _cts?.IsCancellationRequested == true || !isOtherAlive)
-            {
-                if (!isOtherAlive && Volatile.Read(ref _connected) && _cts?.IsCancellationRequested != true)
-                {
-                    Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Both rays dropped. Signaling connection drop.");
-                    Volatile.Write(ref _connected, false);
-                    OnConnectionDropped?.Invoke();
-                }
-            }
-            else
+            if (isOtherAlive && Volatile.Read(ref _connected) && _cts?.IsCancellationRequested != true)
             {
                 Volatile.Write(ref _activeRays, 1);
                 Volatile.Write(ref _preferredRay, otherRay);

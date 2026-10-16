@@ -1,6 +1,3 @@
-using obxodka.Client.Security;
-using System.Security.Authentication;
-
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocols")]
@@ -98,7 +95,7 @@ public sealed class DynamicProtocolAndConnectivityTests
             }, cts.Token);
             Assert.True(validated);
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or System.Security.Authentication.AuthenticationException)
+        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or AuthenticationException)
         {
             return;
         }
@@ -219,14 +216,14 @@ public sealed class DynamicProtocolAndConnectivityTests
                 TargetHost = "gateway.icloud.com",
                 ApplicationProtocols = [SslApplicationProtocol.Http2],
                 EnabledSslProtocols = SslProtocols.Tls13,
-                RemoteCertificateValidationCallback = (s, c, ch, e) => true
+                RemoteCertificateValidationCallback = (s, c, ch, e) => CertificateValidator.ValidateServerCertificate(c, ch, e, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
             },
             ConnectCallback = async (context, ct) =>
             {
-                var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
                 await socket.ConnectAsync("70.34.201.253", 443, ct);
-                var netStream = new System.Net.Sockets.NetworkStream(socket, true);
-                return new obxodka.Core.Transports.DpiBypassStream(netStream);
+                var netStream = new NetworkStream(socket, true);
+                return new DpiBypassStream(netStream);
             }
         };
 
@@ -237,8 +234,8 @@ public sealed class DynamicProtocolAndConnectivityTests
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
         };
 
-        var hsPayload = System.Text.Encoding.UTF8.GetBytes("CBDEBFDE826F40C6BF0F77525522E624C7A624BC");
-        var hsFrame = obxodka.Shared.Stealth.ObxodkaFraming.Pack(obxodka.Shared.Stealth.ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
+        var hsPayload = Encoding.UTF8.GetBytes("CBDEBFDE826F40C6BF0F77525522E624C7A624BC");
+        var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
 
         var pushContent = new PushStreamContent(async (stream, ct) =>
         {

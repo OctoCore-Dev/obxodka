@@ -971,6 +971,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentProfile?.SetHeaderTopInset(safeTop);
         TabContentThemeStore?.SetHeaderTopInset(safeTop);
         TabContentDevices?.SetHeaderTopInset(safeTop);
+        TabContentAuth?.SetHeaderTopInset(safeTop);
+        TabContentPayment?.SetHeaderTopInset(safeTop);
+        TabContentDelete?.SetHeaderTopInset(safeTop);
     }
 
     private void UpdateBalanceUI()

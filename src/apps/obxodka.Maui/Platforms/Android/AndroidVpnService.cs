@@ -1,4 +1,3 @@
-using obxodka.Shared.Config;
 using Uri = System.Uri;
 
 namespace obxodka.Platforms.Android;
@@ -23,6 +22,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
     private List<VpnServerDto> _fallbackServers = [];
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
+    private readonly SemaphoreSlim _vpnGate = new(1, 1);
 
     private AndroidVpnService()
     {
@@ -281,54 +281,55 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
     public async Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers)
     {
-        ChangeState(AppVpnState.Connecting);
-        _fallbackServers = fallbackServers != null ? [.. fallbackServers] : [];
-        _currentServerIndex = _fallbackServers.FindIndex(s => s.Ip == serverIp);
-        if (_currentServerIndex < 0 && !string.IsNullOrEmpty(serverIp))
-        {
-            _fallbackServers.Insert(0, new VpnServerDto(serverIp, serverPort, "", true, 0, null));
-            _currentServerIndex = 0;
-        }
-
-        var targetIp = serverIp;
-        if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
-        {
-            try
-            {
-                var addrs = await Dns.GetHostAddressesAsync(serverIp);
-                if (addrs.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) is { } ipv4)
-                {
-                    targetIp = ipv4.ToString();
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
-            }
-        }
-
-        var stealthHost = AppSecrets.AllowedSniPool[0];
-
-        _currentServerIp = targetIp;
-        _currentServerPort = serverPort;
-        _isExplicitlyStopped = false;
-
-        var intent = global::Android.Net.VpnService.Prepare(Platform.AppContext);
-        if (intent is not null)
-        {
-            var granted = await MainActivity.RequestVpnPermissionAsync(intent);
-            if (!granted)
-            {
-                ChangeState(AppVpnState.Disconnected);
-                SetError("VPN разрешение не выдано");
-                return;
-            }
-        }
-
-        OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(stealthHost));
-
+        await _vpnGate.WaitAsync();
         try
         {
+            ChangeState(AppVpnState.Connecting);
+            _fallbackServers = fallbackServers != null ? [.. fallbackServers] : [];
+            _currentServerIndex = _fallbackServers.FindIndex(s => s.Ip == serverIp);
+            if (_currentServerIndex < 0 && !string.IsNullOrEmpty(serverIp))
+            {
+                _fallbackServers.Insert(0, new VpnServerDto(serverIp, serverPort, "", true, 0, null));
+                _currentServerIndex = 0;
+            }
+
+            var targetIp = serverIp;
+            if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
+            {
+                try
+                {
+                    var addrs = await Dns.GetHostAddressesAsync(serverIp);
+                    if (addrs.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) is { } ipv4)
+                    {
+                        targetIp = ipv4.ToString();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
+                }
+            }
+
+            var stealthHost = AppSecrets.AllowedSniPool[0];
+
+            _currentServerIp = targetIp;
+            _currentServerPort = serverPort;
+            _isExplicitlyStopped = false;
+
+            var intent = global::Android.Net.VpnService.Prepare(Platform.AppContext);
+            if (intent is not null)
+            {
+                var granted = await MainActivity.RequestVpnPermissionAsync(intent);
+                if (!granted)
+                {
+                    ChangeState(AppVpnState.Disconnected);
+                    SetError("VPN разрешение не выдано");
+                    return;
+                }
+            }
+
+            OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(stealthHost));
+
             MainActivity.StartVpnService();
             _ = await OctopusVpnService.WaitForServiceReadyAsync(4000)
                 ?? throw new InvalidOperationException("Не удалось запустить системную службу VPN.");
@@ -513,25 +514,37 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 ? $"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS хэндшейк."
                 : $"Ошибка подключения: {ex.Message}");
         }
+        finally
+        {
+            _ = _vpnGate.Release();
+        }
     }
 
     public async Task StopVpnAsync()
     {
         _isExplicitlyStopped = true;
-        ChangeState(AppVpnState.Disconnecting);
-        OctopusVpnService.Instance?.StopNativeVpn();
-
-        await Task.Run(async () =>
+        await _vpnGate.WaitAsync();
+        try
         {
-            try
-            {
-                var disposeTask = OctopusEngine.Current.DisposeAsync().AsTask();
-                _ = await Task.WhenAny(disposeTask, Task.Delay(800));
-            }
-            catch { }
-        }).ConfigureAwait(false);
+            ChangeState(AppVpnState.Disconnecting);
+            OctopusVpnService.Instance?.StopNativeVpn();
 
-        ChangeState(AppVpnState.Disconnected);
+            await Task.Run(async () =>
+            {
+                try
+                {
+                    var disposeTask = OctopusEngine.Current.DisposeAsync().AsTask();
+                    _ = await Task.WhenAny(disposeTask, Task.Delay(800));
+                }
+                catch { }
+            }).ConfigureAwait(false);
+
+            ChangeState(AppVpnState.Disconnected);
+        }
+        finally
+        {
+            _ = _vpnGate.Release();
+        }
     }
 
     public void ChangeState(AppVpnState newState)
@@ -557,5 +570,9 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         MainThread.BeginInvokeOnMainThread(() => OnErrorOccurred?.Invoke(message));
     }
 
-    public void Dispose() => _roamingCts?.Dispose();
+    public void Dispose()
+    {
+        _roamingCts?.Dispose();
+        _vpnGate.Dispose();
+    }
 }

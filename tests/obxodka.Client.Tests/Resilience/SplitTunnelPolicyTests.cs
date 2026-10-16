@@ -1,5 +1,3 @@
-using obxodka.Core.Models;
-
 namespace obxodka.Client.Tests.Resilience;
 
 [Trait("Category", "Unit")]

@@ -55,8 +55,14 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
     private PowerManager.WakeLock? _wakeLock;
 
     private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
-        Channel.CreateUnbounded<(byte[] buffer, int length)>(
-            new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
+        Channel.CreateBounded<(byte[] buffer, int length)>(
+            new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial nint read(int fd, byte* buf, nuint count);
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial nint write(int fd, byte* buf, nuint count);
 
     private void AcquireWakeLock()
     {
@@ -69,7 +75,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
         if (_wakeLock is { IsHeld: false })
         {
-            _wakeLock.Acquire();
+            _wakeLock.Acquire(600_000L);
         }
     }
 
@@ -99,6 +105,13 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         }
         StopNativeVpn();
         base.OnDestroy();
+    }
+
+    public override void OnRevoke()
+    {
+        StopNativeVpn();
+        AndroidVpnService.Instance.ChangeState(AppVpnState.Disconnected);
+        base.OnRevoke();
     }
 
     public static bool ProtectSocket(Socket? sock)
@@ -491,7 +504,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     .AddRoute("0.0.0.0", 0);
 
                 var ip6 = OctopusEngine.Current.AssignedIpV6;
-                if (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+                if (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     try
                     {
@@ -537,12 +550,13 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     _currentTunIp = ip;
                     _isTunRunning = true;
 
+                    var tunFd = _tunInterface.Fd;
                     var outStream = new FileOutputStream(_tunInterface.FileDescriptor);
                     var inStream = new FileInputStream(_tunInterface.FileDescriptor);
                     _tunOutputStream = outStream;
                     _tunInputStream = inStream;
 
-                    _txThread = new Thread(() => ProcessTraffic(inStream, ct))
+                    _txThread = new Thread(() => ProcessTraffic(tunFd, ct))
                     {
                         IsBackground = true,
                         Priority = System.Threading.ThreadPriority.Highest,
@@ -550,7 +564,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     };
                     _txThread.Start();
 
-                    _rxThread = new Thread(() => ProcessDownstreamTraffic(outStream, ct))
+                    _rxThread = new Thread(() => ProcessDownstreamTraffic(tunFd, ct))
                     {
                         IsBackground = true,
                         Priority = System.Threading.ThreadPriority.Highest,
@@ -574,7 +588,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         }
     }
 
-    private void ProcessDownstreamTraffic(FileOutputStream outputStream, CancellationToken ct)
+    private void ProcessDownstreamTraffic(int tunFd, CancellationToken ct)
     {
         var reader = _downstreamChannel.Reader;
         try
@@ -585,7 +599,24 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 {
                     try
                     {
-                        outputStream.Write(item.buffer, 0, item.length);
+                        unsafe
+                        {
+                            fixed (byte* ptr = item.buffer)
+                            {
+                                var remaining = (nuint)item.length;
+                                var offset = 0;
+                                while (remaining > 0 && !ct.IsCancellationRequested)
+                                {
+                                    var written = write(tunFd, ptr + offset, remaining);
+                                    if (written <= 0)
+                                    {
+                                        break;
+                                    }
+                                    offset += (int)written;
+                                    remaining -= (nuint)written;
+                                }
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -626,26 +657,26 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         finally
         {
             _isTunRunning = false;
-            try
-            {
-                outputStream.Close();
-                outputStream.Dispose();
-            }
-            catch { }
         }
     }
 
-    private void ProcessTraffic(FileInputStream inputStream, CancellationToken ct)
+    private void ProcessTraffic(int tunFd, CancellationToken ct)
     {
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 var buffer = ArrayPool<byte>.Shared.Rent(16384);
-                int length;
+                nint bytesRead;
                 try
                 {
-                    length = inputStream.Read(buffer);
+                    unsafe
+                    {
+                        fixed (byte* ptr = buffer)
+                        {
+                            bytesRead = read(tunFd, ptr, 16384);
+                        }
+                    }
                 }
                 catch
                 {
@@ -653,36 +684,33 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     break;
                 }
 
-                if (length < 0)
+                if (bytesRead <= 0)
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
                     break;
                 }
 
-                if (length > 0)
-                {
-                    if (OctopusEngine.Current.IsServerDestination(buffer.AsSpan(0, length), length))
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
-                        continue;
-                    }
-
-                    var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length);
-                    if (sinkholeResp is not null)
-                    {
-                        var copy = ArrayPool<byte>.Shared.Rent(sinkholeResp.Length);
-                        Buffer.BlockCopy(sinkholeResp, 0, copy, 0, sinkholeResp.Length);
-                        _ = _downstreamChannel.Writer.TryWrite((copy, sinkholeResp.Length));
-                        ArrayPool<byte>.Shared.Return(buffer);
-                        continue;
-                    }
-
-                    _ = OctopusEngine.Current.SendPacketFromPoolAsync(buffer, length);
-                }
-                else
+                var length = (int)bytesRead;
+                if (OctopusEngine.Current.IsServerDestination(buffer.AsSpan(0, length), length))
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
+                    continue;
                 }
+
+                var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length);
+                if (sinkholeResp is not null)
+                {
+                    var copy = ArrayPool<byte>.Shared.Rent(sinkholeResp.Length);
+                    Buffer.BlockCopy(sinkholeResp, 0, copy, 0, sinkholeResp.Length);
+                    if (!_downstreamChannel.Writer.TryWrite((copy, sinkholeResp.Length)))
+                    {
+                        ArrayPool<byte>.Shared.Return(copy);
+                    }
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    continue;
+                }
+
+                _ = OctopusEngine.Current.SendPacketFromPoolAsync(buffer, length);
             }
         }
         catch (Exception ex)
@@ -692,12 +720,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         finally
         {
             _isTunRunning = false;
-            try
-            {
-                inputStream.Close();
-                inputStream.Dispose();
-            }
-            catch { }
         }
     }
 

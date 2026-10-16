@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.VpnView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -115,10 +115,10 @@
                                                     x:Name="IpVersionBadge"
                                                     Padding="4,1"
                                                     BackgroundColor="{DynamicResource AccentDim}"
+                                                    IsVisible="False"
                                                     Stroke="{DynamicResource Accent}"
                                                     StrokeShape="RoundRectangle 3"
                                                     StrokeThickness="0.6"
-                                                    IsVisible="False"
                                                     VerticalOptions="Center">
                                                     <Label
                                                         x:Name="IpVersionLabel"
@@ -133,9 +133,9 @@
                                                 x:Name="IpCopyButton"
                                                 Padding="3,1"
                                                 BackgroundColor="Transparent"
+                                                IsVisible="False"
                                                 Stroke="Transparent"
                                                 StrokeShape="RoundRectangle 4"
-                                                IsVisible="False"
                                                 VerticalOptions="Center">
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer Tapped="OnCopyIpClickedAsync" />
@@ -437,13 +437,14 @@
                             <HorizontalStackLayout Spacing="9" VerticalOptions="Center">
                                 <Border
                                     x:Name="SelectedServerFlagBorder"
-                                    WidthRequest="25"
+                                    Margin="{OnPlatform Android='0,-2.5,0,0',
+                                                        Default='0'}"
                                     HeightRequest="17"
-                                    Margin="{OnPlatform Android='0,-2.5,0,0', Default='0'}"
+                                    Stroke="{DynamicResource BorderMedium}"
                                     StrokeShape="RoundRectangle 3"
                                     StrokeThickness="0.8"
-                                    Stroke="{DynamicResource BorderMedium}"
-                                    VerticalOptions="Center">
+                                    VerticalOptions="Center"
+                                    WidthRequest="25">
                                     <Grid>
                                         <Image
                                             x:Name="SelectedServerFlagImage"
@@ -451,8 +452,11 @@
                                             IsVisible="False" />
                                         <Label
                                             x:Name="SelectedServerFlagLabel"
-                                            FontSize="{OnIdiom Desktop=16, Phone=15, Default=15}"
-                                            Margin="{OnPlatform Android='0,-1.5,0,0', Default='0'}"
+                                            Margin="{OnPlatform Android='0,-1.5,0,0',
+                                                                Default='0'}"
+                                            FontSize="{OnIdiom Desktop=16,
+                                                               Phone=15,
+                                                               Default=15}"
                                             HorizontalOptions="Center"
                                             VerticalOptions="Center" />
                                     </Grid>
@@ -461,7 +465,9 @@
                                     <Label
                                         x:Name="SelectedServerLocationLabel"
                                         FontFamily="{DynamicResource AppFontBold}"
-                                        FontSize="{OnIdiom Desktop=13, Phone=12, Default=13}"
+                                        FontSize="{OnIdiom Desktop=13,
+                                                           Phone=12,
+                                                           Default=13}"
                                         Text="Швеция, Стокгольм"
                                         TextColor="{DynamicResource TextPrimary}"
                                         VerticalOptions="Center" />
@@ -497,10 +503,10 @@
                                     </HorizontalStackLayout>
                                 </VerticalStackLayout>
                                 <mi:MauiIcon
+                                    Margin="3,0,0,0"
                                     Icon="{mi:Fluent Icon=ChevronDown16}"
                                     IconColor="{DynamicResource TextSecondary}"
                                     IconSize="14"
-                                    Margin="3,0,0,0"
                                     VerticalOptions="Center" />
                             </HorizontalStackLayout>
                         </Border>
@@ -670,14 +676,20 @@
                 Margin="20"
                 Padding="22"
                 HorizontalOptions="Center"
-                MaximumHeightRequest="{OnIdiom Desktop=540, Phone=490, Default=520}"
-                MaximumWidthRequest="{OnIdiom Desktop=460, Phone=360, Default=420}"
+                MaximumHeightRequest="{OnIdiom Desktop=540,
+                                               Phone=490,
+                                               Default=520}"
+                MaximumWidthRequest="{OnIdiom Desktop=460,
+                                              Phone=360,
+                                              Default=420}"
                 Stroke="{DynamicResource BorderMedium}"
                 StrokeShape="RoundRectangle 20"
                 StrokeThickness="1.2"
                 Style="{StaticResource NeoCard}"
                 VerticalOptions="Center"
-                WidthRequest="{OnIdiom Desktop=440, Phone=340, Default=400}">
+                WidthRequest="{OnIdiom Desktop=440,
+                                       Phone=340,
+                                       Default=400}">
                 <Border.Shadow>
                     <Shadow
                         Brush="{DynamicResource Accent}"
@@ -690,8 +702,14 @@
                 </Border.GestureRecognizers>
 
                 <Grid RowDefinitions="Auto, Auto, *, Auto" RowSpacing="14">
-                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" VerticalOptions="Center">
-                        <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
+                    <Grid
+                        Grid.Row="0"
+                        ColumnDefinitions="*, Auto"
+                        VerticalOptions="Center">
+                        <HorizontalStackLayout
+                            Grid.Column="0"
+                            Spacing="8"
+                            VerticalOptions="Center">
                             <mi:MauiIcon
                                 Icon="{mi:Fluent Icon=Server24}"
                                 IconColor="{DynamicResource Accent}"
@@ -730,7 +748,10 @@
                         Text="Выберите оптимальную локацию для подключения:"
                         TextColor="{DynamicResource TextSecondary}" />
 
-                    <ScrollView Grid.Row="2" HorizontalScrollBarVisibility="Never" VerticalScrollBarVisibility="Default">
+                    <ScrollView
+                        Grid.Row="2"
+                        HorizontalScrollBarVisibility="Never"
+                        VerticalScrollBarVisibility="Default">
                         <VerticalStackLayout x:Name="ServerItemsContainer" Spacing="8" />
                     </ScrollView>
 

@@ -56,6 +56,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", $"delete {AppConfig.DirectServerIp} mask 255.255.255.255");
         await DisableDnsLeakProtectionAsync();
+        await RestoreCrashRecoveryStateAsync();
     }
 
     private void HandleDeadConnection()
@@ -580,24 +581,41 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
 
                     var count = adapter.ReceiveBatch(batch, ct);
-                    for (var i = 0; i < count; i++)
+                    var processed = 0;
+                    try
                     {
-                        var (buf, len) = batch[i];
-                        if (OctopusEngine.Current.IsServerDestination(buf.AsSpan(0, len), len))
+                        for (var i = 0; i < count; i++)
                         {
-                            ArrayPool<byte>.Shared.Return(buf);
-                            continue;
-                        }
+                            processed = i;
+                            var (buf, len) = batch[i];
+                            if (OctopusEngine.Current.IsServerDestination(buf.AsSpan(0, len), len))
+                            {
+                                ArrayPool<byte>.Shared.Return(buf);
+                                continue;
+                            }
 
-                        var sinkholeResp = DnsAdBlocker.ProcessPacket(buf, len);
-                        if (sinkholeResp is not null)
+                            var sinkholeResp = DnsAdBlocker.ProcessPacket(buf, len);
+                            if (sinkholeResp is not null)
+                            {
+                                adapter.SendPacket(sinkholeResp);
+                                ArrayPool<byte>.Shared.Return(buf);
+                                continue;
+                            }
+
+                            OctopusEngine.Current.SendPacketFromPool(buf, len);
+                        }
+                        processed = count;
+                    }
+                    finally
+                    {
+                        for (var i = processed; i < count; i++)
                         {
-                            adapter.SendPacket(sinkholeResp);
-                            ArrayPool<byte>.Shared.Return(buf);
-                            continue;
+                            var (buf, _) = batch[i];
+                            if (buf != null)
+                            {
+                                ArrayPool<byte>.Shared.Return(buf);
+                            }
                         }
-
-                        OctopusEngine.Current.SendPacketFromPool(buf, len);
                     }
                 }
             }
@@ -1169,6 +1187,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             if (_suspendedConflictingAdapters.Count > 0 || _suspendedServices.Count > 0)
             {
+                SaveRecoveryState(_suspendedConflictingAdapters, _suspendedServices);
                 Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Obxodka dominance active: {_suspendedConflictingAdapters.Count} adapter(s) and {_suspendedServices.Count} service(s) suppressed. Waiting 300ms for network stack...");
                 await Task.Delay(300).ConfigureAwait(false);
             }
@@ -1183,6 +1202,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         if (_suspendedConflictingAdapters.Count == 0 && _suspendedServices.Count == 0)
         {
+            ClearRecoveryState();
             return;
         }
 
@@ -1218,7 +1238,77 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         {
             _suspendedConflictingAdapters.Clear();
             _suspendedServices.Clear();
+            ClearRecoveryState();
         }
+    }
+
+    private sealed class VpnRecoveryState
+    {
+        public List<string> Adapters { get; set; } = [];
+        public List<string> Services { get; set; } = [];
+    }
+
+    private static string GetRecoveryFilePath()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var dir = Path.Combine(appData, "Obxodka");
+        _ = Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "vpn_recovery.json");
+    }
+
+    private static void SaveRecoveryState(List<string> adapters, List<string> services)
+    {
+        try
+        {
+            var state = new VpnRecoveryState { Adapters = [.. adapters], Services = [.. services] };
+            var json = JsonSerializer.Serialize(state);
+            File.WriteAllText(GetRecoveryFilePath(), json);
+        }
+        catch { }
+    }
+
+    private static void ClearRecoveryState()
+    {
+        try
+        {
+            var path = GetRecoveryFilePath();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch { }
+    }
+
+    private static async Task RestoreCrashRecoveryStateAsync()
+    {
+        try
+        {
+            var path = GetRecoveryFilePath();
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            var json = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+            var state = JsonSerializer.Deserialize<VpnRecoveryState>(json);
+            if (state != null)
+            {
+                foreach (var adapter in state.Adapters)
+                {
+                    _ = await RunCmdAsync("netsh", $"interface set interface name=\"{adapter}\" admin=ENABLED").ConfigureAwait(false);
+                    _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"Enable-NetAdapter -Name '{adapter}' -Confirm:$false -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
+                    _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapter}\" metric=default").ConfigureAwait(false);
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapter}\" metric=default").ConfigureAwait(false);
+                }
+                foreach (var svc in state.Services)
+                {
+                    _ = await RunCmdAsync("net", $"start \"{svc}\"").ConfigureAwait(false);
+                }
+            }
+            File.Delete(path);
+        }
+        catch { }
     }
 
     public string? DetectConflictingVpn()

@@ -4,10 +4,10 @@ public sealed class PacketDeduplicator
 {
     private const int RingSize = 16384;
     private const int RingMask = RingSize - 1;
-    private const long MaxDuplicateAgeMs = 500;
+    private const ulong TimeMask = 0xFFFFFUL;
+    private const ulong MaxDuplicateAgeMs = 500UL;
 
-    private readonly ulong[] _seenKeys = new ulong[RingSize];
-    private readonly long[] _seenTimestamps = new long[RingSize];
+    private readonly ulong[] _entries = new ulong[RingSize];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsDuplicate(ReadOnlySpan<byte> packet)
@@ -21,45 +21,56 @@ public sealed class PacketDeduplicator
         var version = packet[0] >> 4;
         if (version == 4)
         {
-            if (packet[9] == 6)
+            var proto = packet[9];
+            if (proto != 1 && (length > 256 || (proto != 17 && proto != 6)))
             {
-                var ipHdrLen = (packet[0] & 0x0F) * 4;
-                if (length >= ipHdrLen + 20)
-                {
-                    var tcpHdrLen = ((packet[ipHdrLen + 12] >> 4) & 0x0F) * 4;
-                    if (length <= ipHdrLen + tcpHdrLen)
-                    {
-                        return false;
-                    }
-                }
+                return false;
             }
         }
-        else if (version == 6 && length >= 60)
+        else if (version == 6 && length >= 40)
         {
-            if (packet[6] == 6)
+            var nextHdr = packet[6];
+            if (nextHdr != 58 && (length > 256 || (nextHdr != 17 && nextHdr != 6)))
             {
-                var tcpHdrLen = ((packet[40 + 12] >> 4) & 0x0F) * 4;
-                if (length <= 40 + tcpHdrLen)
-                {
-                    return false;
-                }
+                return false;
             }
+        }
+        else
+        {
+            return false;
         }
 
-        var key = FastHash64(packet);
+        Span<byte> scratch = stackalloc byte[Math.Min(length, 256)];
+        packet[..scratch.Length].CopyTo(scratch);
+        if (version == 4 && scratch.Length >= 12)
+        {
+            scratch[8] = 0;
+            scratch[10] = 0;
+            scratch[11] = 0;
+        }
+
+        var key = FastHash64(scratch);
         var slot = (int)(key & RingMask);
-        var now = Environment.TickCount64;
-
-        var prevKey = Volatile.Read(ref _seenKeys[slot]);
-        var prevTime = Volatile.Read(ref _seenTimestamps[slot]);
-
-        if (prevKey == key && (now - prevTime) < MaxDuplicateAgeMs)
+        var keyTag = key & ~TimeMask;
+        if (keyTag == 0)
         {
-            return true;
+            keyTag = 1UL << 20;
         }
 
-        _seenKeys[slot] = key;
-        _seenTimestamps[slot] = now;
+        var now = (ulong)Environment.TickCount64 & TimeMask;
+        var newEntry = keyTag | now;
+        var prevEntry = Interlocked.Exchange(ref _entries[slot], newEntry);
+
+        if ((prevEntry & ~TimeMask) == keyTag)
+        {
+            var prevTime = prevEntry & TimeMask;
+            var age = (now - prevTime) & TimeMask;
+            if (age < MaxDuplicateAgeMs)
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 

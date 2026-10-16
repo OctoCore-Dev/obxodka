@@ -1,21 +1,27 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:views="using:obxodka.Avalonia.Views"
-        mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="500"
-        x:Class="obxodka.Avalonia.Views.MainWindow"
-        Title="Obxodka"
-        CanResize = "false">
+﻿<Window
+    x:Class="obxodka.Avalonia.Views.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:obxodka.Avalonia.Views"
+    Title="Obxodka"
+    d:DesignHeight="500"
+    d:DesignWidth="300"
+    CanResize="false"
+    mc:Ignorable="d">
 
-    <!-- Главная сетка: колонка 150px под сайдбар и '*' под основной контент -->
+    <!--  Главная сетка: колонка 150px под сайдбар и '*' под основной контент  -->
     <Grid Background="{DynamicResource PrimaryBackground}" ColumnDefinitions="150, *">
-        
-        <!-- Вызываем наш отдельный сайдбар -->
+
+        <!--  Вызываем наш отдельный сайдбар  -->
         <views:Sidebar Grid.Column="0" />
 
-        <!-- Основной контент: кнопка подключения -->
-        <views:ConnectButton Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" />
+        <!--  Основной контент: кнопка подключения  -->
+        <views:ConnectButton
+            Grid.Column="1"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center" />
 
     </Grid>
 

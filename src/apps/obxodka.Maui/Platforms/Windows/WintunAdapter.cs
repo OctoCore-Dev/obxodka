@@ -105,7 +105,7 @@ internal sealed partial class WintunAdapter : IDisposable
         throw new InvalidOperationException($"Не удалось создать или открыть адаптер Wintun (Код Win32: {createErrFresh}, OpenErr: {openErr}). Убедитесь, что запущен только один экземпляр программы и есть права администратора.");
     }
 
-    public void StartSession(uint capacity = 0x4000000)
+    public void StartSession(uint capacity = 0x800000)
     {
         lock (_rxLock)
             lock (_txLock)
@@ -147,50 +147,31 @@ internal sealed partial class WintunAdapter : IDisposable
 
         while (!ct.IsCancellationRequested && !_isDisposed)
         {
-            while (!_isDisposed)
+            lock (_rxLock)
             {
-                IntPtr ptr;
-                uint size;
-                lock (_rxLock)
+                while (!_isDisposed && _session != IntPtr.Zero)
                 {
-                    if (_isDisposed || _session == IntPtr.Zero)
+                    var ptr = WintunReceivePacket(_session, out var size);
+                    if (ptr == IntPtr.Zero)
                     {
                         break;
                     }
-                    ptr = WintunReceivePacket(_session, out size);
-                }
 
-                if (ptr == IntPtr.Zero)
-                {
-                    break;
-                }
-
-                if (size > maxPacketSize)
-                {
-                    lock (_rxLock)
-                    {
-                        if (!_isDisposed && _session != IntPtr.Zero)
-                        {
-                            WintunReleaseReceivePacket(_session, ptr);
-                        }
-                    }
-                    continue;
-                }
-
-                var buf = ArrayPool<byte>.Shared.Rent((int)size);
-                Marshal.Copy(ptr, buf, 0, (int)size);
-                lock (_rxLock)
-                {
-                    if (!_isDisposed && _session != IntPtr.Zero)
+                    if (size > maxPacketSize)
                     {
                         WintunReleaseReceivePacket(_session, ptr);
+                        continue;
                     }
-                }
-                outBatch.Add(buf, (int)size);
 
-                if (outBatch.Count >= 256)
-                {
-                    break;
+                    var buf = ArrayPool<byte>.Shared.Rent((int)size);
+                    Marshal.Copy(ptr, buf, 0, (int)size);
+                    WintunReleaseReceivePacket(_session, ptr);
+                    outBatch.Add(buf, (int)size);
+
+                    if (outBatch.Count >= 256)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -236,41 +217,29 @@ internal sealed partial class WintunAdapter : IDisposable
 
         while (!ct.IsCancellationRequested && !_isDisposed)
         {
-            IntPtr ptr;
-            uint size;
+            byte[]? data = null;
+            var packetSize = 0;
             lock (_rxLock)
             {
-                if (_isDisposed || _session == IntPtr.Zero)
+                if (!_isDisposed && _session != IntPtr.Zero)
                 {
-                    return (null, 0);
-                }
-                ptr = WintunReceivePacket(_session, out size);
-            }
-
-            if (ptr != IntPtr.Zero)
-            {
-                if (size > maxPacketSize)
-                {
-                    lock (_rxLock)
+                    var ptr = WintunReceivePacket(_session, out var size);
+                    if (ptr != IntPtr.Zero)
                     {
-                        if (!_isDisposed && _session != IntPtr.Zero)
+                        if (size <= maxPacketSize)
                         {
-                            WintunReleaseReceivePacket(_session, ptr);
+                            data = ArrayPool<byte>.Shared.Rent((int)size);
+                            Marshal.Copy(ptr, data, 0, (int)size);
+                            packetSize = (int)size;
                         }
-                    }
-                    continue;
-                }
-
-                var data = ArrayPool<byte>.Shared.Rent((int)size);
-                Marshal.Copy(ptr, data, 0, (int)size);
-                lock (_rxLock)
-                {
-                    if (!_isDisposed && _session != IntPtr.Zero)
-                    {
                         WintunReleaseReceivePacket(_session, ptr);
                     }
                 }
-                return (data, (int)size);
+            }
+
+            if (data != null)
+            {
+                return (data, packetSize);
             }
 
             var waitResult = WaitForMultipleObjects(2, handles, false, 200);

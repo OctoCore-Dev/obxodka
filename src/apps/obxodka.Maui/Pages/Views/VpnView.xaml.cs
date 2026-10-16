@@ -1,5 +1,4 @@
 using Microsoft.Maui.Controls.Shapes;
-using obxodka.Pages;
 using Path = System.IO.Path;
 
 namespace obxodka.Views;
@@ -123,6 +122,15 @@ public sealed partial class VpnView : ContentView, IDisposable
     private readonly SKPaint _graphFillPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private readonly SKPaint _graphDotGlowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private readonly SKPaint _graphDotSolidPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly List<SKPoint> _graphPointsBuffer = [with(256)];
+    private SKShader? _cachedAuraShader;
+    private float _lastAuraCx, _lastAuraCy, _lastAuraR, _lastAuraGlow;
+    private SKColor _lastAuraColor;
+    private byte _lastAuraBaseAlpha, _lastAuraMidAlpha;
+    private SKShader? _cachedGraphUpFillShader;
+    private SKShader? _cachedGraphDownFillShader;
+    private float _lastGraphH;
+    private SKColor _lastGraphUpColor, _lastGraphDownColor;
 
     private readonly struct GraphSample(float time, float speedUp, float speedDown)
     {
@@ -220,13 +228,11 @@ public sealed partial class VpnView : ContentView, IDisposable
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
         _vpnService.OnLogUpdated -= HandleVpnLog;
-        OctopusEngine.Current.OnStatusMessage -= HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
 
         _vpnService.OnStateChanged += HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred += HandleVpnError;
         _vpnService.OnLogUpdated += HandleVpnLog;
-        OctopusEngine.Current.OnStatusMessage += HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated += HandlePingUpdated;
 
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
@@ -245,7 +251,6 @@ public sealed partial class VpnView : ContentView, IDisposable
             _vpnService.OnLogUpdated -= HandleVpnLog;
         }
 
-        OctopusEngine.Current.OnStatusMessage -= HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
@@ -272,6 +277,9 @@ public sealed partial class VpnView : ContentView, IDisposable
         _reactorTrackPaint.Dispose();
         _shockwavePaint.Dispose();
         _auraPaint.Dispose();
+        _cachedAuraShader?.Dispose();
+        _cachedGraphUpFillShader?.Dispose();
+        _cachedGraphDownFillShader?.Dispose();
         _graphStrokeUpPaint.Dispose();
         _graphStrokeDownPaint.Dispose();
         _graphFillPaint.Dispose();
@@ -711,15 +719,12 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var tap = new TapGestureRecognizer();
                 tap.Tapped += async (s, e) =>
                 {
-                    if (_vpnService.CurrentState is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting || _isBusy)
+                    if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
                     {
-                        if (ParentPage is not null)
-                        {
-                            await ParentPage.DisplayAlertAsync("Смена сервера", "Отключите VPN перед сменой сервера.", "OK");
-                        }
                         return;
                     }
                     _ = card.BounceClickAsync();
+                    var wasConnected = _vpnService.CurrentState == AppVpnState.Connected;
                     _selectedServer = server;
                     Preferences.Set("selected_server_ip", server.Ip);
                     Preferences.Set("selected_server_location", server.Location);
@@ -735,6 +740,11 @@ public sealed partial class VpnView : ContentView, IDisposable
                     }
                     UpdateSelectedServerDisplay();
                     await CloseServerModalAsync();
+
+                    if (wasConnected)
+                    {
+                        await SwitchServerHotSwapAsync(server);
+                    }
                 };
                 card.GestureRecognizers.Add(tap);
 
@@ -743,14 +753,57 @@ public sealed partial class VpnView : ContentView, IDisposable
         });
     }
 
-    private async Task OpenServerModalAsync()
+    private async Task SwitchServerHotSwapAsync(VpnServerDto newServer)
     {
-        if (_vpnService.CurrentState is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting || _isBusy)
+        if (_isBusy)
         {
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            StartLoaderAnimation();
+            ConnectButtonCore.IsEnabled = false;
+            UpdateIpStatusDisplay("Переключение...", t_cyanAccent, t_cyanAccent);
+            await SetNeonStateAsync("Смена сервера...", "ЖДИТЕ", AppVpnState.Connecting);
+
+            await _vpnService.StopVpnAsync();
+
+            var orderedCandidates = new List<VpnServerDto> { newServer };
+            orderedCandidates.AddRange(_cachedServers.Where(s => s.Ip != newServer.Ip));
+
+            UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
+            if (!string.IsNullOrWhiteSpace(newServer.CertHash))
+            {
+                OctopusEngine.DynamicSslPublicKeyHash = newServer.CertHash;
+            }
+
+            Shared.Logging.AppLogger.Log($"[HOT-SWAP] Seamlessly switching to server: {newServer.Location} ({newServer.Ip}:{newServer.Port})");
+            await Task.Run(async () => await _vpnService.StartVpnAsync(newServer.Ip, newServer.Port, orderedCandidates));
+        }
+        catch (Exception ex)
+        {
+            Shared.Logging.AppLogger.LogError($"[HOT-SWAP ERROR] {ex.Message}", ex);
+            StopLoaderAnimation();
+            ConnectButtonCore.IsEnabled = true;
+            UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
+            await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
             if (ParentPage is not null)
             {
-                await ParentPage.DisplayAlertAsync("Смена сервера", "Отключите VPN перед сменой сервера.", "OK");
+                await ParentPage.DisplayAlertAsync("Смена сервера", $"Не удалось переключить сервер: {ex.Message}", "OK");
             }
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task OpenServerModalAsync()
+    {
+        if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+        {
             return;
         }
         if (_cachedServers.Count == 0)
@@ -799,12 +852,8 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async void OnServerSelectorTappedAsync(object? sender, EventArgs e)
     {
-        if (_vpnService.CurrentState is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting || _isBusy)
+        if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
         {
-            if (ParentPage is not null)
-            {
-                await ParentPage.DisplayAlertAsync("Смена сервера", "Отключите VPN перед сменой сервера.", "OK");
-            }
             return;
         }
 
@@ -1381,8 +1430,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             }
             else
             {
-                var candidateServers = await ProbeBestServerAsync(servers);
-                targetServer = candidateServers.Count > 0 ? candidateServers[0] : servers[0];
+                targetServer = servers[0];
                 _selectedServer = targetServer;
                 UpdateSelectedServerDisplay();
             }
@@ -1429,80 +1477,6 @@ public sealed partial class VpnView : ContentView, IDisposable
         {
             _isBusy = false;
         }
-    }
-
-    private static async Task<List<VpnServerDto>> ProbeBestServerAsync(List<VpnServerDto> servers)
-    {
-        var probeTasks = servers.Select(async server =>
-        {
-            var sw = Stopwatch.StartNew();
-            var reachable = false;
-            try
-            {
-                using var cts = new CancellationTokenSource(3000);
-                var host = server.Ip;
-                var port = server.Port > 0 ? server.Port : 443;
-
-                if (!IPAddress.TryParse(host, out _))
-                {
-                    var addrs = await Dns.GetHostAddressesAsync(host, cts.Token);
-                    if (!addrs.Any(a => a.AddressFamily == AddressFamily.InterNetwork))
-                    {
-                        return (server, reachable: false, latencyMs: long.MaxValue);
-                    }
-                }
-
-                using var client = new TcpClient();
-                await client.ConnectAsync(host, port, cts.Token).AsTask();
-                sw.Stop();
-                reachable = true;
-            }
-            catch
-            {
-                sw.Stop();
-                reachable = false;
-            }
-
-            return (server, reachable, latencyMs: reachable ? sw.ElapsedMilliseconds : long.MaxValue);
-        }).ToList();
-
-        var results = await Task.WhenAll(probeTasks);
-        var reachableServers = results
-            .Where(r => r.reachable)
-            .OrderBy(r => r.latencyMs)
-            .Select(r => r.server)
-            .ToList();
-
-        if (reachableServers.Count > 0)
-        {
-            return reachableServers;
-        }
-
-        string[] fallbackCandidates = [AppConfig.DirectServerIp];
-
-        foreach (var fbHost in fallbackCandidates)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(3000);
-                var addrs = await Dns.GetHostAddressesAsync(fbHost, cts.Token);
-                if (addrs.Any(a => a.AddressFamily == AddressFamily.InterNetwork))
-                {
-                    using var client = new TcpClient();
-                    await client.ConnectAsync(fbHost, 443, cts.Token).AsTask();
-                    var certHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
-                    reachableServers.Add(new VpnServerDto(fbHost, 443, "Основной узел (Прямой доступ)", true, 10, certHash));
-                    break;
-                }
-            }
-            catch { }
-        }
-
-        return reachableServers.Count > 0
-            ? reachableServers
-            : servers.Count > 0
-                ? servers
-                : [new VpnServerDto(AppConfig.DirectServerIp, 443, "Основной узел (Прямой доступ)", true, 10, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")];
     }
 
     private void StartGraphAnimation()
@@ -1682,7 +1656,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         void DrawStream(bool isUpStream, SKPaint strokePaint, SKColor startFillColor, SKColor strokeColor)
         {
-            var points = new List<SKPoint>(samplesCopy.Count + 2);
+            _graphPointsBuffer.Clear();
 
             for (var i = 0; i < samplesCopy.Count; i++)
             {
@@ -1693,59 +1667,86 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var ratio = Math.Clamp((float)(speed / maxSpeed), 0f, 1f);
                 var y = h - paddingY - (ratio * usableH);
 
-                points.Add(new SKPoint(x, y));
+                _graphPointsBuffer.Add(new SKPoint(x, y));
             }
 
-            if (points.Count == 0)
+            if (_graphPointsBuffer.Count == 0)
             {
                 return;
             }
 
-            if (points[0].X > 0)
+            if (_graphPointsBuffer[0].X > 0)
             {
-                points.Insert(0, new SKPoint(0, points[0].Y));
+                _graphPointsBuffer.Insert(0, new SKPoint(0, _graphPointsBuffer[0].Y));
             }
 
-            if (points[^1].X < w)
+            if (_graphPointsBuffer[^1].X < w)
             {
-                points.Add(new SKPoint(w, points[^1].Y));
+                _graphPointsBuffer.Add(new SKPoint(w, _graphPointsBuffer[^1].Y));
             }
 
-            if (points.Count < 2)
+            if (_graphPointsBuffer.Count < 2)
             {
                 return;
             }
 
             using var strokeBuilder = new SKPathBuilder();
-            strokeBuilder.MoveTo(points[0]);
-            for (var i = 0; i < points.Count - 1; i++)
+            strokeBuilder.MoveTo(_graphPointsBuffer[0]);
+            for (var i = 0; i < _graphPointsBuffer.Count - 1; i++)
             {
-                var p0 = points[i];
-                var p1 = points[i + 1];
+                var p0 = _graphPointsBuffer[i];
+                var p1 = _graphPointsBuffer[i + 1];
                 var midX = (p0.X + p1.X) / 2f;
                 strokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
             }
             using var strokePath = strokeBuilder.Detach();
 
             using var fillBuilder = new SKPathBuilder(strokePath);
-            fillBuilder.LineTo(points[^1].X, h);
-            fillBuilder.LineTo(points[0].X, h);
+            fillBuilder.LineTo(_graphPointsBuffer[^1].X, h);
+            fillBuilder.LineTo(_graphPointsBuffer[0].X, h);
             fillBuilder.Close();
             using var fillPath = fillBuilder.Detach();
 
-            using var fillShader = SKShader.CreateLinearGradient(
-                new SKPoint(0, 0),
-                new SKPoint(0, h),
-                [startFillColor, SKColors.Transparent],
-                [0f, 1f],
-                SKShaderTileMode.Clamp);
+            SKShader fillShader;
+            if (isUpStream)
+            {
+                if (_cachedGraphUpFillShader == null || _lastGraphH != h || _lastGraphUpColor != startFillColor)
+                {
+                    _cachedGraphUpFillShader?.Dispose();
+                    _cachedGraphUpFillShader = SKShader.CreateLinearGradient(
+                        new SKPoint(0, 0),
+                        new SKPoint(0, h),
+                        [startFillColor, SKColors.Transparent],
+                        [0f, 1f],
+                        SKShaderTileMode.Clamp);
+                    _lastGraphUpColor = startFillColor;
+                }
+                fillShader = _cachedGraphUpFillShader;
+            }
+            else
+            {
+                if (_cachedGraphDownFillShader == null || _lastGraphH != h || _lastGraphDownColor != startFillColor)
+                {
+                    _cachedGraphDownFillShader?.Dispose();
+                    _cachedGraphDownFillShader = SKShader.CreateLinearGradient(
+                        new SKPoint(0, 0),
+                        new SKPoint(0, h),
+                        [startFillColor, SKColors.Transparent],
+                        [0f, 1f],
+                        SKShaderTileMode.Clamp);
+                    _lastGraphDownColor = startFillColor;
+                }
+                fillShader = _cachedGraphDownFillShader;
+            }
+            _lastGraphH = h;
+
             _graphFillPaint.Shader = fillShader;
             canvas.DrawPath(fillPath, _graphFillPaint);
             _graphFillPaint.Shader = null;
 
             canvas.DrawPath(strokePath, strokePaint);
 
-            var lastPt = points[^1];
+            var lastPt = _graphPointsBuffer[^1];
             var pulseRadius = 4.5f + (1.8f * MathF.Sin(_pulsePhase));
             var alphaGlow = (byte)Math.Clamp(50 + (35 * MathF.Sin(_pulsePhase)), 0, 255);
 
@@ -2183,21 +2184,40 @@ public sealed partial class VpnView : ContentView, IDisposable
         var color = LerpColor(skAccent, targetColor, Math.Max(_isErrorState ? 1f : 0f, _errorTransitionFactor));
         var glowMult = (float)ThemeManager.CurrentGlowIntensity;
 
-        var baseAlpha = _vpnService?.CurrentState == AppVpnState.Connected ? 95 : 65;
-        var midAlpha = _vpnService?.CurrentState == AppVpnState.Connected ? 35 : 20;
+        var baseAlpha = (byte)(_vpnService?.CurrentState == AppVpnState.Connected ? 95 : 65);
+        var midAlpha = (byte)(_vpnService?.CurrentState == AppVpnState.Connected ? 35 : 20);
 
-        using var auraShader = SKShader.CreateRadialGradient(
-            new SKPoint(cx, cy),
-            r,
-            [
-                color.WithAlpha((byte)Math.Clamp(baseAlpha * glowMult, 0, 255)),
-                color.WithAlpha((byte)Math.Clamp(midAlpha * glowMult, 0, 255)),
-                SKColors.Transparent
-            ],
-            [0f, 0.65f, 1f],
-            SKShaderTileMode.Clamp);
+        if (_cachedAuraShader == null ||
+            Math.Abs(_lastAuraCx - cx) > 0.5f ||
+            Math.Abs(_lastAuraCy - cy) > 0.5f ||
+            Math.Abs(_lastAuraR - r) > 0.5f ||
+            Math.Abs(_lastAuraGlow - glowMult) > 0.01f ||
+            _lastAuraColor != color ||
+            _lastAuraBaseAlpha != baseAlpha ||
+            _lastAuraMidAlpha != midAlpha)
+        {
+            _cachedAuraShader?.Dispose();
+            _lastAuraCx = cx;
+            _lastAuraCy = cy;
+            _lastAuraR = r;
+            _lastAuraGlow = glowMult;
+            _lastAuraColor = color;
+            _lastAuraBaseAlpha = baseAlpha;
+            _lastAuraMidAlpha = midAlpha;
 
-        _auraPaint.Shader = auraShader;
+            _cachedAuraShader = SKShader.CreateRadialGradient(
+                new SKPoint(cx, cy),
+                r,
+                [
+                    color.WithAlpha((byte)Math.Clamp(baseAlpha * glowMult, 0, 255)),
+                    color.WithAlpha((byte)Math.Clamp(midAlpha * glowMult, 0, 255)),
+                    SKColors.Transparent
+                ],
+                [0f, 0.65f, 1f],
+                SKShaderTileMode.Clamp);
+        }
+
+        _auraPaint.Shader = _cachedAuraShader;
         canvas.DrawCircle(cx, cy, r, _auraPaint);
         _auraPaint.Shader = null;
 

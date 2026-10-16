@@ -32,6 +32,14 @@ public sealed partial class PaymentView : ContentView
 
     public void LoadPaymentPage() => ResetPaymentView();
 
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootPaymentGrid != null)
+        {
+            RootPaymentGrid.Padding = new Thickness(16, Math.Max(top + 16, 16), 16, 100);
+        }
+    }
+
     public void UpdateCardOpacity()
     {
         var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)

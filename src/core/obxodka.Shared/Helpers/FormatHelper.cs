@@ -8,7 +8,7 @@ public static class FormatHelper
     {
         int i;
         var d = bytes;
-        for (i = 0; i < t_suffixes.Length && bytes >= 1024; i++, bytes /= 1024)
+        for (i = 0; i < t_suffixes.Length - 1 && bytes >= 1024; i++, bytes /= 1024)
         {
             d = bytes / 1024.0;
         }

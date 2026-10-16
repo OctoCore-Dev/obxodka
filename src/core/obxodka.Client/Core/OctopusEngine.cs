@@ -23,6 +23,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public string? PublicWanIp { get; set; }
 
     public event Action<byte[], int>? OnPacketReceived;
+    private event Action<byte[], int>? OnProbePacketInspect;
     public event Action? OnConnectionDropped;
     public event Action? OnDeadConnectionDetected;
     public event Action<long, long>? OnTrafficUpdated;
@@ -233,7 +234,16 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         transport.OnPacketReceived += (pkt, len) =>
         {
             _ = Interlocked.Add(ref _totalBytesReceived, len);
-            OnPacketReceived?.Invoke(pkt, len);
+            OnProbePacketInspect?.Invoke(pkt, len);
+            var handler = OnPacketReceived;
+            if (handler is not null)
+            {
+                handler.Invoke(pkt, len);
+            }
+            else
+            {
+                ArrayPool<byte>.Shared.Return(pkt);
+            }
         };
         transport.OnPingUpdated += ReportPing;
         transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
@@ -288,7 +298,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             _ = tcs.TrySetResult(true);
         }
 
-        OnPacketReceived += OnPacket;
+        OnProbePacketInspect += OnPacket;
         OnPingUpdated += OnPing;
 
         var probeCycle = 0;
@@ -381,7 +391,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
         finally
         {
-            OnPacketReceived -= OnPacket;
+            OnProbePacketInspect -= OnPacket;
             OnPingUpdated -= OnPing;
         }
     }
@@ -427,7 +437,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                 }
             }
 
-            OnPacketReceived += OnStepPacket;
+            OnProbePacketInspect += OnStepPacket;
             try
             {
                 _ = SendPacketAsync(probe);
@@ -445,7 +455,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             }
             finally
             {
-                OnPacketReceived -= OnStepPacket;
+                OnProbePacketInspect -= OnStepPacket;
             }
         }
 

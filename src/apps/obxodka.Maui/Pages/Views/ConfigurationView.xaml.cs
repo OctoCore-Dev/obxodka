@@ -54,6 +54,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         };
         App.WindowActivated += _windowActivatedHandler;
         _ = SyncWindowsStartupStateAsync();
+#else
+        RunOnStartupCard.IsVisible = false;
 #endif
 
         UpdateSelectionUI();

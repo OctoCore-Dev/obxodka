@@ -25,6 +25,14 @@ public sealed partial class AuthView : ContentView
         FormContainer.BackgroundColor = bgSurface;
     }
 
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && ContentLayout != null)
+        {
+            ContentLayout.Padding = new Thickness(24, Math.Max(top + 16, 48), 24, 48);
+        }
+    }
+
     public void OnThemeChanged() =>
         MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
 

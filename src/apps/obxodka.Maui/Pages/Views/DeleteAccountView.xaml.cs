@@ -28,6 +28,14 @@ public sealed partial class DeleteAccountView : ContentView
         DeleteCardContainer.BackgroundColor = bgSurface;
     }
 
+    public void SetHeaderTopInset(double top)
+    {
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootDeleteGrid != null)
+        {
+            RootDeleteGrid.Padding = new Thickness(20, Math.Max(top + 16, 16), 20, 16);
+        }
+    }
+
     public void OnThemeChanged() =>
         MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
 

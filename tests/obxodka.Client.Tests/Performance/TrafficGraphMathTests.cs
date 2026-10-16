@@ -11,6 +11,8 @@ public class TrafficGraphMathTests
     [InlineData(15728640, "15 MB")]
     [InlineData(1073741824, "1 GB")]
     [InlineData(5368709120, "5 GB")]
+    [InlineData(1099511627776, "1 TB")]
+    [InlineData(10995116277760, "10 TB")]
     public void FormatBytesFormatsProperUnits(double bytes, string expected)
     {
         var result = FormatHelper.FormatBytes(bytes);

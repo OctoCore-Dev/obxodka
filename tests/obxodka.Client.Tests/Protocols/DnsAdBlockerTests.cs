@@ -31,7 +31,19 @@ public class DnsAdBlockerTests
         Assert.Null(result);
     }
 
-    private static byte[] CreateDnsQueryPacket(string domain)
+    [Fact]
+    public void ProcessPacketWhenQueryingBlockedDomainIPv6ReturnsNoDataResponse()
+    {
+        var packet = CreateDnsQueryPacket("googleadservices.com", qtype: 28);
+        var result = DnsAdBlocker.ProcessPacket(packet, packet.Length, true);
+
+        Assert.NotNull(result);
+        var dnsOffset = 28;
+        var ancount = BinaryPrimitives.ReadUInt16BigEndian(result.AsSpan(dnsOffset + 6, 2));
+        Assert.Equal(0, ancount);
+    }
+
+    private static byte[] CreateDnsQueryPacket(string domain, ushort qtype = 1)
     {
         var packet = new byte[20 + 8 + 12 + domain.Length + 2 + 4];
         packet[0] = 0x45;
@@ -51,7 +63,7 @@ public class DnsAdBlockerTests
             currentOffset += partBytes.Length;
         }
         packet[currentOffset++] = 0;
-        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset, 2), 1);
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset, 2), qtype);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset + 2, 2), 1);
 
         return packet;

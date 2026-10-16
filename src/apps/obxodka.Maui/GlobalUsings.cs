@@ -5,7 +5,6 @@ global using System.Globalization;
 global using System.Net;
 global using System.Net.Http.Json;
 global using System.Net.NetworkInformation;
-global using System.Net.Security;
 global using System.Net.Sockets;
 global using System.Runtime.InteropServices;
 global using System.Runtime.Versioning;

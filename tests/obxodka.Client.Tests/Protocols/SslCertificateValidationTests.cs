@@ -1,5 +1,3 @@
-using obxodka.Client.Security;
-
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocol")]
@@ -97,6 +95,17 @@ public class SslCertificateValidationTests
 
         var result = CertificateValidator.ValidateServerCertificate(selfSignedObxodkaCert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: expectedHash);
         Assert.True(result);
+    }
+
+    [Fact]
+    public void ValidateServerCertificateReturnsFalseWhenSubjectContainsAttackerSuffix()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=obxodka.one.attacker.com", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        var result = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateNameMismatch, dynamicPinningHash: null);
+        Assert.False(result);
     }
 
     [Fact]
