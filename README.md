@@ -86,73 +86,21 @@
 
 ## <img src=".github/assets/icons/octo_server.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Архитектура конвейера OBXODKA-STREAM
 
-Динамическая схема прохождения сетевых пакетов через клиентский конвейер, систему DPI и серверный кластер:
+Сетевой трафик проходит через оптимизированный сквозной конвейер, устойчивый к блокировкам DPI:
 
-```mermaid
-flowchart LR
-    subgraph Client["Клиентское устройство (Windows / Android)"]
-        direction TB
-        App["Obxodka Client App (UI / Logic)"]
-        Adapter["Wintun / VpnService (Layer 3)"]
-        Router["PacketRouter & PriorityQueue\n(UDP Gaming / ICMP Cloning)"]
-        Ray0["Ray 0 (HTTP/2 Stream :443)"]
-        Ray1["Ray 1 (HTTP/2 Stream :8443)"]
-        Crypto["TLS 1.3 / DpiBypassStream / Dynamic SNI"]
-        App --> Adapter --> Router
-        Router --> Ray0 --> Crypto
-        Router --> Ray1 --> Crypto
-    end
-
-    subgraph ISP["Провайдер / ТСПУ (DPI-фильтрация)"]
-        direction TB
-        DPI{"Глубокий анализ пакетов (DPI)"}
-        Pass["100% Пропуск (HTTPS Браузинг + Early Decoy)"]
-        DPI ==> Pass
-    end
-
-    subgraph Server["Серверный кластер Obxodka Core Node"]
-        direction TB
-        Endpoint["ObxodkaTunnelEndpoint (:443, :8443, :2053)"]
-        Dedup["PacketDeduplicator (Zero-Allocation 500ms)"]
-        LinuxTun["LinuxTun (tun0 L3, TCPMSS 1240, Adaptive MTU)"]
-        CleanNet["Свободный и чистый Интернет"]
-        Endpoint --> Dedup --> LinuxTun --> CleanNet
-    end
-
-    Crypto ==>|Шифрованный поток Ray 0 + Ray 1| DPI
-    Pass ==>|OBXODKA-STREAM Multiplexing| Endpoint
-
-    classDef clientStyle fill:#1a1c23,stroke:#00e5ff,stroke-width:2px,color:#fff;
-    classDef dpiStyle fill:#2d1b36,stroke:#ff007f,stroke-width:2px,color:#fff;
-    classDef serverStyle fill:#13271f,stroke:#00ff88,stroke-width:2px,color:#fff;
-
-    class Client clientStyle;
-    class ISP dpiStyle;
-    class Server serverStyle;
-```
+* **Клиентский уровень (Windows / Android):** Перехват пакетов на сетевом уровне Layer 3 через высокоскоростной драйвер Wintun или Android VpnService. Модуль `PacketRouter` выполняет интеллектуальную маршрутизацию и клонирование приоритетных пакетов (UDP Gaming и ICMP-пинги).
+* **Стелс-транспорт Dual-Ray:** Данные инкапсулируются в два параллельных независимых потока HTTP/2 (порты `443`, `8443` и `2053`) поверх TLS 1.3. Модуль `DpiBypassStream` выполняет сегментацию `ClientHello` и ротацию доменов (3.4M+ SNI), маскируя туннель под легитимный пользовательский веб-серфинг.
+* **Серверный кластер Obxodka Node:** Прием потоков через `ObxodkaTunnelEndpoint`, субмиллисекундная дедупликация пакетов на кольцевом буфере в оперативной памяти (`PacketDeduplicator`, zero-allocation) и маршрутизация в открытый интернет через интерфейс `tun0`.
 
 ---
 
 ## <img src=".github/assets/icons/octo_lock.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Взаимная авторизация mTLS Zero-Trust
 
-Никаких статических логинов и паролей на сетевых сокетах: каждое устройство проходит защищенную взаимную верификацию сертификата:
+Полный отказ от статических логинов и паролей на сетевых портах в пользу криптографической аутентификации:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Пользователь
-    participant Client as Obxodka App
-    participant Auth as Auth Server (API)
-    participant Gateway as Obxodka Node (:443)
-
-    User->>Client: Авторизация в аккаунт
-    Client->>Auth: Запрос динамического сессионного сертификата
-    Auth-->>Client: Выдача зашифрованного .pfx сертификата
-    Client->>Gateway: Установка TLS 1.3 с десинхронизацией ClientHello
-    Gateway-->>Client: Взаимное подтверждение подлинности (mTLS Handshake OK)
-    Client->>Gateway: Инициализация OBXODKA-STREAM (Ray 0 + Ray 1)
-    Note over Client,Gateway: Dual-Ray Hedging: клонирование UDP/ICMP и суб-миллисекундная дедупликация
-```
+* **Динамические сессионные сертификаты:** При входе в систему клиент получает уникальный зашифрованный `.pfx`-сертификат через защищенный API-шлюз.
+* **Взаимная верификация (mTLS Handshake):** При каждом подключении клиент и сервер взаимно проверяют криптографические сертификаты и SPKI-хэши публичных ключей, полностью исключая атаки перехвата (MITM) и неавторизованный доступ.
+* **Эфемерная безопасность:** Сессионные ключи шифрования хранятся исключительно в оперативной памяти (RAM-Only) и безвозвратно уничтожаются сразу после завершения сетевой сессии.
 
 ---
 
