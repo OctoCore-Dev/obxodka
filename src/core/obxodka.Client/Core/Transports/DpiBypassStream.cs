@@ -38,13 +38,27 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         if (_bypassEnabled && _firstWrite && buffer.Length > 32)
         {
             _firstWrite = false;
-            if (TryDetermineSplitPoints(buffer, out var split1, out var d1))
+            if (TryDetermineSplitPoints(buffer, out var split1, out var split2, out var d1))
             {
                 _innerStream.Write(buffer[..split1]);
                 _innerStream.Flush();
                 if (d1 > 0)
                 {
                     Thread.Sleep(d1);
+                }
+
+                if (split2 > split1 && split2 < buffer.Length)
+                {
+                    _innerStream.Write(buffer[split1..split2]);
+                    _innerStream.Flush();
+                    if (d1 > 0)
+                    {
+                        Thread.Sleep(1);
+                    }
+
+                    _innerStream.Write(buffer[split2..]);
+                    _innerStream.Flush();
+                    return;
                 }
 
                 _innerStream.Write(buffer[split1..]);
@@ -64,8 +78,30 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         if (_bypassEnabled && _firstWrite && buffer.Length > 32)
         {
             _firstWrite = false;
-            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var d1))
+            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var split2, out var d1))
             {
+                if (split2 > split1 && split2 < buffer.Length)
+                {
+                    Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 3-stage TLS ClientHello SNI segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={split2 - split1}B, Slice3={buffer.Length - split2}B, MicroDelay={d1}ms)");
+                    await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
+                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    if (d1 > 0)
+                    {
+                        await Task.Delay(d1, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await _innerStream.WriteAsync(buffer[split1..split2], cancellationToken).ConfigureAwait(false);
+                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    if (d1 > 0)
+                    {
+                        await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await _innerStream.WriteAsync(buffer[split2..], cancellationToken).ConfigureAwait(false);
+                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
                 Shared.Logging.AppLogger.Log($"[DPI-BYPASS] 2-stage TLS ClientHello segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, MicroDelay={d1}ms)");
                 await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
                 await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -87,9 +123,10 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 
-    private bool TryDetermineSplitPoints(ReadOnlySpan<byte> span, out int split1, out int delay1)
+    private bool TryDetermineSplitPoints(ReadOnlySpan<byte> span, out int split1, out int split2, out int delay1)
     {
         split1 = 0;
+        split2 = 0;
         delay1 = _delayMs > 0 ? _delayMs : Random.Shared.Next(1, 3);
 
         if (_splitPosition > 0 && _splitPosition < span.Length)
@@ -100,9 +137,13 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
 
         if (span.Length > 9 && span[0] == 0x16 && span[1] == 0x03 && span[5] == 0x01)
         {
-            if (TryFindSniRange(span, out var sniStart, out _))
+            if (TryFindSniRange(span, out var sniStart, out var nameLen))
             {
-                split1 = Math.Clamp(sniStart - 2, 16, span.Length - 16);
+                split1 = Math.Clamp(sniStart + 2, 16, span.Length - 16);
+                if (nameLen >= 6 && split1 + 4 < span.Length)
+                {
+                    split2 = Math.Clamp(sniStart + (nameLen / 2) + 1, split1 + 2, span.Length - 8);
+                }
                 return true;
             }
 

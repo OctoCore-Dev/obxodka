@@ -23,6 +23,8 @@ namespace obxodka.Shared.Themes;
 [JsonSerializable(typeof(ThemeLayout))]
 [JsonSerializable(typeof(ThemeVfx))]
 [JsonSerializable(typeof(ThemeGlow))]
+[JsonSerializable(typeof(ThemeStatusText))]
+[JsonSerializable(typeof(ThemeActiveOverrides))]
 [JsonSerializable(typeof(ThemeFeatures))]
 [JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(Dictionary<string, string>))]

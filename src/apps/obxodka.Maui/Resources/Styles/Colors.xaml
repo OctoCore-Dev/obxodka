@@ -45,15 +45,15 @@
     <Color x:Key="Black">#000000</Color>
     <Color x:Key="Transparent">#00000000</Color>
 
-    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}" />
-    <SolidColorBrush x:Key="PrimaryBrightBrush" Color="{StaticResource PrimaryBright}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
-    <SolidColorBrush x:Key="BgBaseBrush" Color="{StaticResource BgBase}" />
-    <SolidColorBrush x:Key="BgSurfaceBrush" Color="{StaticResource BgSurface}" />
-    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtle}" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource Success}" />
-    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource Error}" />
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource Primary}" />
+    <SolidColorBrush x:Key="PrimaryBrightBrush" Color="{DynamicResource PrimaryBright}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource Accent}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextPrimary}" />
+    <SolidColorBrush x:Key="BgBaseBrush" Color="{DynamicResource BgBase}" />
+    <SolidColorBrush x:Key="BgSurfaceBrush" Color="{DynamicResource BgSurface}" />
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{DynamicResource BorderSubtle}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource Success}" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="{DynamicResource Error}" />
     <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
 
 </ResourceDictionary>

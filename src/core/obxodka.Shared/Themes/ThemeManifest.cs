@@ -170,6 +170,9 @@ public sealed class ThemeSounds
     [JsonPropertyName("click")]
     public string? Click { get; set; }
 
+    [JsonPropertyName("hover")]
+    public string? Hover { get; set; }
+
     [JsonPropertyName("notification")]
     public string? Notification { get; set; }
 
@@ -178,6 +181,12 @@ public sealed class ThemeSounds
 
     [JsonPropertyName("disconnect")]
     public string? Disconnect { get; set; }
+
+    [JsonPropertyName("ambient")]
+    public string? Ambient { get; set; }
+
+    [JsonPropertyName("volume")]
+    public double Volume { get; set; } = 0.85;
 }
 
 public sealed class ThemeBackground
@@ -292,6 +301,9 @@ public sealed class ThemeVfx
     [JsonPropertyName("particleSprite")]
     public string? ParticleSprite { get; set; }
 
+    [JsonPropertyName("particleSprites")]
+    public List<string>? ParticleSprites { get; set; }
+
     [JsonPropertyName("intensity")]
     public double Intensity { get; set; } = 0.5;
 
@@ -304,11 +316,71 @@ public sealed class ThemeVfx
     [JsonPropertyName("color")]
     public string? Color { get; set; }
 
+    [JsonPropertyName("interactiveParticles")]
+    public bool InteractiveParticles { get; set; } = true;
+
+    [JsonPropertyName("trafficReactive")]
+    public bool TrafficReactive { get; set; } = true;
+
+    [JsonPropertyName("parallaxIntensity")]
+    public double ParallaxIntensity { get; set; } = 0.35;
+
+    [JsonPropertyName("screenOverlay")]
+    public string ScreenOverlay { get; set; } = "none";
+
+    [JsonPropertyName("trafficGraphStyle")]
+    public string TrafficGraphStyle { get; set; } = "neon_wave";
+
     [JsonPropertyName("glow")]
     public ThemeGlow? Glow { get; set; }
 
     [JsonPropertyName("buttonLoaderStyle")]
     public string ButtonLoaderStyle { get; set; } = "crystal";
+
+    [JsonPropertyName("statusText")]
+    public ThemeStatusText? StatusText { get; set; }
+
+    [JsonPropertyName("activeOverrides")]
+    public ThemeActiveOverrides? ActiveOverrides { get; set; }
+}
+
+public sealed class ThemeStatusText
+{
+    [JsonPropertyName("disconnected")]
+    public string? Disconnected { get; set; }
+
+    [JsonPropertyName("connecting")]
+    public string? Connecting { get; set; }
+
+    [JsonPropertyName("connected")]
+    public string? Connected { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("buttonIdle")]
+    public string? ButtonIdle { get; set; }
+
+    [JsonPropertyName("buttonConnecting")]
+    public string? ButtonConnecting { get; set; }
+
+    [JsonPropertyName("buttonConnected")]
+    public string? ButtonConnected { get; set; }
+}
+
+public sealed class ThemeActiveOverrides
+{
+    [JsonPropertyName("accentColor")]
+    public string? AccentColor { get; set; }
+
+    [JsonPropertyName("glowColor")]
+    public string? GlowColor { get; set; }
+
+    [JsonPropertyName("particleSpeedMultiplier")]
+    public double ParticleSpeedMultiplier { get; set; } = 1.5;
+
+    [JsonPropertyName("screenOverlay")]
+    public string? ScreenOverlay { get; set; }
 }
 
 public sealed class ThemeGlow
@@ -405,4 +477,13 @@ public sealed class ThemeFeatures
 
     [JsonPropertyName("hasParticles")]
     public bool HasParticles { get; set; }
+
+    [JsonPropertyName("hasScreenOverlay")]
+    public bool HasScreenOverlay { get; set; }
+
+    [JsonPropertyName("hasCustomFont")]
+    public bool HasCustomFont { get; set; }
+
+    [JsonPropertyName("hasReactiveVfx")]
+    public bool HasReactiveVfx { get; set; }
 }

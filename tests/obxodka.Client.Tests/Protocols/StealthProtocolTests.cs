@@ -403,4 +403,17 @@ public sealed class StealthProtocolTests
         Assert.Equal(extensionsEnd, offset);
         Assert.True(extensionCount >= 5);
     }
+
+    [Fact]
+    public void ObxodkaFramingCalculatePaddingLengthZeroOverheadForBulkPackets()
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(700));
+            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(1100));
+            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(1420));
+            Assert.InRange(ObxodkaFraming.CalculatePaddingLength(64), 8, 64);
+            Assert.InRange(ObxodkaFraming.CalculatePaddingLength(400), 8, 40);
+        }
+    }
 }

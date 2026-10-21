@@ -11,10 +11,17 @@ public sealed class ThemeAppliedEventArgs : EventArgs
     public string? ScreenFramePath { get; init; }
     public FrameSlice? FrameSlice { get; init; }
     public string? CardFramePath { get; init; }
+    public string? ButtonRingPath { get; init; }
+    public string? FontFilePath { get; init; }
     public string? ConnectSoundPath { get; init; }
     public string? DisconnectSoundPath { get; init; }
+    public string? ClickSoundPath { get; init; }
+    public string? HoverSoundPath { get; init; }
+    public string? NotificationSoundPath { get; init; }
+    public string? AmbientSoundPath { get; init; }
     public bool HasParticles { get; init; }
     public string? ParticleSpritePath { get; init; }
+    public List<string> ParticleSpritePaths { get; init; } = [];
     public string? CornerTopLeftPath { get; init; }
     public string? CornerTopRightPath { get; init; }
     public string? CornerBottomLeftPath { get; init; }
@@ -49,8 +56,14 @@ public sealed class ThemeManager
     ];
 
     private const string ActiveThemeKey = "ActiveThemeId";
+    private const string DefaultThemePreferenceValue = "default";
     private const string ThemeSoundsEnabledKey = "ThemeSoundsEnabled";
+    private const string ThemeClickSoundsEnabledKey = "ThemeClickSoundsEnabled";
+    private const string ThemeSoundVolumeKey = "ThemeSoundVolume";
+    private const string ThemeAmbientEnabledKey = "ThemeAmbientEnabled";
     private const string ThemeParticlesEnabledKey = "ThemeParticlesEnabled";
+    private const string ThemeFramesEnabledKey = "ThemeFramesEnabled";
+    private const string ThemeParallaxEnabledKey = "ThemeParallaxEnabled";
     private const string ThemeVideoEnabledKey = "ThemeVideoEnabled";
     private const string ThemeCardOpacityKey = "ThemeCardOpacity";
     private const string ThemeAlwaysPlayVideoKey = "ThemeAlwaysPlayVideoEnabled";
@@ -71,7 +84,12 @@ public sealed class ThemeManager
     public event Action<ThemeCatalogResponse>? OnCatalogUpdated;
     public event Action<bool>? VideoEnabledChanged;
     public event Action<bool>? SoundsEnabledChanged;
+    public event Action<bool>? ClickSoundsEnabledChanged;
+    public event Action<double>? SoundVolumeChanged;
+    public event Action<bool>? AmbientEnabledChanged;
     public event Action<bool>? ParticlesEnabledChanged;
+    public event Action<bool>? FramesEnabledChanged;
+    public event Action<bool>? ParallaxEnabledChanged;
     public event Action<bool>? AlwaysPlayVideoChanged;
     public event Action<double>? CardOpacityChanged;
     public event Action<double>? GlowIntensityChanged;
@@ -79,6 +97,10 @@ public sealed class ThemeManager
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<bool>> _activeDownloads = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, double> _downloadProgress = new();
+
+    private Color _baseBgSurface = Color.FromArgb("#161622");
+    private Color _baseBgElevated = Color.FromArgb("#1E1E2E");
+    private Color _baseBgInput = Color.FromArgb("#12121C");
 
     public ThemeManifest? ActiveTheme { get; private set; }
     public string? ActiveThemeFolderPath { get; private set; }
@@ -90,7 +112,55 @@ public sealed class ThemeManager
         set
         {
             Preferences.Default.Set(ThemeSoundsEnabledKey, value);
+            if (!value)
+            {
+                ThemeAudioService.UpdateAmbientState(false);
+            }
             SoundsEnabledChanged?.Invoke(value);
+        }
+    }
+
+    public bool ClickSoundsEnabled
+    {
+        get => Preferences.Default.Get(ThemeClickSoundsEnabledKey, true);
+        set
+        {
+            Preferences.Default.Set(ThemeClickSoundsEnabledKey, value);
+            ClickSoundsEnabledChanged?.Invoke(value);
+        }
+    }
+
+    private double? _cachedSoundVolume;
+
+    public double SoundVolume
+    {
+        get => _cachedSoundVolume ??= Math.Clamp(Preferences.Default.Get(ThemeSoundVolumeKey, 0.85), 0.0, 1.0);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.0, 1.0);
+            if (_cachedSoundVolume.HasValue && Math.Abs(_cachedSoundVolume.Value - clamped) < 0.005)
+            {
+                return;
+            }
+
+            _cachedSoundVolume = clamped;
+            Preferences.Default.Set(ThemeSoundVolumeKey, clamped);
+            ThemeAudioService.SetVolume(clamped);
+            SoundVolumeChanged?.Invoke(clamped);
+        }
+    }
+
+    public bool AmbientEnabled
+    {
+        get => Preferences.Default.Get(ThemeAmbientEnabledKey, true);
+        set
+        {
+            Preferences.Default.Set(ThemeAmbientEnabledKey, value);
+            if (!value)
+            {
+                ThemeAudioService.UpdateAmbientState(false);
+            }
+            AmbientEnabledChanged?.Invoke(value);
         }
     }
 
@@ -101,6 +171,26 @@ public sealed class ThemeManager
         {
             Preferences.Default.Set(ThemeParticlesEnabledKey, value);
             ParticlesEnabledChanged?.Invoke(value);
+        }
+    }
+
+    public bool FramesEnabled
+    {
+        get => Preferences.Default.Get(ThemeFramesEnabledKey, true);
+        set
+        {
+            Preferences.Default.Set(ThemeFramesEnabledKey, value);
+            FramesEnabledChanged?.Invoke(value);
+        }
+    }
+
+    public bool ParallaxEnabled
+    {
+        get => Preferences.Default.Get(ThemeParallaxEnabledKey, false);
+        set
+        {
+            Preferences.Default.Set(ThemeParallaxEnabledKey, value);
+            ParallaxEnabledChanged?.Invoke(value);
         }
     }
 
@@ -255,7 +345,8 @@ public sealed class ThemeManager
             "Success", "SuccessBrush", "SuccessDim",
             "Warning", "WarningDim",
             "Error", "ErrorBrush", "ErrorDim",
-            "AppFontRegular", "AppFontMedium", "AppFontBold", "AppFontTitle"
+            "AppFontRegular", "AppFontMedium", "AppFontBold", "AppFontTitle",
+            "CardCornerRadius", "CardBorderThickness"
         ];
 
         foreach (var key in trackedKeys)
@@ -320,17 +411,55 @@ public sealed class ThemeManager
             Add(sounds.Connect);
             Add(sounds.Disconnect);
             Add(sounds.Click);
+            Add(sounds.Hover);
             Add(sounds.Notification);
+            Add(sounds.Ambient);
         }
 
         if (manifest.Vfx is { } vfx)
         {
             Add(vfx.ParticleSprite);
+            if (vfx.ParticleSprites != null)
+            {
+                foreach (var sprite in vfx.ParticleSprites)
+                {
+                    Add(sprite);
+                }
+            }
         }
 
         if (manifest.Core.Ui is { } ui)
         {
             Add(ui.FontFile);
+        }
+
+        if (manifest.Apps != null &&
+            manifest.Apps.TryGetValue("obxodka", out var obxodkaEl) &&
+            obxodkaEl.ValueKind == JsonValueKind.Object)
+        {
+            if (obxodkaEl.TryGetProperty("sounds", out var appSounds) && appSounds.ValueKind == JsonValueKind.Object)
+            {
+                string[] soundKeys = ["connect", "disconnect", "click", "hover", "notification", "ambient"];
+                foreach (var key in soundKeys)
+                {
+                    if (appSounds.TryGetProperty(key, out var sProp) && sProp.ValueKind == JsonValueKind.String)
+                    {
+                        Add(sProp.GetString());
+                    }
+                }
+            }
+
+            if (obxodkaEl.TryGetProperty("vpnButton", out var appBtn) && appBtn.ValueKind == JsonValueKind.Object)
+            {
+                string[] btnKeys = ["idle", "connecting", "active", "error", "idleWebp", "connectingWebp", "activeWebp", "errorWebp"];
+                foreach (var key in btnKeys)
+                {
+                    if (appBtn.TryGetProperty(key, out var bProp) && bProp.ValueKind == JsonValueKind.String)
+                    {
+                        Add(bProp.GetString());
+                    }
+                }
+            }
         }
 
         return set;
@@ -497,8 +626,7 @@ public sealed class ThemeManager
         foreach (var dir in Directory.GetDirectories(ThemesDirectory))
         {
             var manifestPath = Path.Combine(dir, "theme.json");
-            var iconPath = Path.Combine(dir, "icon.png");
-            if (!File.Exists(manifestPath) || !File.Exists(iconPath))
+            if (!File.Exists(manifestPath))
             {
                 continue;
             }
@@ -522,9 +650,13 @@ public sealed class ThemeManager
 
     public bool IsThemeInstalled(string themeId)
     {
+        if (string.IsNullOrWhiteSpace(themeId))
+        {
+            return false;
+        }
+
         var targetDir = Path.Combine(ThemesDirectory, themeId);
-        return File.Exists(Path.Combine(targetDir, "theme.json")) &&
-               File.Exists(Path.Combine(targetDir, "icon.png"));
+        return File.Exists(Path.Combine(targetDir, "theme.json"));
     }
 
     public static bool IsVersionNewer(string? currentVersion, string? remoteVersion) =>
@@ -585,6 +717,50 @@ public sealed class ThemeManager
             Debug.WriteLine($"[ThemeManager] Error applying theme {themeId}: {ex.Message}");
             return false;
         }
+    }
+
+    public async Task<bool> ApplyThemeByIdAsync(string themeId)
+    {
+        if (string.IsNullOrWhiteSpace(themeId))
+        {
+            return false;
+        }
+
+        var manifestPath = Path.Combine(ThemesDirectory, themeId, "theme.json");
+        if (!File.Exists(manifestPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(manifestPath).ConfigureAwait(false);
+            var manifest = JsonSerializer.Deserialize(json, ThemeJsonContext.Default.ThemeManifest);
+            return manifest != null && await ApplyThemeAsync(manifest).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ThemeManager] Error applying theme {themeId}: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task<bool> ApplyThemeAsync(ThemeManifest manifest) =>
+        manifest != null &&
+        ThemeValidator.ValidateManifest(manifest, out _) &&
+        (MainThread.IsMainThread
+            ? ApplyTheme(manifest)
+            : await MainThread.InvokeOnMainThreadAsync(() => ApplyTheme(manifest)).ConfigureAwait(false));
+
+    public async Task ResetToDefaultAsync()
+    {
+        if (MainThread.IsMainThread)
+        {
+            ResetToDefault();
+            return;
+        }
+
+        await MainThread.InvokeOnMainThreadAsync(ResetToDefault).ConfigureAwait(false);
     }
 
     public bool DeleteTheme(string themeId)
@@ -954,63 +1130,53 @@ public sealed class ThemeManager
                 SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(gradStops, new Point(0, 0), new Point(1, 1)));
             }
 
-            Color? bgBaseColor = null;
             if (Color.TryParse(manifest.Core.Colors.BgBase, out var parsedBgBase))
             {
-                bgBaseColor = parsedBgBase;
                 SetResourceValue(appResources, "BgBase", parsedBgBase);
                 SetResourceValue(appResources, "BgBaseBrush", new SolidColorBrush(parsedBgBase));
                 SetResourceValue(appResources, "BgOverlay", parsedBgBase.WithAlpha(0.70f));
             }
 
-            Color? resolvedSurface = null;
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BgSurface) && Color.TryParse(manifest.Core.Colors.BgSurface, out var bgSurfaceColor))
-            {
-                var userOpacity = CardOpacity;
-                bgSurfaceColor = bgSurfaceColor.WithAlpha((float)userOpacity);
-                resolvedSurface = bgSurfaceColor;
-                SetResourceValue(appResources, "BgSurface", bgSurfaceColor);
-                SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(bgSurfaceColor));
+            var rawSurface = !string.IsNullOrEmpty(manifest.Core.Colors.BgSurface) && Color.TryParse(manifest.Core.Colors.BgSurface, out var parsedSurface)
+                ? parsedSurface
+                : Color.FromArgb("#161622");
+            _baseBgSurface = rawSurface;
 
-                var surfaceStops = new GradientStopCollection
+            var userOpacity = CardOpacity;
+            var bgSurfaceColor = rawSurface.WithAlpha((float)userOpacity);
+            SetResourceValue(appResources, "BgSurface", bgSurfaceColor);
+            SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(bgSurfaceColor));
+
+            var surfaceStops = new GradientStopCollection
+            {
+                new GradientStop(bgSurfaceColor, 0.0f),
+                new GradientStop(bgSurfaceColor.AddLuminosity(0.06f), 1.0f)
+            };
+            if (manifest.Core.Gradients?.SurfaceGradient?.Stops is { Count: >= 2 } surfCustomStops)
+            {
+                surfaceStops.Clear();
+                for (var i = 0; i < surfCustomStops.Count; i++)
                 {
-                    new GradientStop(bgSurfaceColor, 0.0f),
-                    new GradientStop(bgSurfaceColor.AddLuminosity(0.06f), 1.0f)
-                };
-                if (manifest.Core.Gradients?.SurfaceGradient?.Stops is { Count: >= 2 } surfCustomStops)
-                {
-                    surfaceStops.Clear();
-                    for (var i = 0; i < surfCustomStops.Count; i++)
+                    if (Color.TryParse(surfCustomStops[i], out var ssc))
                     {
-                        if (Color.TryParse(surfCustomStops[i], out var ssc))
-                        {
-                            var offset = (float)i / (surfCustomStops.Count - 1);
-                            surfaceStops.Add(new GradientStop(ssc, offset));
-                        }
+                        var offset = (float)i / (surfCustomStops.Count - 1);
+                        surfaceStops.Add(new GradientStop(ssc, offset));
                     }
                 }
-                SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(surfaceStops, new Point(0, 0), new Point(0, 1)));
             }
+            SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(surfaceStops, new Point(0, 0), new Point(0, 1)));
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) && Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor))
-            {
-                SetResourceValue(appResources, "BgElevated", bgElevatedColor);
-            }
-            else if (resolvedSurface != null)
-            {
-                var elevated = resolvedSurface.AddLuminosity(0.08f);
-                SetResourceValue(appResources, "BgElevated", elevated);
-            }
+            var rawElevated = !string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) && Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor)
+                ? bgElevatedColor
+                : rawSurface.AddLuminosity(0.08f);
+            _baseBgElevated = rawElevated;
+            SetResourceValue(appResources, "BgElevated", rawElevated.WithAlpha((float)Math.Clamp(userOpacity + 0.08, 0.25, 1.0)));
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BgInput) && Color.TryParse(manifest.Core.Colors.BgInput, out var bgInputColor))
-            {
-                SetResourceValue(appResources, "BgInput", bgInputColor);
-            }
-            else if (resolvedSurface != null)
-            {
-                var inputBg = resolvedSurface.WithAlpha(0.5f);
-                SetResourceValue(appResources, "BgInput", inputBg);
-            }
+            var rawInput = !string.IsNullOrEmpty(manifest.Core.Colors.BgInput) && Color.TryParse(manifest.Core.Colors.BgInput, out var bgInputColor)
+                ? bgInputColor
+                : rawSurface.WithAlpha(0.55f);
+            _baseBgInput = rawInput;
+            SetResourceValue(appResources, "BgInput", rawInput);
 
             Color? textPrimary = null;
             if (Color.TryParse(manifest.Core.Colors.TextPrimary, out var textPrimaryColor))
@@ -1036,10 +1202,8 @@ public sealed class ThemeManager
                 SetResourceValue(appResources, "TextMuted", textMutedColor);
             }
 
-            Color? borderDark = null;
             if (!string.IsNullOrEmpty(manifest.Core.Colors.SolidBorderDark) && Color.TryParse(manifest.Core.Colors.SolidBorderDark, out var parsedBorderDark))
             {
-                borderDark = parsedBorderDark;
                 SetResourceValue(appResources, "SolidBorderDark", parsedBorderDark);
                 SetResourceValue(appResources, "BorderSubtle", parsedBorderDark);
                 SetResourceValue(appResources, "BorderSubtleBrush", new SolidColorBrush(parsedBorderDark));
@@ -1092,6 +1256,11 @@ public sealed class ThemeManager
             SetResourceValue(appResources, "PurpleLight", purpleColor.AddLuminosity(0.10f));
             SetResourceValue(appResources, "Pink", accentColor ?? Color.FromArgb("#EC4899"));
 
+            var cornerRadius = Math.Clamp(manifest.Core.Ui?.CornerRadius ?? 12, 2, 36);
+            var borderThickness = Math.Clamp(manifest.Core.Ui?.BorderThickness ?? 1.0, 0.5, 4.0);
+            SetResourceValue(appResources, "CardCornerRadius", new CornerRadius(cornerRadius));
+            SetResourceValue(appResources, "CardBorderThickness", borderThickness);
+
             SetResourceValue(appResources, "AppFontRegular", !string.IsNullOrWhiteSpace(manifest.Core.Ui?.FontRegular)
                 ? manifest.Core.Ui.FontRegular
                 : "RobotoRegular");
@@ -1111,6 +1280,17 @@ public sealed class ThemeManager
         }
     }
 
+    private static string? GetObxodkaNestedProperty(ThemeManifest manifest, string sectionKey, string propKey) =>
+        manifest.Apps != null &&
+        manifest.Apps.TryGetValue("obxodka", out var obxodkaEl) &&
+        obxodkaEl.ValueKind == JsonValueKind.Object &&
+        obxodkaEl.TryGetProperty(sectionKey, out var sectionEl) &&
+        sectionEl.ValueKind == JsonValueKind.Object &&
+        sectionEl.TryGetProperty(propKey, out var propEl) &&
+        propEl.ValueKind == JsonValueKind.String
+            ? propEl.GetString()
+            : null;
+
     public bool ApplyTheme(ThemeManifest manifest)
     {
         if (manifest == null || !ThemeValidator.ValidateManifest(manifest, out _))
@@ -1126,7 +1306,13 @@ public sealed class ThemeManager
         }
         else
         {
-            MainThread.BeginInvokeOnMainThread(() => InjectThemeResources(manifest));
+            try
+            {
+                MainThread.InvokeOnMainThreadAsync(() => InjectThemeResources(manifest)).GetAwaiter().GetResult();
+            }
+            catch
+            {
+            }
         }
 
         ActiveTheme = manifest;
@@ -1181,20 +1367,36 @@ public sealed class ThemeManager
         }
 
         var cardFramePath = ResolveFilePath(folderPath, manifest.Decorations?.CardFrame);
+        var buttonRingPath = ResolveFilePath(folderPath, manifest.Decorations?.ButtonRing);
+        var fontFilePath = ResolveFilePath(folderPath, manifest.Core.Ui?.FontFile);
 
-        var soundRel = manifest.Core.Sounds?.Connect;
-        if (string.IsNullOrEmpty(soundRel) && manifest.Apps?.ContainsKey("obxodka") == true)
+        var connectSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Connect ?? GetObxodkaNestedProperty(manifest, "sounds", "connect"));
+        var disconnectSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Disconnect ?? GetObxodkaNestedProperty(manifest, "sounds", "disconnect"));
+        var clickSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Click ?? GetObxodkaNestedProperty(manifest, "sounds", "click"));
+        var hoverSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Hover ?? GetObxodkaNestedProperty(manifest, "sounds", "hover"));
+        var notificationSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Notification ?? GetObxodkaNestedProperty(manifest, "sounds", "notification"));
+        var ambientSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Ambient ?? GetObxodkaNestedProperty(manifest, "sounds", "ambient"));
+
+        var particleSpritePaths = new List<string>();
+        var singleSprite = ResolveFilePath(folderPath, manifest.Vfx?.ParticleSprite);
+        if (!string.IsNullOrEmpty(singleSprite))
         {
-            try
+            particleSpritePaths.Add(singleSprite);
+        }
+
+        if (manifest.Vfx?.ParticleSprites is { Count: > 0 } rawSprites)
+        {
+            foreach (var rawSprite in rawSprites)
             {
-                soundRel = manifest.Apps["obxodka"].GetProperty("sounds").GetProperty("connect").GetString();
-            }
-            catch
-            {
+                var resolvedSprite = ResolveFilePath(folderPath, rawSprite);
+                if (!string.IsNullOrEmpty(resolvedSprite) && !particleSpritePaths.Contains(resolvedSprite, StringComparer.OrdinalIgnoreCase))
+                {
+                    particleSpritePaths.Add(resolvedSprite);
+                }
             }
         }
-        var connectSound = ResolveFilePath(folderPath, soundRel);
-        var particleSprite = ResolveFilePath(folderPath, manifest.Vfx?.ParticleSprite);
+
+        var primaryParticleSprite = singleSprite ?? particleSpritePaths.FirstOrDefault();
 
         string? cornerTopLeft = null;
         string? cornerTopRight = null;
@@ -1208,15 +1410,24 @@ public sealed class ThemeManager
             cornerBottomRight = ResolveStickerPath(folderPath, stickersMap, "bottomRight");
         }
 
-        var buttonImageIdle = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageIdle);
-        var buttonImageConnecting = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageConnecting);
-        var buttonImageActive = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageActive);
-        var buttonImageError = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageError);
+        var buttonImageIdle = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageIdle ?? GetObxodkaNestedProperty(manifest, "vpnButton", "idle"));
+        var buttonImageConnecting = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageConnecting ?? GetObxodkaNestedProperty(manifest, "vpnButton", "connecting"));
+        var buttonImageActive = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageActive ?? GetObxodkaNestedProperty(manifest, "vpnButton", "active"));
+        var buttonImageError = ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageError ?? GetObxodkaNestedProperty(manifest, "vpnButton", "error"));
 
-        var buttonVideoIdle = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoIdle);
-        var buttonVideoConnecting = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoConnecting);
-        var buttonVideoActive = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoActive);
-        var buttonVideoError = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoError);
+        var buttonVideoIdle = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoIdle ?? GetObxodkaNestedProperty(manifest, "vpnButton", "idleWebp"));
+        var buttonVideoConnecting = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoConnecting ?? GetObxodkaNestedProperty(manifest, "vpnButton", "connectingWebp"));
+        var buttonVideoActive = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoActive ?? GetObxodkaNestedProperty(manifest, "vpnButton", "activeWebp"));
+        var buttonVideoError = ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoError ?? GetObxodkaNestedProperty(manifest, "vpnButton", "errorWebp"));
+
+        ThemeAudioService.Configure(
+            clickSound,
+            hoverSound,
+            notificationSound,
+            connectSound,
+            disconnectSound,
+            ambientSound,
+            SoundVolume);
 
         var args = new ThemeAppliedEventArgs
         {
@@ -1227,9 +1438,17 @@ public sealed class ThemeManager
             ScreenFramePath = framePath,
             FrameSlice = activeSlice,
             CardFramePath = cardFramePath,
+            ButtonRingPath = buttonRingPath,
+            FontFilePath = fontFilePath,
             ConnectSoundPath = connectSound,
+            DisconnectSoundPath = disconnectSound,
+            ClickSoundPath = clickSound,
+            HoverSoundPath = hoverSound,
+            NotificationSoundPath = notificationSound,
+            AmbientSoundPath = ambientSound,
             HasParticles = ParticlesEnabled && manifest.Vfx?.Particles != "none",
-            ParticleSpritePath = particleSprite,
+            ParticleSpritePath = primaryParticleSprite,
+            ParticleSpritePaths = particleSpritePaths,
             CornerTopLeftPath = cornerTopLeft,
             CornerTopRightPath = cornerTopRight,
             CornerBottomLeftPath = cornerBottomLeft,
@@ -1282,6 +1501,10 @@ public sealed class ThemeManager
     {
         try
         {
+            _baseBgSurface = Color.FromArgb("#161622");
+            _baseBgElevated = Color.FromArgb("#1E1E2E");
+            _baseBgInput = Color.FromArgb("#12121C");
+
             var appResources = Application.Current?.Resources;
             if (appResources == null)
             {
@@ -1309,24 +1532,95 @@ public sealed class ThemeManager
                         SetResourceValue(appResources, key, value);
                     }
                 }
+
+                if (_defaultResourceSnapshot.TryGetValue("BgSurface", out var snapSurf) && snapSurf is Color surfC)
+                {
+                    _baseBgSurface = surfC;
+                }
+                if (_defaultResourceSnapshot.TryGetValue("BgElevated", out var snapElev) && snapElev is Color elevC)
+                {
+                    _baseBgElevated = elevC;
+                }
+                if (_defaultResourceSnapshot.TryGetValue("BgInput", out var snapInp) && snapInp is Color inpC)
+                {
+                    _baseBgInput = inpC;
+                }
             }
             else
             {
                 SetResourceValue(appResources, "Primary", Color.FromArgb("#0078D4"));
                 SetResourceValue(appResources, "PrimaryBrush", new SolidColorBrush(Color.FromArgb("#0078D4")));
+                SetResourceValue(appResources, "PrimaryBright", Color.FromArgb("#2B88D8"));
+                SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(Color.FromArgb("#2B88D8")));
+                SetResourceValue(appResources, "PrimaryLight", Color.FromArgb("#4C9CE1"));
+                SetResourceValue(appResources, "PrimaryLight2", Color.FromArgb("#0067C0"));
+                SetResourceValue(appResources, "PrimaryDim", Color.FromArgb("#005A9E"));
+                SetResourceValue(appResources, "PrimaryGlow", Color.FromArgb("#004578"));
                 SetResourceValue(appResources, "Accent", Color.FromArgb("#00E5FF"));
                 SetResourceValue(appResources, "AccentBrush", new SolidColorBrush(Color.FromArgb("#00E5FF")));
+                SetResourceValue(appResources, "AccentDim", Color.FromArgb("#005F6B"));
+                SetResourceValue(appResources, "AccentGlow", Color.FromArgb("#0097A7"));
+                SetResourceValue(appResources, "AccentLight", Color.FromArgb("#0284C7"));
+                SetResourceValue(appResources, "Purple", Color.FromArgb("#9F6FF0"));
+                SetResourceValue(appResources, "PurpleDim", Color.FromArgb("#2A1B3D"));
+                SetResourceValue(appResources, "PurpleLight", Color.FromArgb("#7C3AED"));
+                SetResourceValue(appResources, "Pink", Color.FromArgb("#EC4899"));
                 SetResourceValue(appResources, "BgBase", Color.FromArgb("#0E0E14"));
                 SetResourceValue(appResources, "BgBaseBrush", new SolidColorBrush(Color.FromArgb("#0E0E14")));
                 SetResourceValue(appResources, "BgSurface", Color.FromArgb("#161622"));
                 SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(Color.FromArgb("#161622")));
+                SetResourceValue(appResources, "BgElevated", Color.FromArgb("#202030"));
+                SetResourceValue(appResources, "BgInput", Color.FromArgb("#12121B"));
+                SetResourceValue(appResources, "BgOverlay", Color.FromArgb("#B3000000"));
                 SetResourceValue(appResources, "TextPrimary", Color.FromArgb("#FFFFFF"));
                 SetResourceValue(appResources, "TextPrimaryBrush", new SolidColorBrush(Color.FromArgb("#FFFFFF")));
+                SetResourceValue(appResources, "TextSecondary", Color.FromArgb("#D0FFFFFF"));
+                SetResourceValue(appResources, "TextMuted", Color.FromArgb("#90FFFFFF"));
+                SetResourceValue(appResources, "TextOnPrimary", Color.FromArgb("#FFFFFF"));
+                SetResourceValue(appResources, "SolidBorderDark", Color.FromArgb("#282838"));
+                SetResourceValue(appResources, "BorderSubtle", Color.FromArgb("#28283C"));
+                SetResourceValue(appResources, "BorderSubtleBrush", new SolidColorBrush(Color.FromArgb("#28283C")));
+                SetResourceValue(appResources, "BorderMedium", Color.FromArgb("#363650"));
+                SetResourceValue(appResources, "BorderStrong", Color.FromArgb("#4A4A68"));
+                SetResourceValue(appResources, "Success", Color.FromArgb("#10B981"));
+                SetResourceValue(appResources, "SuccessBrush", new SolidColorBrush(Color.FromArgb("#10B981")));
+                SetResourceValue(appResources, "SuccessDim", Color.FromArgb("#1F10B981"));
+                SetResourceValue(appResources, "Warning", Color.FromArgb("#F59E0B"));
+                SetResourceValue(appResources, "WarningDim", Color.FromArgb("#1FF59E0B"));
+                SetResourceValue(appResources, "Error", Color.FromArgb("#EF4444"));
+                SetResourceValue(appResources, "ErrorBrush", new SolidColorBrush(Color.FromArgb("#EF4444")));
+                SetResourceValue(appResources, "ErrorDim", Color.FromArgb("#1FEF4444"));
                 SetResourceValue(appResources, "AppFontRegular", "RobotoRegular");
                 SetResourceValue(appResources, "AppFontMedium", "RobotoMedium");
                 SetResourceValue(appResources, "AppFontBold", "RobotoBold");
                 SetResourceValue(appResources, "AppFontTitle", "CommissionerExtraBold");
+                SetResourceValue(appResources, "CardCornerRadius", new CornerRadius(12));
+                SetResourceValue(appResources, "CardBorderThickness", 1.0);
             }
+
+            var defaultPrimary = _defaultResourceSnapshot.TryGetValue("Primary", out var snapPrim) && snapPrim is Color primC
+                ? primC
+                : Color.FromArgb("#0078D4");
+            var defaultAccent = _defaultResourceSnapshot.TryGetValue("Accent", out var snapAcc) && snapAcc is Color accC
+                ? accC
+                : Color.FromArgb("#00E5FF");
+
+            var defaultGradStops = new GradientStopCollection
+            {
+                new GradientStop(defaultPrimary, 0.0f),
+                new GradientStop(defaultAccent, 1.0f)
+            };
+            SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(defaultGradStops, new Point(0, 0), new Point(1, 1)));
+
+            var defaultSurfaceStops = new GradientStopCollection
+            {
+                new GradientStop(_baseBgSurface, 0.0f),
+                new GradientStop(_baseBgSurface.AddLuminosity(0.06f), 1.0f)
+            };
+            SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(defaultSurfaceStops, new Point(0, 0), new Point(0, 1)));
+
+            SetResourceValue(appResources, "CardCornerRadius", new CornerRadius(12));
+            SetResourceValue(appResources, "CardBorderThickness", 1.0);
 
             ApplyCardOpacity(CardOpacity, forceImmediate: true);
         }
@@ -1353,31 +1647,22 @@ public sealed class ThemeManager
                 return;
             }
 
-            var baseColor = ActiveTheme?.Core?.Colors?.BgSurface != null && Color.TryParse(ActiveTheme.Core.Colors.BgSurface, out var parsedThemeColor)
+            var baseSurface = ActiveTheme?.Core?.Colors?.BgSurface != null && Color.TryParse(ActiveTheme.Core.Colors.BgSurface, out var parsedThemeColor)
                 ? parsedThemeColor
-                : Color.FromArgb("#161622");
+                : _baseBgSurface;
 
-            var surfaceWithAlpha = baseColor.WithAlpha((float)opacity);
+            var surfaceWithAlpha = baseSurface.WithAlpha((float)opacity);
             SetResourceValue(appResources, "BgSurface", surfaceWithAlpha);
+            SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(surfaceWithAlpha));
 
-            if (appResources.TryGetValue("BgSurfaceBrush", out var bObj) && bObj is SolidColorBrush brush)
-            {
-                brush.Color = surfaceWithAlpha;
-            }
-            else
-            {
-                SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(surfaceWithAlpha));
-            }
-
-            var elevatedBase = ActiveTheme?.Core?.Colors?.BgElevated != null && Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)
+            var baseElevated = ActiveTheme?.Core?.Colors?.BgElevated != null && Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)
                 ? parsedElevated
-                : baseColor.AddLuminosity(0.08f);
+                : _baseBgElevated;
 
-            var elevatedWithAlpha = elevatedBase.WithAlpha((float)Math.Min(1.0, opacity + 0.08));
+            var elevatedWithAlpha = baseElevated.WithAlpha((float)Math.Clamp(opacity + 0.08, 0.25, 1.0));
             SetResourceValue(appResources, "BgElevated", elevatedWithAlpha);
 
-            var inputWithAlpha = baseColor.WithAlpha((float)(opacity * 0.7));
-            SetResourceValue(appResources, "BgInput", inputWithAlpha);
+            SetResourceValue(appResources, "BgInput", _baseBgInput);
 
             CardOpacityChanged?.Invoke(opacity);
         }
@@ -1394,51 +1679,9 @@ public sealed class ThemeManager
 
     public static void ApplyVisualTreeCardOpacity(VisualElement? root, Color bgSurface, Color? bgElevated = null)
     {
-        if (root == null)
-        {
-            return;
-        }
-
-        if (root is Border border)
-        {
-            var curBg = border.BackgroundColor;
-            var isNeutralCard = curBg == null ||
-                (curBg.Alpha > 0.05f && Math.Abs(curBg.Red - curBg.Green) < 0.15f && Math.Abs(curBg.Green - curBg.Blue) < 0.15f);
-
-            if (isNeutralCard)
-            {
-                border.BackgroundColor = bgSurface;
-            }
-        }
-
-        if (root is IContentView contentView && contentView.Content is VisualElement childContent)
-        {
-            ApplyVisualTreeCardOpacity(childContent, bgSurface, bgElevated);
-        }
-        else if (root is Layout layout)
-        {
-            foreach (var child in layout.Children)
-            {
-                if (child is VisualElement childVisual)
-                {
-                    ApplyVisualTreeCardOpacity(childVisual, bgSurface, bgElevated);
-                }
-            }
-        }
-        else if (root is ScrollView scrollView && scrollView.Content is VisualElement scrollContent)
-        {
-            ApplyVisualTreeCardOpacity(scrollContent, bgSurface, bgElevated);
-        }
-        else if (root is Grid grid)
-        {
-            foreach (var child in grid.Children)
-            {
-                if (child is VisualElement childVisual)
-                {
-                    ApplyVisualTreeCardOpacity(childVisual, bgSurface, bgElevated);
-                }
-            }
-        }
+        _ = root;
+        _ = bgSurface;
+        _ = bgElevated;
     }
 
     public void ResetToDefault()
@@ -1449,14 +1692,126 @@ public sealed class ThemeManager
         }
         else
         {
-            MainThread.BeginInvokeOnMainThread(ResetDefaultResources);
+            try
+            {
+                MainThread.InvokeOnMainThreadAsync(ResetDefaultResources).GetAwaiter().GetResult();
+            }
+            catch
+            {
+            }
         }
 
         ActiveTheme = null;
         ActiveThemeFolderPath = null;
-        Preferences.Default.Remove(ActiveThemeKey);
+        Preferences.Default.Set(ActiveThemeKey, DefaultThemePreferenceValue);
+        ThemeAudioService.Reset();
 
         OnThemeReset?.Invoke();
+    }
+
+    public async Task<(bool Success, string? ErrorMessage, ThemeManifest? Manifest)> ImportThemeFromZipAsync(
+        Stream zipStream,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        if (zipStream == null)
+        {
+            return (false, "Поток архива темы пуст.", null);
+        }
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "obxodka_theme_import_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await SafeThemeExtractor.ExtractZipSafelyAsync(zipStream, tempDir, ct).ConfigureAwait(false);
+
+            var sourceThemeDir = tempDir;
+            var manifestPath = Path.Combine(tempDir, "theme.json");
+            if (!File.Exists(manifestPath))
+            {
+                var subDirs = Directory.GetDirectories(tempDir);
+                foreach (var subDir in subDirs)
+                {
+                    var candidate = Path.Combine(subDir, "theme.json");
+                    if (File.Exists(candidate))
+                    {
+                        sourceThemeDir = subDir;
+                        manifestPath = candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (!File.Exists(manifestPath))
+            {
+                return (false, $"В архиве '{fileName}' не найден файл theme.json.", null);
+            }
+
+            var manifestJson = await File.ReadAllTextAsync(manifestPath, ct).ConfigureAwait(false);
+            var manifest = JsonSerializer.Deserialize(manifestJson, ThemeJsonContext.Default.ThemeManifest);
+            string? manifestError = null;
+            if (manifest == null || !ThemeValidator.ValidateManifest(manifest, out manifestError))
+            {
+                return (false, $"Некорректный манифест темы: {manifestError ?? "Пустой манифест"}", null);
+            }
+
+            foreach (var extractedFile in Directory.EnumerateFiles(sourceThemeDir, "*", SearchOption.AllDirectories))
+            {
+                if (!ThemeValidator.ValidateAssetFile(extractedFile, out var assetError))
+                {
+                    var relName = Path.GetRelativePath(sourceThemeDir, extractedFile);
+                    return (false, $"Файл '{relName}' не прошел проверку безопасности: {assetError}", null);
+                }
+            }
+
+            var targetDir = Path.Combine(ThemesDirectory, manifest.Id);
+            if (Directory.Exists(targetDir))
+            {
+                Directory.Delete(targetDir, true);
+            }
+
+            _ = Directory.CreateDirectory(targetDir);
+            foreach (var srcFile in Directory.EnumerateFiles(sourceThemeDir, "*", SearchOption.AllDirectories))
+            {
+                var relPath = Path.GetRelativePath(sourceThemeDir, srcFile);
+                if (!ThemeValidator.IsSafeRelativePath(relPath))
+                {
+                    return (false, $"Недопустимый относительный путь файла: '{relPath}'", null);
+                }
+
+                var destFile = Path.Combine(targetDir, relPath);
+                var destParent = Path.GetDirectoryName(destFile);
+                if (!string.IsNullOrEmpty(destParent))
+                {
+                    _ = Directory.CreateDirectory(destParent);
+                }
+
+                File.Copy(srcFile, destFile, overwrite: true);
+            }
+
+            _ = MainThread.IsMainThread
+                ? ApplyThemeById(manifest.Id)
+                : await MainThread.InvokeOnMainThreadAsync(() => ApplyThemeById(manifest.Id)).ConfigureAwait(false);
+
+            return (true, null, manifest);
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            return (false, ex.Message, null);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                catch
+                {
+                }
+            }
+        }
     }
 
     private const string SeasonalHalloweenThemeId = "halloween_seasonal_default";
@@ -1502,6 +1857,11 @@ public sealed class ThemeManager
         EnsureDefaultResourcesCaptured();
 
         var activeId = Preferences.Default.Get<string?>(ActiveThemeKey, null);
+        if (string.Equals(activeId, DefaultThemePreferenceValue, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(activeId) || activeId == SeasonalHalloweenThemeId)
         {
             if (SeasonSchedule.IsHalloweenSeason())

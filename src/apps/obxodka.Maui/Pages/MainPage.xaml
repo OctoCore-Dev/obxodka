@@ -14,40 +14,55 @@
     <Grid
         x:Name="ThisPage"
         BackgroundColor="{DynamicResource BgBase}"
+        IsClippedToBounds="True"
         SafeAreaEdges="None">
         <Grid.GestureRecognizers>
             <PointerGestureRecognizer PointerExited="OnPagePointerExited" PointerMoved="OnPagePointerMoved" />
         </Grid.GestureRecognizers>
 
-        <Image
-            x:Name="ThemeBackgroundImage"
-            Aspect="AspectFill"
+        <Grid
+            x:Name="ThemeBackgroundViewport"
             HorizontalOptions="Fill"
             InputTransparent="True"
-            IsVisible="False"
+            IsClippedToBounds="True"
             VerticalOptions="Fill"
-            ZIndex="0" />
+            ZIndex="0">
+            <Grid
+                x:Name="ThemeBackgroundMover"
+                HorizontalOptions="Fill"
+                InputTransparent="True"
+                VerticalOptions="Fill">
+                <Image
+                    x:Name="ThemeBackgroundImage"
+                    Aspect="AspectFill"
+                    HorizontalOptions="Fill"
+                    InputTransparent="True"
+                    IsVisible="False"
+                    VerticalOptions="Fill"
+                    ZIndex="0" />
 
-        <media:MediaElement
-            x:Name="ThemeBackgroundVideo"
-            Aspect="AspectFill"
-            HorizontalOptions="Fill"
-            InputTransparent="True"
-            IsVisible="False"
-            ShouldAutoPlay="False"
-            ShouldLoopPlayback="True"
-            ShouldMute="True"
-            ShouldShowPlaybackControls="False"
-            VerticalOptions="Fill"
-            ZIndex="1" />
+                <media:MediaElement
+                    x:Name="ThemeBackgroundVideo"
+                    Aspect="AspectFill"
+                    HorizontalOptions="Fill"
+                    InputTransparent="True"
+                    IsVisible="False"
+                    ShouldAutoPlay="False"
+                    ShouldLoopPlayback="True"
+                    ShouldMute="True"
+                    ShouldShowPlaybackControls="False"
+                    VerticalOptions="Fill"
+                    ZIndex="1" />
+            </Grid>
 
-        <BoxView
-            x:Name="ThemeBackgroundVideoDimmer"
-            HorizontalOptions="Fill"
-            InputTransparent="True"
-            IsVisible="False"
-            VerticalOptions="Fill"
-            ZIndex="2" />
+            <BoxView
+                x:Name="ThemeBackgroundVideoDimmer"
+                HorizontalOptions="Fill"
+                InputTransparent="True"
+                IsVisible="False"
+                VerticalOptions="Fill"
+                ZIndex="2" />
+        </Grid>
 
         <controls:ThemeParticlesOverlay
             x:Name="ThemeParticles"
@@ -61,6 +76,7 @@
             x:Name="ThemeDecorationsContainer"
             HorizontalOptions="Fill"
             InputTransparent="True"
+            IsClippedToBounds="True"
             IsVisible="False"
             VerticalOptions="Fill"
             ZIndex="20">
@@ -220,6 +236,60 @@
                 </HorizontalStackLayout>
             </VerticalStackLayout>
 
+        </Grid>
+
+        <Grid
+            x:Name="ThemeTransitionOverlay"
+            BackgroundColor="{DynamicResource BgOverlay}"
+            HorizontalOptions="Fill"
+            InputTransparent="False"
+            IsVisible="False"
+            Opacity="0"
+            VerticalOptions="Fill"
+            ZIndex="1500">
+            <Border
+                Padding="32,24"
+                BackgroundColor="{DynamicResource BgSurface}"
+                HorizontalOptions="Center"
+                MaximumWidthRequest="360"
+                Stroke="{DynamicResource BorderMedium}"
+                StrokeShape="RoundRectangle 16"
+                StrokeThickness="1.2"
+                VerticalOptions="Center">
+                <Border.Shadow>
+                    <Shadow
+                        Brush="{DynamicResource BgBase}"
+                        Offset="0,8"
+                        Opacity="0.6"
+                        Radius="24" />
+                </Border.Shadow>
+                <VerticalStackLayout HorizontalOptions="Center" Spacing="16">
+                    <ActivityIndicator
+                        x:Name="ThemeTransitionSpinner"
+                        HeightRequest="36"
+                        HorizontalOptions="Center"
+                        IsRunning="True"
+                        VerticalOptions="Center"
+                        WidthRequest="36"
+                        Color="{DynamicResource Primary}" />
+                    <VerticalStackLayout HorizontalOptions="Center" Spacing="4">
+                        <Label
+                            x:Name="ThemeTransitionTitle"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="16"
+                            HorizontalTextAlignment="Center"
+                            Text="Применение темы..."
+                            TextColor="{DynamicResource TextPrimary}" />
+                        <Label
+                            x:Name="ThemeTransitionSubtitle"
+                            FontFamily="{DynamicResource AppFontRegular}"
+                            FontSize="13"
+                            HorizontalTextAlignment="Center"
+                            Text="Настройка визуального оформления"
+                            TextColor="{DynamicResource TextMuted}" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
         </Grid>
 
         <controls:NeoDialog x:Name="NeoDialog" ZIndex="2000" />

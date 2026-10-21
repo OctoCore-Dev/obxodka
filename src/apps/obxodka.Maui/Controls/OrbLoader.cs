@@ -25,7 +25,7 @@ public partial class OrbLoader : SKCanvasView, IDisposable
     }
 
     private float _angle;
-    private float _hue;
+    private float _phase;
     private IDispatcherTimer? _timer;
     private EventHandler? _timerTick;
     private readonly Stopwatch _stopwatch = new();
@@ -66,7 +66,7 @@ public partial class OrbLoader : SKCanvasView, IDisposable
         {
             var seconds = (float)_stopwatch.Elapsed.TotalSeconds;
             _angle = seconds * 112.5f % 360f;
-            _hue = seconds * 18.75f % 360f;
+            _phase = (MathF.Sin(seconds * 1.8f) + 1f) * 0.5f;
             InvalidateSurface();
         };
         _timer.Tick += _timerTick;
@@ -92,6 +92,37 @@ public partial class OrbLoader : SKCanvasView, IDisposable
         _stopwatch.Reset();
     }
 
+    private static (SKColor Primary, SKColor Accent) GetThemeColors()
+    {
+        var primary = new SKColor(0x7C, 0x3A, 0xED);
+        var accent = new SKColor(0x00, 0xE5, 0xFF);
+
+        var res = Application.Current?.Resources;
+        if (res is not null)
+        {
+            if (res.TryGetValue("Primary", out var pObj) && pObj is Color pCol)
+            {
+                primary = new SKColor((byte)(pCol.Red * 255), (byte)(pCol.Green * 255), (byte)(pCol.Blue * 255));
+            }
+            if (res.TryGetValue("Accent", out var aObj) && aObj is Color aCol)
+            {
+                accent = new SKColor((byte)(aCol.Red * 255), (byte)(aCol.Green * 255), (byte)(aCol.Blue * 255));
+            }
+        }
+
+        return (primary, accent);
+    }
+
+    private static SKColor LerpColor(SKColor a, SKColor b, float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        return new SKColor(
+            (byte)(a.Red + ((b.Red - a.Red) * t)),
+            (byte)(a.Green + ((b.Green - a.Green) * t)),
+            (byte)(a.Blue + ((b.Blue - a.Blue) * t)),
+            (byte)(a.Alpha + ((b.Alpha - a.Alpha) * t)));
+    }
+
     protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
@@ -101,7 +132,11 @@ public partial class OrbLoader : SKCanvasView, IDisposable
 
         canvas.Clear(SKColors.Transparent);
 
-        _glowPaint.Color = SKColor.FromHsv(_hue, 80f, 100f).WithAlpha(60);
+        var (primary, accent) = GetThemeColors();
+        var mainColor = LerpColor(primary, accent, _phase);
+        var altColor = LerpColor(accent, primary, _phase);
+
+        _glowPaint.Color = mainColor.WithAlpha(60);
         canvas.DrawCircle(cx, cy, r, _glowPaint);
 
         _bgPaint.Shader?.Dispose();
@@ -109,26 +144,27 @@ public partial class OrbLoader : SKCanvasView, IDisposable
             new SKPoint(cx, cy - (r * 0.3f)),
             r,
             [
-                SKColor.FromHsv(_hue, 60f, 100f).WithAlpha(40),
-                SKColor.FromHsv((_hue + 30f) % 360f, 90f, 70f).WithAlpha(80)
+                mainColor.WithAlpha(40),
+                altColor.WithAlpha(80)
             ],
             SKShaderTileMode.Clamp);
         canvas.DrawCircle(cx, cy, r, _bgPaint);
 
-        _borderPaint.Color = SKColor.FromHsv(_hue, 70f, 100f).WithAlpha(180);
+        _borderPaint.Color = mainColor.WithAlpha(180);
         canvas.DrawCircle(cx, cy, r, _borderPaint);
 
-        DrawPolygons(canvas, cx, cy, r);
+        DrawPolygons(canvas, cx, cy, r, primary, accent);
     }
 
-    private void DrawPolygons(SKCanvas canvas, float cx, float cy, float r)
+    private void DrawPolygons(SKCanvas canvas, float cx, float cy, float r, SKColor primary, SKColor accent)
     {
         for (var i = 0; i < 4; i++)
         {
             var rot = (_angle * Angles[i]) + Offsets[i];
             var alpha = 120f + (i * 20f);
+            var t = (_phase + (i * 0.25f)) % 1f;
 
-            _polyPaint.Color = SKColor.FromHsv((_hue + (i * 25f)) % 360f, 85f, 100f).WithAlpha((byte)alpha);
+            _polyPaint.Color = LerpColor(primary, accent, t).WithAlpha((byte)alpha);
             _polyPaint.MaskFilter?.Dispose();
             _polyPaint.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 10f);
 

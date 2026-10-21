@@ -1,4 +1,5 @@
 using Microsoft.Maui.Controls.Shapes;
+using obxodka.Maui.Services;
 using Path = System.IO.Path;
 
 namespace obxodka.Views;
@@ -8,10 +9,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     private static readonly Color t_greenDot = Color.FromArgb("#10B981");
     private static readonly Color t_greenText = Color.FromArgb("#34D399");
     private static readonly Color t_amberDot = Color.FromArgb("#F59E0B");
-    private static readonly Color t_amberText = Color.FromArgb("#FBBF24");
     private static readonly Color t_redDot = Color.FromArgb("#EF4444");
-    private static readonly Color t_redText = Color.FromArgb("#F87171");
-    private static readonly Color t_grayDot = Color.FromArgb("#6B7280");
     private static readonly Color t_grayStroke = Color.FromArgb("#4B5563");
     private static readonly Color t_grayText = Color.FromArgb("#9CA3AF");
 
@@ -102,6 +100,10 @@ public sealed partial class VpnView : ContentView, IDisposable
         IsAntialias = true,
         Style = SKPaintStyle.Fill
     };
+    private readonly SKPaint _customButtonBitmapPaint = new()
+    {
+        IsAntialias = true
+    };
     private float _shockwaveProgress = -1f;
     private bool _shockwaveIsConnect;
     private float _loaderAngle;
@@ -125,7 +127,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     private readonly List<SKPoint> _graphPointsBuffer = [with(256)];
     private SKShader? _cachedAuraShader;
     private float _lastAuraCx, _lastAuraCy, _lastAuraR, _lastAuraGlow;
-    private SKColor _lastAuraColor;
+    private SKColor _lastAuraColor, _lastAuraBloomColor;
     private byte _lastAuraBaseAlpha, _lastAuraMidAlpha;
     private SKShader? _cachedGraphUpFillShader;
     private SKShader? _cachedGraphDownFillShader;
@@ -149,12 +151,17 @@ public sealed partial class VpnView : ContentView, IDisposable
     private string? _buttonImageConnectingPath;
     private string? _buttonImageActivePath;
     private string? _buttonImageErrorPath;
+    private string? _activeCardFramePath;
 
     private ButtonAnimatedClip? _buttonAnimatedIdle;
     private ButtonAnimatedClip? _buttonAnimatedConnecting;
     private ButtonAnimatedClip? _buttonAnimatedActive;
     private ButtonAnimatedClip? _buttonAnimatedError;
     private ButtonAnimatedClip? _buttonAnimatedCurrent;
+    private ButtonAnimatedClip? _buttonAnimatedPrev;
+    private float _buttonTransitionProgress = 1f;
+    private readonly Stopwatch _buttonAnimStopwatch = new();
+    private long _lastButtonAnimTicks;
     private IDispatcherTimer? _buttonAnimationTimer;
     private CancellationTokenSource? _buttonAnimCts;
     private bool _isWindowFocused = true;
@@ -277,6 +284,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         _reactorTrackPaint.Dispose();
         _shockwavePaint.Dispose();
         _auraPaint.Dispose();
+        _customButtonBitmapPaint.Dispose();
         _cachedAuraShader?.Dispose();
         _cachedGraphUpFillShader?.Dispose();
         _cachedGraphDownFillShader?.Dispose();
@@ -287,6 +295,8 @@ public sealed partial class VpnView : ContentView, IDisposable
         _graphDotSolidPaint.Dispose();
         _buttonAnimatedCurrent?.Dispose();
         _buttonAnimatedCurrent = null;
+        _buttonAnimatedPrev?.Dispose();
+        _buttonAnimatedPrev = null;
         _buttonAnimatedIdle?.Dispose();
         _buttonAnimatedIdle = null;
         _buttonAnimatedConnecting?.Dispose();
@@ -330,6 +340,36 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private static string GetServerRole(VpnServerDto server) =>
         string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase) ? "Main" : "Worker";
+
+    private static string GetStatusTextForState(AppVpnState state, string fallback)
+    {
+        var st = ThemeManager.Instance?.ActiveTheme?.Vfx?.StatusText;
+        return st is null
+            ? fallback
+            : state switch
+            {
+                AppVpnState.Disconnected => !string.IsNullOrWhiteSpace(st.Disconnected) ? st.Disconnected : fallback,
+                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => !string.IsNullOrWhiteSpace(st.Connecting) ? st.Connecting : fallback,
+                AppVpnState.Connected => !string.IsNullOrWhiteSpace(st.Connected) ? st.Connected : fallback,
+                AppVpnState.Error => !string.IsNullOrWhiteSpace(st.Error) ? st.Error : fallback,
+                _ => fallback
+            };
+    }
+
+    private static string GetButtonTextForState(AppVpnState state, string fallback)
+    {
+        var st = ThemeManager.Instance?.ActiveTheme?.Vfx?.StatusText;
+        return st is null
+            ? fallback
+            : state switch
+            {
+                AppVpnState.Disconnected => !string.IsNullOrWhiteSpace(st.ButtonIdle) ? st.ButtonIdle : fallback,
+                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => !string.IsNullOrWhiteSpace(st.ButtonConnecting) ? st.ButtonConnecting : fallback,
+                AppVpnState.Connected => !string.IsNullOrWhiteSpace(st.ButtonConnected) ? st.ButtonConnected : fallback,
+                AppVpnState.Error => !string.IsNullOrWhiteSpace(st.ButtonIdle) ? st.ButtonIdle : fallback,
+                _ => fallback
+            };
+    }
 
     private void LoadSavedServerSelection()
     {
@@ -481,6 +521,17 @@ public sealed partial class VpnView : ContentView, IDisposable
                 return;
             }
 
+            var bgSurface = GetAppColor("BgSurface", Color.FromArgb("#161622"));
+            var bgElevated = GetAppColor("BgElevated", Color.FromArgb("#202030"));
+            var borderMedium = GetAppColor("BorderMedium", Color.FromArgb("#363650"));
+            var textPrimary = GetAppColor("TextPrimary", Colors.White);
+            var primaryColor = GetAppColor("Primary", Color.FromArgb("#7C3AED"));
+            var primaryBright = GetAppColor("PrimaryBright", Color.FromArgb("#9F6FF0"));
+            var primaryDim = GetAppColor("PrimaryDim", Color.FromArgb("#267C3AED"));
+            var accentColor = GetAppColor("Accent", Color.FromArgb("#00E5FF"));
+            var accentDim = GetAppColor("AccentDim", Color.FromArgb("#1A00E5FF"));
+            var successColor = GetAppColor("Success", Color.FromArgb("#10B981"));
+
             ServerItemsContainer.Children.Clear();
             if (_cachedServers.Count == 0)
             {
@@ -489,8 +540,8 @@ public sealed partial class VpnView : ContentView, IDisposable
                     Padding = new Thickness(14, 18),
                     StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14) },
                     StrokeThickness = 1.0,
-                    BackgroundColor = Application.Current?.Resources.TryGetValue("BgCard", out var bgCd) == true ? (Color)bgCd : Color.FromArgb("#0F172A"),
-                    Stroke = Application.Current?.Resources.TryGetValue("BorderMedium", out var bColor) == true ? (Color)bColor : Color.FromArgb("#334155")
+                    BackgroundColor = bgSurface,
+                    Stroke = borderMedium
                 };
 
                 var retryStack = new VerticalStackLayout
@@ -502,21 +553,21 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var retryLabel = new Label
                 {
                     Text = "Список серверов пуст",
-                    FontFamily = "AppFontBold",
                     FontSize = 13,
-                    TextColor = Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true ? (Color)tp : Colors.White,
+                    TextColor = textPrimary,
                     HorizontalTextAlignment = TextAlignment.Center
                 };
+                retryLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
                 retryStack.Children.Add(retryLabel);
 
                 var retrySubLabel = new Label
                 {
                     Text = "Нажмите, чтобы обновить",
-                    FontFamily = "AppFontMedium",
                     FontSize = 11,
-                    TextColor = Application.Current?.Resources.TryGetValue("Accent", out var ac) == true ? (Color)ac : Color.FromArgb("#00E5FF"),
+                    TextColor = accentColor,
                     HorizontalTextAlignment = TextAlignment.Center
                 };
+                retrySubLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
                 retryStack.Children.Add(retrySubLabel);
 
                 retryCard.Content = retryStack;
@@ -524,6 +575,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var retryTap = new TapGestureRecognizer();
                 retryTap.Tapped += async (s, e) =>
                 {
+                    ThemeAudioService.PlayClick();
                     _ = retryCard.BounceClickAsync();
                     await RefreshServerListAsync();
                 };
@@ -544,12 +596,8 @@ public sealed partial class VpnView : ContentView, IDisposable
                     Padding = new Thickness(14, 10),
                     StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14) },
                     StrokeThickness = isSelected ? 1.5 : 1.0,
-                    BackgroundColor = isSelected
-                        ? (Application.Current?.Resources.TryGetValue("BgElevated", out var bgEl) == true ? (Color)bgEl : Color.FromArgb("#1E293B"))
-                        : (Application.Current?.Resources.TryGetValue("BgCard", out var bgCd) == true ? (Color)bgCd : Color.FromArgb("#0F172A")),
-                    Stroke = isSelected
-                        ? (Application.Current?.Resources.TryGetValue("Primary", out var pColor) == true ? (Color)pColor : Color.FromArgb("#7C3AED"))
-                        : (Application.Current?.Resources.TryGetValue("BorderMedium", out var bColor) == true ? (Color)bColor : Color.FromArgb("#334155"))
+                    BackgroundColor = isSelected ? bgElevated : bgSurface,
+                    Stroke = isSelected ? primaryColor : borderMedium
                 };
 
                 var grid = new Grid
@@ -573,7 +621,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                     HeightRequest = 19,
                     StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(3) },
                     StrokeThickness = 0.8,
-                    Stroke = Application.Current?.Resources.TryGetValue("BorderMedium", out var bColorFlag) == true ? (Color)bColorFlag : Color.FromArgb("#334155"),
+                    Stroke = borderMedium,
                     VerticalOptions = LayoutOptions.Center
                 };
 
@@ -628,10 +676,10 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var nameLabel = new Label
                 {
                     Text = server.Location,
-                    FontFamily = "AppFontBold",
                     FontSize = 13,
-                    TextColor = Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true ? (Color)tp : Colors.White
+                    TextColor = textPrimary
                 };
+                nameLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
                 infoStack.Children.Add(nameLabel);
 
                 var badgeStack = new HorizontalStackLayout
@@ -645,17 +693,17 @@ public sealed partial class VpnView : ContentView, IDisposable
                     Padding = new Thickness(5, 1),
                     StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
                     StrokeThickness = 0.6,
-                    BackgroundColor = Application.Current?.Resources.TryGetValue("AccentDim", out var ad) == true ? (Color)ad : Color.FromArgb("#1A00E5FF"),
-                    Stroke = Application.Current?.Resources.TryGetValue("Accent", out var ac) == true ? (Color)ac : Color.FromArgb("#00E5FF")
+                    BackgroundColor = accentDim,
+                    Stroke = accentColor
                 };
 
                 var providerLabel = new Label
                 {
                     Text = GetServerProvider(server),
-                    FontFamily = "AppFontMedium",
                     FontSize = 9,
-                    TextColor = Application.Current?.Resources.TryGetValue("Accent", out var act) == true ? (Color)act : Color.FromArgb("#00E5FF")
+                    TextColor = accentColor
                 };
+                providerLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
                 providerBadge.Content = providerLabel;
                 badgeStack.Children.Add(providerBadge);
 
@@ -665,17 +713,17 @@ public sealed partial class VpnView : ContentView, IDisposable
                     Padding = new Thickness(5, 1),
                     StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
                     StrokeThickness = 0.6,
-                    BackgroundColor = isMainRole ? Color.FromArgb("#267C3AED") : Color.FromArgb("#1A38BDF8"),
-                    Stroke = isMainRole ? Color.FromArgb("#A78BFA") : Color.FromArgb("#38BDF8")
+                    BackgroundColor = isMainRole ? primaryDim : accentDim,
+                    Stroke = isMainRole ? primaryBright : accentColor
                 };
 
                 var roleLabel = new Label
                 {
                     Text = GetServerRole(server),
-                    FontFamily = "AppFontMedium",
                     FontSize = 9,
-                    TextColor = isMainRole ? Color.FromArgb("#C4B5FD") : Color.FromArgb("#7DD3FC")
+                    TextColor = isMainRole ? primaryBright : accentColor
                 };
+                roleLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
                 roleBadge.Content = roleLabel;
                 badgeStack.Children.Add(roleBadge);
 
@@ -685,7 +733,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                     HeightRequest = 5,
                     CornerRadius = 2.5,
                     VerticalOptions = LayoutOptions.Center,
-                    Color = Application.Current?.Resources.TryGetValue("Success", out var sc) == true ? (Color)sc : Color.FromArgb("#10B981")
+                    Color = successColor
                 };
                 badgeStack.Children.Add(pingDot);
 
@@ -693,11 +741,11 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var pingLabel = new Label
                 {
                     Text = pingText,
-                    FontFamily = "AppFontMedium",
                     FontSize = 10,
-                    TextColor = Application.Current?.Resources.TryGetValue("Success", out var sct) == true ? (Color)sct : Color.FromArgb("#10B981"),
+                    TextColor = successColor,
                     VerticalOptions = LayoutOptions.Center
                 };
+                pingLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
                 badgeStack.Children.Add(pingLabel);
 
                 infoStack.Children.Add(badgeStack);
@@ -706,9 +754,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var statusIcon = new MauiIcon
                 {
                     Icon = isSelected ? FluentIcons.Checkmark24 : FluentIcons.Circle24,
-                    IconColor = isSelected
-                        ? (Application.Current?.Resources.TryGetValue("Success", out var sic) == true ? (Color)sic : Color.FromArgb("#10B981"))
-                        : (Application.Current?.Resources.TryGetValue("BorderMedium", out var bic) == true ? (Color)bic : Color.FromArgb("#475569")),
+                    IconColor = isSelected ? successColor : borderMedium,
                     IconSize = isSelected ? 20 : 18,
                     VerticalOptions = LayoutOptions.Center
                 };
@@ -719,12 +765,13 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var tap = new TapGestureRecognizer();
                 tap.Tapped += async (s, e) =>
                 {
-                    if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+                    if (_isBusy || _vpnService?.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
                     {
                         return;
                     }
+                    ThemeAudioService.PlayClick();
                     _ = card.BounceClickAsync();
-                    var wasConnected = _vpnService.CurrentState == AppVpnState.Connected;
+                    var wasConnected = _vpnService?.CurrentState == AppVpnState.Connected;
                     _selectedServer = server;
                     Preferences.Set("selected_server_ip", server.Ip);
                     Preferences.Set("selected_server_location", server.Location);
@@ -755,7 +802,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async Task SwitchServerHotSwapAsync(VpnServerDto newServer)
     {
-        if (_isBusy)
+        if (_isBusy || _vpnService is null)
         {
             return;
         }
@@ -765,8 +812,12 @@ public sealed partial class VpnView : ContentView, IDisposable
         {
             StartLoaderAnimation();
             ConnectButtonCore.IsEnabled = false;
-            UpdateIpStatusDisplay("Переключение...", t_cyanAccent, t_cyanAccent);
-            await SetNeonStateAsync("Смена сервера...", "ЖДИТЕ", AppVpnState.Connecting);
+            var accent = GetAppColor("Accent", t_cyanAccent);
+            UpdateIpStatusDisplay("Переключение...", accent, accent);
+            await SetNeonStateAsync(
+                GetStatusTextForState(AppVpnState.Connecting, "Смена сервера..."),
+                GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
+                AppVpnState.Connecting);
 
             await _vpnService.StopVpnAsync();
 
@@ -787,8 +838,12 @@ public sealed partial class VpnView : ContentView, IDisposable
             Shared.Logging.AppLogger.LogError($"[HOT-SWAP ERROR] {ex.Message}", ex);
             StopLoaderAnimation();
             ConnectButtonCore.IsEnabled = true;
-            UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
-            await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
+            var muted = GetAppColor("TextMuted", t_grayText);
+            UpdateIpStatusDisplay("Не назначен", muted, muted);
+            await SetNeonStateAsync(
+                GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
+                GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
+                AppVpnState.Disconnected);
             if (ParentPage is not null)
             {
                 await ParentPage.DisplayAlertAsync("Смена сервера", $"Не удалось переключить сервер: {ex.Message}", "OK");
@@ -802,7 +857,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async Task OpenServerModalAsync()
     {
-        if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+        if (_isBusy || _vpnService?.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
         {
             return;
         }
@@ -835,14 +890,21 @@ public sealed partial class VpnView : ContentView, IDisposable
         ServerModalOverlay.IsVisible = false;
     }
 
-    private void OnServerModalBackdropTapped(object? sender, EventArgs e) =>
+    private void OnServerModalBackdropTapped(object? sender, EventArgs e)
+    {
+        ThemeAudioService.PlayClick();
         _ = CloseServerModalAsync();
+    }
 
-    private void OnCloseServerModalClicked(object? sender, EventArgs e) =>
+    private void OnCloseServerModalClicked(object? sender, EventArgs e)
+    {
+        ThemeAudioService.PlayClick();
         _ = CloseServerModalAsync();
+    }
 
     private async void OnRefreshServersClickedAsync(object? sender, EventArgs e)
     {
+        ThemeAudioService.PlayClick();
         if (sender is VisualElement ve)
         {
             _ = ve.BounceClickAsync();
@@ -852,11 +914,12 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async void OnServerSelectorTappedAsync(object? sender, EventArgs e)
     {
-        if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+        if (_isBusy || _vpnService?.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
         {
             return;
         }
 
+        ThemeAudioService.PlayClick();
         if (ServerSelectorButton is not null)
         {
             _ = ServerSelectorButton.BounceClickAsync();
@@ -876,7 +939,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 await ParentPage.SwitchTabAsync("vpn");
             }
 
-            if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
+            if (_vpnService is null || _vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
             {
                 OnConnectClickedAsync(null, EventArgs.Empty);
             }
@@ -947,6 +1010,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             return;
         }
 
+        ThemeAudioService.PlayClick();
         _showIpV6 = !_showIpV6;
         var v4 = OctopusEngine.Current.AssignedIp;
         var v6 = OctopusEngine.Current.AssignedIpV6;
@@ -954,7 +1018,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         var tag = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? "v6" : "v4";
 
         IpAddressLabel.Text = currentIp ?? "Подключен";
-        IpAddressLabel.TextColor = Colors.White;
+        IpAddressLabel.TextColor = GetAppColor("TextPrimary", Colors.White);
         IpVersionBadge.IsVisible = true;
         IpVersionLabel.Text = tag;
         IpCopyButton.IsVisible = true;
@@ -974,13 +1038,15 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         if (!string.IsNullOrWhiteSpace(currentIp) && currentIp != "0.0.0.0")
         {
+            ThemeAudioService.PlayClick();
             await Clipboard.Default.SetTextAsync(currentIp);
             var prevText = IpAddressLabel.Text;
             var prevColor = IpAddressLabel.TextColor;
+            var successColor = GetAppColor("Success", t_greenText);
             IpAddressLabel.Text = $"{tag.ToUpperInvariant()} скопирован!";
-            IpAddressLabel.TextColor = t_greenText;
+            IpAddressLabel.TextColor = successColor;
             IpCopyIcon.Icon = FluentIcons.Checkmark20;
-            IpCopyIcon.IconColor = t_greenDot;
+            IpCopyIcon.IconColor = successColor;
             await Task.Delay(1100);
             if (OctopusEngine.Current.IsConnected)
             {
@@ -990,9 +1056,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 IpAddressLabel.Text = refreshedIp ?? prevText;
                 IpAddressLabel.TextColor = prevColor;
                 IpCopyIcon.Icon = FluentIcons.Copy20;
-                IpCopyIcon.IconColor = Application.Current?.Resources.TryGetValue("TextSecondary", out var secColor) == true && secColor is Color c
-                    ? c
-                    : t_grayText;
+                IpCopyIcon.IconColor = GetAppColor("TextSecondary", t_grayText);
             }
         }
     }
@@ -1018,7 +1082,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             StatusLabel.Text = friendlyMessage;
-            StatusLabel.TextColor = Colors.Red;
+            StatusLabel.TextColor = GetAppColor("Error", t_redDot);
             try
             {
                 if (ParentPage is not null)
@@ -1083,10 +1147,12 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private void ResetPingIndicators()
     {
+        var muted = GetAppColor("TextMuted", t_grayText);
+        var border = GetAppColor("BorderMedium", t_grayStroke);
         PingValueLabel.Text = "-- ms";
-        PingDot.Color = t_grayDot;
-        PingBadge.Stroke = t_grayStroke;
-        PingValueLabel.TextColor = t_grayText;
+        PingDot.Color = muted;
+        PingBadge.Stroke = border;
+        PingValueLabel.TextColor = muted;
     }
 
     private void HandlePingUpdated(long rtt)
@@ -1095,25 +1161,31 @@ public sealed partial class VpnView : ContentView, IDisposable
         {
             if (OctopusEngine.Current is { IsConnected: true })
             {
-                UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? "Подключен", Colors.White, t_cyanAccent);
+                UpdateIpStatusDisplay(
+                    OctopusEngine.Current.AssignedIp ?? "Подключен",
+                    GetAppColor("TextPrimary", Colors.White),
+                    GetAppColor("Accent", t_cyanAccent));
                 PingValueLabel.Text = $"{rtt} ms";
                 if (rtt < 75)
                 {
-                    PingDot.Color = t_greenDot;
-                    PingBadge.Stroke = t_greenDot;
-                    PingValueLabel.TextColor = t_greenText;
+                    var sc = GetAppColor("Success", t_greenDot);
+                    PingDot.Color = sc;
+                    PingBadge.Stroke = sc;
+                    PingValueLabel.TextColor = sc;
                 }
                 else if (rtt < 150)
                 {
-                    PingDot.Color = t_amberDot;
-                    PingBadge.Stroke = t_amberDot;
-                    PingValueLabel.TextColor = t_amberText;
+                    var wc = GetAppColor("Warning", t_amberDot);
+                    PingDot.Color = wc;
+                    PingBadge.Stroke = wc;
+                    PingValueLabel.TextColor = wc;
                 }
                 else
                 {
-                    PingDot.Color = t_redDot;
-                    PingBadge.Stroke = t_redDot;
-                    PingValueLabel.TextColor = t_redText;
+                    var ec = GetAppColor("Error", t_redDot);
+                    PingDot.Color = ec;
+                    PingBadge.Stroke = ec;
+                    PingValueLabel.TextColor = ec;
                 }
             }
             else
@@ -1129,6 +1201,10 @@ public sealed partial class VpnView : ContentView, IDisposable
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             ServerSelectorButton.Opacity = state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting ? 0.55 : 1.0;
+            var muted = GetAppColor("TextMuted", t_grayText);
+            var textPrimary = GetAppColor("TextPrimary", Colors.White);
+            var accent = GetAppColor("Accent", t_cyanAccent);
+
             switch (state)
             {
                 case AppVpnState.Disconnected:
@@ -1140,11 +1216,14 @@ public sealed partial class VpnView : ContentView, IDisposable
                     ResetPingIndicators();
                     TriggerShockwave(isConnect: false);
                     OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, t_grayText, t_grayText);
+                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
                     _activeConnectedNode = null;
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
-                    await SetNeonStateAsync(VpnStatusMessages.Disconnected, VpnStatusMessages.StartAction, AppVpnState.Disconnected);
+                    await SetNeonStateAsync(
+                        GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected),
+                        GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction),
+                        AppVpnState.Disconnected);
                     ParentPage?.NotifyVpnDisconnected();
                     break;
 
@@ -1157,11 +1236,14 @@ public sealed partial class VpnView : ContentView, IDisposable
                     AnimateReactorMorph(1.0f, 650);
                     TriggerShockwave(isConnect: true);
                     OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? VpnStatusMessages.Connected, Colors.White, t_cyanAccent);
+                    UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? VpnStatusMessages.Connected, textPrimary, accent);
                     UpdateActiveNode(_activeConnectedNode);
                     ConnectButtonCore.IsEnabled = true;
                     UpdateRayIndicator();
-                    await SetNeonStateAsync(VpnStatusMessages.Protected, VpnStatusMessages.StopAction, AppVpnState.Connected);
+                    await SetNeonStateAsync(
+                        GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected),
+                        GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction),
+                        AppVpnState.Connected);
                     ParentPage?.NotifyVpnConnected();
                     break;
 
@@ -1173,13 +1255,18 @@ public sealed partial class VpnView : ContentView, IDisposable
                     AnimateErrorMorph(1.0f, 350);
                     TriggerShockwave(isConnect: false);
                     OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, t_grayText, t_grayText);
+                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
                     _activeConnectedNode = null;
                     UpdateActiveNode();
                     ConnectButtonCore.IsEnabled = true;
                     PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
-                    var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage) ? _lastErrorMessage : VpnStatusMessages.DefaultConnectionError;
-                    await SetNeonStateAsync(errDisplay, VpnStatusMessages.Retry, AppVpnState.Error);
+                    var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage)
+                        ? _lastErrorMessage
+                        : GetStatusTextForState(AppVpnState.Error, VpnStatusMessages.DefaultConnectionError);
+                    await SetNeonStateAsync(
+                        errDisplay,
+                        GetButtonTextForState(AppVpnState.Error, VpnStatusMessages.Retry),
+                        AppVpnState.Error);
                     ParentPage?.NotifyVpnDisconnected();
                     StopLoaderAnimation(animateExit: true);
                     break;
@@ -1192,19 +1279,22 @@ public sealed partial class VpnView : ContentView, IDisposable
                     ResetPingIndicators();
                     StartLoaderAnimation(animateEntrance: true);
                     ConnectButtonCore.IsEnabled = false;
-                    UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, t_cyanAccent, t_cyanAccent);
+                    UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, accent, accent);
                     UpdateActiveNode();
-                    await SetNeonStateAsync(VpnStatusMessages.Connecting, VpnStatusMessages.PleaseWait, state);
+                    await SetNeonStateAsync(
+                        GetStatusTextForState(state, VpnStatusMessages.Connecting),
+                        GetButtonTextForState(state, VpnStatusMessages.PleaseWait),
+                        state);
                     break;
 
                 case AppVpnState.Disconnecting:
                     StopGraphAnimation();
                     ResetPingIndicators();
                     ConnectButtonCore.IsEnabled = false;
-                    UpdateIpStatusDisplay(VpnStatusMessages.Disconnecting, t_grayText, t_grayText);
+                    UpdateIpStatusDisplay(VpnStatusMessages.Disconnecting, muted, muted);
                     NodeHostLabel.Text = VpnStatusMessages.Disconnecting;
                     StatusLabel.Text = VpnStatusMessages.Disconnecting;
-                    ConnectButtonText.Text = VpnStatusMessages.PleaseWait;
+                    ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnecting, VpnStatusMessages.PleaseWait);
                     _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
                     AnimateReactorMorph(0.0f, 350);
                     SafeScaleTo(LoaderCanvas, 0.35, 400, Easing.CubicIn);
@@ -1227,11 +1317,17 @@ public sealed partial class VpnView : ContentView, IDisposable
         if (state == AppVpnState.Connected)
         {
             await UIAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+            var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
+            var accentColor = GetAppColor("Accent", t_cyanAccent);
+            if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
+            {
+                accentColor = ovColor;
+                StatusLabel.TextColor = ovColor;
+                ConnectIcon.IconColor = ovColor;
+            }
+
             if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
             {
-                var accentColor = (Application.Current?.Resources.TryGetValue("Accent", out var ac) == true && ac is Color acc)
-                    ? acc
-                    : t_cyanAccent;
                 ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
                 ConnectButtonCore.Stroke = accentColor;
             }
@@ -1241,12 +1337,14 @@ public sealed partial class VpnView : ContentView, IDisposable
         else if (state == AppVpnState.Error)
         {
             await UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-            ConnectIcon.IconColor = Colors.Red;
-            StatusLabel.TextColor = Colors.Red;
+            var errColor = GetAppColor("Error", t_redDot);
+            var errDim = GetAppColor("ErrorDim", t_redBg);
+            ConnectIcon.IconColor = errColor;
+            StatusLabel.TextColor = errColor;
             if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
             {
-                ConnectButtonCore.BackgroundColor = t_redBg;
-                ConnectButtonCore.Stroke = Colors.Red;
+                ConnectButtonCore.BackgroundColor = errDim;
+                ConnectButtonCore.Stroke = errColor;
             }
         }
         else if (state is AppVpnState.Connecting or AppVpnState.Reconnecting)
@@ -1276,11 +1374,12 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private async void OnConnectClickedAsync(object? sender, EventArgs? e)
     {
-        if (_isBusy)
+        if (_isBusy || _vpnService is null)
         {
             return;
         }
 
+        ThemeAudioService.PlayClick();
         _isBusy = true;
 
         if (_vpnService.CurrentState is not (AppVpnState.Disconnected or AppVpnState.Error))
@@ -1347,9 +1446,9 @@ public sealed partial class VpnView : ContentView, IDisposable
                     : "Как удалить:\n1. В открывшемся окне «certmgr» раскройте «Доверенные корневые центры сертификации» -> «Сертификаты».\n2. Найдите сертификат, нажмите правой кнопкой мыши -> «Удалить».";
 
                 var openSettings = ParentPage is not null && await ParentPage.DisplayAlertAsync(
-                    "⚠️ Обнаружен сертификат перехвата!",
+                    "Обнаружен сертификат перехвата!",
                     $"На вашем устройстве установлен сторонний корневой сертификат:\n«{auditResult.CertificateName}»\n\n" +
-                    "⚠️ ВНИМАНИЕ: Вне VPN этот сертификат позволяет операторам связи и третьим лицам расшифровывать ваш защищённый трафик (HTTPS), видеть переписки и перехватывать пароли.\n\n" +
+                    "ВНИМАНИЕ: Вне VPN этот сертификат позволяет операторам связи и третьим лицам расшифровывать ваш защищённый трафик (HTTPS), видеть переписки и перехватывать пароли.\n\n" +
                     $"{platformInstructions}\n\n" +
                     "Желаете открыть настройки для удаления?",
                     "Открыть настройки",
@@ -1392,8 +1491,12 @@ public sealed partial class VpnView : ContentView, IDisposable
 
             StartLoaderAnimation();
             ConnectButtonCore.IsEnabled = false;
-            UpdateIpStatusDisplay("Получение...", t_cyanAccent, t_cyanAccent);
-            await SetNeonStateAsync("Подключение...", "ЖДИТЕ", AppVpnState.Connecting);
+            var accent = GetAppColor("Accent", t_cyanAccent);
+            UpdateIpStatusDisplay("Получение...", accent, accent);
+            await SetNeonStateAsync(
+                GetStatusTextForState(AppVpnState.Connecting, "Подключение..."),
+                GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
+                AppVpnState.Connecting);
 
             var preflightError = await Task.Run(_vpnService.RunNetworkPreflightAsync);
             if (!string.IsNullOrEmpty(preflightError))
@@ -1460,8 +1563,12 @@ public sealed partial class VpnView : ContentView, IDisposable
             Shared.Logging.AppLogger.LogError($"[VPN CONNECT ERROR] {ex.Message}", ex);
             StopLoaderAnimation();
             ConnectButtonCore.IsEnabled = true;
-            UpdateIpStatusDisplay("Не назначен", t_grayText, t_grayText);
-            await SetNeonStateAsync("Не в сети", "СТАРТ", AppVpnState.Disconnected);
+            var muted = GetAppColor("TextMuted", t_grayText);
+            UpdateIpStatusDisplay("Не назначен", muted, muted);
+            await SetNeonStateAsync(
+                GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
+                GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
+                AppVpnState.Disconnected);
             var friendlyMsg = ex is SocketException or InvalidOperationException
                 ? ex.Message
                 : "Произошла ошибка при подключении/отключении";
@@ -1598,6 +1705,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         var sentSpeed = Math.Max(0, (bytesSent - _lastBytesSent) / elapsed);
         var recvSpeed = Math.Max(0, (bytesReceived - _lastBytesReceived) / elapsed);
+
         _lastBytesSent = bytesSent;
         _lastBytesReceived = bytesReceived;
         _lastTrafficUpdate = now;
@@ -1654,10 +1762,11 @@ public sealed partial class VpnView : ContentView, IDisposable
             return;
         }
 
-        void DrawStream(bool isUpStream, SKPaint strokePaint, SKColor startFillColor, SKColor strokeColor)
+        var graphStyle = ThemeManager.Instance?.ActiveTheme?.Vfx?.TrafficGraphStyle?.Trim().ToLowerInvariant() ?? "neon_wave";
+
+        void PopulatePoints(bool isUpStream)
         {
             _graphPointsBuffer.Clear();
-
             for (var i = 0; i < samplesCopy.Count; i++)
             {
                 var s = samplesCopy[i];
@@ -1666,7 +1775,6 @@ public sealed partial class VpnView : ContentView, IDisposable
                 var speed = isUpStream ? s.SpeedUp : s.SpeedDown;
                 var ratio = Math.Clamp((float)(speed / maxSpeed), 0f, 1f);
                 var y = h - paddingY - (ratio * usableH);
-
                 _graphPointsBuffer.Add(new SKPoint(x, y));
             }
 
@@ -1684,20 +1792,55 @@ public sealed partial class VpnView : ContentView, IDisposable
             {
                 _graphPointsBuffer.Add(new SKPoint(w, _graphPointsBuffer[^1].Y));
             }
+        }
 
+        void DrawStream(bool isUpStream, SKPaint strokePaint, SKColor startFillColor, SKColor strokeColor)
+        {
+            PopulatePoints(isUpStream);
             if (_graphPointsBuffer.Count < 2)
             {
                 return;
             }
 
+            if (graphStyle == "cyber_bars")
+            {
+                var barCount = 28;
+                var slotW = w / (float)barCount;
+                var barW = Math.Max(2f, slotW * 0.56f);
+                for (var b = 0; b < barCount; b++)
+                {
+                    var sampleIdx = (int)Math.Clamp((float)b / barCount * _graphPointsBuffer.Count, 0, _graphPointsBuffer.Count - 1);
+                    var ptY = _graphPointsBuffer[sampleIdx].Y;
+                    var barX = (b * slotW) + ((slotW - barW) * 0.5f) + (isUpStream ? -1.5f : 1.5f);
+                    var barTop = Math.Min(h - paddingY - 2f, ptY);
+                    var rect = new SKRect(barX, barTop, barX + barW, h - paddingY);
+                    _graphDotSolidPaint.Color = strokeColor.WithAlpha((byte)(isUpStream ? 110 : 165));
+                    canvas.DrawRoundRect(rect, 2f, 2f, _graphDotSolidPaint);
+
+                    _graphDotGlowPaint.Color = strokeColor.WithAlpha(235);
+                    canvas.DrawRect(barX, barTop, barW, 2.5f, _graphDotGlowPaint);
+                }
+                return;
+            }
+
             using var strokeBuilder = new SKPathBuilder();
             strokeBuilder.MoveTo(_graphPointsBuffer[0]);
-            for (var i = 0; i < _graphPointsBuffer.Count - 1; i++)
+            if (graphStyle == "pulse_line")
             {
-                var p0 = _graphPointsBuffer[i];
-                var p1 = _graphPointsBuffer[i + 1];
-                var midX = (p0.X + p1.X) / 2f;
-                strokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
+                for (var i = 1; i < _graphPointsBuffer.Count; i++)
+                {
+                    strokeBuilder.LineTo(_graphPointsBuffer[i]);
+                }
+            }
+            else
+            {
+                for (var i = 0; i < _graphPointsBuffer.Count - 1; i++)
+                {
+                    var p0 = _graphPointsBuffer[i];
+                    var p1 = _graphPointsBuffer[i + 1];
+                    var midX = (p0.X + p1.X) / 2f;
+                    strokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
+                }
             }
             using var strokePath = strokeBuilder.Detach();
 
@@ -1708,41 +1851,58 @@ public sealed partial class VpnView : ContentView, IDisposable
             using var fillPath = fillBuilder.Detach();
 
             SKShader fillShader;
+            var effectiveFillColor = graphStyle == "aurora_ribbon"
+                ? strokeColor.WithAlpha(115)
+                : startFillColor;
+
             if (isUpStream)
             {
-                if (_cachedGraphUpFillShader == null || _lastGraphH != h || _lastGraphUpColor != startFillColor)
+                if (_cachedGraphUpFillShader == null || _lastGraphH != h || _lastGraphUpColor != effectiveFillColor)
                 {
                     _cachedGraphUpFillShader?.Dispose();
                     _cachedGraphUpFillShader = SKShader.CreateLinearGradient(
                         new SKPoint(0, 0),
                         new SKPoint(0, h),
-                        [startFillColor, SKColors.Transparent],
+                        [effectiveFillColor, SKColors.Transparent],
                         [0f, 1f],
                         SKShaderTileMode.Clamp);
-                    _lastGraphUpColor = startFillColor;
+                    _lastGraphUpColor = effectiveFillColor;
                 }
                 fillShader = _cachedGraphUpFillShader;
             }
             else
             {
-                if (_cachedGraphDownFillShader == null || _lastGraphH != h || _lastGraphDownColor != startFillColor)
+                if (_cachedGraphDownFillShader == null || _lastGraphH != h || _lastGraphDownColor != effectiveFillColor)
                 {
                     _cachedGraphDownFillShader?.Dispose();
                     _cachedGraphDownFillShader = SKShader.CreateLinearGradient(
                         new SKPoint(0, 0),
                         new SKPoint(0, h),
-                        [startFillColor, SKColors.Transparent],
+                        [effectiveFillColor, SKColors.Transparent],
                         [0f, 1f],
                         SKShaderTileMode.Clamp);
-                    _lastGraphDownColor = startFillColor;
+                    _lastGraphDownColor = effectiveFillColor;
                 }
                 fillShader = _cachedGraphDownFillShader;
             }
             _lastGraphH = h;
 
-            _graphFillPaint.Shader = fillShader;
-            canvas.DrawPath(fillPath, _graphFillPaint);
-            _graphFillPaint.Shader = null;
+            if (graphStyle != "pulse_line")
+            {
+                _graphFillPaint.Shader = fillShader;
+                canvas.DrawPath(fillPath, _graphFillPaint);
+                _graphFillPaint.Shader = null;
+            }
+
+            if (graphStyle == "aurora_ribbon")
+            {
+                var origWidth = strokePaint.StrokeWidth;
+                strokePaint.StrokeWidth = 5.5f;
+                strokePaint.Color = strokeColor.WithAlpha(90);
+                canvas.DrawPath(strokePath, strokePaint);
+                strokePaint.StrokeWidth = origWidth;
+                strokePaint.Color = strokeColor;
+            }
 
             canvas.DrawPath(strokePath, strokePaint);
 
@@ -1781,6 +1941,10 @@ public sealed partial class VpnView : ContentView, IDisposable
             _loaderTimer.Tick += (_, _) =>
             {
                 _loaderAngle += 1.6f;
+                if (CustomButtonRingImage is { IsVisible: true })
+                {
+                    CustomButtonRingImage.Rotation = _loaderAngle * 0.45f % 360f;
+                }
                 LoaderCanvas?.InvalidateSurface();
             };
             _loaderTimer.Start();
@@ -2032,6 +2196,13 @@ public sealed partial class VpnView : ContentView, IDisposable
             return;
         }
 
+        var vfx = ThemeManager.Instance?.ActiveTheme?.Vfx;
+        var loaderStyle = vfx?.ButtonLoaderStyle?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (loaderStyle == "none")
+        {
+            return;
+        }
+
         var cx = e.Info.Width / 2f;
         var cy = e.Info.Height / 2f;
         var r = Math.Min(cx, cy) - 6f;
@@ -2042,9 +2213,39 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         var skPrimary = GetSkiaThemeColor("Primary", t_skPurple);
         var skAccent = GetSkiaThemeColor("Accent", t_skCyan);
-        var colorPrimary = LerpColor(skPrimary, SKColors.DarkRed, _errorTransitionFactor);
-        var colorAccent = LerpColor(skAccent, SKColors.Red, _errorTransitionFactor);
+        var skError = GetSkiaThemeColor("Error", new SKColor(0xEF, 0x44, 0x44));
+        if (_vpnService?.CurrentState == AppVpnState.Connected &&
+            !string.IsNullOrWhiteSpace(vfx?.ActiveOverrides?.AccentColor) &&
+            SKColor.TryParse(vfx.ActiveOverrides.AccentColor, out var ovAccent))
+        {
+            skAccent = ovAccent;
+        }
+
+        var colorPrimary = LerpColor(skPrimary, skError, _errorTransitionFactor);
+        var colorAccent = LerpColor(skAccent, skError, _errorTransitionFactor);
         var glowMult = (float)ThemeManager.CurrentGlowIntensity;
+        if (vfx?.Glow?.Intensity is > 0)
+        {
+            glowMult *= (float)vfx.Glow.Intensity;
+        }
+
+        if (loaderStyle == "dual_arc")
+        {
+            DrawDualArcLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+            return;
+        }
+
+        if (loaderStyle == "runes")
+        {
+            DrawRunesLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+            return;
+        }
+
+        if (loaderStyle == "reactor")
+        {
+            DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+            return;
+        }
 
         var factor = _reactorTransitionFactor;
 
@@ -2061,6 +2262,60 @@ public sealed partial class VpnView : ContentView, IDisposable
             DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f - factor);
             DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, factor);
         }
+    }
+
+    private void DrawDualArcLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
+    {
+        var outerR = r * 0.84f;
+        var innerR = r * 0.66f;
+        var outerRect = new SKRect(cx - outerR, cy - outerR, cx + outerR, cy + outerR);
+        var innerRect = new SKRect(cx - innerR, cy - innerR, cx + innerR, cy + innerR);
+
+        var glowAlpha = (byte)Math.Clamp(110 * glowMult * alphaMultiplier, 0, 255);
+        var coreAlpha = (byte)Math.Clamp(220 * alphaMultiplier, 0, 255);
+
+        _polyGlowPaint.Color = colorAccent.WithAlpha(glowAlpha);
+        _polyCorePaint.Color = colorAccent.WithAlpha(coreAlpha);
+        canvas.DrawArc(outerRect, _loaderAngle * 1.4f, 115f, false, _polyGlowPaint);
+        canvas.DrawArc(outerRect, _loaderAngle * 1.4f, 115f, false, _polyCorePaint);
+        canvas.DrawArc(outerRect, (_loaderAngle * 1.4f) + 180f, 115f, false, _polyGlowPaint);
+        canvas.DrawArc(outerRect, (_loaderAngle * 1.4f) + 180f, 115f, false, _polyCorePaint);
+
+        _polyGlowPaint.Color = colorPrimary.WithAlpha(glowAlpha);
+        _polyCorePaint.Color = colorPrimary.WithAlpha(coreAlpha);
+        canvas.DrawArc(innerRect, -_loaderAngle * 1.9f, 85f, false, _polyGlowPaint);
+        canvas.DrawArc(innerRect, -_loaderAngle * 1.9f, 85f, false, _polyCorePaint);
+        canvas.DrawArc(innerRect, (-_loaderAngle * 1.9f) + 180f, 85f, false, _polyGlowPaint);
+        canvas.DrawArc(innerRect, (-_loaderAngle * 1.9f) + 180f, 85f, false, _polyCorePaint);
+    }
+
+    private void DrawRunesLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
+    {
+        var ringR = r * 0.82f;
+        var glowAlpha = (byte)Math.Clamp(95 * glowMult * alphaMultiplier, 0, 255);
+        var coreAlpha = (byte)Math.Clamp(195 * alphaMultiplier, 0, 255);
+
+        _reactorTrackPaint.Color = colorPrimary.WithAlpha(coreAlpha);
+        canvas.DrawCircle(cx, cy, ringR, _reactorTrackPaint);
+        canvas.DrawCircle(cx, cy, ringR * 0.86f, _reactorTrackPaint);
+
+        _ = canvas.Save();
+        canvas.RotateDegrees(_loaderAngle * 0.65f, cx, cy);
+        using var hexPath = MakePolygon(cx, cy, ringR * 0.86f, 6);
+        _polyGlowPaint.Color = colorAccent.WithAlpha(glowAlpha);
+        _polyCorePaint.Color = colorAccent.WithAlpha(coreAlpha);
+        canvas.DrawPath(hexPath, _polyGlowPaint);
+        canvas.DrawPath(hexPath, _polyCorePaint);
+        canvas.Restore();
+
+        _ = canvas.Save();
+        canvas.RotateDegrees(-_loaderAngle * 0.95f, cx, cy);
+        using var triPath1 = MakePolygon(cx, cy, ringR * 0.68f, 3);
+        _polyCorePaint.Color = colorPrimary.WithAlpha(coreAlpha);
+        canvas.DrawPath(triPath1, _polyCorePaint);
+        canvas.RotateDegrees(60f, cx, cy);
+        canvas.DrawPath(triPath1, _polyCorePaint);
+        canvas.Restore();
     }
 
     private void DrawQuantumHyperCrystal(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
@@ -2179,13 +2434,48 @@ public sealed partial class VpnView : ContentView, IDisposable
             return;
         }
 
-        var skAccent = GetSkiaThemeColor("Accent", t_skCyan);
-        var targetColor = _isErrorState ? SKColors.Red : skAccent;
-        var color = LerpColor(skAccent, targetColor, Math.Max(_isErrorState ? 1f : 0f, _errorTransitionFactor));
-        var glowMult = (float)ThemeManager.CurrentGlowIntensity;
+        var vfx = ThemeManager.Instance?.ActiveTheme?.Vfx;
+        var isConnected = _vpnService?.CurrentState == AppVpnState.Connected;
 
-        var baseAlpha = (byte)(_vpnService?.CurrentState == AppVpnState.Connected ? 95 : 65);
-        var midAlpha = (byte)(_vpnService?.CurrentState == AppVpnState.Connected ? 35 : 20);
+        var skAccent = GetSkiaThemeColor("Accent", t_skCyan);
+        var skPrimary = GetSkiaThemeColor("Primary", t_skPurple);
+        var skError = GetSkiaThemeColor("Error", new SKColor(0xEF, 0x44, 0x44));
+
+        var coreGlowColor = skAccent;
+        if (!string.IsNullOrWhiteSpace(vfx?.Glow?.CoreColor) && SKColor.TryParse(vfx.Glow.CoreColor, out var parsedCore))
+        {
+            coreGlowColor = parsedCore;
+        }
+        var bloomGlowColor = !string.IsNullOrWhiteSpace(vfx?.Glow?.BloomColor) && SKColor.TryParse(vfx.Glow.BloomColor, out var parsedBloom)
+            ? parsedBloom
+            : coreGlowColor;
+
+        if (isConnected)
+        {
+            if (!string.IsNullOrWhiteSpace(vfx?.ActiveOverrides?.AccentColor) &&
+                SKColor.TryParse(vfx.ActiveOverrides.AccentColor, out var ovAccent))
+            {
+                coreGlowColor = ovAccent;
+            }
+            if (!string.IsNullOrWhiteSpace(vfx?.ActiveOverrides?.GlowColor) &&
+                SKColor.TryParse(vfx.ActiveOverrides.GlowColor, out var ovGlow))
+            {
+                bloomGlowColor = ovGlow;
+            }
+        }
+
+        var targetColor = _isErrorState ? skError : coreGlowColor;
+        var color = LerpColor(coreGlowColor, targetColor, Math.Max(_isErrorState ? 1f : 0f, _errorTransitionFactor));
+        var bloomColor = LerpColor(bloomGlowColor, targetColor, Math.Max(_isErrorState ? 1f : 0f, _errorTransitionFactor));
+
+        var glowMult = (float)ThemeManager.CurrentGlowIntensity;
+        if (vfx?.Glow?.Intensity is > 0)
+        {
+            glowMult *= (float)vfx.Glow.Intensity;
+        }
+
+        var baseAlpha = (byte)(isConnected ? 95 : 65);
+        var midAlpha = (byte)(isConnected ? 35 : 20);
 
         if (_cachedAuraShader == null ||
             Math.Abs(_lastAuraCx - cx) > 0.5f ||
@@ -2193,6 +2483,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             Math.Abs(_lastAuraR - r) > 0.5f ||
             Math.Abs(_lastAuraGlow - glowMult) > 0.01f ||
             _lastAuraColor != color ||
+            _lastAuraBloomColor != bloomColor ||
             _lastAuraBaseAlpha != baseAlpha ||
             _lastAuraMidAlpha != midAlpha)
         {
@@ -2202,6 +2493,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             _lastAuraR = r;
             _lastAuraGlow = glowMult;
             _lastAuraColor = color;
+            _lastAuraBloomColor = bloomColor;
             _lastAuraBaseAlpha = baseAlpha;
             _lastAuraMidAlpha = midAlpha;
 
@@ -2210,7 +2502,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 r,
                 [
                     color.WithAlpha((byte)Math.Clamp(baseAlpha * glowMult, 0, 255)),
-                    color.WithAlpha((byte)Math.Clamp(midAlpha * glowMult, 0, 255)),
+                    bloomColor.WithAlpha((byte)Math.Clamp(midAlpha * glowMult, 0, 255)),
                     SKColors.Transparent
                 ],
                 [0f, 0.65f, 1f],
@@ -2224,7 +2516,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         if (_shockwaveProgress >= 0f)
         {
             var p = _shockwaveProgress;
-            var shockColor = _shockwaveIsConnect ? color : SKColors.DeepPink;
+            var shockColor = _shockwaveIsConnect ? color : skPrimary;
             var waveAlpha = (byte)Math.Clamp((int)(240f * (1f - p) * glowMult), 0, 255);
             if (waveAlpha > 0)
             {
@@ -2253,6 +2545,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private sealed partial class ButtonAnimatedClip : IDisposable
     {
+        private const int MaxButtonDimension = 280;
         private readonly List<SKBitmap> _frames = [];
         private readonly List<int> _durations = [];
         private int _currentFrameIndex;
@@ -2260,6 +2553,26 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         public int FrameCount => _frames.Count;
         public SKBitmap? CurrentBitmap => _frames.Count > 0 ? _frames[_currentFrameIndex] : null;
+
+        private static SKBitmap DownscaleIfNeeded(SKBitmap bmp)
+        {
+            if (bmp.Width <= MaxButtonDimension && bmp.Height <= MaxButtonDimension)
+            {
+                return bmp;
+            }
+
+            var scale = Math.Min((float)MaxButtonDimension / bmp.Width, (float)MaxButtonDimension / bmp.Height);
+            var targetW = Math.Max(1, (int)Math.Round(bmp.Width * scale));
+            var targetH = Math.Max(1, (int)Math.Round(bmp.Height * scale));
+            var resizedInfo = new SKImageInfo(targetW, targetH, SKColorType.Rgba8888, SKAlphaType.Premul);
+            var resized = bmp.Resize(resizedInfo, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+            if (resized != null)
+            {
+                bmp.Dispose();
+                return resized;
+            }
+            return bmp;
+        }
 
         public static ButtonAnimatedClip? Load(string path, int maxFrames = 180, CancellationToken ct = default)
         {
@@ -2281,7 +2594,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                     }
 
                     var staticClip = new ButtonAnimatedClip();
-                    staticClip._frames.Add(staticBmp);
+                    staticClip._frames.Add(DownscaleIfNeeded(staticBmp));
                     staticClip._durations.Add(1000);
                     return staticClip;
                 }
@@ -2318,7 +2631,7 @@ public sealed partial class VpnView : ContentView, IDisposable
 
                     dur *= step;
 
-                    clip._frames.Add(bmp);
+                    clip._frames.Add(DownscaleIfNeeded(bmp));
                     clip._durations.Add(dur);
                 }
 
@@ -2375,15 +2688,25 @@ public sealed partial class VpnView : ContentView, IDisposable
             return;
         }
 
-        using var paint = new SKPaint
-        {
-            IsAntialias = true,
-        };
-
         var info = e.Info;
-        var src = new SKRect(0, 0, bmp.Width, bmp.Height);
         var dst = new SKRect(0, 0, info.Width, info.Height);
-        canvas.DrawBitmap(bmp, src, dst, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+        var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
+
+        var prev = _buttonAnimatedPrev;
+        if (prev?.CurrentBitmap is { } prevBmp && _buttonTransitionProgress < 1f)
+        {
+            var prevAlpha = (byte)Math.Clamp((1f - _buttonTransitionProgress) * 255f, 0f, 255f);
+            _customButtonBitmapPaint.Color = SKColors.White.WithAlpha(prevAlpha);
+            canvas.DrawBitmap(prevBmp, new SKRect(0, 0, prevBmp.Width, prevBmp.Height), dst, sampling, _customButtonBitmapPaint);
+
+            var currAlpha = (byte)Math.Clamp(_buttonTransitionProgress * 255f, 0f, 255f);
+            _customButtonBitmapPaint.Color = SKColors.White.WithAlpha(currAlpha);
+            canvas.DrawBitmap(bmp, new SKRect(0, 0, bmp.Width, bmp.Height), dst, sampling, _customButtonBitmapPaint);
+            return;
+        }
+
+        _customButtonBitmapPaint.Color = SKColors.White;
+        canvas.DrawBitmap(bmp, new SKRect(0, 0, bmp.Width, bmp.Height), dst, sampling, _customButtonBitmapPaint);
     }
 
     public void OnWindowFocusChanged(bool isFocused)
@@ -2414,12 +2737,27 @@ public sealed partial class VpnView : ContentView, IDisposable
             return;
         }
 
+        _buttonAnimStopwatch.Restart();
+        _lastButtonAnimTicks = 0;
         _buttonAnimationTimer = Dispatcher.CreateTimer();
         _buttonAnimationTimer.Interval = TimeSpan.FromMilliseconds(16);
 #pragma warning disable IDE0058
         _buttonAnimationTimer.Tick += (_, _) =>
         {
-            _buttonAnimatedCurrent?.Advance(16);
+            var nowTicks = _buttonAnimStopwatch.ElapsedTicks;
+            var dtMs = (int)Math.Clamp((nowTicks - _lastButtonAnimTicks) * 1000.0 / Stopwatch.Frequency, 4.0, 100.0);
+            _lastButtonAnimTicks = nowTicks;
+
+            _buttonAnimatedCurrent?.Advance(dtMs);
+            if (_buttonAnimatedPrev is not null)
+            {
+                _buttonAnimatedPrev.Advance(dtMs);
+                _buttonTransitionProgress = Math.Min(1f, _buttonTransitionProgress + (dtMs / 300f));
+                if (_buttonTransitionProgress >= 1f)
+                {
+                    _buttonAnimatedPrev = null;
+                }
+            }
             CustomButtonAnimatedCanvas.InvalidateSurface();
         };
 #pragma warning restore IDE0058
@@ -2430,6 +2768,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     {
         _buttonAnimationTimer?.Stop();
         _buttonAnimationTimer = null;
+        _buttonAnimStopwatch.Stop();
     }
 
     private void DisposeAnimatedButtonResources()
@@ -2440,6 +2779,9 @@ public sealed partial class VpnView : ContentView, IDisposable
         StopButtonAnimation();
         _buttonAnimatedCurrent?.Dispose();
         _buttonAnimatedCurrent = null;
+        _buttonAnimatedPrev?.Dispose();
+        _buttonAnimatedPrev = null;
+        _buttonTransitionProgress = 1f;
         _buttonAnimatedIdle?.Dispose();
         _buttonAnimatedIdle = null;
         _buttonAnimatedConnecting?.Dispose();
@@ -2466,9 +2808,9 @@ public sealed partial class VpnView : ContentView, IDisposable
     {
         return state switch
         {
-            AppVpnState.Connected => _buttonAnimatedActive,
-            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonAnimatedConnecting,
-            AppVpnState.Error => _buttonAnimatedError,
+            AppVpnState.Connected => _buttonAnimatedActive ?? _buttonAnimatedIdle,
+            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonAnimatedConnecting ?? _buttonAnimatedIdle,
+            AppVpnState.Error => _buttonAnimatedError ?? _buttonAnimatedIdle,
             AppVpnState.Disconnected => _buttonAnimatedIdle,
             _ => null
         };
@@ -2482,40 +2824,23 @@ public sealed partial class VpnView : ContentView, IDisposable
         string? videoIdlePath = null,
         string? videoConnectingPath = null,
         string? videoActivePath = null,
-        string? videoErrorPath = null)
+        string? videoErrorPath = null,
+        string? cardFramePath = null,
+        string? buttonRingPath = null)
     {
+        _buttonAnimCts?.Cancel();
+        _buttonAnimCts?.Dispose();
+        _buttonAnimCts = null;
+
         _buttonImageIdlePath = imageIdlePath;
         _buttonImageConnectingPath = imageConnectingPath;
         _buttonImageActivePath = imageActivePath;
         _buttonImageErrorPath = imageErrorPath;
 
-        var hasCustom = !string.IsNullOrEmpty(imageIdlePath) ||
-                        !string.IsNullOrEmpty(imageConnectingPath) ||
-                        !string.IsNullOrEmpty(imageActivePath) ||
-                        !string.IsNullOrEmpty(imageErrorPath);
-
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            DefaultButtonContent.IsVisible = !hasCustom;
-            CustomButtonImage.IsVisible = hasCustom;
-
-            if (hasCustom)
-            {
-                ConnectButtonCore.BackgroundColor = Colors.Transparent;
-                ConnectButtonCore.Stroke = Colors.Transparent;
-
-                var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
-                var initialPath = GetButtonImagePathForState(currentState);
-                if (!string.IsNullOrEmpty(initialPath) && File.Exists(initialPath))
-                {
-                    CustomButtonImage.Source = ImageSource.FromFile(initialPath);
-                }
-            }
-            else
-            {
-                ResetThemeButtonInternal();
-            }
-        });
+        var hasStaticCustom = !string.IsNullOrEmpty(imageIdlePath) ||
+                              !string.IsNullOrEmpty(imageConnectingPath) ||
+                              !string.IsNullOrEmpty(imageActivePath) ||
+                              !string.IsNullOrEmpty(imageErrorPath);
 
         var idleCandidate = videoIdlePath ?? (IsPotentialAnimatedFile(imageIdlePath) ? imageIdlePath : null);
         var connCandidate = videoConnectingPath ?? (IsPotentialAnimatedFile(imageConnectingPath) ? imageConnectingPath : null);
@@ -2526,6 +2851,55 @@ public sealed partial class VpnView : ContentView, IDisposable
                          !string.IsNullOrEmpty(connCandidate) ||
                          !string.IsNullOrEmpty(activeCandidate) ||
                          !string.IsNullOrEmpty(errorCandidate);
+
+        _activeCardFramePath = cardFramePath;
+        var framesEnabled = ThemeManager.Instance?.FramesEnabled ?? true;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!string.IsNullOrEmpty(cardFramePath) && File.Exists(cardFramePath))
+            {
+                CardFrameImage.Source = ImageSource.FromFile(cardFramePath);
+                CardFrameImage.IsVisible = framesEnabled;
+            }
+            else
+            {
+                CardFrameImage.IsVisible = false;
+                CardFrameImage.Source = null;
+            }
+
+            if (!string.IsNullOrEmpty(buttonRingPath) && File.Exists(buttonRingPath))
+            {
+                CustomButtonRingImage.Source = ImageSource.FromFile(buttonRingPath);
+                CustomButtonRingImage.IsVisible = true;
+            }
+            else
+            {
+                CustomButtonRingImage.IsVisible = false;
+                CustomButtonRingImage.Source = null;
+            }
+
+            if (hasStaticCustom && !hasAnyAnim)
+            {
+                DefaultButtonContent.IsVisible = false;
+                CustomButtonAnimatedCanvas.IsVisible = false;
+                ConnectButtonCore.BackgroundColor = Colors.Transparent;
+                ConnectButtonCore.Stroke = Colors.Transparent;
+
+                var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
+                var initialPath = GetButtonImagePathForState(currentState);
+                if (!string.IsNullOrEmpty(initialPath) && File.Exists(initialPath))
+                {
+                    CustomButtonImage.Source = ImageSource.FromFile(initialPath);
+                    CustomButtonImage.IsVisible = true;
+                    CustomButtonImage.Opacity = 1;
+                }
+            }
+            else if (!hasAnyAnim)
+            {
+                ResetCustomButtonStateOnly();
+            }
+        });
 
         if (!hasAnyAnim)
         {
@@ -2608,6 +2982,9 @@ public sealed partial class VpnView : ContentView, IDisposable
                     }
 
                     StopButtonAnimation();
+                    _buttonAnimatedCurrent = null;
+                    _buttonAnimatedPrev = null;
+                    _buttonTransitionProgress = 1f;
                     _buttonAnimatedIdle?.Dispose();
                     _buttonAnimatedConnecting?.Dispose();
                     _buttonAnimatedActive?.Dispose();
@@ -2644,15 +3021,38 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     public void ResetThemeButton()
     {
+        _buttonAnimCts?.Cancel();
+        _buttonAnimCts?.Dispose();
+        _buttonAnimCts = null;
+
         _buttonImageIdlePath = null;
         _buttonImageConnectingPath = null;
         _buttonImageActivePath = null;
         _buttonImageErrorPath = null;
+        _activeCardFramePath = null;
         DisposeAnimatedButtonResources();
-        MainThread.BeginInvokeOnMainThread(ResetThemeButtonInternal);
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            CardFrameImage.IsVisible = false;
+            CardFrameImage.Source = null;
+            CustomButtonRingImage.IsVisible = false;
+            CustomButtonRingImage.Source = null;
+            ResetCustomButtonStateOnly();
+            OnThemeChanged();
+        });
     }
 
-    private void ResetThemeButtonInternal()
+    public void SetCardFrameVisibility(bool visible)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var hasFrame = !string.IsNullOrEmpty(_activeCardFramePath) && File.Exists(_activeCardFramePath);
+            CardFrameImage.IsVisible = visible && hasFrame;
+        });
+    }
+
+    private void ResetCustomButtonStateOnly()
     {
         CustomButtonImage.IsVisible = false;
         CustomButtonImage.Source = null;
@@ -2671,6 +3071,11 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         if (targetClip != null)
         {
+            if (_buttonAnimatedCurrent != null && _buttonAnimatedCurrent != targetClip)
+            {
+                _buttonAnimatedPrev = _buttonAnimatedCurrent;
+                _buttonTransitionProgress = 0f;
+            }
             _buttonAnimatedCurrent = targetClip;
             CustomButtonImage.IsVisible = false;
             CustomButtonAnimatedCanvas.IsVisible = true;
@@ -2684,6 +3089,8 @@ public sealed partial class VpnView : ContentView, IDisposable
 
         StopButtonAnimation();
         _buttonAnimatedCurrent = null;
+        _buttonAnimatedPrev = null;
+        _buttonTransitionProgress = 1f;
         CustomButtonAnimatedCanvas.IsVisible = false;
 
         if (!string.IsNullOrEmpty(targetImagePath) && File.Exists(targetImagePath))
@@ -2929,6 +3336,7 @@ public sealed partial class VpnView : ContentView, IDisposable
             UpdateRayIndicator();
 
             UpdateCardOpacity();
+            PopulateServerList();
 
             var borderSubtle = GetAppColor("BorderSubtle", Color.FromArgb("#282838"));
             var borderMedium = GetAppColor("BorderMedium", Color.FromArgb("#363650"));
@@ -2939,6 +3347,18 @@ public sealed partial class VpnView : ContentView, IDisposable
             Card6.Stroke = borderSubtle;
             Card1Wrapper.Stroke = borderSubtle;
             ServerSelectorButton.Stroke = borderMedium;
+
+            var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
+            if (currentState == AppVpnState.Disconnected)
+            {
+                StatusLabel.Text = GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected);
+                ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction);
+            }
+            else if (currentState == AppVpnState.Connected)
+            {
+                StatusLabel.Text = GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected);
+                ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction);
+            }
 
             var hasCustom = !string.IsNullOrEmpty(_buttonImageIdlePath) ||
                             !string.IsNullOrEmpty(_buttonImageConnectingPath) ||
@@ -2953,7 +3373,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 return;
             }
 
-            if (_vpnService.CurrentState == AppVpnState.Disconnected)
+            if (currentState == AppVpnState.Disconnected)
             {
                 _ = UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
                 ConnectButtonCore.ClearValue(BackgroundColorProperty);
@@ -2961,10 +3381,17 @@ public sealed partial class VpnView : ContentView, IDisposable
                 ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
                 ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
             }
-            else if (_vpnService.CurrentState == AppVpnState.Connected)
+            else if (currentState == AppVpnState.Connected)
             {
                 _ = UIAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
                 var accentColor = GetAppColor("Accent", t_cyanAccent);
+                var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
+                if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
+                {
+                    accentColor = ovColor;
+                    StatusLabel.TextColor = ovColor;
+                    ConnectIcon.IconColor = ovColor;
+                }
                 ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
                 ConnectButtonCore.Stroke = accentColor;
             }

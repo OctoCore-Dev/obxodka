@@ -54,12 +54,20 @@ public sealed class AppManager : IAppManager
                     }
 
                     var pkgName = appInfo.PackageName ?? string.Empty;
-                    if (string.IsNullOrEmpty(pkgName) || pkgName == context.PackageName || !seenPackages.Add(pkgName))
+                    if (string.IsNullOrEmpty(pkgName) ||
+                        pkgName.Equals(context.PackageName, StringComparison.OrdinalIgnoreCase) ||
+                        pkgName.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
+                        !seenPackages.Add(pkgName))
                     {
                         continue;
                     }
 
                     var appName = ri.LoadLabel(pm)?.ToString() ?? appInfo.LoadLabel(pm)?.ToString() ?? pkgName;
+                    if (appName.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
                     var iconPath = Path.Combine(iconsDir, $"{pkgName}.png");
 
                     if (!File.Exists(iconPath))
@@ -79,12 +87,22 @@ public sealed class AppManager : IAppManager
 
             foreach (var bypassedPkg in bypassed)
             {
+                if (bypassedPkg.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 if (seenPackages.Add(bypassedPkg))
                 {
                     try
                     {
                         var appInfo = pm.GetApplicationInfo(bypassedPkg, 0);
                         var appName = appInfo.LoadLabel(pm)?.ToString() ?? bypassedPkg;
+                        if (appName.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
                         var iconPath = Path.Combine(iconsDir, $"{bypassedPkg}.png");
 
                         if (!File.Exists(iconPath))
@@ -190,13 +208,15 @@ public sealed class AppManager : IAppManager
         if (Preferences.ContainsKey(BypassedAppsKey))
         {
             var saved = Preferences.Get(BypassedAppsKey, string.Empty);
-            return string.IsNullOrWhiteSpace(saved) ? [] : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)];
+            return string.IsNullOrWhiteSpace(saved)
+                ? []
+                : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
         }
 
         return [.. t_defaultCloakedPackages];
     }
 
     public void SaveBypassedPackages(List<string> packages) =>
-        Preferences.Set(BypassedAppsKey, string.Join(",", packages));
+        Preferences.Set(BypassedAppsKey, string.Join(",", packages.Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))));
 }
 

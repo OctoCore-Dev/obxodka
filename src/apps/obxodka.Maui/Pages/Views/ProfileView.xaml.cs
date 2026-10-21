@@ -10,8 +10,11 @@ public sealed partial class ProfileView : ContentView
 
     private long _lastRemainingSeconds;
     private MainPage _parent = null!;
+    private ApiService? _apiService;
+    private string? _myReferralCode;
     public event EventHandler? BuyTokensRequested;
     public event EventHandler? LogoutRequested;
+    public event EventHandler? BalanceRefreshRequested;
 
     public static readonly BindableProperty IsEditingAllowedProperty =
         BindableProperty.Create(nameof(IsEditingAllowed), typeof(bool), typeof(ProfileView), true);
@@ -93,9 +96,10 @@ public sealed partial class ProfileView : ContentView
         ContentGrid.MaximumWidthRequest = safeWidth;
     }
 
-    public void Initialize(MainPage parent, ThemeManager? _ = null)
+    public void Initialize(MainPage parent, ThemeManager? _ = null, ApiService? apiService = null)
     {
         _parent = parent;
+        _apiService = apiService;
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
         IsEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
     }
@@ -110,6 +114,74 @@ public sealed partial class ProfileView : ContentView
         Opacity = 1;
         TranslationY = 0;
         await this.PlayCardsEntranceAsync(35, 240);
+    }
+
+    public async Task LoadReferralCodeAsync()
+    {
+        if (!CardPromo.IsVisible || _apiService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var (success, data, _) = await _apiService.GetMyReferralCodeAsync();
+            if (success && data is not null && !string.IsNullOrWhiteSpace(data.Code))
+            {
+                _myReferralCode = data.Code;
+                MainThread.BeginInvokeOnMainThread(() => MyReferralCodeLabel.Text = data.Code);
+            }
+        }
+        catch { }
+    }
+
+    private async void OnCopyReferralCodeClickedAsync(object? sender, TappedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_myReferralCode))
+        {
+            await LoadReferralCodeAsync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(_myReferralCode))
+        {
+            await Clipboard.Default.SetTextAsync(_myReferralCode);
+            await _parent.DisplayAlertAsync("Скопировано", $"Ваш реферальный код {_myReferralCode} скопирован в буфер обмена.", "OK");
+        }
+    }
+
+    private async void OnActivatePromoClickedAsync(object? sender, EventArgs e)
+    {
+        if (_apiService is null)
+        {
+            return;
+        }
+
+        var code = PromoCodeEntry.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await _parent.DisplayAlertAsync("Внимание", "Введите промокод или реферальный код друга.", "OK");
+            return;
+        }
+
+        await UIAnimations.SetButtonLoadingAsync(BtnActivatePromoBorder, BtnActivatePromo, LoaderActivatePromo, true);
+        try
+        {
+            var (success, data, error) = await _apiService.ActivateReferralCodeAsync(code);
+            if (success)
+            {
+                PromoCodeEntry.Text = string.Empty;
+                BalanceRefreshRequested?.Invoke(this, EventArgs.Empty);
+                await _parent.DisplayAlertAsync("Успех", data?.Message ?? "Код успешно активирован!", "OK");
+            }
+            else
+            {
+                await _parent.DisplayAlertAsync("Ошибка", ApiErrorHandler.ParseGeneralError(error, "Не удалось активировать код."), "OK");
+            }
+        }
+        finally
+        {
+            await UIAnimations.SetButtonLoadingAsync(BtnActivatePromoBorder, BtnActivatePromo, LoaderActivatePromo, false);
+        }
     }
 
     public void UpdateProfileInfo(UserSession session)
@@ -193,13 +265,24 @@ public sealed partial class ProfileView : ContentView
         var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
             ? bgColor
             : Color.FromArgb("#161622");
+        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+            ? bsc
+            : Color.FromArgb("#282838");
 
         CardProfile.BackgroundColor = bgSurface;
+        CardProfile.Stroke = borderSubtle;
         CardAdBlock.BackgroundColor = bgSurface;
+        CardAdBlock.Stroke = borderSubtle;
         CardBalance.BackgroundColor = bgSurface;
+        CardBalance.Stroke = borderSubtle;
         CardTelemetry.BackgroundColor = bgSurface;
+        CardTelemetry.Stroke = borderSubtle;
+        CardPromo.BackgroundColor = bgSurface;
+        CardPromo.Stroke = borderSubtle;
         CardLogout.BackgroundColor = bgSurface;
+        CardLogout.Stroke = borderSubtle;
         CardDeleteAccount.BackgroundColor = bgSurface;
+        CardDeleteAccount.Stroke = borderSubtle;
     }
 
     public void SetHeaderTopInset(double top)

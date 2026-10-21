@@ -396,3 +396,5 @@ deploy_android.ps1
 .vscode/
 Directory.Build.props
 Directory.Build.props.local
+3D_Scope/
+

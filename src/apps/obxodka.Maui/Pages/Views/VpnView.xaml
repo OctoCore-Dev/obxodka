@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.VpnView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -62,23 +62,6 @@
                             Style="{StaticResource NeoCard}"
                             VerticalOptions="Fill">
                             <Grid ColumnDefinitions="Auto, *" VerticalOptions="Center">
-                                <HorizontalStackLayout
-                                    Grid.Column="0"
-                                    Spacing="6"
-                                    VerticalOptions="Center">
-                                    <mi:MauiIcon
-                                        Icon="{mi:Fluent Icon=Earth24}"
-                                        IconColor="{DynamicResource Primary}"
-                                        IconSize="14"
-                                        VerticalOptions="Center" />
-                                    <Label
-                                        FontFamily="{DynamicResource AppFontMedium}"
-                                        FontSize="11"
-                                        Style="{StaticResource LabelMuted}"
-                                        Text="NET"
-                                        VerticalOptions="Center" />
-                                </HorizontalStackLayout>
-
                                 <HorizontalStackLayout
                                     Grid.Column="1"
                                     HorizontalOptions="End"
@@ -405,255 +388,274 @@
                     Style="{StaticResource NeoCard}"
                     VerticalOptions="Fill">
 
-                    <Grid
-                        x:Name="Card1ContentGrid"
-                        Padding="{OnIdiom Desktop='28,32',
-                                          Tablet='28,32',
-                                          Phone='16,14,16,24',
-                                          Default='28,32'}"
-                        HorizontalOptions="Center"
-                        RowDefinitions="Auto, Auto, Auto"
-                        RowSpacing="{OnIdiom Desktop=16,
-                                             Phone=10,
-                                             Default=16}"
-                        VerticalOptions="Center">
-
-                        <Border
-                            x:Name="ServerSelectorButton"
-                            Grid.Row="0"
-                            Padding="{OnIdiom Desktop='16,8',
-                                              Phone='14,7',
-                                              Default='16,8'}"
-                            BackgroundColor="{DynamicResource BgElevated}"
-                            HorizontalOptions="Center"
-                            Stroke="{DynamicResource BorderMedium}"
-                            StrokeThickness="1.2">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="22" />
-                            </Border.StrokeShape>
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnServerSelectorTappedAsync" />
-                            </Border.GestureRecognizers>
-                            <HorizontalStackLayout Spacing="9" VerticalOptions="Center">
-                                <Border
-                                    x:Name="SelectedServerFlagBorder"
-                                    Margin="{OnPlatform Android='0,-2.5,0,0',
-                                                        Default='0'}"
-                                    HeightRequest="17"
-                                    Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 3"
-                                    StrokeThickness="0.8"
-                                    VerticalOptions="Center"
-                                    WidthRequest="25">
-                                    <Grid>
-                                        <Image
-                                            x:Name="SelectedServerFlagImage"
-                                            Aspect="AspectFill"
-                                            IsVisible="False" />
-                                        <Label
-                                            x:Name="SelectedServerFlagLabel"
-                                            Margin="{OnPlatform Android='0,-1.5,0,0',
-                                                                Default='0'}"
-                                            FontSize="{OnIdiom Desktop=16,
-                                                               Phone=15,
-                                                               Default=15}"
-                                            HorizontalOptions="Center"
-                                            VerticalOptions="Center" />
-                                    </Grid>
-                                </Border>
-                                <VerticalStackLayout Spacing="1" VerticalOptions="Center">
-                                    <Label
-                                        x:Name="SelectedServerLocationLabel"
-                                        FontFamily="{DynamicResource AppFontBold}"
-                                        FontSize="{OnIdiom Desktop=13,
-                                                           Phone=12,
-                                                           Default=13}"
-                                        Text="Швеция, Стокгольм"
-                                        TextColor="{DynamicResource TextPrimary}"
-                                        VerticalOptions="Center" />
-                                    <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                                        <Border
-                                            Padding="5,1"
-                                            BackgroundColor="{DynamicResource AccentDim}"
-                                            Stroke="{DynamicResource Accent}"
-                                            StrokeShape="RoundRectangle 4"
-                                            StrokeThickness="0.6"
-                                            VerticalOptions="Center">
-                                            <Label
-                                                x:Name="SelectedServerProviderLabel"
-                                                FontFamily="{DynamicResource AppFontMedium}"
-                                                FontSize="9"
-                                                Text="Vultr"
-                                                TextColor="{DynamicResource Accent}" />
-                                        </Border>
-                                        <BoxView
-                                            x:Name="SelectedServerPingDot"
-                                            CornerRadius="2.5"
-                                            HeightRequest="5"
-                                            VerticalOptions="Center"
-                                            WidthRequest="5"
-                                            Color="{DynamicResource Success}" />
-                                        <Label
-                                            x:Name="SelectedServerLatencyLabel"
-                                            FontFamily="{DynamicResource AppFontMedium}"
-                                            FontSize="10"
-                                            Text="Online"
-                                            TextColor="{DynamicResource Success}"
-                                            VerticalOptions="Center" />
-                                    </HorizontalStackLayout>
-                                </VerticalStackLayout>
-                                <mi:MauiIcon
-                                    Margin="3,0,0,0"
-                                    Icon="{mi:Fluent Icon=ChevronDown16}"
-                                    IconColor="{DynamicResource TextSecondary}"
-                                    IconSize="14"
-                                    VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Border>
+                    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+                        <Image
+                            x:Name="CardFrameImage"
+                            Aspect="Fill"
+                            HorizontalOptions="Fill"
+                            InputTransparent="True"
+                            IsVisible="False"
+                            Opacity="0.88"
+                            VerticalOptions="Fill" />
 
                         <Grid
-                            x:Name="ButtonContainerGrid"
-                            Grid.Row="1"
-                            HeightRequest="{OnIdiom Desktop=340,
-                                                    Phone=240,
-                                                    Default=340}"
+                            x:Name="Card1ContentGrid"
+                            Padding="{OnIdiom Desktop='28,32',
+                                              Tablet='28,32',
+                                              Phone='16,14,16,24',
+                                              Default='28,32'}"
                             HorizontalOptions="Center"
-                            WidthRequest="{OnIdiom Desktop=340,
-                                                   Phone=240,
-                                                   Default=340}">
-
-                            <skia:SKCanvasView
-                                x:Name="OuterAura"
-                                HorizontalOptions="Fill"
-                                IgnorePixelScaling="True"
-                                Opacity="0"
-                                PaintSurface="OnPaintOuterAuraSurface"
-                                VerticalOptions="Fill" />
-
-                            <skia:SKCanvasView
-                                x:Name="LoaderCanvas"
-                                HorizontalOptions="Fill"
-                                IgnorePixelScaling="True"
-                                Opacity="0"
-                                PaintSurface="OnPaintLoaderSurface"
-                                VerticalOptions="Fill" />
+                            RowDefinitions="Auto, Auto, Auto"
+                            RowSpacing="{OnIdiom Desktop=16,
+                                                 Phone=10,
+                                                 Default=16}"
+                            VerticalOptions="Center">
 
                             <Border
-                                x:Name="ButtonOuterRing"
-                                BackgroundColor="Transparent"
-                                HeightRequest="{OnIdiom Desktop=278,
-                                                        Phone=196,
-                                                        Default=278}"
+                                x:Name="ServerSelectorButton"
+                                Grid.Row="0"
+                                Padding="{OnIdiom Desktop='16,8',
+                                                  Phone='14,7',
+                                                  Default='16,8'}"
+                                BackgroundColor="{DynamicResource BgElevated}"
                                 HorizontalOptions="Center"
-                                Stroke="{DynamicResource PrimaryGlow}"
-                                StrokeThickness="1"
-                                VerticalOptions="Center"
-                                WidthRequest="{OnIdiom Desktop=278,
-                                                       Phone=196,
-                                                       Default=278}">
+                                Stroke="{DynamicResource BorderMedium}"
+                                StrokeThickness="1.2">
                                 <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="{OnIdiom Desktop=139, Phone=98, Default=139}" />
+                                    <RoundRectangle CornerRadius="22" />
                                 </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnServerSelectorTappedAsync" />
+                                </Border.GestureRecognizers>
+                                <HorizontalStackLayout Spacing="9" VerticalOptions="Center">
+                                    <Border
+                                        x:Name="SelectedServerFlagBorder"
+                                        Margin="{OnPlatform Android='0,-2.5,0,0',
+                                                            Default='0'}"
+                                        HeightRequest="17"
+                                        Stroke="{DynamicResource BorderMedium}"
+                                        StrokeShape="RoundRectangle 3"
+                                        StrokeThickness="0.8"
+                                        VerticalOptions="Center"
+                                        WidthRequest="25">
+                                        <Grid>
+                                            <Image
+                                                x:Name="SelectedServerFlagImage"
+                                                Aspect="AspectFill"
+                                                IsVisible="False" />
+                                            <Label
+                                                x:Name="SelectedServerFlagLabel"
+                                                Margin="{OnPlatform Android='0,-1.5,0,0',
+                                                                    Default='0'}"
+                                                FontSize="{OnIdiom Desktop=16,
+                                                                   Phone=15,
+                                                                   Default=15}"
+                                                HorizontalOptions="Center"
+                                                VerticalOptions="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                                        <Label
+                                            x:Name="SelectedServerLocationLabel"
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="{OnIdiom Desktop=13,
+                                                               Phone=12,
+                                                               Default=13}"
+                                            Text="Швеция, Стокгольм"
+                                            TextColor="{DynamicResource TextPrimary}"
+                                            VerticalOptions="Center" />
+                                        <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                            <Border
+                                                Padding="5,1"
+                                                BackgroundColor="{DynamicResource AccentDim}"
+                                                Stroke="{DynamicResource Accent}"
+                                                StrokeShape="RoundRectangle 4"
+                                                StrokeThickness="0.6"
+                                                VerticalOptions="Center">
+                                                <Label
+                                                    x:Name="SelectedServerProviderLabel"
+                                                    FontFamily="{DynamicResource AppFontMedium}"
+                                                    FontSize="9"
+                                                    Text="Vultr"
+                                                    TextColor="{DynamicResource Accent}" />
+                                            </Border>
+                                            <BoxView
+                                                x:Name="SelectedServerPingDot"
+                                                CornerRadius="2.5"
+                                                HeightRequest="5"
+                                                VerticalOptions="Center"
+                                                WidthRequest="5"
+                                                Color="{DynamicResource Success}" />
+                                            <Label
+                                                x:Name="SelectedServerLatencyLabel"
+                                                FontFamily="{DynamicResource AppFontMedium}"
+                                                FontSize="10"
+                                                Text="Online"
+                                                TextColor="{DynamicResource Success}"
+                                                VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
+                                    </VerticalStackLayout>
+                                    <mi:MauiIcon
+                                        Margin="3,0,0,0"
+                                        Icon="{mi:Fluent Icon=ChevronDown16}"
+                                        IconColor="{DynamicResource TextSecondary}"
+                                        IconSize="14"
+                                        VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Border>
+
+                            <Grid
+                                x:Name="ButtonContainerGrid"
+                                Grid.Row="1"
+                                HeightRequest="{OnIdiom Desktop=340,
+                                                        Phone=240,
+                                                        Default=340}"
+                                HorizontalOptions="Center"
+                                WidthRequest="{OnIdiom Desktop=340,
+                                                       Phone=240,
+                                                       Default=340}">
+
+                                <skia:SKCanvasView
+                                    x:Name="OuterAura"
+                                    HorizontalOptions="Fill"
+                                    IgnorePixelScaling="True"
+                                    Opacity="0"
+                                    PaintSurface="OnPaintOuterAuraSurface"
+                                    VerticalOptions="Fill" />
+
+                                <skia:SKCanvasView
+                                    x:Name="LoaderCanvas"
+                                    HorizontalOptions="Fill"
+                                    IgnorePixelScaling="True"
+                                    Opacity="0"
+                                    PaintSurface="OnPaintLoaderSurface"
+                                    VerticalOptions="Fill" />
+
+                                <Image
+                                    x:Name="CustomButtonRingImage"
+                                    Aspect="AspectFit"
+                                    HorizontalOptions="Fill"
+                                    InputTransparent="True"
+                                    IsVisible="False"
+                                    Opacity="0.92"
+                                    VerticalOptions="Fill" />
 
                                 <Border
-                                    x:Name="ButtonMiddleRing"
+                                    x:Name="ButtonOuterRing"
                                     BackgroundColor="Transparent"
-                                    HeightRequest="{OnIdiom Desktop=240,
-                                                            Phone=174,
-                                                            Default=240}"
+                                    HeightRequest="{OnIdiom Desktop=278,
+                                                            Phone=196,
+                                                            Default=278}"
                                     HorizontalOptions="Center"
-                                    Stroke="{DynamicResource PrimaryDim}"
+                                    Stroke="{DynamicResource PrimaryGlow}"
                                     StrokeThickness="1"
                                     VerticalOptions="Center"
-                                    WidthRequest="{OnIdiom Desktop=240,
-                                                           Phone=174,
-                                                           Default=240}">
+                                    WidthRequest="{OnIdiom Desktop=278,
+                                                           Phone=196,
+                                                           Default=278}">
                                     <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="{OnIdiom Desktop=120, Phone=87, Default=120}" />
+                                        <RoundRectangle CornerRadius="{OnIdiom Desktop=139, Phone=98, Default=139}" />
                                     </Border.StrokeShape>
 
                                     <Border
-                                        x:Name="ConnectButtonCore"
-                                        AutomationId="VpnConnectButton"
-                                        BackgroundColor="{DynamicResource BgElevated}"
-                                        HeightRequest="{OnIdiom Desktop=196,
-                                                                Phone=148,
-                                                                Default=196}"
+                                        x:Name="ButtonMiddleRing"
+                                        BackgroundColor="Transparent"
+                                        HeightRequest="{OnIdiom Desktop=240,
+                                                                Phone=174,
+                                                                Default=240}"
                                         HorizontalOptions="Center"
-                                        Stroke="{DynamicResource BorderMedium}"
+                                        Stroke="{DynamicResource PrimaryDim}"
                                         StrokeThickness="1"
                                         VerticalOptions="Center"
-                                        WidthRequest="{OnIdiom Desktop=196,
-                                                               Phone=148,
-                                                               Default=196}">
+                                        WidthRequest="{OnIdiom Desktop=240,
+                                                               Phone=174,
+                                                               Default=240}">
                                         <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="{OnIdiom Desktop=98, Phone=74, Default=98}" />
+                                            <RoundRectangle CornerRadius="{OnIdiom Desktop=120, Phone=87, Default=120}" />
                                         </Border.StrokeShape>
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnConnectClickedAsync" />
-                                        </Border.GestureRecognizers>
-                                        <Grid>
-                                            <VerticalStackLayout
-                                                x:Name="DefaultButtonContent"
-                                                HorizontalOptions="Center"
-                                                Spacing="5"
-                                                VerticalOptions="Center">
-                                                <mi:MauiIcon
-                                                    x:Name="ConnectIcon"
-                                                    HorizontalOptions="Center"
-                                                    Icon="{mi:Fluent Icon=Power24}"
-                                                    IconColor="{DynamicResource Primary}"
-                                                    IconSize="{OnIdiom Desktop=48,
-                                                                       Phone=36,
-                                                                       Default=48}" />
-                                                <Label
-                                                    x:Name="ConnectButtonText"
-                                                    FontFamily="{DynamicResource AppFontBold}"
-                                                    FontSize="{OnIdiom Desktop=16,
-                                                                       Phone=13,
-                                                                       Default=16}"
-                                                    HorizontalOptions="Center"
-                                                    Text="СТАРТ"
-                                                    TextColor="{DynamicResource TextPrimary}" />
-                                            </VerticalStackLayout>
 
-                                            <Image
-                                                x:Name="CustomButtonImage"
-                                                Aspect="AspectFit"
-                                                HorizontalOptions="Fill"
-                                                InputTransparent="True"
-                                                IsVisible="False"
-                                                VerticalOptions="Fill" />
+                                        <Border
+                                            x:Name="ConnectButtonCore"
+                                            AutomationId="VpnConnectButton"
+                                            BackgroundColor="{DynamicResource BgElevated}"
+                                            HeightRequest="{OnIdiom Desktop=196,
+                                                                    Phone=148,
+                                                                    Default=196}"
+                                            HorizontalOptions="Center"
+                                            Stroke="{DynamicResource BorderMedium}"
+                                            StrokeThickness="1"
+                                            VerticalOptions="Center"
+                                            WidthRequest="{OnIdiom Desktop=196,
+                                                                   Phone=148,
+                                                                   Default=196}">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="{OnIdiom Desktop=98, Phone=74, Default=98}" />
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnConnectClickedAsync" />
+                                            </Border.GestureRecognizers>
+                                            <Grid>
+                                                <VerticalStackLayout
+                                                    x:Name="DefaultButtonContent"
+                                                    HorizontalOptions="Center"
+                                                    Spacing="5"
+                                                    VerticalOptions="Center">
+                                                    <mi:MauiIcon
+                                                        x:Name="ConnectIcon"
+                                                        HorizontalOptions="Center"
+                                                        Icon="{mi:Fluent Icon=Power24}"
+                                                        IconColor="{DynamicResource Primary}"
+                                                        IconSize="{OnIdiom Desktop=48,
+                                                                           Phone=36,
+                                                                           Default=48}" />
+                                                    <Label
+                                                        x:Name="ConnectButtonText"
+                                                        FontFamily="{DynamicResource AppFontBold}"
+                                                        FontSize="{OnIdiom Desktop=16,
+                                                                           Phone=13,
+                                                                           Default=16}"
+                                                        HorizontalOptions="Center"
+                                                        Text="СТАРТ"
+                                                        TextColor="{DynamicResource TextPrimary}" />
+                                                </VerticalStackLayout>
 
-                                            <skia:SKCanvasView
-                                                xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls"
-                                                x:Name="CustomButtonAnimatedCanvas"
-                                                HorizontalOptions="Fill"
-                                                InputTransparent="True"
-                                                IsVisible="False"
-                                                PaintSurface="OnCustomButtonAnimatedCanvasPaint"
-                                                VerticalOptions="Fill" />
-                                        </Grid>
+                                                <Image
+                                                    x:Name="CustomButtonImage"
+                                                    Aspect="AspectFit"
+                                                    HorizontalOptions="Fill"
+                                                    InputTransparent="True"
+                                                    IsVisible="False"
+                                                    VerticalOptions="Fill" />
+
+                                                <skia:SKCanvasView
+                                                    x:Name="CustomButtonAnimatedCanvas"
+                                                    HorizontalOptions="Fill"
+                                                    InputTransparent="True"
+                                                    IsVisible="False"
+                                                    PaintSurface="OnCustomButtonAnimatedCanvasPaint"
+                                                    VerticalOptions="Fill" />
+                                            </Grid>
+                                        </Border>
                                     </Border>
                                 </Border>
-                            </Border>
-                        </Grid>
+                            </Grid>
 
-                        <Label
-                            x:Name="StatusLabel"
-                            Grid.Row="2"
-                            Margin="{OnIdiom Desktop='0,14,0,0',
-                                             Phone='0,6,0,0'}"
-                            AutomationId="VpnStatusLabel"
-                            FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="{OnIdiom Phone=13,
-                                               Default=15}"
-                            HorizontalOptions="Center"
-                            HorizontalTextAlignment="Center"
-                            LineBreakMode="TailTruncation"
-                            MaxLines="2"
-                            Text="Не в сети"
-                            TextColor="{DynamicResource PrimaryBright}" />
+                            <Label
+                                x:Name="StatusLabel"
+                                Grid.Row="2"
+                                Margin="{OnIdiom Desktop='0,14,0,0',
+                                                 Phone='0,6,0,0'}"
+                                AutomationId="VpnStatusLabel"
+                                FontFamily="{DynamicResource AppFontMedium}"
+                                FontSize="{OnIdiom Phone=13,
+                                                   Default=15}"
+                                HorizontalOptions="Center"
+                                HorizontalTextAlignment="Center"
+                                LineBreakMode="TailTruncation"
+                                MaxLines="2"
+                                Text="Не в сети"
+                                TextColor="{DynamicResource PrimaryBright}" />
+                        </Grid>
                     </Grid>
                 </Border>
             </Grid>

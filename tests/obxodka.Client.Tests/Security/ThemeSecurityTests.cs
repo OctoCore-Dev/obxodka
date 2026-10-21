@@ -11,6 +11,7 @@ public class ThemeSecurityTests
     [InlineData(".mp4", new byte[] { 0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70 })]
     [InlineData(".webm", new byte[] { 0x1A, 0x45, 0xDF, 0xA3 })]
     [InlineData(".wav", new byte[] { 0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45 })]
+    [InlineData(".ogg", new byte[] { 0x4F, 0x67, 0x67, 0x53, 0x00, 0x02 })]
     [InlineData(".mp3", new byte[] { 0x49, 0x44, 0x33, 0x04 })]
     [InlineData(".mp3", new byte[] { 0xFF, 0xFB, 0x90, 0x44 })]
     [InlineData(".ttf", new byte[] { 0x00, 0x01, 0x00, 0x00 })]
@@ -29,6 +30,7 @@ public class ThemeSecurityTests
     [InlineData(".mp4")]
     [InlineData(".webm")]
     [InlineData(".wav")]
+    [InlineData(".ogg")]
     [InlineData(".mp3")]
     public void VerifyMagicBytesDosPeExecutableHeaderAlwaysRejected(string extension)
     {
@@ -69,11 +71,63 @@ public class ThemeSecurityTests
     [Fact]
     public void VerifyMagicBytesJsonValidation()
     {
-        var validJson = /*lang=json,strict*/ "{\n  \"name\": \"Test Theme\"\n}"u8.ToArray();
+        var validJson = "{\n  \"name\": \"Test Theme\"\n}"u8.ToArray();
         Assert.True(SafeThemeExtractor.VerifyMagicBytes(".json", validJson, validJson.Length));
 
         var invalidJson = "MZ\x90\x00SomeBinaryContent"u8.ToArray();
         Assert.False(SafeThemeExtractor.VerifyMagicBytes(".json", invalidJson, invalidJson.Length));
+    }
+
+    [Fact]
+    public void VerifyMagicBytesPngDimensionBombRejected()
+    {
+        var validPng24 = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D,
+            (byte)'I', (byte)'H', (byte)'D', (byte)'R',
+            0x00, 0x00, 0x04, 0x00,
+            0x00, 0x00, 0x04, 0x00
+        };
+        Assert.True(SafeThemeExtractor.VerifyMagicBytes(".png", validPng24, validPng24.Length));
+
+        var bombPng24 = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D,
+            (byte)'I', (byte)'H', (byte)'D', (byte)'R',
+            0x00, 0x01, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00
+        };
+        Assert.False(SafeThemeExtractor.VerifyMagicBytes(".png", bombPng24, bombPng24.Length));
+
+        var zeroDimPng24 = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D,
+            (byte)'I', (byte)'H', (byte)'D', (byte)'R',
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x01, 0x00
+        };
+        Assert.False(SafeThemeExtractor.VerifyMagicBytes(".png", zeroDimPng24, zeroDimPng24.Length));
+    }
+
+    [Theory]
+    [InlineData("<!DOCTYPE html><html></html>")]
+    [InlineData("<script>alert(1)</script>")]
+    [InlineData("javascript:evil()")]
+    [InlineData("powershell -enc AAAA")]
+    public void ContainsPolyglotPayloadDetectsEmbeddedScripts(string payloadText)
+    {
+        var payloadBytes = Encoding.UTF8.GetBytes(payloadText);
+        Assert.True(SafeThemeExtractor.ContainsPolyglotPayload(payloadBytes));
+
+        var pngPrefix = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        var polyglotPng = new byte[pngPrefix.Length + payloadBytes.Length];
+        Buffer.BlockCopy(pngPrefix, 0, polyglotPng, 0, pngPrefix.Length);
+        Buffer.BlockCopy(payloadBytes, 0, polyglotPng, pngPrefix.Length, payloadBytes.Length);
+
+        Assert.False(SafeThemeExtractor.VerifyMagicBytes(".png", polyglotPng, polyglotPng.Length));
     }
 
     [Theory]
@@ -81,6 +135,7 @@ public class ThemeSecurityTests
     [InlineData("assets/video.mp4", true)]
     [InlineData("assets/btn.webp", true)]
     [InlineData("assets/sound.wav", true)]
+    [InlineData("assets/ambient.ogg", true)]
     [InlineData("assets/anim.webm", true)]
     [InlineData("../evil.mp4", false)]
     [InlineData("assets/../../evil.png", false)]
@@ -153,6 +208,80 @@ public class ThemeSecurityTests
         Assert.False(isValid);
         Assert.NotNull(error);
         Assert.Contains("Theme ID", error);
+    }
+
+    [Theory]
+    [InlineData("<script>alert(1)</script>")]
+    [InlineData("Theme <b>Bold</b>")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("data:text/html;base64,AAA")]
+    public void ContainsDangerousTextAndManifestXssRejectionWorks(string maliciousText)
+    {
+        Assert.True(ThemeValidator.ContainsDangerousText(maliciousText));
+
+        var manifestBadName = new ThemeManifest
+        {
+            Id = "xss-theme",
+            Name = maliciousText
+        };
+        Assert.False(ThemeValidator.ValidateManifest(manifestBadName, out var errName));
+        Assert.NotNull(errName);
+
+        var manifestBadStatus = new ThemeManifest
+        {
+            Id = "xss-status-theme",
+            Name = "Clean Name",
+            Vfx = new ThemeVfx
+            {
+                StatusText = new ThemeStatusText
+                {
+                    Connected = maliciousText
+                }
+            }
+        };
+        Assert.False(ThemeValidator.ValidateManifest(manifestBadStatus, out var errStatus));
+        Assert.Contains("vfx.statusText", errStatus);
+    }
+
+    [Fact]
+    public void ValidateManifestParticleSpritesAndAppsObxodkaPathsValidated()
+    {
+        var badSpritesManifest = new ThemeManifest
+        {
+            Id = "bad-sprites",
+            Name = "Bad Sprites",
+            Vfx = new ThemeVfx
+            {
+                ParticleSprites = ["assets/p1.png", "../evil.png"]
+            }
+        };
+        Assert.False(ThemeValidator.ValidateManifest(badSpritesManifest, out var errSprites));
+        Assert.Contains("particleSprite", errSprites);
+
+        var tooManySpritesManifest = new ThemeManifest
+        {
+            Id = "many-sprites",
+            Name = "Many Sprites",
+            Vfx = new ThemeVfx
+            {
+                ParticleSprites = [.. Enumerable.Range(0, 15).Select(i => $"assets/p{i}.png")]
+            }
+        };
+        Assert.False(ThemeValidator.ValidateManifest(tooManySpritesManifest, out var errCount));
+        Assert.Contains("Too many particleSprites", errCount);
+
+        using var doc = JsonDocument.Parse("{\"sounds\":{\"ambient\":\"../evil.ogg\"}}");
+        var badAppManifest = new ThemeManifest
+        {
+            Id = "bad-app-paths",
+            Name = "Bad App Paths",
+            Apps = new Dictionary<string, JsonElement>
+            {
+                ["obxodka"] = doc.RootElement.Clone()
+            }
+        };
+        Assert.False(ThemeValidator.ValidateManifest(badAppManifest, out var errApp));
+        Assert.Contains("apps.obxodka.sounds", errApp);
     }
 
     [Theory]
@@ -366,4 +495,3 @@ public class ThemeSecurityTests
         Assert.True(deserialized.Decorations.FrameSlice.IsValid);
     }
 }
-

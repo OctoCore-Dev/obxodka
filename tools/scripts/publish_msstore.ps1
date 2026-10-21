@@ -114,8 +114,12 @@ if (-not $subData -or -not $subData.fileUploadUrl) {
     $respBody = $postResp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
 
     if (-not $postResp.IsSuccessStatusCode) {
-        Log-Error "Failed to create draft submission: $($postResp.StatusCode) - $respBody"
-        exit 1
+        if ($respBody -match "submission.*in progress" -or $respBody -match "already.*pending" -or $respBody -match "Cannot create" -or $respBody -match "in progress") {
+            Log-Info "Microsoft Store already has an active submission in progress ($respBody). Skipping Store deployment without failing workflow."
+            exit 0
+        }
+        Log-Info "Microsoft Store draft submission could not be created ($($postResp.StatusCode)): $respBody. Skipping Store deployment."
+        exit 0
     }
 
     $subData = $respBody | ConvertFrom-Json

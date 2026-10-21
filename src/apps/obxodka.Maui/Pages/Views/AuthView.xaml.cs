@@ -4,6 +4,7 @@ public sealed partial class AuthView : ContentView
 {
     private MainPage _parent = null!;
     private ApiService _apiService = null!;
+    private bool _isVerifying;
 
     public AuthView() => InitializeComponent();
 
@@ -35,6 +36,121 @@ public sealed partial class AuthView : ContentView
 
     public void OnThemeChanged() =>
         MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
+
+    public async Task HandleDeepLinkLoginAsync(string email, string code)
+    {
+        if (!OperatingSystem.IsAndroid() || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
+
+        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
+        EmailEntry.Text = email.Trim();
+
+        if (!CodeInputView.IsVisible)
+        {
+            EmailInputView.IsVisible = false;
+            EmailInputView.Opacity = 0;
+            CodeInputView.IsVisible = true;
+            CodeInputView.Opacity = 1;
+        }
+
+        CodeEntry.Text = code.Trim();
+        await VerifyCodeInternalAsync();
+    }
+
+    private async void OnQuickQrOrCodeClickedAsync(object? sender, EventArgs e)
+    {
+        if (!OperatingSystem.IsAndroid())
+        {
+            return;
+        }
+
+        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
+
+        string? clipText = null;
+        try
+        {
+            if (Clipboard.Default.HasText)
+            {
+                clipText = (await Clipboard.Default.GetTextAsync())?.Trim();
+            }
+        }
+        catch { }
+
+        if (!string.IsNullOrWhiteSpace(clipText) &&
+            App.TryParseDeepLinkLogin(clipText, out var qrEmail, out var qrCode))
+        {
+            await HandleDeepLinkLoginAsync(qrEmail, qrCode);
+            return;
+        }
+
+        var email = EmailEntry.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+        {
+            await ShowLoginErrorAsync("Введите ваш Email и нажмите эту кнопку, чтобы ввести 6-значный код из QR-окна Личного кабинета (или отсканируйте QR-код камерой телефона).");
+            _ = EmailEntry.Focus();
+            return;
+        }
+
+        await UIAnimations.CrossFadeFormAsync(EmailInputView, CodeInputView);
+
+        if (!string.IsNullOrWhiteSpace(clipText) && clipText.Length == 6 && clipText.All(char.IsAsciiDigit))
+        {
+            CodeEntry.Text = clipText;
+        }
+        else
+        {
+            _ = CodeEntry.Focus();
+        }
+    }
+
+    private async void OnPasteCodeClickedAsync(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (!Clipboard.Default.HasText)
+            {
+                await ShowLoginErrorAsync("Буфер обмена пуст.");
+                return;
+            }
+
+            var clipText = (await Clipboard.Default.GetTextAsync())?.Trim();
+            if (string.IsNullOrWhiteSpace(clipText))
+            {
+                await ShowLoginErrorAsync("Буфер обмена пуст.");
+                return;
+            }
+
+            if (App.TryParseDeepLinkLogin(clipText, out var qrEmail, out var qrCode))
+            {
+                await HandleDeepLinkLoginAsync(qrEmail, qrCode);
+                return;
+            }
+
+            var digits = new string([.. clipText.Where(char.IsAsciiDigit)]);
+            if (digits.Length >= 6)
+            {
+                CodeEntry.Text = digits[..6];
+                return;
+            }
+
+            await ShowLoginErrorAsync("В буфере обмена не найден 6-значный код.");
+        }
+        catch
+        {
+            await ShowLoginErrorAsync("Не удалось прочитать буфер обмена.");
+        }
+    }
+
+    private void OnCodeEntryTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        var newText = e.NewTextValue?.Trim();
+        if (newText is { Length: 6 } && newText.All(char.IsAsciiDigit) && !_isVerifying)
+        {
+            _ = VerifyCodeInternalAsync();
+        }
+    }
 
     private async void OnGetCodeClickedAsync(object? sender, EventArgs? e)
     {
@@ -74,8 +190,16 @@ public sealed partial class AuthView : ContentView
         }
     }
 
-    private async void OnVerifyCodeClickedAsync(object? sender, EventArgs? e)
+    private async void OnVerifyCodeClickedAsync(object? sender, EventArgs? e) =>
+        await VerifyCodeInternalAsync();
+
+    private async Task VerifyCodeInternalAsync()
     {
+        if (_isVerifying)
+        {
+            return;
+        }
+
         CodeEntry.Unfocus();
 
         var code = CodeEntry.Text?.Trim();
@@ -93,6 +217,7 @@ public sealed partial class AuthView : ContentView
             return;
         }
 
+        _isVerifying = true;
         SetVerifyCodeLoadingState(true);
         _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
 
@@ -117,6 +242,7 @@ public sealed partial class AuthView : ContentView
         }
         finally
         {
+            _isVerifying = false;
             SetVerifyCodeLoadingState(false);
         }
     }

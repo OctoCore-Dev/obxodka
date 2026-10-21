@@ -28,10 +28,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
     private readonly List<string> _suspendedConflictingAdapters = [];
     private readonly List<string> _suspendedServices = [];
-    public static SplitTunnelPolicy SplitTunnelPolicy { get; } = new();
+    public static SplitTunnelPolicy SplitTunnelPolicy => WindowsSplitTunnelEngine.Policy;
 
     public WindowsVpnService()
     {
+        AppManager.SyncPolicyFromPreferences();
         OctopusEngine.Current.ProtectTransportSockets(BindSocketToPhysicalAdapter);
         OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
         _ = Task.Run(CleanupStaleRoutesAsync);
@@ -44,14 +45,21 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             catch { }
         };
         OctopusEngine.OnCertificateRevoked += (msg) => OnForceLogoutRequested?.Invoke(msg);
+        OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
+        OctopusEngine.Current.OnMtuUpdated += HandleMtuUpdated;
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
         OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
     }
 
+    private void HandleMtuUpdated(int optimalMtu)
+    {
+    }
+
     private static async Task CleanupStaleRoutesAsync()
     {
+        WindowsSplitTunnelEngine.CleanupAllRoutes();
         _ = await RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", $"delete {AppConfig.DirectServerIp} mask 255.255.255.255");
@@ -87,6 +95,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                     if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                     {
+                        if (_adapter is not null)
+                        {
+                            _ = UpdateAdapterMtuAsync(_adapter.Name, NetworkDefaults.CurrentMtu);
+                        }
                         OctopusEngine.Current.ResetTrafficCounters();
                         OctopusEngine.Current.ArmTrafficWatchdog();
                         UpdateState(AppVpnState.Connected);
@@ -140,6 +152,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
+                                if (_adapter is not null)
+                                {
+                                    _ = UpdateAdapterMtuAsync(_adapter.Name, NetworkDefaults.CurrentMtu);
+                                }
                                 OctopusEngine.Current.ResetTrafficCounters();
                                 OctopusEngine.Current.ArmTrafficWatchdog();
                                 UpdateState(AppVpnState.Connected);
@@ -204,7 +220,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
+                                if (_adapter is not null)
+                                {
+                                    _ = UpdateAdapterMtuAsync(_adapter.Name, NetworkDefaults.CurrentMtu);
+                                }
+                                OctopusEngine.Current.ResetTrafficCounters();
+                                OctopusEngine.Current.ArmTrafficWatchdog();
                                 UpdateState(AppVpnState.Connected);
+                                OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
                                 return;
                             }
                             await OctopusEngine.Current.DisposeAsync();
@@ -439,7 +462,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             {
                                 Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={NetworkDefaults.CurrentMtu})! Activating routes and elevating adapter priority.");
                                 _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
-                                if (!string.IsNullOrWhiteSpace(ipv6))
+                                if (hasValidIpv6)
                                 {
                                     _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                                 }
@@ -450,7 +473,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             {
                                 Shared.Logging.AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
                                 _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
-                                if (!string.IsNullOrWhiteSpace(ipv6))
+                                if (hasValidIpv6)
                                 {
                                     _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                                 }
@@ -481,24 +504,6 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
                             UpdateState(AppVpnState.Connected);
                             connected = true;
-
-                            var curAdapter = _adapter.Name;
-                            _ = Task.Run(async () =>
-                            {
-                                try
-                                {
-                                    await Task.Delay(3000, _cts.Token).ConfigureAwait(false);
-                                    if (OctopusEngine.Current.IsConnected)
-                                    {
-                                        var optimalMtu = await OctopusEngine.Current.ScanAndLockOptimalMtuAsync(_cts.Token).ConfigureAwait(false);
-                                        if (!string.IsNullOrEmpty(curAdapter))
-                                        {
-                                            await UpdateAdapterMtuAsync(curAdapter, optimalMtu).ConfigureAwait(false);
-                                        }
-                                    }
-                                }
-                                catch { }
-                            }, _cts.Token);
 
                             return;
                         }
@@ -621,6 +626,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 continue;
                             }
 
+                            if (WindowsSplitTunnelEngine.TryInterceptOutgoingPacket(buf, len, adapter))
+                            {
+                                ArrayPool<byte>.Shared.Return(buf);
+                                continue;
+                            }
+
                             OctopusEngine.Current.SendPacketFromPool(buf, len);
                         }
                         processed = count;
@@ -663,6 +674,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         try
         {
+            WindowsSplitTunnelEngine.InspectIncomingPacketFromVpn(data.AsSpan(0, length), length);
             _adapter?.SendPacket(data, length);
         }
         finally
@@ -694,6 +706,25 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
+    private static bool IsPublicRoutableIpv6(string? ipStr)
+    {
+        if (string.IsNullOrWhiteSpace(ipStr) || !IPAddress.TryParse(ipStr, out var ip))
+        {
+            return false;
+        }
+
+        if (ip.AddressFamily != AddressFamily.InterNetworkV6 ||
+            ip.IsIPv6LinkLocal ||
+            ip.IsIPv6SiteLocal ||
+            ip.IsIPv6Multicast)
+        {
+            return false;
+        }
+
+        var bytes = ip.GetAddressBytes();
+        return (bytes[0] & 0xE0) == 0x20;
+    }
+
     private static async Task SetAdapterConfigAsync(string adapterName, string ip, string mask, string? ipv6 = null)
     {
         var pfx = mask == "255.192.0.0" ? 10 : 24;
@@ -716,7 +747,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
+                    if (IsPublicRoutableIpv6(ipv6))
+                    {
+                        _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
+                    }
                     Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
                 }
 
@@ -1179,7 +1213,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     {
                         if (!string.IsNullOrWhiteSpace(svc) && !_suspendedServices.Contains(svc))
                         {
-                            Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found active competing VPN service '{svc}'. Stopping it...");
+                            Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Found active competing VPN service '{svc}'. Stopping it...");
                             _ = await RunCmdAsync("net", $"stop \"{svc}\" /y").ConfigureAwait(false);
                             _suspendedServices.Add(svc);
                         }
@@ -1194,7 +1228,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 {
                     var adapterName = card.Name;
                     var ifIndex = card.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
-                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ⚠️ Found competing VPN adapter '{adapterName}' (Index: {ifIndex}, {card.Description}). Suppressing it...");
+                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Found competing VPN adapter '{adapterName}' (Index: {ifIndex}, {card.Description}). Suppressing it...");
                     OnLogUpdated?.Invoke($"Отключение конкурирующего VPN ({adapterName})...");
 
                     var (exitCode, _) = await RunCmdAsync("netsh", $"interface set interface name=\"{adapterName}\" admin=DISABLED").ConfigureAwait(false);
@@ -1214,7 +1248,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
 
                     _suspendedConflictingAdapters.Add(adapterName);
-                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Competing adapter '{adapterName}' suppressed and deprioritized (metric=5000).");
+                    Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Competing adapter '{adapterName}' suppressed and deprioritized (metric=5000).");
                 }
             }
 
@@ -1253,14 +1287,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 }
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=default").ConfigureAwait(false);
                 _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=default").ConfigureAwait(false);
-                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Adapter '{adapterName}' restored.");
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Adapter '{adapterName}' restored.");
             }
 
             foreach (var svc in _suspendedServices)
             {
                 Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Re-starting service '{svc}'...");
                 _ = await RunCmdAsync("net", $"start \"{svc}\"").ConfigureAwait(false);
-                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] ✓ Service '{svc}' restarted.");
+                Shared.Logging.AppLogger.Log($"[VPN-TAKEOVER] Service '{svc}' restarted.");
             }
         }
         catch (Exception ex)
@@ -1614,29 +1648,30 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
                 _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Clear-DnsClientCache -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
 
-                if (SplitTunnelPolicy.Enabled && !string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
+                if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
-                    foreach (var bypassIp in SplitTunnelPolicy.CustomBypassIps)
+                    WindowsSplitTunnelEngine.ConfigurePhysicalGateway(gw, physicalIfIndex, t_savedPhysicalLocalIp, primaryIp);
+                    if (SplitTunnelPolicy.Enabled)
                     {
-                        if (IPAddress.TryParse(bypassIp, out _))
-                        {
-                            _ = await RunCmdAsync("route", $"add {bypassIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
-                            SplitTunnelPolicy.RecordBypassRoute(bypassIp, "Пользовательское исключение");
-                        }
-                    }
+                        _ = Task.Run(WindowsSplitTunnelEngine.ActivateOrReloadAsync);
 
-                    if (SplitTunnelPolicy.BypassRemoteManagement)
-                    {
-                        await ApplyRemoteManagementBypassRoutesAsync(gw, physIfArg);
+                        if (SplitTunnelPolicy.BypassRemoteManagement)
+                        {
+                            await ApplyRemoteManagementBypassRoutesAsync(gw, physIfArg);
+                        }
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out _))
+                if (IsPublicRoutableIpv6(assignedIpV6))
                 {
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
+                }
+                else if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out _))
+                {
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 add route fd00::/64 interface=\"{adapterName}\" metric=50", timeoutMs: 1500);
                 }
             }
             else
@@ -1646,6 +1681,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
         else if (!enable)
         {
+            WindowsSplitTunnelEngine.CleanupAllRoutes();
+
             var deleteTasks = new List<Task>
             {
                 RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0"),
@@ -1660,16 +1697,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 }
             }
 
-            foreach (var route in SplitTunnelPolicy.ActiveBypassRoutes)
-            {
-                deleteTasks.Add(RunCmdAsync("route", $"delete {route.DestinationIp} mask 255.255.255.255"));
-            }
-            SplitTunnelPolicy.ClearActiveRoutes();
-
             if (!string.IsNullOrEmpty(adapterName))
             {
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
+                deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route fd00::/64 interface=\"{adapterName}\"", timeoutMs: 1500));
             }
 
             try

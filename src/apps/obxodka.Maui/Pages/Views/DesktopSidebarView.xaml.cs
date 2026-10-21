@@ -14,6 +14,7 @@ public sealed partial class DesktopSidebarView : ContentView
     public event EventHandler<string>? NavTapped;
     public event EventHandler? LogoutTapped;
     private bool _isExpanded;
+    private bool _isVpnConnected;
     private string _currentTab = "vpn";
 
     public DesktopSidebarView()
@@ -35,6 +36,7 @@ public sealed partial class DesktopSidebarView : ContentView
             SideNavProfile,
             SideNavConfiguration,
             SideNavDevices,
+            SideNavSplit,
             NavBug,
             NavReviews);
     }
@@ -43,18 +45,20 @@ public sealed partial class DesktopSidebarView : ContentView
 
     public void UpdateVpnStatus(bool isConnected)
     {
+        _isVpnConnected = isConnected;
+        var customStatus = ThemeManager.Instance?.ActiveTheme?.Vfx?.StatusText;
         if (isConnected)
         {
             var accent = (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac) ? ac : t_cyanColor;
             VpnStatusDot.Color = accent;
-            VpnStatusLabel.Text = "Защищено";
+            VpnStatusLabel.Text = !string.IsNullOrWhiteSpace(customStatus?.Connected) ? customStatus.Connected : "Защищено";
             VpnStatusLabel.TextColor = accent;
         }
         else
         {
             var muted = (Application.Current?.Resources.TryGetValue("TextMuted", out var m) == true && m is Color mc) ? mc : t_mutedColor;
             VpnStatusDot.Color = muted;
-            VpnStatusLabel.Text = "Отключен";
+            VpnStatusLabel.Text = !string.IsNullOrWhiteSpace(customStatus?.Disconnected) ? customStatus.Disconnected : "Отключен";
             VpnStatusLabel.TextColor = muted;
         }
     }
@@ -77,6 +81,26 @@ public sealed partial class DesktopSidebarView : ContentView
         {
             UpdateCardOpacity();
             UpdateActiveTab(_currentTab);
+            UpdateVpnStatus(_isVpnConnected);
+
+            var textPrimary = (Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true && tp is Color tpc)
+                ? tpc
+                : Colors.White;
+            var textMuted = (Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc)
+                ? tmc
+                : t_mutedColor;
+
+            AppLogoText.TextColor = textPrimary;
+            LabelVpn.TextColor = textPrimary;
+            LabelProfile.TextColor = textPrimary;
+            LabelConfiguration.TextColor = textPrimary;
+            LabelDevices.TextColor = textPrimary;
+            LabelSplit.TextColor = textPrimary;
+            LabelBug.TextColor = textPrimary;
+            LabelReviews.TextColor = textPrimary;
+
+            NavBugIcon.IconColor = textMuted;
+            NavReviewsIcon.IconColor = textMuted;
         });
 
     private void OnSidebarTapped(object? sender, TappedEventArgs e)
@@ -89,6 +113,7 @@ public sealed partial class DesktopSidebarView : ContentView
 
     private void OnLogoTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = AppLogoImage.BounceClickAsync();
         ToggleSidebar();
     }
@@ -107,6 +132,7 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelHideAsync(LabelProfile);
             _ = AnimateLabelHideAsync(LabelConfiguration);
             _ = AnimateLabelHideAsync(LabelDevices);
+            _ = AnimateLabelHideAsync(LabelSplit);
             _ = AnimateLabelHideAsync(LabelBug);
             _ = AnimateLabelHideAsync(LabelReviews);
             _ = AnimateLabelHideAsync(VpnStatusLabel);
@@ -126,6 +152,7 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelShowAsync(LabelProfile, 40);
             _ = AnimateLabelShowAsync(LabelConfiguration, 55);
             _ = AnimateLabelShowAsync(LabelDevices, 70);
+            _ = AnimateLabelShowAsync(LabelSplit, 85);
             _ = AnimateLabelShowAsync(LabelBug, 100);
             _ = AnimateLabelShowAsync(LabelReviews, 115);
             _ = AnimateLabelShowAsync(VpnStatusLabel, 125);
@@ -203,6 +230,12 @@ public sealed partial class DesktopSidebarView : ContentView
                 _ = SideNavDevices.ScaleToAsync(1.03, 150, Easing.SpringOut);
                 _ = UIAnimations.PlayIconWiggleAsync(NavDevicesIcon, 12);
                 break;
+            case "split":
+                SideNavSplit.BackgroundColor = ActiveBgColor;
+                NavSplitIcon.IconColor = ActiveColor;
+                _ = SideNavSplit.ScaleToAsync(1.03, 150, Easing.SpringOut);
+                _ = UIAnimations.PlayIconSpringHoverAsync(NavSplitIcon, 1.2);
+                break;
             default:
                 break;
         }
@@ -214,11 +247,13 @@ public sealed partial class DesktopSidebarView : ContentView
         SideNavProfile.BackgroundColor = Colors.Transparent;
         SideNavConfiguration.BackgroundColor = Colors.Transparent;
         SideNavDevices.BackgroundColor = Colors.Transparent;
+        SideNavSplit.BackgroundColor = Colors.Transparent;
 
         SideNavVpn.Scale = 1.0;
         SideNavProfile.Scale = 1.0;
         SideNavConfiguration.Scale = 1.0;
         SideNavDevices.Scale = 1.0;
+        SideNavSplit.Scale = 1.0;
 
         var inactiveColor = (Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc)
             ? tmc
@@ -228,34 +263,49 @@ public sealed partial class DesktopSidebarView : ContentView
         NavProfileIcon.IconColor = inactiveColor;
         NavConfigurationIcon.IconColor = inactiveColor;
         NavDevicesIcon.IconColor = inactiveColor;
+        NavSplitIcon.IconColor = inactiveColor;
+        NavBugIcon.IconColor = inactiveColor;
+        NavReviewsIcon.IconColor = inactiveColor;
     }
 
     private void OnNavVpnTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = SideNavVpn.BounceClickAsync();
         NavTapped?.Invoke(this, "vpn");
     }
 
     private void OnNavProfileTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = SideNavProfile.BounceClickAsync();
         NavTapped?.Invoke(this, "profile");
     }
 
     private void OnNavConfigurationTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = SideNavConfiguration.BounceClickAsync();
         NavTapped?.Invoke(this, "configuration");
     }
 
     private void OnNavDevicesTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = SideNavDevices.BounceClickAsync();
         NavTapped?.Invoke(this, "devices");
     }
 
+    private void OnNavSplitTapped(object? sender, TappedEventArgs e)
+    {
+        ThemeAudioService.PlayClick();
+        _ = SideNavSplit.BounceClickAsync();
+        NavTapped?.Invoke(this, "split");
+    }
+
     private void OnNavBugTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = NavBug.BounceClickAsync();
         try
         {
@@ -266,6 +316,7 @@ public sealed partial class DesktopSidebarView : ContentView
 
     private void OnNavReviewsTapped(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = NavReviews.BounceClickAsync();
         try
         {
@@ -276,6 +327,7 @@ public sealed partial class DesktopSidebarView : ContentView
 
     private void OnLogoutClicked(object? sender, TappedEventArgs e)
     {
+        ThemeAudioService.PlayClick();
         _ = LogoutButtonBorder.BounceClickAsync();
         LogoutTapped?.Invoke(this, EventArgs.Empty);
     }
@@ -287,6 +339,7 @@ public sealed partial class DesktopSidebarView : ContentView
             return;
         }
 
+        ThemeAudioService.PlayHover();
         _ = border.ScaleToAsync(1.04, 120, Easing.CubicOut);
 
         if (border == SideNavVpn)
@@ -304,6 +357,10 @@ public sealed partial class DesktopSidebarView : ContentView
         else if (border == SideNavDevices)
         {
             await UIAnimations.PlayIconWiggleAsync(NavDevicesIcon, 14);
+        }
+        else if (border == SideNavSplit)
+        {
+            await UIAnimations.PlayIconSpringHoverAsync(NavSplitIcon, 1.25);
         }
         else if (border == NavBug)
         {
@@ -344,6 +401,10 @@ public sealed partial class DesktopSidebarView : ContentView
         {
             await UIAnimations.PlayIconHoverExitAsync(NavDevicesIcon);
         }
+        else if (border == SideNavSplit)
+        {
+            await UIAnimations.PlayIconHoverExitAsync(NavSplitIcon);
+        }
         else if (border == NavBug)
         {
             await UIAnimations.PlayIconHoverExitAsync(NavBugIcon);
@@ -360,6 +421,7 @@ public sealed partial class DesktopSidebarView : ContentView
 
     private async void OnVersionBadgeTappedAsync(object? sender, EventArgs e)
     {
+        ThemeAudioService.PlayClick();
         if (sender is VisualElement ve)
         {
             _ = ve.BounceClickAsync();

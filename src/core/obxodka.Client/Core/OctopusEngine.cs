@@ -47,14 +47,60 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
 
     private long _watchdogArmedTicks;
+    private CancellationTokenSource? _mtuScanCts;
+    private int _isScanningMtu;
+    private long _largeTxPackets;
+    private long _largeRxPackets;
 
-    public void ArmTrafficWatchdog() =>
+    public void ArmTrafficWatchdog()
+    {
         Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
+        ScheduleSmartMtuScan(2500);
+    }
+
+    public void ScheduleSmartMtuScan(int delayMs = 2500)
+    {
+        try
+        {
+            _mtuScanCts?.Cancel();
+            _mtuScanCts?.Dispose();
+        }
+        catch { }
+
+        var engineCts = _cts;
+        if (engineCts is null || engineCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var scanCts = CancellationTokenSource.CreateLinkedTokenSource(engineCts.Token);
+        _mtuScanCts = scanCts;
+        var token = scanCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (delayMs > 0)
+                {
+                    await Task.Delay(delayMs, token).ConfigureAwait(false);
+                }
+
+                if (!token.IsCancellationRequested && IsConnected)
+                {
+                    _ = await ScanAndLockOptimalMtuAsync(token).ConfigureAwait(false);
+                }
+            }
+            catch { }
+        }, token);
+    }
 
     public void ResetTrafficCounters()
     {
         _ = Interlocked.Exchange(ref _totalBytesSent, 0);
         _ = Interlocked.Exchange(ref _totalBytesReceived, 0);
+        _ = Interlocked.Exchange(ref _largeTxPackets, 0);
+        _ = Interlocked.Exchange(ref _largeRxPackets, 0);
         Volatile.Write(ref _watchdogArmedTicks, 0);
         _smoothedPing = 0;
     }
@@ -193,6 +239,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             return;
         }
 
+        NetworkDefaults.CurrentMtu = NetworkDefaults.DefaultMtu;
         RegisterServerEndpoint(serverIp);
         RegisterServerEndpoint(AppConfig.DirectServerIp);
 
@@ -235,6 +282,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         transport.OnPacketReceived += (pkt, len) =>
         {
             _ = Interlocked.Add(ref _totalBytesReceived, len);
+            if (len > 600)
+            {
+                _ = Interlocked.Increment(ref _largeRxPackets);
+            }
             OnProbePacketInspect?.Invoke(pkt, len);
             var handler = OnPacketReceived;
             if (handler is not null)
@@ -404,26 +455,47 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             return NetworkDefaults.CurrentMtu;
         }
 
-        EmitStatus(VpnStatusMessages.ScanningMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, 8));
-        var burstResults = await _transport.MeasureBurstMtuAsync(ct).ConfigureAwait(false);
-        int optimalMtu;
-        if (burstResults.Length > 0)
+        if (Interlocked.CompareExchange(ref _isScanningMtu, 1, 0) != 0)
         {
-            var maxWireMtu = burstResults.Max();
-            optimalMtu = maxWireMtu >= 1500 ? 1400 : Math.Clamp(maxWireMtu - 80, NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
-            EmitStatus(VpnStatusMessages.MtuHoleFound(optimalMtu));
-        }
-        else
-        {
-            optimalMtu = await EscalateMtuAsync(NetworkDefaults.CurrentMtu, ct).ConfigureAwait(false);
+            return NetworkDefaults.CurrentMtu;
         }
 
-        NetworkDefaults.CurrentMtu = optimalMtu;
-        EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
-        await (_transport?.SendMtuSyncAsync(optimalMtu) ?? Task.CompletedTask).ConfigureAwait(false);
-        OnMtuUpdated?.Invoke(optimalMtu);
-        EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
-        return NetworkDefaults.CurrentMtu;
+        try
+        {
+            EmitStatus(VpnStatusMessages.ScanningMtuHole(NetworkDefaults.MaxMtu, NetworkDefaults.MinMtu, 8));
+            var burstResults = await _transport.MeasureBurstMtuAsync(ct).ConfigureAwait(false);
+            int optimalMtu;
+            if (burstResults.Length > 0)
+            {
+                var maxWireMtu = burstResults.Max();
+                var candidateMtu = maxWireMtu >= 1500 ? 1400 : Math.Clamp(maxWireMtu - 80, NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
+                var uplinkOk = await (_transport?.ProbeMtuAsync(candidateMtu, ct) ?? Task.FromResult(false)).ConfigureAwait(false);
+                if (uplinkOk)
+                {
+                    optimalMtu = candidateMtu;
+                    EmitStatus(VpnStatusMessages.MtuHoleFound(optimalMtu));
+                }
+                else
+                {
+                    optimalMtu = await EscalateMtuAsync(NetworkDefaults.DefaultMtu, ct).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                optimalMtu = await EscalateMtuAsync(NetworkDefaults.CurrentMtu, ct).ConfigureAwait(false);
+            }
+
+            NetworkDefaults.CurrentMtu = optimalMtu;
+            EmitStatus(VpnStatusMessages.MtuSyncingWithServer(NetworkDefaults.CurrentMtu));
+            await (_transport?.SendMtuSyncAsync(optimalMtu) ?? Task.CompletedTask).ConfigureAwait(false);
+            OnMtuUpdated?.Invoke(optimalMtu);
+            EmitStatus(VpnStatusMessages.MtuLocked(NetworkDefaults.CurrentMtu));
+            return NetworkDefaults.CurrentMtu;
+        }
+        finally
+        {
+            Volatile.Write(ref _isScanningMtu, 0);
+        }
     }
 
     private async Task<int> EscalateMtuAsync(int initialMtu, CancellationToken ct)
@@ -608,6 +680,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             long lastSent = 0;
             long lastReceived = 0;
+            long windowLargeTx = 0;
+            long windowLargeRx = 0;
+            var windowTicks = 0;
+            var mtuBlackholeWindows = 0;
             var deadTicks = 0;
 
             void OnPing(long _) => deadTicks = 0;
@@ -625,8 +701,12 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                     if (armedTicks == 0)
                     {
                         deadTicks = 0;
+                        windowTicks = 0;
+                        mtuBlackholeWindows = 0;
                         lastSent = currentSent;
                         lastReceived = currentReceived;
+                        windowLargeTx = Volatile.Read(ref _largeTxPackets);
+                        windowLargeRx = Volatile.Read(ref _largeRxPackets);
                         await Task.Delay(200, token);
                         continue;
                     }
@@ -653,6 +733,43 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                         deadTicks = 0;
                     }
 
+                    windowTicks++;
+                    if (windowTicks >= 25)
+                    {
+                        windowTicks = 0;
+                        var curLargeTx = Volatile.Read(ref _largeTxPackets);
+                        var curLargeRx = Volatile.Read(ref _largeRxPackets);
+                        var deltaLargeTx = curLargeTx - windowLargeTx;
+                        var deltaLargeRx = curLargeRx - windowLargeRx;
+                        windowLargeTx = curLargeTx;
+                        windowLargeRx = curLargeRx;
+
+                        if (NetworkDefaults.CurrentMtu > NetworkDefaults.DefaultMtu && Volatile.Read(ref _isScanningMtu) == 0)
+                        {
+                            if (deltaLargeTx >= 10 && deltaLargeRx == 0)
+                            {
+                                mtuBlackholeWindows++;
+                                if (mtuBlackholeWindows >= 2)
+                                {
+                                    mtuBlackholeWindows = 0;
+                                    NetworkDefaults.CurrentMtu = NetworkDefaults.DefaultMtu;
+                                    _ = _transport?.SendMtuSyncAsync(NetworkDefaults.DefaultMtu);
+                                    OnMtuUpdated?.Invoke(NetworkDefaults.DefaultMtu);
+                                    Shared.Logging.AppLogger.LogWarning($"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, LargeRX=0). Stepped down to {NetworkDefaults.DefaultMtu}B and rescheduling scan.");
+                                    ScheduleSmartMtuScan(2000);
+                                }
+                            }
+                            else if (deltaLargeRx > 0)
+                            {
+                                mtuBlackholeWindows = 0;
+                            }
+                        }
+                        else
+                        {
+                            mtuBlackholeWindows = 0;
+                        }
+                    }
+
                     lastSent = currentSent;
                     lastReceived = currentReceived;
                     await Task.Delay(200, token);
@@ -677,6 +794,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         var poolBuf = ArrayPool<byte>.Shared.Rent(packet.Length);
         Buffer.BlockCopy(packet, 0, poolBuf, 0, packet.Length);
         _ = Interlocked.Add(ref _totalBytesSent, packet.Length);
+        if (packet.Length > NetworkDefaults.DefaultMtu)
+        {
+            _ = Interlocked.Increment(ref _largeTxPackets);
+        }
         _transport.SendPacketFromPool(poolBuf, packet.Length);
         return Task.CompletedTask;
     }
@@ -690,6 +811,10 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
 
         _ = Interlocked.Add(ref _totalBytesSent, length);
+        if (length > NetworkDefaults.DefaultMtu)
+        {
+            _ = Interlocked.Increment(ref _largeTxPackets);
+        }
         _transport.SendPacketFromPool(inputBuf, length);
     }
 
@@ -703,6 +828,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     {
         Volatile.Write(ref _watchdogArmedTicks, 0);
         _smoothedPing = 0;
+        try
+        {
+            _mtuScanCts?.Cancel();
+            _mtuScanCts?.Dispose();
+        }
+        catch { }
+        _mtuScanCts = null;
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
@@ -722,6 +855,14 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public void Dispose()
     {
         Volatile.Write(ref _watchdogArmedTicks, 0);
+        try
+        {
+            _mtuScanCts?.Cancel();
+            _mtuScanCts?.Dispose();
+        }
+        catch { }
+        _mtuScanCts = null;
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;

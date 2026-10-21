@@ -182,6 +182,33 @@ public static partial class ThemeValidator
         return false;
     }
 
+    public static bool ContainsDangerousText(string? value, int maxLength = 200)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        if (value.Length > maxLength)
+        {
+            return true;
+        }
+
+        foreach (var ch in value)
+        {
+            if (char.IsControl(ch) && ch is not ('\r' or '\n' or '\t'))
+            {
+                return true;
+            }
+        }
+
+        return value.Contains('<', StringComparison.Ordinal) ||
+               value.Contains('>', StringComparison.Ordinal) ||
+               value.Contains("javascript:", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("vbscript:", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("data:text/html", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool ValidateManifest(ThemeManifest manifest, [NotNullWhen(false)] out string? errorMessage)
     {
         if (manifest == null)
@@ -190,16 +217,40 @@ public static partial class ThemeValidator
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(manifest.Id) || !IsSafeId(manifest.Id))
+        if (string.IsNullOrWhiteSpace(manifest.Id) || manifest.Id.Length > 64 || !IsSafeId(manifest.Id))
         {
-            errorMessage = $"Theme ID '{manifest.Id}' is invalid. Must contain only lowercase letters, digits, dashes, and underscores.";
+            errorMessage = $"Theme ID '{manifest.Id}' is invalid. Must contain only lowercase letters, digits, dashes, and underscores (max 64 chars).";
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(manifest.Name))
+        if (string.IsNullOrWhiteSpace(manifest.Name) || ContainsDangerousText(manifest.Name, 80))
         {
-            errorMessage = "Theme Name cannot be empty.";
+            errorMessage = "Theme Name is empty, too long, or contains prohibited characters.";
             return false;
+        }
+
+        if (ContainsDangerousText(manifest.Author, 80) || ContainsDangerousText(manifest.Description, 600))
+        {
+            errorMessage = "Theme Author or Description contains prohibited characters or exceeds length limits.";
+            return false;
+        }
+
+        if (manifest.Tags is { Count: > 20 })
+        {
+            errorMessage = "Theme cannot have more than 20 tags.";
+            return false;
+        }
+
+        if (manifest.Tags is not null)
+        {
+            foreach (var tag in manifest.Tags)
+            {
+                if (ContainsDangerousText(tag, 32))
+                {
+                    errorMessage = $"Invalid tag '{tag}'.";
+                    return false;
+                }
+            }
         }
 
         if (manifest.Core?.Colors == null)
@@ -236,7 +287,12 @@ public static partial class ThemeValidator
             manifest.Core.Colors.BorderMedium,
             manifest.Core.Colors.Success,
             manifest.Core.Colors.Warning,
-            manifest.Core.Colors.Error
+            manifest.Core.Colors.Error,
+            manifest.Vfx?.Color,
+            manifest.Vfx?.Glow?.CoreColor,
+            manifest.Vfx?.Glow?.BloomColor,
+            manifest.Vfx?.ActiveOverrides?.AccentColor,
+            manifest.Vfx?.ActiveOverrides?.GlowColor
         ];
 
         foreach (var color in optionalColors)
@@ -244,6 +300,21 @@ public static partial class ThemeValidator
             if (!string.IsNullOrEmpty(color) && !IsValidHexColor(color))
             {
                 errorMessage = $"Invalid color HEX token in theme manifest: '{color}'";
+                return false;
+            }
+        }
+
+        if (manifest.Vfx?.StatusText is { } st)
+        {
+            if (ContainsDangerousText(st.Disconnected, 64) ||
+                ContainsDangerousText(st.Connecting, 64) ||
+                ContainsDangerousText(st.Connected, 64) ||
+                ContainsDangerousText(st.Error, 64) ||
+                ContainsDangerousText(st.ButtonIdle, 32) ||
+                ContainsDangerousText(st.ButtonConnecting, 32) ||
+                ContainsDangerousText(st.ButtonConnected, 32))
+            {
+                errorMessage = "Invalid or prohibited text in vfx.statusText.";
                 return false;
             }
         }
@@ -269,7 +340,9 @@ public static partial class ThemeValidator
             manifest.Core.Sounds?.Connect,
             manifest.Core.Sounds?.Disconnect,
             manifest.Core.Sounds?.Click,
+            manifest.Core.Sounds?.Hover,
             manifest.Core.Sounds?.Notification,
+            manifest.Core.Sounds?.Ambient,
             manifest.Core.Ui?.FontFile
         ];
 
@@ -282,6 +355,24 @@ public static partial class ThemeValidator
             }
         }
 
+        if (manifest.Vfx?.ParticleSprites is { Count: > 0 } sprites)
+        {
+            if (sprites.Count > 12)
+            {
+                errorMessage = "Too many particleSprites in theme manifest (max 12).";
+                return false;
+            }
+
+            foreach (var sp in sprites)
+            {
+                if (!IsSafeRelativePath(sp))
+                {
+                    errorMessage = $"Unsafe or prohibited particleSprite path in theme manifest: '{sp}'";
+                    return false;
+                }
+            }
+        }
+
         if (manifest.Decorations?.CornerStickers is { Count: > 0 } stickers)
         {
             foreach (var p in stickers.Values)
@@ -290,6 +381,33 @@ public static partial class ThemeValidator
                 {
                     errorMessage = $"Unsafe or prohibited sticker path in theme manifest: '{p}'";
                     return false;
+                }
+            }
+        }
+
+        if (manifest.Apps is not null && manifest.Apps.TryGetValue("obxodka", out var obxApp) && obxApp.ValueKind == JsonValueKind.Object)
+        {
+            if (obxApp.TryGetProperty("sounds", out var soundsObj) && soundsObj.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in soundsObj.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String && !IsSafeRelativePath(prop.Value.GetString()))
+                    {
+                        errorMessage = $"Unsafe sound path in apps.obxodka.sounds.{prop.Name}: '{prop.Value.GetString()}'";
+                        return false;
+                    }
+                }
+            }
+
+            if (obxApp.TryGetProperty("vpnButton", out var btnObj) && btnObj.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in btnObj.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String && !IsSafeRelativePath(prop.Value.GetString()))
+                    {
+                        errorMessage = $"Unsafe button path in apps.obxodka.vpnButton.{prop.Name}: '{prop.Value.GetString()}'";
+                        return false;
+                    }
                 }
             }
         }

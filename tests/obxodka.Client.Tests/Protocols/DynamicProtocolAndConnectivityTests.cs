@@ -200,7 +200,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         var candidates = AppSecrets.GetCandidateSniList(8);
         Assert.Equal(8, candidates.Count);
         Assert.Equal(candidates.Count, candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count());
-        Assert.Contains("gateway.icloud.com", candidates, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("login.live.com", candidates, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("dl.google.com", candidates, StringComparer.OrdinalIgnoreCase);
     }
 

@@ -6,7 +6,18 @@ public static class SafeThemeExtractor
 
     private static readonly HashSet<string> t_allowedExtensions =
     [
-        ".json", ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".wav", ".mp3", ".ttf", ".otf"
+        ".json", ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".wav", ".mp3", ".ogg", ".ttf", ".otf"
+    ];
+
+    private static readonly byte[][] t_forbiddenPolyglotSignatures =
+    [
+        "<!doctype html"u8.ToArray(),
+        "<html"u8.ToArray(),
+        "<script"u8.ToArray(),
+        "javascript:"u8.ToArray(),
+        "vbscript:"u8.ToArray(),
+        "<?php"u8.ToArray(),
+        "powershell"u8.ToArray()
     ];
 
     public static bool IsAllowedExtension(string? extension) =>
@@ -18,7 +29,7 @@ public static class SafeThemeExtractor
         return ext switch
         {
             ".mp4" or ".webm" => 20 * 1024 * 1024,
-            ".wav" or ".mp3" => 5 * 1024 * 1024,
+            ".wav" or ".mp3" or ".ogg" => 5 * 1024 * 1024,
             ".png" or ".jpg" or ".jpeg" or ".webp" => 5 * 1024 * 1024,
             ".ttf" or ".otf" => 5 * 1024 * 1024,
             ".json" => 512 * 1024,
@@ -27,6 +38,7 @@ public static class SafeThemeExtractor
     }
 
     public const int MaxArchiveEntries = 100;
+    public const int MaxImageDimension = 4096;
 
     public static async Task ExtractZipSafelyAsync(Stream zipStream, string destinationDirectory, CancellationToken ct = default)
     {
@@ -53,6 +65,17 @@ public static class SafeThemeExtractor
             if (string.IsNullOrEmpty(entry.Name) && (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')))
             {
                 continue;
+            }
+
+            var unixMode = (entry.ExternalAttributes >> 16) & 0xF000;
+            if (unixMode == 0xA000)
+            {
+                throw new SecurityException($"[ThemeSecurity] Блокировка символической ссылки в архиве: '{entry.FullName}'");
+            }
+
+            if (!ThemeValidator.IsSafeRelativePath(entry.FullName))
+            {
+                throw new SecurityException($"[ThemeSecurity] Блокировка небезопасного пути или расширения в архиве: '{entry.FullName}'");
             }
 
             var extension = Path.GetExtension(entry.FullName);
@@ -135,6 +158,16 @@ public static class SafeThemeExtractor
                             throw new SecurityException($"[ThemeSecurity] Блокировка Zip-бомбы: общий размер распаковки превысил лимит {MaxTotalExtractionSizeBytes / 1024 / 1024} МБ.");
                         }
 
+                        if (entry.CompressedLength > 0 && fileBytesWritten > 256 * 1024 && (fileBytesWritten / entry.CompressedLength) > 100)
+                        {
+                            throw new SecurityException($"[ThemeSecurity] Блокировка Zip-бомбы: аномальный коэффициент сжатия файла '{entry.Name}'.");
+                        }
+
+                        if (ContainsPolyglotPayload(copyBuffer.AsSpan(0, bytesRead)))
+                        {
+                            throw new SecurityException($"[ThemeSecurity] Блокировка Полиглот-файла: обнаружен внедренный скрипт в '{entry.Name}'.");
+                        }
+
                         await fileStream.WriteAsync(copyBuffer.AsMemory(0, bytesRead), ct);
                     }
                 }
@@ -160,9 +193,59 @@ public static class SafeThemeExtractor
         }
     }
 
+    public static bool ContainsPolyglotPayload(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 5)
+        {
+            return false;
+        }
+
+        foreach (var sig in t_forbiddenPolyglotSignatures)
+        {
+            if (IndexOfIgnoreCaseAscii(data, sig) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int IndexOfIgnoreCaseAscii(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needleLower)
+    {
+        var limit = haystack.Length - needleLower.Length;
+        for (var i = 0; i <= limit; i++)
+        {
+            var match = true;
+            for (var j = 0; j < needleLower.Length; j++)
+            {
+                var b = haystack[i + j];
+                if (b is >= (byte)'A' and <= (byte)'Z')
+                {
+                    b = (byte)(b + 32);
+                }
+                if (b != needleLower[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     public static bool VerifyMagicBytes(string extension, byte[] buffer, int length)
     {
         if (length <= 0 || buffer == null || buffer.Length < length)
+        {
+            return false;
+        }
+
+        if (ContainsPolyglotPayload(buffer.AsSpan(0, length)))
         {
             return false;
         }
@@ -211,9 +294,7 @@ public static class SafeThemeExtractor
         var ext = extension.ToLowerInvariant();
         return ext switch
         {
-            ".png" => length >= 8 &&
-                      buffer[0] == 0x89 && buffer[1] == 0x50 && buffer[2] == 0x4E && buffer[3] == 0x47 &&
-                      buffer[4] == 0x0D && buffer[5] == 0x0A && buffer[6] == 0x1A && buffer[7] == 0x0A,
+            ".png" => VerifyPngHeaderAndDimensions(buffer, length),
 
             ".jpg" or ".jpeg" => length >= 3 &&
                                  buffer[0] == 0xFF && buffer[1] == 0xD8 && buffer[2] == 0xFF,
@@ -221,6 +302,9 @@ public static class SafeThemeExtractor
             ".wav" => length >= 12 &&
                       buffer[0] == 0x52 && buffer[1] == 0x49 && buffer[2] == 0x46 && buffer[3] == 0x46 &&
                       buffer[8] == 0x57 && buffer[9] == 0x41 && buffer[10] == 0x56 && buffer[11] == 0x45,
+
+            ".ogg" => length >= 4 &&
+                      buffer[0] == 0x4F && buffer[1] == 0x67 && buffer[2] == 0x67 && buffer[3] == 0x53,
 
             ".mp4" => length >= 8 &&
                       buffer[4] == 0x66 && buffer[5] == 0x74 && buffer[6] == 0x79 && buffer[7] == 0x70,
@@ -246,6 +330,29 @@ public static class SafeThemeExtractor
 
             _ => false
         };
+    }
+
+    private static bool VerifyPngHeaderAndDimensions(byte[] buffer, int length)
+    {
+        if (length < 8 ||
+            buffer[0] != 0x89 || buffer[1] != 0x50 || buffer[2] != 0x4E || buffer[3] != 0x47 ||
+            buffer[4] != 0x0D || buffer[5] != 0x0A || buffer[6] != 0x1A || buffer[7] != 0x0A)
+        {
+            return false;
+        }
+
+        if (length >= 24 &&
+            buffer[12] == (byte)'I' && buffer[13] == (byte)'H' && buffer[14] == (byte)'D' && buffer[15] == (byte)'R')
+        {
+            var width = (uint)((buffer[16] << 24) | (buffer[17] << 16) | (buffer[18] << 8) | buffer[19]);
+            var height = (uint)((buffer[20] << 24) | (buffer[21] << 16) | (buffer[22] << 8) | buffer[23]);
+            if (width == 0 || height == 0 || width > MaxImageDimension || height > MaxImageDimension)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool IsValidJsonHeader(byte[] buffer, int length)

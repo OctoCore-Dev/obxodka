@@ -1,5 +1,3 @@
-using System.Runtime.Intrinsics;
-
 namespace obxodka.Shared.Stealth;
 
 public static class ObxodkaFraming
@@ -128,12 +126,19 @@ public static class ObxodkaFraming
 
         if (command == CmdData)
         {
+            if (payloadLength >= 1100)
+            {
+                return 0;
+            }
+
             var available = maxMtu - (HeaderSize + payloadLength);
-            return available <= 0
+            return available <= 8
                 ? 0
                 : payloadLength <= 128
                     ? Random.Shared.Next(8, Math.Min(available, 64))
-                    : Random.Shared.Next(0, Math.Min(available, 16));
+                    : payloadLength <= 600
+                        ? Random.Shared.Next(8, Math.Min(available, 40))
+                        : 0;
         }
 
         if (payloadLength <= 100)

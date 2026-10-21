@@ -17,7 +17,7 @@ public static class PacketRouter
         }
 
         var version = packet[0] >> 4;
-        var isRealtimeGaming = false;
+        var isIcmpOrDns = false;
         var hash = 17;
 
         if (version == 4)
@@ -30,15 +30,16 @@ public static class PacketRouter
                 return;
             }
 
-            if (protocol == 1 || (protocol == 17 && length <= 256))
+            var srcPort = length >= ihl + 2 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2)) : 0;
+            var dstPort = length >= ihl + 4 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2)) : 0;
+
+            if (protocol == 1 || (protocol == 17 && (srcPort == 53 || dstPort == 53)))
             {
-                isRealtimeGaming = true;
+                isIcmpOrDns = true;
             }
 
             var srcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(12, 4));
             var dstIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(16, 4));
-            var srcPort = length >= ihl + 2 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2)) : 0;
-            var dstPort = length >= ihl + 4 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2)) : 0;
 
             unchecked
             {
@@ -46,21 +47,29 @@ public static class PacketRouter
                 hash = (hash * 31) + dstIp;
                 hash = (hash * 31) + srcPort;
                 hash = (hash * 31) + dstPort;
+                hash = (hash * 31) + protocol;
+            }
+
+            if (protocol == 17 && !isIcmpOrDns)
+            {
+                primaryRay = 0;
+                secondaryRay = -1;
+                return;
             }
         }
         else if (version == 6 && length >= 40)
         {
             var nextHeader = packet[6];
+            var srcPort = length >= 42 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(40, 2)) : 0;
+            var dstPort = length >= 44 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(42, 2)) : 0;
 
-            if (nextHeader == 58 || (nextHeader == 17 && length <= 256))
+            if (nextHeader == 58 || (nextHeader == 17 && (srcPort == 53 || dstPort == 53)))
             {
-                isRealtimeGaming = true;
+                isIcmpOrDns = true;
             }
 
             var srcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(20, 4));
             var dstIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(36, 4));
-            var srcPort = length >= 42 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(40, 2)) : 0;
-            var dstPort = length >= 44 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(42, 2)) : 0;
 
             unchecked
             {
@@ -68,10 +77,18 @@ public static class PacketRouter
                 hash = (hash * 31) + dstIp;
                 hash = (hash * 31) + srcPort;
                 hash = (hash * 31) + dstPort;
+                hash = (hash * 31) + nextHeader;
+            }
+
+            if (nextHeader == 17 && !isIcmpOrDns)
+            {
+                primaryRay = 0;
+                secondaryRay = -1;
+                return;
             }
         }
 
-        if (isRealtimeGaming)
+        if (isIcmpOrDns)
         {
             primaryRay = 0;
             secondaryRay = activeRays switch

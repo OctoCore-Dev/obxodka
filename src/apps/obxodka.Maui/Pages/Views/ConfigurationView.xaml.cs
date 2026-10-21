@@ -140,6 +140,9 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     }
 
 #if WINDOWS
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, IntPtr packageFullName);
+
     private static bool HasPackageIdentity()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
@@ -147,15 +150,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             return false;
         }
 
-        try
-        {
-            _ = Windows.ApplicationModel.Package.Current.Id;
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        var length = 0;
+        return GetCurrentPackageFullName(ref length, IntPtr.Zero) != 15700;
     }
 
     private static async Task<bool> CheckWindowsStartupStateAsync()
@@ -328,12 +324,20 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
             ? bgColor
             : Color.FromArgb("#161622");
+        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+            ? bsc
+            : Color.FromArgb("#282838");
 
         AutoReconnectCard.BackgroundColor = bgSurface;
+        AutoReconnectCard.Stroke = borderSubtle;
         KillSwitchCard.BackgroundColor = bgSurface;
+        KillSwitchCard.Stroke = borderSubtle;
         RunOnStartupCard.BackgroundColor = bgSurface;
+        RunOnStartupCard.Stroke = borderSubtle;
         SpeedTestCard.BackgroundColor = bgSurface;
+        SpeedTestCard.Stroke = borderSubtle;
         ThemesSettingsCard.BackgroundColor = bgSurface;
+        ThemesSettingsCard.Stroke = borderSubtle;
     }
 
     public void SetHeaderTopInset(double top)

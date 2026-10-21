@@ -46,8 +46,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
 #pragma warning disable CA2213
     private ParcelFileDescriptor? _tunInterface;
-    private FileInputStream? _tunInputStream;
-    private FileOutputStream? _tunOutputStream;
     private CancellationTokenSource? _vpnCts;
     private Thread? _txThread;
     private Thread? _rxThread;
@@ -418,7 +416,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
     private void InjectPacketToAndroid(byte[] packet, int length)
     {
-        if (_tunOutputStream is null || _vpnCts is null || _vpnCts.IsCancellationRequested)
+        if (!_isTunRunning || _vpnCts is null || _vpnCts.IsCancellationRequested)
         {
             ArrayPool<byte>.Shared.Return(packet);
             return;
@@ -463,22 +461,10 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
 
                 try
                 {
-                    _tunInputStream?.Close();
-                }
-                catch { }
-                try
-                {
-                    _tunOutputStream?.Close();
-                }
-                catch { }
-                try
-                {
                     _tunInterface?.Close();
                 }
                 catch { }
 
-                _tunInputStream = null;
-                _tunOutputStream = null;
                 _tunInterface = null;
 
                 while (_downstreamChannel.Reader.TryRead(out var stale))
@@ -551,10 +537,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     _isTunRunning = true;
 
                     var tunFd = _tunInterface.Fd;
-                    var outStream = new FileOutputStream(_tunInterface.FileDescriptor);
-                    var inStream = new FileInputStream(_tunInterface.FileDescriptor);
-                    _tunOutputStream = outStream;
-                    _tunInputStream = inStream;
 
                     _txThread = new Thread(() => ProcessTraffic(tunFd, ct))
                     {
@@ -603,17 +585,14 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                         {
                             fixed (byte* ptr = item.buffer)
                             {
-                                var remaining = (nuint)item.length;
-                                var offset = 0;
-                                while (remaining > 0 && !ct.IsCancellationRequested)
+                                var written = write(tunFd, ptr, (nuint)item.length);
+                                if (written < 0)
                                 {
-                                    var written = write(tunFd, ptr + offset, remaining);
-                                    if (written <= 0)
+                                    var errno = Marshal.GetLastPInvokeError();
+                                    if (errno == 4)
                                     {
-                                        break;
+                                        _ = write(tunFd, ptr, (nuint)item.length);
                                     }
-                                    offset += (int)written;
-                                    remaining -= (nuint)written;
                                 }
                             }
                         }
@@ -684,7 +663,18 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     break;
                 }
 
-                if (bytesRead <= 0)
+                if (bytesRead < 0)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    var errno = Marshal.GetLastPInvokeError();
+                    if (errno is 4 or 11)
+                    {
+                        continue;
+                    }
+                    break;
+                }
+
+                if (bytesRead == 0)
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
                     break;
@@ -739,30 +729,12 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         var cts = _vpnCts;
         _vpnCts = null;
 
-        var tunIn = _tunInputStream;
-        _tunInputStream = null;
-
-        var tunOut = _tunOutputStream;
-        _tunOutputStream = null;
-
         var tunIf = _tunInterface;
         _tunInterface = null;
 
         try
         {
             cts?.Cancel();
-        }
-        catch { }
-
-        try
-        {
-            tunIn?.Close();
-        }
-        catch { }
-
-        try
-        {
-            tunOut?.Close();
         }
         catch { }
 
@@ -780,8 +752,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
             try
             {
                 cts?.Dispose();
-                tunIn?.Dispose();
-                tunOut?.Dispose();
                 tunIf?.Dispose();
             }
             catch { }
@@ -807,8 +777,6 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
         {
             StopNativeVpn();
             _vpnCts?.Dispose();
-            _tunInputStream?.Dispose();
-            _tunOutputStream?.Dispose();
             _tunInterface?.Dispose();
             _networkCallback?.Dispose();
         }

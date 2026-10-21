@@ -12,7 +12,19 @@ namespace obxodka;
     Theme = "@style/Maui.SplashTheme",
     MainLauncher = true,
     Exported = true,
+    LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+[IntentFilter(
+    [Intent.ActionView],
+    Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable],
+    DataScheme = "obxodka",
+    DataHost = "login")]
+[IntentFilter(
+    [Intent.ActionView],
+    Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable],
+    DataScheme = "https",
+    DataHost = "obxodka.one",
+    DataPathPrefix = "/qr")]
 [SupportedOSPlatform("android29.0")]
 public sealed class MainActivity : MauiAppCompatActivity
 {
@@ -42,6 +54,11 @@ public sealed class MainActivity : MauiAppCompatActivity
         catch { }
 
         base.OnCreate(savedInstanceState);
+
+        if (Intent?.DataString is { Length: > 0 } initialUri)
+        {
+            App.HandleDeepLink(initialUri);
+        }
 
         _ = (Window?.DecorView?.Post(() =>
         {
@@ -76,6 +93,16 @@ public sealed class MainActivity : MauiAppCompatActivity
             }
         }
         catch { }
+    }
+
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        Intent = intent;
+        if (intent?.DataString is { Length: > 0 } dataUri)
+        {
+            App.HandleDeepLink(dataUri);
+        }
     }
 
     private sealed class WindowInsetsHandler : Java.Lang.Object, IOnApplyWindowInsetsListener

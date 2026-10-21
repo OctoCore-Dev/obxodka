@@ -72,7 +72,7 @@
                             <Border
                                 Margin="0,4,0,0"
                                 HeightRequest="48"
-                                Style="{StaticResource NeoCard}">
+                                Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="GetCodeButton"
@@ -94,6 +94,15 @@
                                         Color="{DynamicResource TextPrimary}" />
                                 </Grid>
                             </Border>
+
+                            <Button
+                                x:Name="QuickQrOrCodeButton"
+                                Margin="0,2,0,0"
+                                Clicked="OnQuickQrOrCodeClickedAsync"
+                                FontSize="12"
+                                IsVisible="{OnPlatform Android=True, Default=False}"
+                                Style="{StaticResource BtnGhost}"
+                                Text="Быстрый вход по QR / коду с сайта" />
                         </VerticalStackLayout>
 
                         <VerticalStackLayout
@@ -105,15 +114,27 @@
                                 HorizontalOptions="Center"
                                 HorizontalTextAlignment="Center"
                                 Style="{StaticResource LabelMuted}"
-                                Text="Код отправлен на почту. Введите его ниже." />
+                                Text="{OnPlatform Android='Введите 6-значный код из письма или QR-окна на сайте.', Default='Введите 6-значный код, отправленный на ваш Email.'}" />
 
                             <Border Style="{StaticResource NeoInput}">
                                 <Entry
                                     x:Name="CodeEntry"
                                     AutomationId="AuthCodeInput"
+                                    HorizontalTextAlignment="Center"
                                     Keyboard="Numeric"
-                                    Placeholder="6-значный код" />
+                                    MaxLength="6"
+                                    Placeholder="6-значный код"
+                                    TextChanged="OnCodeEntryTextChanged" />
                             </Border>
+
+                            <Button
+                                x:Name="PasteCodeButton"
+                                Margin="0,-6,0,0"
+                                Clicked="OnPasteCodeClickedAsync"
+                                FontSize="12"
+                                HeightRequest="34"
+                                Style="{StaticResource BtnGhost}"
+                                Text="Вставить код из буфера" />
 
                             <Label
                                 Margin="0,-4,0,0"
@@ -126,7 +147,7 @@
                             <Border
                                 Margin="0,4,0,0"
                                 HeightRequest="48"
-                                Style="{StaticResource NeoCard}">
+                                Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="VerifyCodeButton"

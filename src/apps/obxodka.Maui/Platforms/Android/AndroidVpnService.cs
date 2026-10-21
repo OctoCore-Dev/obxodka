@@ -59,6 +59,8 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                     if (verified || OctopusEngine.Current.IsConnected)
                     {
+                        OctopusEngine.Current.ResetTrafficCounters();
+                        OctopusEngine.Current.ArmTrafficWatchdog();
                         ChangeState(AppVpnState.Connected);
                         OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestoredTls);
                         return;
@@ -101,6 +103,8 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
+                                OctopusEngine.Current.ResetTrafficCounters();
+                                OctopusEngine.Current.ArmTrafficWatchdog();
                                 ChangeState(AppVpnState.Connected);
                                 OnLogUpdated?.Invoke(VpnStatusMessages.SwitchedToBackupServerSuccess);
                                 return;
@@ -174,6 +178,8 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
+                                OctopusEngine.Current.ResetTrafficCounters();
+                                OctopusEngine.Current.ArmTrafficWatchdog();
                                 ChangeState(AppVpnState.Connected);
                                 return;
                             }
@@ -241,6 +247,8 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000), ct);
                         if (verified || OctopusEngine.Current.IsConnected)
                         {
+                            OctopusEngine.Current.ResetTrafficCounters();
+                            OctopusEngine.Current.ArmTrafficWatchdog();
                             ChangeState(AppVpnState.Connected);
                             Debug.WriteLine("[NETWORK ROAMING] Connected to new network interface seamlessly!");
                             return;
@@ -475,18 +483,6 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                 if (connected)
                 {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await Task.Delay(3000).ConfigureAwait(false);
-                            if (OctopusEngine.Current.IsConnected)
-                            {
-                                _ = await OctopusEngine.Current.ScanAndLockOptimalMtuAsync().ConfigureAwait(false);
-                            }
-                        }
-                        catch { }
-                    });
                     break;
                 }
 

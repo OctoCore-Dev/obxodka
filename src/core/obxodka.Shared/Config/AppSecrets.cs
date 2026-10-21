@@ -13,13 +13,13 @@ public static class AppSecrets
     [
         "login.live.com",
         "update.code.visualstudio.com",
-        "gateway.icloud.com",
+        "teams.microsoft.com",
         "client.wns.windows.com",
         "dl.google.com",
-        "configuration.apple.com",
+        "c.s-microsoft.com",
         "www.microsoft.com",
         "fonts.googleapis.com",
-        "weather-data.apple.com",
+        "login.microsoftonline.com",
         "ajax.googleapis.com"
     ];
 

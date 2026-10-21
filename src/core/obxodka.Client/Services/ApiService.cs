@@ -38,6 +38,125 @@ public sealed class ApiService(HttpClient client)
         DefaultRequestVersion = new Version(2, 0)
     });
 
+    private static readonly ConcurrentDictionary<string, IPAddress> t_dohCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly Lazy<HttpClient> t_dohClient = new(() => new HttpClient(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        ConnectTimeout = TimeSpan.FromSeconds(2),
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+        }
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(2)
+    });
+
+    private static bool IsBogonOrSinkholeIpv4(IPAddress ip)
+    {
+        if (ip.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return true;
+        }
+
+        Span<byte> b = stackalloc byte[4];
+        _ = ip.TryWriteBytes(b, out _);
+        return b[0] is 0 or 10 or 127 ||
+               (b[0] == 169 && b[1] == 254) ||
+               (b[0] == 172 && b[1] is >= 16 and <= 31) ||
+               (b[0] == 192 && b[1] == 168) ||
+               (b[0] == 100 && b[1] is >= 64 and <= 127);
+    }
+
+    private static async ValueTask<IPAddress> ResolveHostAntiPoisonAsync(string host, CancellationToken ct)
+    {
+        if (IPAddress.TryParse(host, out var literalIp))
+        {
+            return literalIp;
+        }
+
+        if (t_dohCache.TryGetValue(host, out var cachedIp))
+        {
+            return cachedIp;
+        }
+
+        try
+        {
+            var sysAddrs = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
+            foreach (var addr in sysAddrs)
+            {
+                if (addr.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(addr))
+                {
+                    t_dohCache[host] = addr;
+                    return addr;
+                }
+            }
+        }
+        catch { }
+
+        string[] dohEndpoints =
+        [
+            $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type=A",
+            $"https://8.8.8.8/resolve?name={Uri.EscapeDataString(host)}&type=A"
+        ];
+
+        foreach (var dohUrl in dohEndpoints)
+        {
+            try
+            {
+                using var dohCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                dohCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
+                using var req = new HttpRequestMessage(HttpMethod.Get, dohUrl);
+                req.Headers.Accept.ParseAdd("application/dns-json");
+                using var resp = await t_dohClient.Value.SendAsync(req, dohCts.Token).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var json = await resp.Content.ReadAsStringAsync(dohCts.Token).ConfigureAwait(false);
+                var searchIdx = 0;
+                while (true)
+                {
+                    var dataIdx = json.IndexOf("\"data\"", searchIdx, StringComparison.OrdinalIgnoreCase);
+                    if (dataIdx < 0)
+                    {
+                        break;
+                    }
+
+                    var colonIdx = json.IndexOf(':', dataIdx + 6);
+                    var quoteStart = colonIdx >= 0 ? json.IndexOf('"', colonIdx + 1) : -1;
+                    var quoteEnd = quoteStart >= 0 ? json.IndexOf('"', quoteStart + 1) : -1;
+                    if (quoteStart < 0 || quoteEnd <= quoteStart)
+                    {
+                        break;
+                    }
+
+                    var candidate = json.Substring(quoteStart + 1, quoteEnd - quoteStart - 1).Trim();
+                    searchIdx = quoteEnd + 1;
+                    if (IPAddress.TryParse(candidate, out var dohIp) && !IsBogonOrSinkholeIpv4(dohIp))
+                    {
+                        t_dohCache[host] = dohIp;
+                        return dohIp;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        if (host.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
+            host.Contains("octocore", StringComparison.OrdinalIgnoreCase))
+        {
+            var fallbackIp = IPAddress.Parse(AppConfig.DirectServerIp);
+            t_dohCache[host] = fallbackIp;
+            return fallbackIp;
+        }
+
+        throw new SocketException((int)SocketError.HostNotFound);
+    }
+
     private static readonly Lazy<HttpClient> t_fallbackDirectDpi = new(() =>
     {
         var handler = new SocketsHttpHandler
@@ -53,18 +172,29 @@ public sealed class ApiService(HttpClient client)
             },
             ConnectCallback = async (_, cToken) =>
             {
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                try
+                var targetIp = IPAddress.Parse(AppConfig.DirectServerIp);
+                int[] fallbackPorts = [443, 8443, 2053];
+                Exception? lastConnectEx = null;
+
+                foreach (var port in fallbackPorts)
                 {
-                    await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(AppConfig.DirectServerIp), 443), cToken).ConfigureAwait(false);
-                    var netStream = new NetworkStream(socket, ownsSocket: true);
-                    return new DpiBypassStream(netStream);
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        using var portCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
+                        portCts.CancelAfter(TimeSpan.FromMilliseconds(2500));
+                        await socket.ConnectAsync(new IPEndPoint(targetIp, port), portCts.Token).ConfigureAwait(false);
+                        var netStream = new NetworkStream(socket, ownsSocket: true);
+                        return new DpiBypassStream(netStream, bypassEnabled: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        lastConnectEx = ex;
+                        socket.Dispose();
+                    }
                 }
-                catch
-                {
-                    socket.Dispose();
-                    throw;
-                }
+
+                throw lastConnectEx ?? new SocketException((int)SocketError.TimedOut);
             }
         };
         return new HttpClient(handler)
@@ -101,8 +231,12 @@ public sealed class ApiService(HttpClient client)
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try
             {
-                await socket.ConnectAsync(context.DnsEndPoint, cToken).ConfigureAwait(false);
-                return new NetworkStream(socket, ownsSocket: true);
+                var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
+                await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
+                var netStream = new NetworkStream(socket, ownsSocket: true);
+                return !IPAddress.IsLoopback(resolvedIp)
+                    ? new DpiBypassStream(netStream, bypassEnabled: true)
+                    : netStream;
             }
             catch
             {
@@ -223,7 +357,7 @@ public sealed class ApiService(HttpClient client)
             }
         }
 
-        string[] directHosts = ["obxodka.one", "api.octocore.dev"];
+        string[] directHosts = [AppSecrets.GetRandomSni(), "obxodka.one", "api.octocore.dev"];
         foreach (var directHost in directHosts)
         {
             try

@@ -4,10 +4,14 @@ public sealed class MauiPreferencesService : IPreferencesService
 {
     public T GetValue<T>(string key, T defaultValue = default!)
     {
-        if (Preferences.Default.ContainsKey(key))
+        try
         {
-            return Preferences.Default.Get(key, defaultValue);
+            if (Preferences.Default.ContainsKey(key))
+            {
+                return Preferences.Default.Get(key, defaultValue);
+            }
         }
+        catch { }
 
 #if WINDOWS
         try
@@ -19,13 +23,21 @@ public sealed class MauiPreferencesService : IPreferencesService
                 if (typeof(T) == typeof(string))
                 {
                     var strVal = (T)(object)val.ToString()!;
-                    Preferences.Default.Set(key, strVal);
+                    try
+                    {
+                        Preferences.Default.Set(key, strVal);
+                    }
+                    catch { }
                     return strVal;
                 }
 
                 var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
                 var converted = (T)Convert.ChangeType(val, targetType, CultureInfo.InvariantCulture);
-                Preferences.Default.Set(key, converted);
+                try
+                {
+                    Preferences.Default.Set(key, converted);
+                }
+                catch { }
                 return converted;
             }
         }
@@ -39,7 +51,11 @@ public sealed class MauiPreferencesService : IPreferencesService
 
     public void SetValue<T>(string key, T value)
     {
-        Preferences.Default.Set(key, value);
+        try
+        {
+            Preferences.Default.Set(key, value);
+        }
+        catch { }
 #if WINDOWS
         try
         {
@@ -54,7 +70,11 @@ public sealed class MauiPreferencesService : IPreferencesService
 
     public void Remove(string key)
     {
-        Preferences.Default.Remove(key);
+        try
+        {
+            Preferences.Default.Remove(key);
+        }
+        catch { }
 #if WINDOWS
         try
         {
@@ -67,7 +87,11 @@ public sealed class MauiPreferencesService : IPreferencesService
 
     public void Clear()
     {
-        Preferences.Default.Clear();
+        try
+        {
+            Preferences.Default.Clear();
+        }
+        catch { }
 #if WINDOWS
         try
         {

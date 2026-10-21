@@ -155,6 +155,32 @@
                     </Grid>
                 </Border>
 
+                <Border x:Name="SideNavSplit" Style="{StaticResource SideNavItem}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNavSplitTapped" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                    </Border.GestureRecognizers>
+                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                        <mi:MauiIcon
+                            x:Name="NavSplitIcon"
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=AppsList24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="22"
+                            VerticalOptions="Center" />
+                        <Label
+                            x:Name="LabelSplit"
+                            Grid.Column="1"
+                            Margin="14,0,0,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
+                            FontSize="14"
+                            LineBreakMode="NoWrap"
+                            Opacity="0"
+                            Text="Разделение трафика"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
                 <BoxView
                     Margin="12,8,12,8"
                     HeightRequest="1"

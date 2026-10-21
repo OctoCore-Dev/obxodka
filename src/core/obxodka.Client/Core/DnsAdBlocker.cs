@@ -16,7 +16,6 @@ public static class DnsAdBlocker
         "mc.yandex.md",
         "mc.yandex.kz",
         "extmaps-scans.yandex.net",
-        "clck.yandex.ru",
         "an.yandex.ru",
         "amc.yandex.ru",
         "bs.yandex.ru",

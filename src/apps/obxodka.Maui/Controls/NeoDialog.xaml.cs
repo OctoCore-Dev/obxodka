@@ -1,10 +1,21 @@
+using obxodka.Maui.Services;
+
 namespace obxodka.Maui.Controls;
 
 public partial class NeoDialog : ContentView
 {
     private TaskCompletionSource<bool>? _dialogTcs;
+    private string _lastTitle = string.Empty;
 
     public NeoDialog() => InitializeComponent();
+
+    public void OnThemeChanged()
+    {
+        if (IsVisible && !string.IsNullOrEmpty(_lastTitle))
+        {
+            ConfigureDialogStyling(_lastTitle);
+        }
+    }
 
     public Task<bool> ShowAsync(
         string title,
@@ -15,6 +26,7 @@ public partial class NeoDialog : ContentView
         _ = _dialogTcs?.TrySetResult(false);
         var tcs = new TaskCompletionSource<bool>();
         _dialogTcs = tcs;
+        _lastTitle = title;
 
         MainThread.BeginInvokeOnMainThread(async () =>
         {
@@ -32,6 +44,7 @@ public partial class NeoDialog : ContentView
                 Grid.SetColumnSpan(AcceptButton, isConfirm ? 1 : 2);
 
                 ConfigureDialogStyling(title);
+                ThemeAudioService.PlayNotification();
 
                 IsVisible = true;
                 InputTransparent = false;
@@ -86,6 +99,9 @@ public partial class NeoDialog : ContentView
             DialogMauiIcon.IconColor = c;
             IconBadge.Stroke = new SolidColorBrush(c);
             AcceptButton.BackgroundColor = c;
+
+            var luminance = (0.299 * c.Red) + (0.587 * c.Green) + (0.114 * c.Blue);
+            AcceptButton.TextColor = luminance > 0.62 ? Color.FromArgb("#0E0E14") : Colors.White;
         }
 
         if (Application.Current?.Resources.TryGetValue(dimColorKey, out var dVal) is true && dVal is Color d)
@@ -96,6 +112,7 @@ public partial class NeoDialog : ContentView
 
     private async Task CloseAsync(bool result)
     {
+        ThemeAudioService.PlayClick();
         var tcs = _dialogTcs;
         _dialogTcs = null;
 
