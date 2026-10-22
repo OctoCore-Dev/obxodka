@@ -1,4 +1,5 @@
 using obxodka.Core.Models;
+using Microsoft.Win32;
 using Uri = System.Uri;
 
 namespace obxodka.Platforms.Windows;
@@ -447,6 +448,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                 throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
                             }
                             var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
+                            var effectiveIpv6 = hasValidIpv6 ? ipv6 : "fd00::2";
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
                             if (_adapter is null || _adapter.IsDisposed)
@@ -459,7 +461,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             _adapter.StartSession();
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.ApplyingNetworkSettings);
-                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", hasValidIpv6 ? ipv6 : null);
+                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", effectiveIpv6);
 
                             OctopusEngine.Current.ResetTrafficCounters();
 
@@ -504,7 +506,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             }
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.RedirectingTraffic);
-                            await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true, hasValidIpv6 ? ipv6 : null);
+                            await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true, effectiveIpv6);
                             OnLogUpdated?.Invoke(VpnStatusMessages.EnablingDnsProtection);
                             await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
 
@@ -748,8 +750,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2 validate=no");
-                _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue }} catch {{ }}\"").ConfigureAwait(false);
-                _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+                _ = DnsFlushResolverCache();
                 Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
@@ -757,10 +758,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
-                    if (IsPublicRoutableIpv6(ipv6))
-                    {
-                        _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
-                    }
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
                     Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
                 }
 
@@ -1326,6 +1324,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         public List<string> Adapters { get; set; } = [];
         public List<string> Services { get; set; } = [];
+        public int? OriginalSmhnrState { get; set; }
     }
 
     private static string GetRecoveryFilePath()
@@ -1340,7 +1339,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         try
         {
-            var state = new VpnRecoveryState { Adapters = [.. adapters], Services = [.. services] };
+            var state = new VpnRecoveryState { Adapters = [.. adapters], Services = [.. services], OriginalSmhnrState = t_savedDisableSmartNameResolution };
             var json = JsonSerializer.Serialize(state);
             File.WriteAllText(GetRecoveryFilePath(), json);
         }
@@ -1374,6 +1373,25 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var state = JsonSerializer.Deserialize<VpnRecoveryState>(json);
             if (state != null)
             {
+                if (state.OriginalSmhnrState == -1)
+                {
+                    try
+                    {
+                        using var key = Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
+                        key?.DeleteValue("DisableSmartNameResolution", false);
+                    }
+                    catch { }
+                }
+                else if (state.OriginalSmhnrState.HasValue)
+                {
+                    try
+                    {
+                        using var key = Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
+                        key?.SetValue("DisableSmartNameResolution", state.OriginalSmhnrState.Value, RegistryValueKind.DWord);
+                    }
+                    catch { }
+                }
+
                 foreach (var adapter in state.Adapters)
                 {
                     _ = await RunCmdAsync("netsh", $"interface set interface name=\"{adapter}\" admin=ENABLED").ConfigureAwait(false);
@@ -1657,9 +1675,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2 validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
-                _ = await RunCmdAsync("powershell", $"-NoProfile -Command \"try {{ Set-DnsClientServerAddress -InterfaceIndex {ifIndex} -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue }} catch {{ }}\"").ConfigureAwait(false);
-                _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
-                _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Clear-DnsClientCache -ErrorAction SilentlyContinue\"").ConfigureAwait(false);
+                _ = DnsFlushResolverCache();
 
                 if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
@@ -1676,15 +1692,12 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                     }
                 }
 
-                if (IsPublicRoutableIpv6(assignedIpV6))
+                if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
-                }
-                else if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out _))
-                {
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add route fd00::/64 interface=\"{adapterName}\" metric=50", timeoutMs: 1500);
                 }
             }
@@ -1936,8 +1949,52 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
+    private static int? t_savedDisableSmartNameResolution;
+
+    private static void ApplySmhnrProtection()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient");
+            if (key != null)
+            {
+                var existing = key.GetValue("DisableSmartNameResolution");
+                t_savedDisableSmartNameResolution = existing is int intVal ? intVal : -1;
+                key.SetValue("DisableSmartNameResolution", 1, RegistryValueKind.DWord);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SMHNR ENABLE ERROR] {ex.Message}");
+        }
+    }
+
+    private static void RestoreSmhnrProtection()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
+            if (key != null)
+            {
+                if (t_savedDisableSmartNameResolution == -1)
+                {
+                    key.DeleteValue("DisableSmartNameResolution", false);
+                }
+                else if (t_savedDisableSmartNameResolution.HasValue)
+                {
+                    key.SetValue("DisableSmartNameResolution", t_savedDisableSmartNameResolution.Value, RegistryValueKind.DWord);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SMHNR DISABLE ERROR] {ex.Message}");
+        }
+    }
+
     private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
     {
+        ApplySmhnrProtection();
         try
         {
             var ifIndex = GetWintunInterfaceIndex(adapterName);
@@ -1957,7 +2014,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 addTasks.Add(RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {tunGateway} metric 1{ifArg}"));
             }
             await Task.WhenAll(addTasks).ConfigureAwait(false);
-            _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+            _ = DnsFlushResolverCache();
         }
         catch (Exception ex)
         {
@@ -1967,6 +2024,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     private static async Task DisableDnsLeakProtectionAsync()
     {
+        RestoreSmhnrProtection();
         try
         {
             var delTasks = new List<Task>();
@@ -1975,6 +2033,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 delTasks.Add(RunCmdAsync("route", $"delete {dns} mask 255.255.255.255", timeoutMs: 1500));
             }
             await Task.WhenAll(delTasks).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            _ = DnsFlushResolverCache();
         }
         catch (Exception ex)
         {

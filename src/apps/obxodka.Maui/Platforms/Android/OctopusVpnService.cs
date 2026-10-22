@@ -490,17 +490,33 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                     .AddRoute("0.0.0.0", 0);
 
                 var ip6 = OctopusEngine.Current.AssignedIpV6;
-                if (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
+                var effectiveV6 = (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
+                    ? ip6
+                    : "fd00::2";
+
+                try
+                {
+                    _ = builder.AddAddress(effectiveV6, 64);
+                }
+                catch
                 {
                     try
                     {
-                        _ = builder.AddAddress(ip6, 128);
-                        _ = builder.AddRoute("::", 0);
+                        _ = builder.AddAddress(effectiveV6, 128);
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[VPN V6 ROUTE ERROR] {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[VPN V6 ADDR ERROR] {ex.Message}");
                     }
+                }
+
+                try
+                {
+                    _ = builder.AddRoute("::", 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[VPN V6 ROUTE ERROR] {ex.Message}");
                 }
 
                 _ = builder.AddDnsServer(NetworkDefaults.PrimaryDns);
