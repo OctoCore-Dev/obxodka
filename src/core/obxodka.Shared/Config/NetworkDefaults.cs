@@ -4,7 +4,7 @@ namespace obxodka.Shared.Config;
 
 public static class NetworkDefaults
 {
-    public const int DefaultMtu = 1400;
+    public const int DefaultMtu = 1500;
     public const int MinMtu = 1200;
     public const int MaxMtu = 1500;
     public static int CurrentMtu { get; set; } = DefaultMtu;

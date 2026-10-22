@@ -40,8 +40,10 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     private int _hasClearPreferredRay;
     private long _rayRtt0;
     private long _rayRtt1;
+    private long _rayRtt2;
     private long _lastRxTicks0;
     private long _lastRxTicks1;
+    private long _lastRxTicks2;
     private long _lastTxTicks;
     private long _connectedAtTicks;
     private string _activeServerIp = string.Empty;
@@ -213,6 +215,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
             Volatile.Write(ref _lastRxTicks0, 0);
             Volatile.Write(ref _lastRxTicks1, 0);
+            Volatile.Write(ref _lastRxTicks2, 0);
 
             var ray1Port = port == 443 ? 8443 : 443;
             var ray2Port = 2053;
@@ -628,6 +631,10 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         {
                             Volatile.Write(ref _lastRxTicks1, Stopwatch.GetTimestamp());
                         }
+                        else if (ray == 2)
+                        {
+                            Volatile.Write(ref _lastRxTicks2, Stopwatch.GetTimestamp());
+                        }
 
                         if (command == ObxodkaFraming.CmdHandshakeResponse)
                         {
@@ -701,6 +708,11 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                                     {
                                         var prev = Volatile.Read(ref _rayRtt1);
                                         Volatile.Write(ref _rayRtt1, prev <= 0 ? elapsedMs : ((prev * 3) + elapsedMs) / 4);
+                                    }
+                                    else if (ray == 2)
+                                    {
+                                        var prev = Volatile.Read(ref _rayRtt2);
+                                        Volatile.Write(ref _rayRtt2, prev <= 0 ? elapsedMs : ((prev * 3) + elapsedMs) / 4);
                                     }
 
                                     var r0 = _inspector.GetRayRtt(0);
@@ -1065,6 +1077,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         var nowTs = Stopwatch.GetTimestamp();
         var rx0 = Volatile.Read(ref _lastRxTicks0);
         var rx1 = Volatile.Read(ref _lastRxTicks1);
+        var rx2 = Volatile.Read(ref _lastRxTicks2);
         byte rxAliveMask = 0;
         if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 3500)
         {
@@ -1074,12 +1087,32 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
         {
             rxAliveMask |= 0x02;
         }
-        if (rxAliveMask == 0)
+        if (rx2 > 0 && ((nowTs - rx2) * 1000.0 / Stopwatch.Frequency) < 3500)
         {
-            rxAliveMask = (byte)(1 << Volatile.Read(ref _preferredRay));
+            rxAliveMask |= 0x04;
+        }
+        if ((rxAliveMask & 0x07) == 0)
+        {
+            rxAliveMask = (byte)(1 << Math.Clamp(Volatile.Read(ref _preferredRay), 0, 2));
         }
 
-        for (var r = 0; r < 2; r++)
+        var pref = Volatile.Read(ref _preferredRay);
+        if (pref == 0)
+        {
+            rxAliveMask |= 0x10;
+        }
+        else if (pref == 1)
+        {
+            rxAliveMask |= 0x20;
+        }
+        else if (pref == 2)
+        {
+            rxAliveMask |= 0x40;
+        }
+
+        var activeRaysCount = Volatile.Read(ref _activeRays);
+        var raysToSend = Math.Min(_txChannels.Length, Math.Max(1, activeRaysCount));
+        for (var r = 0; r < raysToSend; r++)
         {
             var pingBuf = ArrayPool<byte>.Shared.Rent(11);
             pingBuf[0] = 0xAA;

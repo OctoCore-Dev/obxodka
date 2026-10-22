@@ -468,7 +468,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             if (burstResults.Length > 0)
             {
                 var maxWireMtu = burstResults.Max();
-                var candidateMtu = maxWireMtu >= 1500 ? 1400 : Math.Clamp(maxWireMtu - 80, NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
+                var candidateMtu = maxWireMtu >= 1500 ? 1500 : Math.Clamp(maxWireMtu - 80, NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
                 var uplinkOk = await (_transport?.ProbeMtuAsync(candidateMtu, ct) ?? Task.FromResult(false)).ConfigureAwait(false);
                 if (uplinkOk)
                 {

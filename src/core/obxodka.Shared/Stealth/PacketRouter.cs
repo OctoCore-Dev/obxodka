@@ -79,7 +79,7 @@ public static class PacketRouter
             {
                 isIcmpOrDns = true;
             }
-            else if (protocol == 17 && srcPort > 0 && dstPort > 0 && srcPort != 443 && dstPort != 443 && length <= 1400)
+            else if (protocol == 17 && srcPort > 0 && dstPort > 0 && srcPort != 443 && dstPort != 443 && length <= 1500)
             {
                 isGamingUdp = true;
             }
@@ -113,7 +113,7 @@ public static class PacketRouter
             {
                 isIcmpOrDns = true;
             }
-            else if (nextHeader == 17 && srcPort > 0 && dstPort > 0 && srcPort != 443 && dstPort != 443 && length <= 1400)
+            else if (nextHeader == 17 && srcPort > 0 && dstPort > 0 && srcPort != 443 && dstPort != 443 && length <= 1500)
             {
                 isGamingUdp = true;
             }

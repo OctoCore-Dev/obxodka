@@ -56,6 +56,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     private void HandleMtuUpdated(int optimalMtu)
     {
+        var adapter = _adapter;
+        if (adapter is not null)
+        {
+            _ = UpdateAdapterMtuAsync(adapter.Name, optimalMtu);
+        }
     }
 
     private static async Task CleanupStaleRoutesAsync()
@@ -882,6 +887,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         public uint DwForwardMetric4;
         public uint DwForwardMetric5;
     }
+
+    [LibraryImport("dnsapi.dll", EntryPoint = "DnsFlushResolverCache")]
+    private static partial int DnsFlushResolverCache();
 
     [LibraryImport("iphlpapi.dll", SetLastError = true)]
     private static partial int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
@@ -1854,8 +1862,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                 await Task.WhenAll(deleteDefaultRoutesTask, disableDnsTask).ConfigureAwait(false);
 
-                _ = await RunCmdAsync("ipconfig", "/flushdns", timeoutMs: 2000).ConfigureAwait(false);
-                _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Clear-DnsClientCache -ErrorAction SilentlyContinue\"", timeoutMs: 2000).ConfigureAwait(false);
+                try
+                {
+                    _ = DnsFlushResolverCache();
+                }
+                catch { }
 
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50", timeoutMs: 1500).ConfigureAwait(false);
                 _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50", timeoutMs: 1500).ConfigureAwait(false);

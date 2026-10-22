@@ -24,7 +24,7 @@ public sealed class PacketDeduplicator
             var proto = packet[9];
             var isDeduplicatable = proto == 1 ||
                                    (proto == 6 && length <= 256) ||
-                                   (proto == 17 && length <= 1400);
+                                   (proto == 17 && length <= 1500);
             if (!isDeduplicatable)
             {
                 return false;
@@ -35,7 +35,7 @@ public sealed class PacketDeduplicator
             var nextHdr = packet[6];
             var isDeduplicatable = nextHdr == 58 ||
                                    (nextHdr == 6 && length <= 256) ||
-                                   (nextHdr == 17 && length <= 1400);
+                                   (nextHdr == 17 && length <= 1500);
             if (!isDeduplicatable)
             {
                 return false;
