@@ -13,9 +13,9 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
     private readonly Channel<(byte[] buffer, int length)>[] _txChannels =
     [
-        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait }),
-        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait }),
-        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait })
+        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(8192) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait }),
+        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(8192) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait }),
+        Channel.CreateBounded<(byte[] buffer, int length)>(new BoundedChannelOptions(8192) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait })
     ];
     private readonly PacketDeduplicator _deduplicator = new();
     private readonly RayInspector _inspector = new();

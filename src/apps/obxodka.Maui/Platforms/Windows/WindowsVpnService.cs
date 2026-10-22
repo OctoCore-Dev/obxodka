@@ -63,6 +63,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         WindowsSplitTunnelEngine.CleanupAllRoutes();
         _ = await RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0");
         _ = await RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0");
+        _ = await RunCmdAsync("route", "delete 10.0.0.0 mask 255.0.0.0");
+        _ = await RunCmdAsync("route", "delete 172.16.0.0 mask 255.240.0.0");
+        _ = await RunCmdAsync("route", "delete 192.168.0.0 mask 255.255.0.0");
+        _ = await RunCmdAsync("route", "delete 169.254.0.0 mask 255.255.0.0");
         _ = await RunCmdAsync("route", $"delete {AppConfig.DirectServerIp} mask 255.255.255.255");
         await DisableDnsLeakProtectionAsync();
         await RestoreCrashRecoveryStateAsync();
@@ -1652,6 +1656,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
                 {
                     WindowsSplitTunnelEngine.ConfigurePhysicalGateway(gw, physicalIfIndex, t_savedPhysicalLocalIp, primaryIp);
+                    await ApplyPrivateSubnetBypassRoutesAsync(gw, physicalIfIndex).ConfigureAwait(false);
                     if (SplitTunnelPolicy.Enabled)
                     {
                         _ = Task.Run(WindowsSplitTunnelEngine.ActivateOrReloadAsync);
@@ -1687,7 +1692,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var deleteTasks = new List<Task>
             {
                 RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
-                RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0", timeoutMs: 1500)
+                RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
+                RunCmdAsync("route", "delete 10.0.0.0 mask 255.0.0.0", timeoutMs: 1500),
+                RunCmdAsync("route", "delete 172.16.0.0 mask 255.240.0.0", timeoutMs: 1500),
+                RunCmdAsync("route", "delete 192.168.0.0 mask 255.255.0.0", timeoutMs: 1500),
+                RunCmdAsync("route", "delete 169.254.0.0 mask 255.255.0.0", timeoutMs: 1500)
             };
 
             foreach (var serverIp in serverIps)
@@ -1714,6 +1723,21 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 Debug.WriteLine($"[ROUTE DELETE TIMEOUT/ERROR] {ex.Message}");
             }
         }
+    }
+
+    private static async Task ApplyPrivateSubnetBypassRoutesAsync(string gw, int physicalIfIndex)
+    {
+        if (string.IsNullOrEmpty(gw) || physicalIfIndex <= 0)
+        {
+            return;
+        }
+
+        var physIfArg = $"if {physicalIfIndex}";
+        var t1 = RunCmdAsync("route", $"add 10.0.0.0 mask 255.0.0.0 {gw} metric 1 {physIfArg}", timeoutMs: 1500);
+        var t2 = RunCmdAsync("route", $"add 172.16.0.0 mask 255.240.0.0 {gw} metric 1 {physIfArg}", timeoutMs: 1500);
+        var t3 = RunCmdAsync("route", $"add 192.168.0.0 mask 255.255.0.0 {gw} metric 1 {physIfArg}", timeoutMs: 1500);
+        var t4 = RunCmdAsync("route", $"add 169.254.0.0 mask 255.255.0.0 {gw} metric 1 {physIfArg}", timeoutMs: 1500);
+        _ = await Task.WhenAll(t1, t2, t3, t4).ConfigureAwait(false);
     }
 
     private static async Task ApplyRemoteManagementBypassRoutesAsync(string nextHop, string physIfArg)
@@ -1815,6 +1839,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 var deleteDefaultRoutesTask = Task.WhenAll(
                     RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
                     RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
+                    RunCmdAsync("route", "delete 10.0.0.0 mask 255.0.0.0", timeoutMs: 1500),
+                    RunCmdAsync("route", "delete 172.16.0.0 mask 255.240.0.0", timeoutMs: 1500),
+                    RunCmdAsync("route", "delete 192.168.0.0 mask 255.255.0.0", timeoutMs: 1500),
+                    RunCmdAsync("route", "delete 169.254.0.0 mask 255.255.0.0", timeoutMs: 1500),
                     RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500),
                     RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500),
                     RunCmdAsync("netsh", $"interface ipv6 delete route fd00::/64 interface=\"{adapterName}\"", timeoutMs: 1500)

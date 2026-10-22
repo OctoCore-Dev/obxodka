@@ -1,5 +1,4 @@
 using Microsoft.Maui.Controls.Shapes;
-using obxodka.Services;
 using Switch = Microsoft.Maui.Controls.Switch;
 
 namespace obxodka.Views;
@@ -181,8 +180,8 @@ public sealed partial class SplitView : ContentView
         {
             _allApps =
             [
-                .. _allApps.Where(a => !obxodka.Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
-                                       !obxodka.Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                .. _allApps.Where(a => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
+                                       !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
             ];
             var bypassed = _appManager.GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
             _isUpdatingInternally = true;
@@ -220,8 +219,8 @@ public sealed partial class SplitView : ContentView
             {
                 _allApps =
                 [
-                    .. apps.Where(a => !obxodka.Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
-                                       !obxodka.Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                    .. apps.Where(a => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
+                                       !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
                 ];
                 ApplyFilterAndRenderList();
                 UpdateChipsAndCounters();
@@ -375,14 +374,14 @@ public sealed partial class SplitView : ContentView
             return;
         }
 
-        if (obxodka.Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(raw))
+        if (Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(raw))
         {
             _ = ShowSplitErrorAsync("Нельзя добавить домены или ресурсы obxodka в список исключений.");
             return;
         }
 
-        var normalized = obxodka.Core.Models.SplitTunnelPolicy.NormalizeRuleEntry(raw);
-        if (obxodka.Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(normalized))
+        var normalized = Core.Models.SplitTunnelPolicy.NormalizeRuleEntry(raw);
+        if (Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(normalized))
         {
             _ = ShowSplitErrorAsync("Нельзя добавить домены или ресурсы obxodka в список исключений.");
             return;
@@ -549,7 +548,9 @@ public sealed partial class SplitView : ContentView
             await ShowSplitErrorAsync("Не удалось добавить .exe файл.");
         }
 #else
+#pragma warning disable IDE0022
         await Task.CompletedTask;
+#pragma warning restore IDE0022
 #endif
     }
 

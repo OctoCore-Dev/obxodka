@@ -1,5 +1,3 @@
-using obxodka.Shared.Logging;
-
 namespace obxodka.Views;
 
 public sealed partial class ConfigurationView : ContentView, IDisposable
@@ -140,7 +138,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     }
 
 #if WINDOWS
-    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, IntPtr packageFullName);
 
     private static bool HasPackageIdentity()

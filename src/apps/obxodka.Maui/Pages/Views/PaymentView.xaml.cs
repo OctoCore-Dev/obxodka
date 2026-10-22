@@ -136,7 +136,7 @@ public sealed partial class PaymentView : ContentView
 
             if (updateEntry)
             {
-                CustomAmountEntry.Text = clamped.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                CustomAmountEntry.Text = clamped.ToString(CultureInfo.InvariantCulture);
             }
 
             if (updateSlider)

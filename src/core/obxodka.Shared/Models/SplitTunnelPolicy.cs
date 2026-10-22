@@ -1,5 +1,3 @@
-using System.Collections.Frozen;
-
 namespace obxodka.Core.Models;
 
 public sealed record BypassRouteEntry(string DestinationIp, string Reason);

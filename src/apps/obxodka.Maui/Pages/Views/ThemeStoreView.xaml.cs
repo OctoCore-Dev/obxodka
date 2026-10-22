@@ -1,5 +1,4 @@
 using Microsoft.Maui.Controls.Shapes;
-using obxodka.Maui.Services;
 using Path = System.IO.Path;
 
 namespace obxodka.Views;
