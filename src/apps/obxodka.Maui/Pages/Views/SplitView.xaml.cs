@@ -211,7 +211,7 @@ public sealed partial class SplitView : ContentView
         {
             SplitAppsList.IsVisible = false;
         }
-        _ = UIAnimations.HideErrorLabelAsync(SplitAppsErrorLabel);
+        _ = HideSplitToastAsync();
 
         try
         {
@@ -258,6 +258,8 @@ public sealed partial class SplitView : ContentView
         }
 
         ThemeAudioService.PlayClick();
+        _toastCts?.Cancel();
+        _ = HideSplitToastAsync();
         _isSitesTabActive = false;
         AppsHeaderControls.IsVisible = true;
         SplitAppsList.IsVisible = true;
@@ -273,6 +275,8 @@ public sealed partial class SplitView : ContentView
         }
 
         ThemeAudioService.PlayClick();
+        _toastCts?.Cancel();
+        _ = HideSplitToastAsync();
         _isSitesTabActive = true;
         AppsHeaderControls.IsVisible = false;
         SplitAppsList.IsVisible = false;
@@ -502,23 +506,13 @@ public sealed partial class SplitView : ContentView
         try
         {
             ThemeAudioService.PlayClick();
-            var exeFileType = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
-            {
-                { DevicePlatform.WinUI, [".exe"] }
-            });
-
-            var result = await FilePicker.Default.PickAsync(new PickOptions
-            {
-                PickerTitle = "Выберите исполняемый файл (.exe) для обхода VPN",
-                FileTypes = exeFileType
-            });
-
-            if (result is null || string.IsNullOrWhiteSpace(result.FullPath))
+            var pickedPath = Platforms.Windows.AppManager.PickExecutableFile();
+            if (string.IsNullOrWhiteSpace(pickedPath))
             {
                 return;
             }
 
-            if (Platforms.Windows.AppManager.IsSelfOrProtectedApp(result.FullPath))
+            if (Platforms.Windows.AppManager.IsSelfOrProtectedApp(pickedPath))
             {
                 await ShowSplitErrorAsync("Нельзя добавить приложение obxodka в список исключений.");
                 return;
@@ -526,7 +520,7 @@ public sealed partial class SplitView : ContentView
 
             if (_appManager is Platforms.Windows.AppManager winAppManager)
             {
-                var addedItem = winAppManager.AddCustomExecutable(result.FullPath);
+                var addedItem = winAppManager.AddCustomExecutable(pickedPath);
                 if (addedItem is not null)
                 {
                     var existing = _allApps.FirstOrDefault(a => a.PackageName.Equals(addedItem.PackageName, StringComparison.OrdinalIgnoreCase));
@@ -870,11 +864,53 @@ public sealed partial class SplitView : ContentView
         UpdateChipsAndCounters();
     }
 
+    private CancellationTokenSource? _toastCts;
+
     private async Task ShowSplitErrorAsync(string msg)
     {
-        SplitAppsErrorLabel.Text = msg;
-        await UIAnimations.ShowErrorLabelAsync(SplitAppsErrorLabel);
-        await this.ShakeErrorAsync();
+        _toastCts?.Cancel();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        SplitToastText.Text = msg;
+        SplitToastNotification.Opacity = 0;
+        SplitToastNotification.TranslationY = 20;
+        SplitToastNotification.IsVisible = true;
+
+        var fadeTask = SplitToastNotification.FadeToAsync(1, 180, Easing.CubicOut);
+        var translateTask = SplitToastNotification.TranslateToAsync(0, 0, 180, Easing.CubicOut);
+        _ = await Task.WhenAll(fadeTask, translateTask).ConfigureAwait(true);
+
+        try
+        {
+            await Task.Delay(4000, token);
+            if (!token.IsCancellationRequested)
+            {
+                await HideSplitToastAsync();
+            }
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task HideSplitToastAsync()
+    {
+        if (!SplitToastNotification.IsVisible)
+        {
+            return;
+        }
+
+        var fadeTask = SplitToastNotification.FadeToAsync(0, 150, Easing.CubicIn);
+        var translateTask = SplitToastNotification.TranslateToAsync(0, 20, 150, Easing.CubicIn);
+        _ = await Task.WhenAll(fadeTask, translateTask).ConfigureAwait(true);
+        SplitToastNotification.IsVisible = false;
+    }
+
+    private void OnDismissToastClicked(object? sender, EventArgs e)
+    {
+        _toastCts?.Cancel();
+        _ = HideSplitToastAsync();
     }
 
 #if ANDROID

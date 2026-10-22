@@ -18,7 +18,7 @@
             Grid.Row="0"
             Margin="{OnIdiom Phone='0,8,0,0',
                              Default='0'}"
-            ColumnDefinitions="Auto, *, Auto, Auto"
+            ColumnDefinitions="Auto, *, Auto"
             ColumnSpacing="10"
             VerticalOptions="Center">
             <Border
@@ -95,42 +95,8 @@
             </Grid>
 
             <Border
-                x:Name="BtnImportZip"
-                Grid.Column="2"
-                Padding="{OnIdiom Phone='0',
-                                  Default='12,0'}"
-                HeightRequest="40"
-                Style="{StaticResource NeoCard}"
-                ToolTipProperties.Text="Импортировать тему из .zip архива"
-                VerticalOptions="Center"
-                WidthRequest="{OnIdiom Phone=40,
-                                       Default=-1}">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnImportZipClickedAsync" />
-                </Border.GestureRecognizers>
-                <HorizontalStackLayout
-                    HorizontalOptions="Center"
-                    Spacing="6"
-                    VerticalOptions="Center">
-                    <mi:MauiIcon
-                        x:Name="IconImportZip"
-                        Icon="{mi:Fluent Icon=ArrowUpload24}"
-                        IconColor="{DynamicResource Accent}"
-                        IconSize="17"
-                        VerticalOptions="Center" />
-                    <Label
-                        x:Name="BtnImportZipText"
-                        FontFamily="{DynamicResource AppFontMedium}"
-                        FontSize="12"
-                        Text="Импорт .zip"
-                        TextColor="{DynamicResource TextPrimary}"
-                        VerticalOptions="Center" />
-                </HorizontalStackLayout>
-            </Border>
-
-            <Border
                 x:Name="BtnResetTheme"
-                Grid.Column="3"
+                Grid.Column="2"
                 Padding="{OnIdiom Phone='0',
                                   Default='12,0'}"
                 HeightRequest="40"

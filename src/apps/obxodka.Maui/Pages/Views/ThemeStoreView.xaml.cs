@@ -28,7 +28,6 @@ public sealed partial class ThemeStoreView : ContentView
         {
             BtnBackText.IsVisible = false;
             BtnResetText.IsVisible = false;
-            BtnImportZipText.IsVisible = false;
         }
 
         ThemeScrollView.SizeChanged += (s, e) =>
@@ -1619,55 +1618,6 @@ public sealed partial class ThemeStoreView : ContentView
         }
     }
 
-    private async void OnImportZipClickedAsync(object? sender, EventArgs e)
-    {
-        if (_themeManager is null)
-        {
-            return;
-        }
-
-        ThemeAudioService.PlayClick();
-        _ = BtnImportZip.BounceClickAsync();
-
-        try
-        {
-            var customFileType = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
-            {
-                { DevicePlatform.WinUI, [".zip"] },
-                { DevicePlatform.Android, ["application/zip", "application/x-zip-compressed"] },
-                { DevicePlatform.iOS, ["public.zip-archive"] },
-                { DevicePlatform.MacCatalyst, ["public.zip-archive"] }
-            });
-
-            var result = await FilePicker.Default.PickAsync(new PickOptions
-            {
-                PickerTitle = "Выберите .zip архив темы Obxodka",
-                FileTypes = customFileType
-            });
-
-            if (result is null)
-            {
-                return;
-            }
-
-            await using var stream = await result.OpenReadAsync();
-            var (success, message, manifest) = await _themeManager.ImportThemeFromZipAsync(stream, result.FileName);
-            if (!success || manifest is null)
-            {
-                await NeoAlert.ShowAsync("Ошибка импорта темы", message ?? "Не удалось импортировать архив темы.", "OK");
-                return;
-            }
-
-            _currentTab = "installed";
-            _ = await _themeManager.ApplyThemeByIdAsync(manifest.Id);
-            await NeoAlert.ShowAsync("Тема импортирована", $"Тема «{manifest.Name}» успешно установлена и применена!", "OK");
-        }
-        catch (Exception ex)
-        {
-            await NeoAlert.ShowAsync("Ошибка импорта темы", ex.Message, "OK");
-        }
-    }
-
     private void OnFilterAllClicked(object? sender, EventArgs e) => SetActiveFilter("all");
     private void OnFilterVideoClicked(object? sender, EventArgs e) => SetActiveFilter("video");
     private void OnFilterAnimClicked(object? sender, EventArgs e) => SetActiveFilter("anim");
@@ -1945,7 +1895,6 @@ public sealed partial class ThemeStoreView : ContentView
         var cardBgColor = GetAppColor("BgSurface", Color.FromArgb("#161622"));
 
         BtnBack.BackgroundColor = cardBgColor;
-        BtnImportZip.BackgroundColor = cardBgColor;
         BtnResetTheme.BackgroundColor = cardBgColor;
         CardSearch.BackgroundColor = cardBgColor;
         BtnSync.BackgroundColor = cardBgColor;
@@ -1973,9 +1922,7 @@ public sealed partial class ThemeStoreView : ContentView
         UpdateCardOpacity();
 
         BtnBack.Stroke = borderSubtleColor;
-        BtnImportZip.Stroke = borderSubtleColor;
         BtnResetTheme.Stroke = borderSubtleColor;
-        IconImportZip.IconColor = accentColor;
 
         HeaderIconBadge.BackgroundColor = primaryDim;
         HeaderIcon.IconColor = primaryColor;
