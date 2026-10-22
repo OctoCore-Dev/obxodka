@@ -1,4 +1,4 @@
-namespace obxodka.Client.Tests.Protocols;
+﻿namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocol")]
 [Trait("Category", "Stealth")]
@@ -468,5 +468,59 @@ public sealed class StealthProtocolTests
         PacketRouter.GetRays(robloxUdp, robloxUdp.Length, 3, out var primaryRay, out var secondaryRay);
         Assert.Equal(0, primaryRay);
         Assert.Equal(2, secondaryRay);
+    }
+
+    [Fact]
+    public void RayInspectorAdaptiveMtuDownshiftAndStepLogging()
+    {
+        var inspector = new obxodka.Core.Transports.RayInspector();
+        Assert.True(inspector.TryDownshiftMtu(1400, out var mtu1));
+        Assert.Equal(1360, mtu1);
+
+        Assert.True(inspector.TryDownshiftMtu(mtu1, out var mtu2));
+        Assert.Equal(1300, mtu2);
+
+        Assert.True(inspector.TryDownshiftMtu(mtu2, out var mtu3));
+        Assert.Equal(1280, mtu3);
+
+        Assert.False(inspector.TryDownshiftMtu(mtu3, out var mtu4));
+        Assert.Equal(1280, mtu4);
+
+        var steps = inspector.GetDiagnosticSteps();
+        Assert.Contains("1400 -> 1360", steps);
+        Assert.Contains("1360 -> 1300", steps);
+        Assert.Contains("1300 -> 1280", steps);
+    }
+
+    [Fact]
+    public void RayInspectorDetectsMtuBlackhole()
+    {
+        var inspector = new obxodka.Core.Transports.RayInspector();
+        var now = Stopwatch.GetTimestamp();
+
+        inspector.RecordRx(0, now);
+        for (var i = 0; i < 25; i++)
+        {
+            inspector.RecordDataTx();
+        }
+
+        Assert.False(inspector.DetectMtuBlackhole(now));
+        Assert.False(inspector.DetectMtuBlackhole(now));
+        Assert.True(inspector.DetectMtuBlackhole(now));
+
+        inspector.RecordDataRx();
+        Assert.False(inspector.DetectMtuBlackhole(now));
+    }
+
+    [Fact]
+    public async Task RayInspectorRateLimitsIncidentReportsAsync()
+    {
+        var inspector = new obxodka.Core.Transports.RayInspector();
+        inspector.RecordStep("Initial step");
+
+        _ = await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
+        var secondAttempt = await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
+
+        Assert.False(secondAttempt);
     }
 }

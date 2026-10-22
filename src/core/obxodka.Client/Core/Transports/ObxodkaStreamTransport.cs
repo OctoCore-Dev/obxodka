@@ -1,4 +1,4 @@
-namespace obxodka.Core.Transports;
+﻿namespace obxodka.Core.Transports;
 
 public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configuredSni = null) : IVpnTransport
 {
@@ -205,6 +205,8 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
             var attemptTimeoutSeconds = (i == 0 && endpointCandidates.Count > 1) ? 3 : 4;
             var dpiModeStr = enableDpi ? "Clean-Split DPI" : "Direct Stream";
+            _inspector.IncrementAttempts();
+            _inspector.RecordStep($"Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' [{dpiModeStr}]");
             Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' [{dpiModeStr}] (Timeout: {attemptTimeoutSeconds}s)...");
 
             _cts = new CancellationTokenSource();
@@ -231,6 +233,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 {
                     var result = await _ipTcs.Task.ConfigureAwait(false);
                     ActiveSni = channelHost;
+                    _inspector.RecordStep($"Connected node {serverIp}:{EffectivePort} via {channelHost}");
                     Shared.Logging.AppLogger.Log($"[OBXODKA-STREAM] Successfully connected to node physical IP {serverIp}:{EffectivePort} via {channelHost}. Established tunnel assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
                 }
@@ -238,6 +241,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 {
                     lastException = ex;
                     var inner = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
+                    _inspector.RecordStep($"Handshake attempt #{i + 1} failed on '{targetHost}:{port}' [{dpiModeStr}] ({ex.GetType().Name})");
                     Shared.Logging.AppLogger.LogWarning($"[OBXODKA-STREAM] Handshake attempt #{i + 1} failed on '{targetHost}:{port}' [{dpiModeStr}] ({ex.GetType().Name}: {ex.Message}{inner}). Hopping to next endpoint in pool...");
                     _cts.Cancel();
                     _httpClient0?.Dispose();
@@ -250,6 +254,15 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 }
             }
         }
+
+        _inspector.RecordStep($"Exhausted all {endpointCandidates.Count} candidate endpoints");
+        _ = _inspector.ReportIncidentIfExhaustedAsync(
+            reason: lastException != null ? $"HandshakeExhaustion: {lastException.GetType().Name} - {lastException.Message}" : "HandshakeTimeout",
+            targetHost: endpointCandidates.Count > 0 ? endpointCandidates[0].host : serverIp,
+            effectivePort: endpointCandidates.Count > 0 ? endpointCandidates[0].port : 443,
+            currentMtu: NetworkDefaults.CurrentMtu,
+            targetIp: serverIp,
+            apiBaseUrl: AppConfig.ApiBaseUrl, cancellationToken: CancellationToken.None);
 
         throw lastException ?? new TimeoutException("Failed to connect through available SNI and port pool.");
     }
@@ -296,9 +309,17 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 consecutiveDrops++;
             }
 
-            if (consecutiveDrops >= primaryPorts.Length && _rayCts[1] == null && Volatile.Read(ref _connected) && !ct.IsCancellationRequested)
+            if (consecutiveDrops >= primaryPorts.Length && _rayCts[1] == null && _rayCts[2] == null && Volatile.Read(ref _connected) && !ct.IsCancellationRequested)
             {
-                Shared.Logging.AppLogger.LogWarning("[OBXODKA-STREAM] Both rays dropped across all ports. Signaling connection drop.");
+                Shared.Logging.AppLogger.LogWarning("[OBXODKA-STREAM] All rays dropped across all ports. Signaling connection drop.");
+                _inspector.RecordStep($"All rays dropped after port hopping across ports {string.Join(',', primaryPorts)}");
+                _ = _inspector.ReportIncidentIfExhaustedAsync(
+                    reason: "AllRaysDroppedAfterRecovery",
+                    targetHost: channelHost,
+                    effectivePort: activePort,
+                    currentMtu: NetworkDefaults.CurrentMtu,
+                    targetIp: _activeServerIp,
+                    apiBaseUrl: AppConfig.ApiBaseUrl, cancellationToken: CancellationToken.None);
                 Volatile.Write(ref _connected, false);
                 OnConnectionDropped?.Invoke();
                 break;
@@ -649,6 +670,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         }
                         else if (command == ObxodkaFraming.CmdData)
                         {
+                            _inspector.RecordDataRx();
                             if (payloadLen >= 20 && !_deduplicator.IsDuplicate(payloadSpan))
                             {
                                 var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
@@ -832,6 +854,28 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 Shared.Logging.AppLogger.LogWarning($"[RAY-INSPECTOR] Asymmetric blackhole detected on Ray #{prevRay} (TX active, RX stalled). Instantly migrated primary traffic to Ray #{fallbackRay}.");
             }
 
+            if (_inspector.DetectMtuBlackhole(nowTs))
+            {
+                var currentMtu = NetworkDefaults.CurrentMtu;
+                if (_inspector.TryDownshiftMtu(currentMtu, out var newMtu))
+                {
+                    NetworkDefaults.CurrentMtu = newMtu;
+                    _ = SendMtuSyncAsync(newMtu);
+                    Shared.Logging.AppLogger.LogWarning($"[RAY-INSPECTOR] Adaptive MTU downshifted by inspector: {currentMtu} -> {newMtu}");
+                }
+                else
+                {
+                    _inspector.RecordStep($"MTU blackhole persisted at minimum MTU {currentMtu}");
+                    _ = _inspector.ReportIncidentIfExhaustedAsync(
+                        reason: "MtuBlackholeAtMinMtu",
+                        targetHost: ActiveSni,
+                        effectivePort: EffectivePort,
+                        currentMtu: currentMtu,
+                        targetIp: _activeServerIp,
+                        apiBaseUrl: AppConfig.ApiBaseUrl, cancellationToken: CancellationToken.None);
+                }
+            }
+
             if (connTicks > 0 && ((nowTs - connTicks) * 1000.0 / Stopwatch.Frequency) > 8000)
             {
                 if (rx0 == 0 && rx1 > 0 && _rayCts[0] != null)
@@ -950,13 +994,18 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                     continue;
                 }
 
-                var pingLen = 12;
+                var jitterPadding = Random.Shared.Next(0, 16);
+                var pingLen = 12 + jitterPadding;
                 var pingBuf = ArrayPool<byte>.Shared.Rent(pingLen);
                 pingBuf[0] = 0xAA;
                 pingBuf[1] = 0xBB;
                 BinaryPrimitives.WriteInt64LittleEndian(pingBuf.AsSpan(2, 8), nowTs);
                 pingBuf[10] = rxAliveMask;
                 pingBuf[11] = (byte)r;
+                if (jitterPadding > 0)
+                {
+                    Random.Shared.NextBytes(pingBuf.AsSpan(12, jitterPadding));
+                }
 
                 _inspector.RecordTx(r, nowTs);
                 if (!_txChannels[r].Writer.TryWrite((pingBuf, pingLen)))
@@ -975,6 +1024,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
             return;
         }
 
+        _inspector.RecordDataTx();
         var nowTs = Stopwatch.GetTimestamp();
         Volatile.Write(ref _lastTxTicks, nowTs);
 

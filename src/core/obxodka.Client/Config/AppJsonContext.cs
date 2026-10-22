@@ -31,6 +31,7 @@ namespace obxodka.Config;
 [JsonSerializable(typeof(List<ReferralFriendDto>))]
 [JsonSerializable(typeof(ReferralCodeResponse))]
 [JsonSerializable(typeof(ActivateReferralRequest))]
+[JsonSerializable(typeof(IncidentReportDto))]
 internal sealed partial class AppJsonContext : JsonSerializerContext
 {
 }

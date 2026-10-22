@@ -134,3 +134,24 @@ public sealed record LikeResponse(int Likes);
 public sealed record ReferralFriendDto(string EmailMasked, DateTime ActivatedAt, int BonusHours);
 public sealed record ReferralCodeResponse(string Code, int ActivatedCount, long BalanceSeconds, List<ReferralFriendDto> Friends);
 public sealed record ActivateReferralRequest(string Code);
+
+public sealed record IncidentReportDto(
+    string? Email,
+    string? Hwid,
+    string? ClientVersion,
+    string? Platform,
+    string? ClientIp,
+    string? TargetServerIp,
+    string? TargetHost,
+    int EffectivePort,
+    string Reason,
+    string DiagnosticSteps,
+    int AttemptsCount,
+    int LastObservedMtu,
+    long Ray0Rtt,
+    long Ray1Rtt,
+    long Ray2Rtt,
+    bool Ray0Blackholed,
+    bool Ray1Blackholed,
+    bool Ray2Blackholed,
+    DateTime TimestampUtc);
