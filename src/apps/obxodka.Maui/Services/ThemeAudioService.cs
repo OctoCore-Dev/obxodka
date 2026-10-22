@@ -238,7 +238,7 @@ public static partial class ThemeAudioService
                 wave += Math.Sin(2.0 * Math.PI * 180.0 * t) * 0.35 * Math.Exp(-t * 150.0);
                 if (i < 25)
                 {
-                    wave += (1.0 - ((double)i / 25.0)) * 0.4;
+                    wave += (1.0 - (i / 25.0)) * 0.4;
                 }
                 var clamped = Math.Clamp(wave, -1.0, 1.0);
                 var sample = (short)(clamped * 22000);

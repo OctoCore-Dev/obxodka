@@ -59,9 +59,9 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 #endif
 
         ThemeFramesToggle.IsToggled = ThemeManager.Instance?.FramesEnabled ?? true;
-        if (ThemeManager.Instance != null)
+        if (ThemeManager.Instance is { } tm)
         {
-            ThemeManager.Instance.FramesEnabledChanged += OnFramesEnabledChanged;
+            tm.FramesEnabledChanged += OnFramesEnabledChanged;
         }
 
         UpdateSelectionUI();
@@ -669,9 +669,9 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
 
     public void Dispose()
     {
-        if (ThemeManager.Instance != null)
+        if (ThemeManager.Instance is { } tm)
         {
-            ThemeManager.Instance.FramesEnabledChanged -= OnFramesEnabledChanged;
+            tm.FramesEnabledChanged -= OnFramesEnabledChanged;
         }
 #if WINDOWS
         if (_windowActivatedHandler is not null)
