@@ -8,6 +8,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 {
     private CancellationTokenSource? _cts;
     private WintunAdapter? _adapter;
+    private Task? _trafficTask;
 
     public AppVpnState CurrentState { get; private set; } = AppVpnState.Disconnected;
     public bool IsRunning => CurrentState == AppVpnState.Connected;
@@ -439,7 +440,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
-                            if (_adapter is null)
+                            if (_adapter is null || _adapter.IsDisposed)
                             {
                                 OnLogUpdated?.Invoke(VpnStatusMessages.InitializingWintunAdapter);
                                 _adapter = await Task.Run(() => new WintunAdapter("Obxodka", "Obxodka"));
@@ -467,7 +468,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                     _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
-                                _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
+                                _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else if (curTx > 0)
                             {
@@ -478,7 +479,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                                     _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
-                                _ = Task.Run(() => ProcessTrafficAsync(_cts.Token));
+                                _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else
                             {
@@ -1685,15 +1686,15 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             var deleteTasks = new List<Task>
             {
-                RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0"),
-                RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0")
+                RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
+                RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0", timeoutMs: 1500)
             };
 
             foreach (var serverIp in serverIps)
             {
                 if (!string.IsNullOrEmpty(serverIp) && IPAddress.TryParse(serverIp, out _))
                 {
-                    deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255"));
+                    deleteTasks.Add(RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255", timeoutMs: 1500));
                 }
             }
 
@@ -1706,7 +1707,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
             try
             {
-                await Task.WhenAll(deleteTasks).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                await Task.WhenAll(deleteTasks).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -1780,9 +1781,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     public async Task StopVpnAsync()
     {
         _isExplicitlyStopped = true;
-        _cts?.Cancel();
 
-        if (CurrentState == AppVpnState.Disconnected && _adapter == null)
+        if (CurrentState == AppVpnState.Disconnected && (_adapter == null || !_adapter.IsSessionActive))
         {
             await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
             return;
@@ -1790,38 +1790,89 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
         UpdateState(AppVpnState.Disconnecting);
 
-        if (!await _vpnGate.WaitAsync(3000))
-        {
-            Debug.WriteLine("[WARN] StopVpnAsync timed out waiting for gate lock.");
-        }
+        var lockTaken = false;
         try
         {
+            lockTaken = await _vpnGate.WaitAsync(5000).ConfigureAwait(false);
+            if (!lockTaken)
+            {
+                Debug.WriteLine("[WARN] StopVpnAsync timed out waiting for gate lock.");
+            }
+
             OnLogUpdated?.Invoke(VpnStatusMessages.DisconnectingVpn);
 
-            var adapterToDispose = _adapter;
-            var adapterName = _adapter?.Name ?? "";
+            var adapter = _adapter;
+            var adapterName = adapter?.Name ?? "Obxodka";
             var serverIp = _currentServerIp;
-            _adapter = null;
+            var ipsToRoute = _currentServerIpsToRoute.Count > 0
+                ? _currentServerIpsToRoute.ToArray()
+                : (!string.IsNullOrEmpty(serverIp) ? [serverIp] : []);
 
             try
             {
                 OnLogUpdated?.Invoke(VpnStatusMessages.RestoringNetworkSettings);
-                var routeTask = SetWindowsRoutesAsync(adapterName, _currentServerIpsToRoute.Count > 0 ? _currentServerIpsToRoute.ToArray() : (!string.IsNullOrEmpty(serverIp) ? [serverIp] : []), "", false);
-                var dnsTask = DisableDnsLeakProtectionAsync();
-                await Task.WhenAll(routeTask, dnsTask).ConfigureAwait(false);
 
-                if (adapterToDispose is not null)
+                var deleteDefaultRoutesTask = Task.WhenAll(
+                    RunCmdAsync("route", "delete 0.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
+                    RunCmdAsync("route", "delete 128.0.0.0 mask 128.0.0.0", timeoutMs: 1500),
+                    RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500),
+                    RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500),
+                    RunCmdAsync("netsh", $"interface ipv6 delete route fd00::/64 interface=\"{adapterName}\"", timeoutMs: 1500)
+                );
+
+                var disableDnsTask = DisableDnsLeakProtectionAsync();
+
+                WindowsSplitTunnelEngine.CleanupAllRoutes();
+
+                await Task.WhenAll(deleteDefaultRoutesTask, disableDnsTask).ConfigureAwait(false);
+
+                _ = await RunCmdAsync("ipconfig", "/flushdns", timeoutMs: 2000).ConfigureAwait(false);
+                _ = await RunCmdAsync("powershell", "-NoProfile -Command \"Clear-DnsClientCache -ErrorAction SilentlyContinue\"", timeoutMs: 2000).ConfigureAwait(false);
+
+                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50", timeoutMs: 1500).ConfigureAwait(false);
+                _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50", timeoutMs: 1500).ConfigureAwait(false);
+
+                _cts?.Cancel();
+
+                if (adapter is not null)
                 {
                     try
                     {
-                        adapterToDispose.Dispose();
+                        adapter.EndSession();
                     }
                     catch { }
-
-                    Debug.WriteLine("[DRIVER] Wintun adapter disposed.");
                 }
 
-                await OctopusEngine.Current.DisposeAsync();
+                if (_trafficTask != null)
+                {
+                    try
+                    {
+                        await _trafficTask.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+                    }
+                    catch { }
+                    _trafficTask = null;
+                }
+
+                await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
+
+                var deleteHostTasks = new List<Task>();
+                foreach (var ip in ipsToRoute)
+                {
+                    if (!string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out _))
+                    {
+                        deleteHostTasks.Add(RunCmdAsync("route", $"delete {ip} mask 255.255.255.255", timeoutMs: 1500));
+                    }
+                }
+
+                if (deleteHostTasks.Count > 0)
+                {
+                    try
+                    {
+                        await Task.WhenAll(deleteHostTasks).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                    }
+                    catch { }
+                }
+
                 Debug.WriteLine("[SYSTEM] VPN cleanup complete.");
                 await RestoreSuppressedAdaptersAsync().ConfigureAwait(false);
                 OnLogUpdated?.Invoke(VpnStatusMessages.VpnDisconnectedSystem);
@@ -1835,11 +1886,14 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
         finally
         {
-            try
+            if (lockTaken)
             {
-                _ = _vpnGate.Release();
+                try
+                {
+                    _ = _vpnGate.Release();
+                }
+                catch { }
             }
-            catch { }
         }
     }
 
@@ -1879,9 +1933,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var delTasks = new List<Task>();
             foreach (var dns in NetworkDefaults.TrustedDnsServers)
             {
-                delTasks.Add(RunCmdAsync("route", $"delete {dns} mask 255.255.255.255"));
+                delTasks.Add(RunCmdAsync("route", $"delete {dns} mask 255.255.255.255", timeoutMs: 1500));
             }
-            await Task.WhenAll(delTasks).ConfigureAwait(false);
+            await Task.WhenAll(delTasks).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1896,5 +1950,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         _ = StopVpnAsync();
         _cts?.Dispose();
         _vpnGate.Dispose();
+        _adapter?.Dispose();
+        _adapter = null;
     }
 }
