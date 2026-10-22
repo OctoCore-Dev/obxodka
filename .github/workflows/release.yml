@@ -353,6 +353,7 @@ jobs:
           track: ${{ inputs.android_track || 'production' }}
           whatsNewDirectory: packaging/whatsnew
           status: 'completed'
+          changesNotSentForReview: true
 
       - name: 🔍 Check Google Play Upload Result
         if: ${{ env.PLAY_CONFIG_JSON != '' && steps.upload_play.outcome == 'failure' }}
