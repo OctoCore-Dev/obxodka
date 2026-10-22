@@ -17,7 +17,8 @@
         IsClippedToBounds="True"
         SafeAreaEdges="None">
         <Grid.GestureRecognizers>
-            <PointerGestureRecognizer PointerExited="OnPagePointerExited" PointerMoved="OnPagePointerMoved" />
+            <PointerGestureRecognizer PointerExited="OnPagePointerExited" PointerMoved="OnPagePointerMoved" PointerPressed="OnPagePointerPressed" />
+            <TapGestureRecognizer Tapped="OnPageTapped" />
         </Grid.GestureRecognizers>
 
         <Grid

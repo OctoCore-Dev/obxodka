@@ -1379,6 +1379,22 @@ public sealed partial class VpnView : ContentView, IDisposable
         }
 
         ThemeAudioService.PlayClick();
+        if (ParentPage is not null)
+        {
+            float bx;
+            float by;
+            if (e is TappedEventArgs te && te.GetPosition(ParentPage) is { } pos)
+            {
+                bx = (float)pos.X;
+                by = (float)pos.Y;
+            }
+            else
+            {
+                bx = (float)(ParentPage.Width * 0.5);
+                by = (float)(ParentPage.Height * 0.5);
+            }
+            ParentPage.TriggerParticleBurst(bx, by);
+        }
         _isBusy = true;
 
         if (_vpnService.CurrentState is not (AppVpnState.Disconnected or AppVpnState.Error))

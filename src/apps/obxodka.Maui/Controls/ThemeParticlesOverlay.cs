@@ -18,6 +18,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         public float Rotation { get; set; }
         public float RotationSpeed { get; set; }
         public float Size { get; set; }
+        public float Depth { get; set; } = 1.0f;
         public float BaseAlpha { get; set; }
         public float CurrentAlpha { get; set; }
         public float SwayPhase { get; set; }
@@ -27,7 +28,21 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         public int SpriteIndex { get; set; }
     }
 
+    private sealed class BurstParticle
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Vx { get; set; }
+        public float Vy { get; set; }
+        public float Size { get; set; }
+        public float Alpha { get; set; }
+        public float Life { get; set; }
+        public float MaxLife { get; set; }
+        public SKColor Color { get; set; }
+    }
+
     private readonly List<Particle> _particles = [];
+    private readonly List<BurstParticle> _burstParticles = [];
     private readonly List<SKBitmap> _spriteBitmaps = [];
     private readonly Random _random = new(1337);
     private readonly Stopwatch _stopwatch = new();
@@ -35,6 +50,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     private readonly SKPaint _fallbackPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private readonly SKPaint _shaderPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private readonly SKPaint _strokePaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke };
+    private readonly SKPaint _glowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill, BlendMode = SKBlendMode.Plus };
     private readonly SKPath _starPath = CreateStarPath();
     private readonly SKPath _petalPath = CreatePetalPath();
     private readonly SKPath _diamondPath = CreateDiamondPath();
@@ -151,6 +167,42 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         }
     }
 
+    public void TriggerPointerBurst(float x, float y)
+    {
+        if (!_interactiveParticles)
+        {
+            return;
+        }
+
+        var count = Math.Min(12, 36 - _burstParticles.Count);
+        for (var i = 0; i < count; i++)
+        {
+            var angle = (float)(_random.NextDouble() * Math.PI * 2);
+            var speed = (float)(1.8 + (_random.NextDouble() * 3.6));
+            var life = (float)(0.35 + (_random.NextDouble() * 0.45));
+            var color = _random.Next(2) == 0 ? _accentSkColor : _primarySkColor;
+
+            _burstParticles.Add(new BurstParticle
+            {
+                X = x,
+                Y = y,
+                Vx = MathF.Cos(angle) * speed,
+                Vy = MathF.Sin(angle) * speed,
+                Size = (float)(3.0 + (_random.NextDouble() * 4.5)),
+                Alpha = 1.0f,
+                Life = 0f,
+                MaxLife = life,
+                Color = color
+            });
+        }
+
+        if (!IsVisible && HasActiveVisuals())
+        {
+            IsVisible = true;
+            StartAnimation();
+        }
+    }
+
     public void SetTrafficSpeedMbps(double totalMbps)
     {
         if (!_trafficReactive)
@@ -189,7 +241,8 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         var activeOverlay = GetActiveOverlayName();
         return (_initialized && _particles.Count > 0 && !string.Equals(_particleTypeName, "none", StringComparison.OrdinalIgnoreCase)) ||
                (!string.IsNullOrWhiteSpace(activeOverlay) && !string.Equals(activeOverlay, "none", StringComparison.OrdinalIgnoreCase)) ||
-               _shockwaveActive;
+               _shockwaveActive ||
+               _burstParticles.Count > 0;
     }
 
     private string GetActiveOverlayName() =>
@@ -447,17 +500,19 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                     break;
             }
 
-            var baseAlpha = (float)(0.35 + (_random.NextDouble() * 0.55));
+            var depth = (float)(0.40 + (_random.NextDouble() * 1.10));
+            var baseAlpha = (float)(0.30 + (_random.NextDouble() * 0.45)) * (0.65f + (depth * 0.35f));
 
             _particles.Add(new Particle
             {
                 X = (float)(_random.NextDouble() * width),
                 Y = (float)(_random.NextDouble() * height),
-                SpeedX = speedX * _speedMultiplier,
-                SpeedY = speedY * _speedMultiplier,
+                SpeedX = speedX * _speedMultiplier * depth,
+                SpeedY = speedY * _speedMultiplier * depth,
                 Rotation = _particleTypeName == "rain" ? 12f : (float)(_random.NextDouble() * 360),
                 RotationSpeed = rotSpeed,
-                Size = baseSize * _sizeMultiplier,
+                Size = baseSize * _sizeMultiplier * depth,
+                Depth = depth,
                 BaseAlpha = baseAlpha,
                 CurrentAlpha = baseAlpha,
                 SwayPhase = (float)(_random.NextDouble() * Math.PI * 2),
@@ -522,6 +577,24 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
         _shaderTime += dt;
 
+        for (var i = _burstParticles.Count - 1; i >= 0; i--)
+        {
+            var bp = _burstParticles[i];
+            bp.Life += dt;
+            if (bp.Life >= bp.MaxLife)
+            {
+                _burstParticles.RemoveAt(i);
+                continue;
+            }
+
+            var progress = bp.Life / bp.MaxLife;
+            bp.Alpha = 1.0f - (progress * progress);
+            bp.X += bp.Vx * step;
+            bp.Y += bp.Vy * step;
+            bp.Vx *= 0.94f;
+            bp.Vy = (bp.Vy * 0.94f) + (0.06f * step);
+        }
+
         if (_shockwaveActive)
         {
             _shockwaveProgress += dt * 1.15f;
@@ -584,22 +657,42 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                 }
             }
 
+            if (_shockwaveActive)
+            {
+                var maxR = MathF.Sqrt((w * w) + (h * h)) * 0.65f;
+                var easedR = 1f - MathF.Pow(1f - _shockwaveProgress, 3f);
+                var waveR = 24f + (maxR * easedR);
+                var cdx = p.X - centerX;
+                var cdy = p.Y - centerY;
+                var cDist = MathF.Sqrt((cdx * cdx) + (cdy * cdy));
+                var delta = MathF.Abs(cDist - waveR);
+                if (delta < 42f && cDist > 10f)
+                {
+                    var pushWave = (1f - (delta / 42f)) * 14f * (1f - _shockwaveProgress) * p.Depth;
+                    var nx = cdx / cDist;
+                    var ny = cdy / cDist;
+                    p.X += nx * pushWave;
+                    p.Y += ny * pushWave;
+                    p.CurrentAlpha = Math.Min(1.0f, p.CurrentAlpha + 0.45f);
+                }
+            }
+
             if (_interactiveParticles && _pointerActive)
             {
                 var dx = p.X - _pointerX;
                 var dy = p.Y - _pointerY;
                 var distSq = (dx * dx) + (dy * dy);
-                const float repulsionRadius = 140f;
+                const float repulsionRadius = 150f;
                 if (distSq is > 0.01f and < repulsionRadius * repulsionRadius)
                 {
                     var dist = MathF.Sqrt(distSq);
                     var factor = 1.0f - (dist / repulsionRadius);
-                    var push = factor * factor * 4.5f * step;
+                    var push = factor * factor * 5.2f * step * p.Depth;
                     var nx = dx / dist;
                     var ny = dy / dist;
-                    p.X += (nx * push) - (ny * push * 0.35f);
-                    p.Y += (ny * push) + (nx * push * 0.35f);
-                    p.Rotation += factor * 3.0f * step;
+                    p.X += (nx * push) - (ny * push * 0.45f * step);
+                    p.Y += (ny * push) + (nx * push * 0.45f * step);
+                    p.Rotation += factor * 3.5f * step;
                 }
             }
 
@@ -708,6 +801,43 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
     private void DrawParticles(SKCanvas canvas)
     {
+        var connectConstellations = _particles.Count >= 2 &&
+            (_particleTypeName is "twinkle" or "matrix" or "stars" or "neon_sparks" ||
+             _screenOverlay is "cyber_hud");
+
+        if (connectConstellations)
+        {
+            const float maxDist = 85f;
+            const float maxDistSq = maxDist * maxDist;
+            var lineBaseColor = _accentSkColor;
+
+            for (var i = 0; i < _particles.Count; i++)
+            {
+                var p1 = _particles[i];
+                var connections = 0;
+                for (var j = i + 1; j < _particles.Count && connections < 2; j++)
+                {
+                    var p2 = _particles[j];
+                    var dx = p1.X - p2.X;
+                    var dy = p1.Y - p2.Y;
+                    var distSq = (dx * dx) + (dy * dy);
+                    if (distSq < maxDistSq)
+                    {
+                        var dist = MathF.Sqrt(distSq);
+                        var ratio = 1.0f - (dist / maxDist);
+                        var lineAlpha = (byte)Math.Clamp(ratio * ratio * 55f * Math.Min(p1.CurrentAlpha, p2.CurrentAlpha), 0f, 255f);
+                        if (lineAlpha > 3)
+                        {
+                            _strokePaint.Color = lineBaseColor.WithAlpha(lineAlpha);
+                            _strokePaint.StrokeWidth = 1.0f;
+                            canvas.DrawLine(p1.X, p1.Y, p2.X, p2.Y, _strokePaint);
+                            connections++;
+                        }
+                    }
+                }
+            }
+        }
+
         lock (_spriteBitmaps)
         {
             var hasSprites = _spriteBitmaps.Count > 0;
@@ -767,6 +897,10 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                     else if (_particleTypeName.Contains("star", StringComparison.OrdinalIgnoreCase) ||
                              _particleTypeName.Equals("twinkle", StringComparison.OrdinalIgnoreCase))
                     {
+                        var glowR = r * 1.9f;
+                        _glowPaint.Color = _particleColor.WithAlpha((byte)(alphaByte * 0.26f));
+                        canvas.DrawCircle(0, 0, glowR, _glowPaint);
+
                         _ = canvas.Save();
                         var pulse = 0.85f + (0.3f * (p.CurrentAlpha / Math.Max(0.1f, p.BaseAlpha)));
                         canvas.Scale(r * 0.15f * pulse);
@@ -787,6 +921,15 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                     else if (_particleTypeName.Contains("spark", StringComparison.OrdinalIgnoreCase) ||
                              _particleTypeName.Contains("ember", StringComparison.OrdinalIgnoreCase))
                     {
+                        var glowR = r * 1.85f;
+                        _glowPaint.Color = _particleColor.WithAlpha((byte)(alphaByte * 0.28f));
+                        canvas.DrawCircle(0, 0, glowR, _glowPaint);
+
+                        var trailLen = Math.Max(2.5f, r * 1.8f) * _currentTrafficMultiplier;
+                        _strokePaint.Color = _particleColor.WithAlpha((byte)(alphaByte * 0.40f));
+                        _strokePaint.StrokeWidth = Math.Max(1.0f, r * 0.35f);
+                        canvas.DrawLine(0, 0, -p.SpeedX * trailLen, -p.SpeedY * trailLen, _strokePaint);
+
                         _ = canvas.Save();
                         canvas.Scale(r * 0.11f);
                         canvas.DrawPath(_diamondPath, _fallbackPaint);
@@ -804,6 +947,21 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                 canvas.Restore();
             }
         }
+
+        foreach (var bp in _burstParticles)
+        {
+            var alphaByte = (byte)Math.Clamp(bp.Alpha * 255f, 0f, 255f);
+            if (alphaByte == 0)
+            {
+                continue;
+            }
+
+            _glowPaint.Color = bp.Color.WithAlpha((byte)(alphaByte * 0.35f));
+            canvas.DrawCircle(bp.X, bp.Y, bp.Size * 1.8f, _glowPaint);
+
+            _fallbackPaint.Color = SKColors.White.WithAlpha(alphaByte);
+            canvas.DrawCircle(bp.X, bp.Y, bp.Size * 0.6f, _fallbackPaint);
+        }
     }
 
     private void DrawShockwave(SKCanvas canvas, float w, float h)
@@ -811,11 +969,20 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         var maxRadius = MathF.Sqrt((w * w) + (h * h)) * 0.65f;
         var eased = 1f - MathF.Pow(1f - _shockwaveProgress, 3f);
         var radius = 24f + (maxRadius * eased);
-        var alpha = (byte)Math.Clamp((1f - _shockwaveProgress) * 190f, 0f, 255f);
+        var alpha = (byte)Math.Clamp((1f - _shockwaveProgress) * 220f, 0f, 255f);
 
         _strokePaint.Color = _accentSkColor.WithAlpha(alpha);
-        _strokePaint.StrokeWidth = Math.Max(2f, 14f * (1f - _shockwaveProgress));
+        _strokePaint.StrokeWidth = Math.Max(2.5f, 16f * (1f - _shockwaveProgress));
         canvas.DrawCircle(w * 0.5f, h * 0.5f, radius, _strokePaint);
+
+        if (radius > 32f)
+        {
+            var innerRadius = radius * 0.84f;
+            var innerAlpha = (byte)Math.Clamp(alpha * 0.55f, 0f, 255f);
+            _strokePaint.Color = _primarySkColor.WithAlpha(innerAlpha);
+            _strokePaint.StrokeWidth = Math.Max(1.5f, 8f * (1f - _shockwaveProgress));
+            canvas.DrawCircle(w * 0.5f, h * 0.5f, innerRadius, _strokePaint);
+        }
     }
 
     private void DrawScreenOverlay(SKCanvas canvas, float w, float h, string overlay)
@@ -1108,6 +1275,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         _fallbackPaint.Dispose();
         _shaderPaint.Dispose();
         _strokePaint.Dispose();
+        _glowPaint.Dispose();
         _starPath.Dispose();
         _petalPath.Dispose();
         _diamondPath.Dispose();

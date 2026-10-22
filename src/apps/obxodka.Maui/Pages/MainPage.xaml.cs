@@ -176,6 +176,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     Microsoft.UI.Xaml.UIElement.PointerPressedEvent,
                     new Microsoft.UI.Xaml.Input.PointerEventHandler((sender, args) =>
                     {
+                        var pt = args.GetCurrentPoint(el);
+                        ThemeParticles?.TriggerPointerBurst((float)pt.Position.X, (float)pt.Position.Y);
                         if (!_isWindowActive)
                         {
                             OnWindowActivated();
@@ -1249,6 +1251,27 @@ public sealed partial class MainPage : ContentPage, IDisposable
             HandlePointerInteraction(pos.Value.X, pos.Value.Y, ThisPage.Width, ThisPage.Height);
         }
     }
+
+    private void OnPagePointerPressed(object? sender, PointerEventArgs e)
+    {
+        var pos = e.GetPosition(ThisPage);
+        if (pos.HasValue)
+        {
+            ThemeParticles?.TriggerPointerBurst((float)pos.Value.X, (float)pos.Value.Y);
+        }
+    }
+
+    private void OnPageTapped(object? sender, TappedEventArgs e)
+    {
+        var pos = e.GetPosition(ThisPage);
+        if (pos.HasValue)
+        {
+            ThemeParticles?.TriggerPointerBurst((float)pos.Value.X, (float)pos.Value.Y);
+        }
+    }
+
+    public void TriggerParticleBurst(float x, float y) =>
+        ThemeParticles?.TriggerPointerBurst(x, y);
 
     private void OnPagePointerExited(object? sender, PointerEventArgs e)
     {
