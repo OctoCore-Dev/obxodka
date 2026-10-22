@@ -57,11 +57,6 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         RunOnStartupCard.IsVisible = false;
 #endif
 
-        ThemeFramesToggle.IsToggled = ThemeManager.Instance?.FramesEnabled ?? true;
-        if (ThemeManager.Instance is { } tm)
-        {
-            tm.FramesEnabledChanged += OnFramesEnabledChanged;
-        }
 
         UpdateSelectionUI();
 
@@ -616,31 +611,9 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         ThemesRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnThemeFramesToggled(object? sender, ToggledEventArgs e)
-    {
-        if (ThemeManager.Instance != null && ThemeManager.Instance.FramesEnabled != e.Value)
-        {
-            ThemeManager.Instance.FramesEnabled = e.Value;
-        }
-    }
-
-    private void OnFramesEnabledChanged(bool enabled)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (ThemeFramesToggle.IsToggled != enabled)
-            {
-                ThemeFramesToggle.IsToggled = enabled;
-            }
-        });
-    }
 
     public void Dispose()
     {
-        if (ThemeManager.Instance is { } tm)
-        {
-            tm.FramesEnabledChanged -= OnFramesEnabledChanged;
-        }
 #if WINDOWS
         if (_windowActivatedHandler is not null)
         {
