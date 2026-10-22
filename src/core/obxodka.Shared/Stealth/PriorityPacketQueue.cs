@@ -1,4 +1,4 @@
-namespace obxodka.Shared.Stealth;
+﻿namespace obxodka.Shared.Stealth;
 
 [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "Specialized network priority packet queue")]
 public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
@@ -162,7 +162,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             }
 
             var protocol = packet[offset + 9];
-            if (protocol == 1 || (protocol == 17 && innerLen <= 320))
+            if (protocol == 1 || (protocol == 17 && innerLen <= 1400))
             {
                 return true;
             }
@@ -187,7 +187,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             }
 
             var nextHeader = packet[offset + 6];
-            if (nextHeader == 58 || (nextHeader == 17 && innerLen <= 320))
+            if (nextHeader == 58 || (nextHeader == 17 && innerLen <= 1400))
             {
                 return true;
             }

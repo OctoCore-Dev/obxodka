@@ -22,7 +22,10 @@ public sealed class PacketDeduplicator
         if (version == 4)
         {
             var proto = packet[9];
-            if (proto != 1 && (length > 256 || (proto != 17 && proto != 6)))
+            var isDeduplicatable = proto == 1 ||
+                                   (proto == 6 && length <= 256) ||
+                                   (proto == 17 && length <= 1400);
+            if (!isDeduplicatable)
             {
                 return false;
             }
@@ -30,7 +33,10 @@ public sealed class PacketDeduplicator
         else if (version == 6 && length >= 40)
         {
             var nextHdr = packet[6];
-            if (nextHdr != 58 && (length > 256 || (nextHdr != 17 && nextHdr != 6)))
+            var isDeduplicatable = nextHdr == 58 ||
+                                   (nextHdr == 6 && length <= 256) ||
+                                   (nextHdr == 17 && length <= 1400);
+            if (!isDeduplicatable)
             {
                 return false;
             }
@@ -47,6 +53,10 @@ public sealed class PacketDeduplicator
             scratch[8] = 0;
             scratch[10] = 0;
             scratch[11] = 0;
+        }
+        else if (version == 6 && scratch.Length >= 8)
+        {
+            scratch[7] = 0;
         }
 
         var key = FastHash64(scratch);

@@ -523,4 +523,37 @@ public sealed class StealthProtocolTests
 
         Assert.False(secondAttempt);
     }
+
+    [Fact]
+    public void PacketDeduplicatorDetectsDuplicateForGamingUdpLargePacket()
+    {
+        var deduplicator = new PacketDeduplicator();
+
+        var robloxUdp = new byte[800];
+        robloxUdp[0] = 0x45;
+        robloxUdp[8] = 64;
+        robloxUdp[9] = 17;
+        BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(2, 2), 800);
+        robloxUdp[12] = 100;
+        robloxUdp[13] = 64;
+        robloxUdp[14] = 0;
+        robloxUdp[15] = 2;
+        robloxUdp[16] = 128;
+        robloxUdp[17] = 116;
+        robloxUdp[18] = 40;
+        robloxUdp[19] = 50;
+        BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(20, 2), 54321);
+        BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(22, 2), 59123);
+        Random.Shared.NextBytes(robloxUdp.AsSpan(28, 772));
+
+        var ray0Dup = (byte[])robloxUdp.Clone();
+        var ray2Dup = (byte[])robloxUdp.Clone();
+        ray2Dup[8] = 58;
+
+        var first = deduplicator.IsDuplicate(ray0Dup, ray0Dup.Length);
+        var second = deduplicator.IsDuplicate(ray2Dup, ray2Dup.Length);
+
+        Assert.False(first);
+        Assert.True(second);
+    }
 }
