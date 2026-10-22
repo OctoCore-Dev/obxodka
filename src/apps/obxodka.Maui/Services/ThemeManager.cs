@@ -1377,6 +1377,27 @@ public sealed class ThemeManager
         var notificationSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Notification ?? GetObxodkaNestedProperty(manifest, "sounds", "notification"));
         var ambientSound = ResolveFilePath(folderPath, manifest.Core.Sounds?.Ambient ?? GetObxodkaNestedProperty(manifest, "sounds", "ambient"));
 
+        if (!string.IsNullOrEmpty(clickSound) && !string.IsNullOrEmpty(connectSound) &&
+            string.Equals(clickSound, connectSound, StringComparison.OrdinalIgnoreCase))
+        {
+            var altClick = Path.Combine(folderPath, "assets", "sounds", "click.wav");
+            clickSound = File.Exists(altClick) ? altClick : null;
+        }
+        else if (!string.IsNullOrEmpty(clickSound) && File.Exists(clickSound))
+        {
+            try
+            {
+                if (new FileInfo(clickSound).Length > 90000)
+                {
+                    var altClick = Path.Combine(folderPath, "assets", "sounds", "click.wav");
+                    clickSound = File.Exists(altClick) && new FileInfo(altClick).Length <= 90000 ? altClick : null;
+                }
+            }
+            catch
+            {
+            }
+        }
+
         var particleSpritePaths = new List<string>();
         var singleSprite = ResolveFilePath(folderPath, manifest.Vfx?.ParticleSprite);
         if (!string.IsNullOrEmpty(singleSprite))

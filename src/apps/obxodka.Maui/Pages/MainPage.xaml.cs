@@ -888,16 +888,17 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 _activeThemeScreenFramePath = e.ScreenFramePath;
                 _activeThemeFrameSlice = e.FrameSlice;
 
-                var hasTopDecorations = false;
-                if (framesEnabled && !string.IsNullOrEmpty(e.ScreenFramePath) && File.Exists(e.ScreenFramePath))
+                var hasScreenFrame = !string.IsNullOrEmpty(e.ScreenFramePath) && File.Exists(e.ScreenFramePath);
+                if (framesEnabled && hasScreenFrame)
                 {
                     ThemeScreenFrameOverlay.SetFrame(e.ScreenFramePath, e.FrameSlice);
-                    hasTopDecorations = true;
                 }
                 else
                 {
                     ThemeScreenFrameOverlay.Clear();
                 }
+
+                var hasTopDecorations = false;
                 SetDecorationElement(ThemeCornerTopLeft, e.CornerTopLeftPath, ref hasTopDecorations);
                 SetDecorationElement(ThemeCornerTopRight, e.CornerTopRightPath, ref hasTopDecorations);
 
@@ -907,7 +908,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
                 var hasDecorations = hasTopDecorations || hasBottomDecorations;
                 _hasThemeCornerDecorations = hasDecorations;
-                ThemeDecorationsContainer.IsVisible = framesEnabled && hasDecorations;
+                ThemeScreenFrameOverlay.IsVisible = framesEnabled && hasScreenFrame;
+                ThemeDecorationsContainer.IsVisible = framesEnabled && (hasScreenFrame || hasDecorations);
                 ThemeDecorationsContainer.Opacity = 1.0;
                 ThemeDecorationsContainer.TranslationX = 0;
                 ThemeDecorationsContainer.TranslationY = 0;
@@ -1396,7 +1398,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 ThemeScreenFrameOverlay.Clear();
             }
 
-            ThemeDecorationsContainer.IsVisible = enabled && _hasThemeCornerDecorations;
+            ThemeScreenFrameOverlay.IsVisible = enabled && hasFrame;
+            ThemeDecorationsContainer.IsVisible = enabled && (hasFrame || _hasThemeCornerDecorations);
+            ThemeParticles.InvalidateSurface();
             TabContentVpn?.SetCardFrameVisibility(enabled);
         });
     }

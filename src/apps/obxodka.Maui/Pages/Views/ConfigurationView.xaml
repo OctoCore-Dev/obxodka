@@ -351,7 +351,7 @@
                         Grid.Row="{OnIdiom Desktop=3,
                                            Phone=3}"
                         Grid.Column="0"
-                        Grid.ColumnSpan="{OnIdiom Desktop=2,
+                        Grid.ColumnSpan="{OnIdiom Desktop=1,
                                                   Phone=1}"
                         Padding="{OnIdiom Desktop='12,10',
                                           Phone='16'}"
@@ -377,19 +377,62 @@
                                     FontSize="{OnIdiom Desktop=13,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
-                                    Text="Темы оформления и стили" />
+                                    Text="Темы оформления" />
                                 <Label
                                     FontSize="{OnIdiom Desktop=11,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
-                                    Text="Каталог тем, прозрачность, видео-фон и эффекты." />
+                                    Text="Каталог тем и стили." />
                             </VerticalStackLayout>
                             <mi:MauiIcon
                                 Grid.Column="2"
                                 Icon="{mi:Fluent Icon=ChevronRight24}"
                                 IconColor="{DynamicResource TextMuted}"
                                 IconSize="18"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="ThemeFramesCard"
+                        Grid.Row="{OnIdiom Desktop=3,
+                                           Phone=4}"
+                        Grid.Column="{OnIdiom Desktop=1,
+                                              Phone=0}"
+                        Padding="{OnIdiom Desktop='12,10',
+                                          Phone='16'}"
+                        HeightRequest="{OnIdiom Desktop=66,
+                                                Default=-1}"
+                        Style="{StaticResource NeoCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Image24}"
+                                IconColor="{DynamicResource Primary}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=13,
+                                                       Default=15}"
+                                    LineBreakMode="TailTruncation"
+                                    Text="Декоративные рамки" />
+                                <Label
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Включение или скрытие рамок тем." />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="ThemeFramesToggle"
+                                Grid.Column="2"
+                                Toggled="OnThemeFramesToggled"
                                 VerticalOptions="Center" />
                         </Grid>
                     </Border>

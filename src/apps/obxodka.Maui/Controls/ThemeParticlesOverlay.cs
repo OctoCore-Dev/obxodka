@@ -820,6 +820,16 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
     private void DrawScreenOverlay(SKCanvas canvas, float w, float h, string overlay)
     {
+        if (string.IsNullOrEmpty(overlay) || overlay.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!(ThemeManager.Instance?.FramesEnabled ?? true))
+        {
+            return;
+        }
+
         switch (overlay)
         {
             case "cyber_hud":

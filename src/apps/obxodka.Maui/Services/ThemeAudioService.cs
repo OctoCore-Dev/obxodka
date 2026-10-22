@@ -9,6 +9,7 @@ public static partial class ThemeAudioService
     private static string? t_connectPath;
     private static string? t_disconnectPath;
     private static string? t_ambientPath;
+    private static string? t_defaultClickPath;
     private static double t_volume = 0.85;
     private static bool t_ambientShouldPlay;
     private static long t_lastHoverTicks;
@@ -37,7 +38,7 @@ public static partial class ThemeAudioService
     {
         lock (t_sync)
         {
-            t_clickPath = clickPath;
+            t_clickPath = SanitizeClickPath(clickPath, connectPath);
             t_hoverPath = hoverPath;
             t_notificationPath = notificationPath;
             t_connectPath = connectPath;
@@ -112,7 +113,143 @@ public static partial class ThemeAudioService
     {
         var tm = ThemeManager.Instance;
         var enabled = (tm?.SoundsEnabled ?? true) && (tm?.ClickSoundsEnabled ?? true);
-        PlaySound(t_clickPath, enabled, 0.9);
+        if (!enabled)
+        {
+            return;
+        }
+
+        string? path;
+        lock (t_sync)
+        {
+            path = t_clickPath;
+        }
+
+        path ??= GetDefaultClickPath();
+        PlaySound(path, true, 0.9);
+    }
+
+    private static string? SanitizeClickPath(string? clickPath, string? connectPath)
+    {
+        if (string.IsNullOrWhiteSpace(clickPath) || !File.Exists(clickPath))
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(connectPath) &&
+            string.Equals(Path.GetFullPath(clickPath), Path.GetFullPath(connectPath), StringComparison.OrdinalIgnoreCase))
+        {
+            var folder = Path.GetDirectoryName(clickPath);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                var candidate = Path.Combine(folder, "click.wav");
+                if (File.Exists(candidate) && !string.Equals(Path.GetFullPath(candidate), Path.GetFullPath(connectPath), StringComparison.OrdinalIgnoreCase))
+                {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        try
+        {
+            var info = new FileInfo(clickPath);
+            if (info.Length > 90000)
+            {
+                var folder = Path.GetDirectoryName(clickPath);
+                if (!string.IsNullOrEmpty(folder))
+                {
+                    var candidate = Path.Combine(folder, "click.wav");
+                    if (File.Exists(candidate) && new FileInfo(candidate).Length <= 90000)
+                    {
+                        return candidate;
+                    }
+                }
+                return null;
+            }
+        }
+        catch
+        {
+        }
+
+        return clickPath;
+    }
+
+    private static string? GetDefaultClickPath()
+    {
+        if (t_defaultClickPath != null && File.Exists(t_defaultClickPath))
+        {
+            return t_defaultClickPath;
+        }
+
+        try
+        {
+            var cache = FileSystem.CacheDirectory;
+            if (string.IsNullOrEmpty(cache))
+            {
+                cache = Path.GetTempPath();
+            }
+
+            var path = Path.Combine(cache, "obxodka_default_click.wav");
+            if (!File.Exists(path) || new FileInfo(path).Length < 100)
+            {
+                GenerateDefaultClickWav(path);
+            }
+            t_defaultClickPath = path;
+            return path;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void GenerateDefaultClickWav(string filepath)
+    {
+        try
+        {
+            const int sampleRate = 44100;
+            const double durationSeconds = 0.035;
+            var numSamples = (int)(sampleRate * durationSeconds);
+            var dataSize = numSamples * 2 * 2;
+            var totalSize = 36 + dataSize;
+
+            using var fs = new FileStream(filepath, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var bw = new BinaryWriter(fs);
+
+            bw.Write("RIFF"u8.ToArray());
+            bw.Write(totalSize);
+            bw.Write("WAVE"u8.ToArray());
+            bw.Write("fmt "u8.ToArray());
+            bw.Write(16);
+            bw.Write((short)1);
+            bw.Write((short)2);
+            bw.Write(sampleRate);
+            bw.Write(sampleRate * 2 * 2);
+            bw.Write((short)4);
+            bw.Write((short)16);
+            bw.Write("data"u8.ToArray());
+            bw.Write(dataSize);
+
+            for (var i = 0; i < numSamples; i++)
+            {
+                var t = (double)i / sampleRate;
+                var env = Math.Exp(-t * 110.0);
+                var wave = Math.Sin(2.0 * Math.PI * 1850.0 * t) * 0.65 * env;
+                wave += Math.Sin(2.0 * Math.PI * 180.0 * t) * 0.35 * Math.Exp(-t * 150.0);
+                if (i < 25)
+                {
+                    wave += (1.0 - ((double)i / 25.0)) * 0.4;
+                }
+                var clamped = Math.Clamp(wave, -1.0, 1.0);
+                var sample = (short)(clamped * 22000);
+                bw.Write(sample);
+                bw.Write(sample);
+            }
+            bw.Flush();
+        }
+        catch
+        {
+        }
     }
 
     public static void PlayHover()
