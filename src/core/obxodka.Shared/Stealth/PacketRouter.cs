@@ -31,6 +31,47 @@ public static class PacketRouter
                 return;
             }
 
+            var flagsAndOffset = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(6, 2));
+            var fragOffset = flagsAndOffset & 0x1FFF;
+
+            if (fragOffset > 0)
+            {
+                if (protocol is 1 or 17)
+                {
+                    primaryRay = 0;
+                    secondaryRay = activeRays switch
+                    {
+                        >= 8 => 7,
+                        >= 4 => 3,
+                        >= 3 => 2,
+                        >= 2 => 1,
+                        _ => -1
+                    };
+                    return;
+                }
+
+                var fragSrcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(12, 4));
+                var fragDstIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(16, 4));
+                var id = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(4, 2));
+                unchecked
+                {
+                    hash = (hash * 31) + fragSrcIp;
+                    hash = (hash * 31) + fragDstIp;
+                    hash = (hash * 31) + id;
+                    hash = (hash * 31) + protocol;
+                }
+
+                primaryRay = activeRays switch
+                {
+                    >= 8 => 1 + ((hash & 0x7FFFFFFF) % 6),
+                    >= 4 => 1 + ((hash & 0x7FFFFFFF) % 2),
+                    >= 2 => hash & 1,
+                    _ => 0
+                };
+                secondaryRay = -1;
+                return;
+            }
+
             var srcPort = length >= ihl + 2 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2)) : 0;
             var dstPort = length >= ihl + 4 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2)) : 0;
 

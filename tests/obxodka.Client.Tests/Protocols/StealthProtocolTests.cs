@@ -1,4 +1,4 @@
-﻿namespace obxodka.Client.Tests.Protocols;
+namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocol")]
 [Trait("Category", "Stealth")]
@@ -555,5 +555,47 @@ public sealed class StealthProtocolTests
 
         Assert.False(first);
         Assert.True(second);
+    }
+
+    [Fact]
+    public void PacketDeduplicatorDistinctLargePacketsWithIdentical256BytePrefixNotMarkedAsDuplicate()
+    {
+        var deduplicator = new PacketDeduplicator();
+
+        var packet1 = new byte[1200];
+        packet1[0] = 0x45;
+        packet1[8] = 64;
+        packet1[9] = 17;
+        BinaryPrimitives.WriteUInt16BigEndian(packet1.AsSpan(2, 2), 1200);
+        packet1[12] = 100;
+        packet1[13] = 64;
+        packet1[14] = 0;
+        packet1[15] = 2;
+        packet1[16] = 128;
+        packet1[17] = 116;
+        packet1[18] = 40;
+        packet1[19] = 50;
+        BinaryPrimitives.WriteUInt16BigEndian(packet1.AsSpan(20, 2), 54321);
+        BinaryPrimitives.WriteUInt16BigEndian(packet1.AsSpan(22, 2), 59123);
+        for (var i = 28; i < 256; i++)
+        {
+            packet1[i] = (byte)(i & 0xFF);
+        }
+        for (var i = 256; i < 1200; i++)
+        {
+            packet1[i] = 0xAA;
+        }
+
+        var packet2 = (byte[])packet1.Clone();
+        for (var i = 256; i < 1200; i++)
+        {
+            packet2[i] = 0xBB;
+        }
+
+        var first = deduplicator.IsDuplicate(packet1, packet1.Length);
+        var second = deduplicator.IsDuplicate(packet2, packet2.Length);
+
+        Assert.False(first);
+        Assert.False(second);
     }
 }

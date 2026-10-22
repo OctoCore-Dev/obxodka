@@ -2,10 +2,10 @@ namespace obxodka.Shared.Stealth;
 
 public sealed class PacketDeduplicator
 {
-    private const int RingSize = 16384;
+    private const int RingSize = 32768;
     private const int RingMask = RingSize - 1;
     private const ulong TimeMask = 0xFFFFFUL;
-    private const ulong MaxDuplicateAgeMs = 500UL;
+    private const ulong MaxDuplicateAgeMs = 80UL;
 
     private readonly ulong[] _entries = new ulong[RingSize];
 
@@ -46,20 +46,7 @@ public sealed class PacketDeduplicator
             return false;
         }
 
-        Span<byte> scratch = stackalloc byte[Math.Min(length, 256)];
-        packet[..scratch.Length].CopyTo(scratch);
-        if (version == 4 && scratch.Length >= 12)
-        {
-            scratch[8] = 0;
-            scratch[10] = 0;
-            scratch[11] = 0;
-        }
-        else if (version == 6 && scratch.Length >= 8)
-        {
-            scratch[7] = 0;
-        }
-
-        var key = FastHash64(scratch);
+        var key = FastHash64(packet, version);
         var slot = (int)(key & RingMask);
         var keyTag = key & ~TimeMask;
         if (keyTag == 0)
@@ -88,22 +75,43 @@ public sealed class PacketDeduplicator
     public bool IsDuplicate(byte[] packet, int length) => IsDuplicate(packet.AsSpan(0, length));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong FastHash64(ReadOnlySpan<byte> data)
+    private static ulong FastHash64(ReadOnlySpan<byte> packet, int version)
     {
         unchecked
         {
-            var hash = 0xCBF29CE484222325UL ^ (ulong)data.Length;
-            var longs = MemoryMarshal.Cast<byte, ulong>(data);
-            for (var i = 0; i < longs.Length; i++)
+            var length = packet.Length;
+            var hash = 0xCBF29CE484222325UL ^ (ulong)length;
+            var longsCount = length / 8;
+
+            for (var i = 0; i < longsCount; i++)
             {
-                hash = (hash ^ longs[i]) * 0x100000001B3UL;
+                var offset = i * 8;
+                var val = BinaryPrimitives.ReadUInt64LittleEndian(packet.Slice(offset, 8));
+                if (version == 4)
+                {
+                    if (offset == 8)
+                    {
+                        val &= ~0x00000000FFFF00FFUL;
+                    }
+                }
+                else if (version == 6)
+                {
+                    if (offset == 0)
+                    {
+                        val &= ~0xFF00000000000000UL;
+                    }
+                }
+
+                hash = (hash ^ val) * 0x100000001B3UL;
                 hash = (hash << 13) | (hash >> 51);
             }
-            var remainder = data[(longs.Length * 8)..];
-            for (var i = 0; i < remainder.Length; i++)
+
+            var remainderOffset = longsCount * 8;
+            for (var i = remainderOffset; i < length; i++)
             {
-                hash = (hash ^ remainder[i]) * 0x100000001B3UL;
+                hash = (hash ^ packet[i]) * 0x100000001B3UL;
             }
+
             return hash;
         }
     }
