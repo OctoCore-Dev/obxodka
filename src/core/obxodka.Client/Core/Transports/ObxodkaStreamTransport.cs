@@ -81,10 +81,13 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
                 {
                     NoDelay = true,
-                    SendBufferSize = 1048576,
-                    ReceiveBufferSize = 1048576
+                    SendBufferSize = 4194304,
+                    ReceiveBufferSize = 4194304
                 };
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 10);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 3);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
                 OnSocketCreated?.Invoke(socket);
                 _protectAction?.Invoke(socket);
 
