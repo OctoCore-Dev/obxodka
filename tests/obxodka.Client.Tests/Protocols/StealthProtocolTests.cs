@@ -416,4 +416,57 @@ public sealed class StealthProtocolTests
             Assert.InRange(ObxodkaFraming.CalculatePaddingLength(400), 8, 40);
         }
     }
+    [Fact]
+    public void RayInspectorDetectsAsymmetricBlackholeAndMigratesRay()
+    {
+        var inspector = new obxodka.Core.Transports.RayInspector();
+        var now = Stopwatch.GetTimestamp();
+
+        inspector.RecordTx(0, now - (long)(Stopwatch.Frequency * 0.2));
+        inspector.RecordRx(0, now - (long)(Stopwatch.Frequency * 2.5));
+
+        inspector.RecordTx(1, now - (long)(Stopwatch.Frequency * 0.1));
+        inspector.RecordRx(1, now - (long)(Stopwatch.Frequency * 0.1));
+
+        var detected = inspector.DetectAsymmetricBlackhole(0, now, out var fallbackRay);
+        Assert.True(detected);
+        Assert.Equal(1, fallbackRay);
+    }
+
+    [Fact]
+    public void RayInspectorFailoverMaintainsHedgingOnRay2()
+    {
+        var inspector = new obxodka.Core.Transports.RayInspector();
+        var now = Stopwatch.GetTimestamp();
+
+        inspector.RecordRx(0, now - (long)(Stopwatch.Frequency * 5.0));
+        inspector.RecordRx(1, now - (long)(Stopwatch.Frequency * 0.1));
+        inspector.RecordRx(2, now - (long)(Stopwatch.Frequency * 0.1));
+
+        inspector.SelectRaysForPacket(
+            preferredRay: 1,
+            needsHedging: true,
+            activeRays: 3,
+            nowTs: now,
+            out var primaryRay,
+            out var duplicateRay);
+
+        Assert.Equal(1, primaryRay);
+        Assert.Equal(2, duplicateRay);
+    }
+
+    [Fact]
+    public void PacketRouterThreeRaysRoutesGamingUdpToRay2()
+    {
+        var robloxUdp = new byte[800];
+        robloxUdp[0] = 0x45;
+        robloxUdp[9] = 17;
+        BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(2, 2), 800);
+        BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(20, 2), 54321);
+        BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(22, 2), 59123);
+
+        PacketRouter.GetRays(robloxUdp, robloxUdp.Length, 3, out var primaryRay, out var secondaryRay);
+        Assert.Equal(0, primaryRay);
+        Assert.Equal(2, secondaryRay);
+    }
 }

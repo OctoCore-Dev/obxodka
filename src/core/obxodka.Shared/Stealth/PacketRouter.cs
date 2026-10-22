@@ -18,6 +18,7 @@ public static class PacketRouter
 
         var version = packet[0] >> 4;
         var isIcmpOrDns = false;
+        var isGamingUdp = false;
         var hash = 17;
 
         if (version == 4)
@@ -37,6 +38,10 @@ public static class PacketRouter
             {
                 isIcmpOrDns = true;
             }
+            else if (protocol == 17 && srcPort > 0 && dstPort > 0 && srcPort != 443 && dstPort != 443 && length <= 1400)
+            {
+                isGamingUdp = true;
+            }
 
             var srcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(12, 4));
             var dstIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(16, 4));
@@ -50,7 +55,7 @@ public static class PacketRouter
                 hash = (hash * 31) + protocol;
             }
 
-            if (protocol == 17 && !isIcmpOrDns)
+            if (protocol == 17 && !isIcmpOrDns && !isGamingUdp)
             {
                 primaryRay = 0;
                 secondaryRay = -1;
@@ -67,6 +72,10 @@ public static class PacketRouter
             {
                 isIcmpOrDns = true;
             }
+            else if (nextHeader == 17 && srcPort > 0 && dstPort > 0 && srcPort != 443 && dstPort != 443 && length <= 1400)
+            {
+                isGamingUdp = true;
+            }
 
             var srcIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(20, 4));
             var dstIp = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(36, 4));
@@ -80,7 +89,7 @@ public static class PacketRouter
                 hash = (hash * 31) + nextHeader;
             }
 
-            if (nextHeader == 17 && !isIcmpOrDns)
+            if (nextHeader == 17 && !isIcmpOrDns && !isGamingUdp)
             {
                 primaryRay = 0;
                 secondaryRay = -1;
@@ -88,13 +97,15 @@ public static class PacketRouter
             }
         }
 
-        if (isIcmpOrDns)
+        var isLatencyCritical = isIcmpOrDns || isGamingUdp;
+        if (isLatencyCritical)
         {
             primaryRay = 0;
             secondaryRay = activeRays switch
             {
                 >= 8 => 7,
                 >= 4 => 3,
+                >= 3 => 2,
                 >= 2 => 1,
                 _ => -1
             };
@@ -111,7 +122,7 @@ public static class PacketRouter
                 primaryRay = 1 + ((hash & 0x7FFFFFFF) % 2);
                 secondaryRay = -1;
             }
-            else if (activeRays == 2)
+            else if (activeRays >= 2)
             {
                 primaryRay = hash & 1;
                 secondaryRay = -1;
