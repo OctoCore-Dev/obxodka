@@ -353,7 +353,6 @@ jobs:
           track: ${{ inputs.android_track || 'production' }}
           whatsNewDirectory: packaging/whatsnew
           status: 'completed'
-          changesNotSentForReview: true
 
       - name: 🔍 Check Google Play Upload Result
         if: ${{ env.PLAY_CONFIG_JSON != '' && steps.upload_play.outcome == 'failure' }}
@@ -377,10 +376,14 @@ jobs:
   # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)
   # ==========================================
   deploy-windows:
-    name: 🚀 Deploy to Microsoft Store (Bypassed)
+    name: 🚀 Deploy to Microsoft Store
     needs: [build-android, build-windows]
     runs-on: windows-latest
-    if: false
+    if: |
+      always() &&
+      (needs.build-windows.result == 'success') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android') &&
+      (github.event_name == 'push' || inputs.publish_to_stores == true)
     env:
       STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
 
