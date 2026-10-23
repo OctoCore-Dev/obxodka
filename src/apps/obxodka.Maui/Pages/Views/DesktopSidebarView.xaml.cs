@@ -25,7 +25,7 @@ public sealed partial class DesktopSidebarView : ContentView
     }
 
     public void UpdateSeasonalLogo() =>
-        AppLogoImage.Source = SeasonSchedule.IsHalloweenSeason() ? "app_logo_halloween.png" : "app_logo.png";
+        AppLogoImage.Source = (SeasonSchedule.IsHalloweenSeason() || ThemeManager.Instance?.ActiveTheme?.Id?.Contains("halloween", StringComparison.OrdinalIgnoreCase) == true) ? "app_logo_halloween.png" : "app_logo.png";
 
     public async Task PlayEntranceAnimationAsync()
     {

@@ -19,6 +19,7 @@
                 HorizontalOptions="Center"
                 Spacing="10">
                 <Image
+                    x:Name="AppLogoImage"
                     HeightRequest="90"
                     HorizontalOptions="Center"
                     Source="app_logo.png"
@@ -95,14 +96,6 @@
                                 </Grid>
                             </Border>
 
-                            <Button
-                                x:Name="QuickQrOrCodeButton"
-                                Margin="0,2,0,0"
-                                Clicked="OnQuickQrOrCodeClickedAsync"
-                                FontSize="12"
-                                IsVisible="{OnPlatform Android=True, Default=False}"
-                                Style="{StaticResource BtnGhost}"
-                                Text="Быстрый вход по QR / коду с сайта" />
                         </VerticalStackLayout>
 
                         <VerticalStackLayout

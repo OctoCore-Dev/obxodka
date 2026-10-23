@@ -6,12 +6,24 @@ public sealed partial class AuthView : ContentView
     private ApiService _apiService = null!;
     private bool _isVerifying;
 
-    public AuthView() => InitializeComponent();
+    public AuthView()
+    {
+        InitializeComponent();
+        UpdateSeasonalLogo();
+    }
 
     public void Initialize(MainPage parent, ApiService apiService)
     {
         _parent = parent;
         _apiService = apiService;
+        UpdateSeasonalLogo();
+    }
+
+    public void UpdateSeasonalLogo()
+    {
+        var isHalloween = SeasonSchedule.IsHalloweenSeason() ||
+                          ThemeManager.Instance?.ActiveTheme?.Id?.Contains("halloween", StringComparison.OrdinalIgnoreCase) == true;
+        AppLogoImage.Source = isHalloween ? "app_logo_halloween.png" : "app_logo.png";
     }
 
     public Task PlayEntranceAnimationAsync() =>
@@ -35,7 +47,11 @@ public sealed partial class AuthView : ContentView
     }
 
     public void OnThemeChanged() =>
-        MainThread.BeginInvokeOnMainThread(UpdateCardOpacity);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateSeasonalLogo();
+        });
 
     public async Task HandleDeepLinkLoginAsync(string email, string code)
     {
@@ -57,52 +73,6 @@ public sealed partial class AuthView : ContentView
 
         CodeEntry.Text = code.Trim();
         await VerifyCodeInternalAsync();
-    }
-
-    private async void OnQuickQrOrCodeClickedAsync(object? sender, EventArgs e)
-    {
-        if (!OperatingSystem.IsAndroid())
-        {
-            return;
-        }
-
-        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
-
-        string? clipText = null;
-        try
-        {
-            if (Clipboard.Default.HasText)
-            {
-                clipText = (await Clipboard.Default.GetTextAsync())?.Trim();
-            }
-        }
-        catch { }
-
-        if (!string.IsNullOrWhiteSpace(clipText) &&
-            App.TryParseDeepLinkLogin(clipText, out var qrEmail, out var qrCode))
-        {
-            await HandleDeepLinkLoginAsync(qrEmail, qrCode);
-            return;
-        }
-
-        var email = EmailEntry.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
-        {
-            await ShowLoginErrorAsync("Введите ваш Email и нажмите эту кнопку, чтобы ввести 6-значный код из QR-окна Личного кабинета (или отсканируйте QR-код камерой телефона).");
-            _ = EmailEntry.Focus();
-            return;
-        }
-
-        await UIAnimations.CrossFadeFormAsync(EmailInputView, CodeInputView);
-
-        if (!string.IsNullOrWhiteSpace(clipText) && clipText.Length == 6 && clipText.All(char.IsAsciiDigit))
-        {
-            CodeEntry.Text = clipText;
-        }
-        else
-        {
-            _ = CodeEntry.Focus();
-        }
     }
 
     private async void OnPasteCodeClickedAsync(object? sender, EventArgs e)
