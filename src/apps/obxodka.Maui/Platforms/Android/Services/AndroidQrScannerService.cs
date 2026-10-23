@@ -1,7 +1,5 @@
 #if ANDROID
-using System.Runtime.Versioning;
 using Android.Gms.Tasks;
-using obxodka.Services;
 using Xamarin.Google.MLKit.Vision.Barcode.Common;
 using Xamarin.Google.MLKit.Vision.CodeScanner;
 
@@ -45,17 +43,7 @@ public sealed class AndroidQrScannerService : IQrScannerService
 
     private sealed class SuccessListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnSuccessListener
     {
-        public void OnSuccess(Java.Lang.Object? result)
-        {
-            if (result is Barcode barcode)
-            {
-                _ = tcs.TrySetResult(barcode.RawValue);
-            }
-            else
-            {
-                _ = tcs.TrySetResult(null);
-            }
-        }
+        public void OnSuccess(Java.Lang.Object? result) => _ = result is Barcode barcode ? tcs.TrySetResult(barcode.RawValue) : tcs.TrySetResult(null);
     }
 
     private sealed class FailureListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnFailureListener

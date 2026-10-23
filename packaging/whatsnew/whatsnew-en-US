@@ -1,5 +1,4 @@
+- Built-in Google Code Scanner for instant zero-permission QR login.
+- Seasonal Halloween theme and festival branding on sign-in screen.
 - Network & MTU optimization for games and Roblox without fragmentation.
-- Cellular IPv6 leak protection on Android.
-- 3-ray keepalive with instant connection drop recovery.
-- 4 MB TCP buffers with anti-NAT drop keepalive.
-- Interactive 60 FPS 3D particle engine with touch click bursts.
+- 3-ray keepalive with instant failover recovery.
