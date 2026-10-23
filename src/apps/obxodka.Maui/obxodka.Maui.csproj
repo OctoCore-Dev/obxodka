@@ -109,6 +109,7 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" Version="1.5.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" Version="116.1.0.17" />
     <ProguardConfiguration Include="Platforms\Android\proguard.cfg" />
   </ItemGroup>
 

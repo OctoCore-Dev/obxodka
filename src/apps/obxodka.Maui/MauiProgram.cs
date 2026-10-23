@@ -81,6 +81,7 @@ internal static partial class MauiProgram
             builder.Services.AddSingleton<IVpnService, WindowsVpnService>();
             builder.Services.AddSingleton<IAppManager, AppManager>();
             builder.Services.AddSingleton<IAppUpdaterService, WindowsAppUpdaterService>();
+            builder.Services.AddSingleton<Services.IQrScannerService, Services.DummyQrScannerService>();
         }
 #elif ANDROID
         if (OperatingSystem.IsAndroidVersionAtLeast(29))
@@ -163,6 +164,7 @@ internal static partial class MauiProgram
         _ = services.AddSingleton<IVpnService>(_ => Platforms.Android.AndroidVpnService.Instance);
         _ = services.AddSingleton<IAppManager, Platforms.Android.AppManager>();
         _ = services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();
+        _ = services.AddSingleton<Services.IQrScannerService, Platforms.Android.Services.AndroidQrScannerService>();
     }
 #endif
 

@@ -96,6 +96,15 @@
                                 </Grid>
                             </Border>
 
+                            <Button
+                                x:Name="ScanQrCodeButton"
+                                Margin="0,4,0,0"
+                                Clicked="OnScanQrCodeClickedAsync"
+                                FontSize="12"
+                                HeightRequest="36"
+                                IsVisible="{OnPlatform Android=True, Default=False}"
+                                Style="{StaticResource BtnGhost}"
+                                Text="Сканировать QR-код с сайта" />
                         </VerticalStackLayout>
 
                         <VerticalStackLayout

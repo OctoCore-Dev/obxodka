@@ -26,8 +26,34 @@ public sealed partial class AuthView : ContentView
         AppLogoImage.Source = isHalloween ? "app_logo_halloween.png" : "app_logo.png";
     }
 
-    public Task PlayEntranceAnimationAsync() =>
-        UIAnimations.PlayEntranceFadeScaleAsync(FormContainer);
+    public async Task PlayEntranceAnimationAsync()
+    {
+        await UIAnimations.PlayEntranceFadeScaleAsync(FormContainer);
+        _ = CheckClipboardForLoginAsync();
+    }
+
+    public async Task CheckClipboardForLoginAsync()
+    {
+        if (!OperatingSystem.IsAndroid() || _isVerifying)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!Clipboard.Default.HasText)
+            {
+                return;
+            }
+
+            var clip = (await Clipboard.Default.GetTextAsync())?.Trim();
+            if (!string.IsNullOrWhiteSpace(clip) && App.TryParseDeepLinkLogin(clip, out var email, out var code))
+            {
+                await HandleDeepLinkLoginAsync(email, code);
+            }
+        }
+        catch { }
+    }
 
     public void UpdateCardOpacity()
     {
@@ -73,6 +99,45 @@ public sealed partial class AuthView : ContentView
 
         CodeEntry.Text = code.Trim();
         await VerifyCodeInternalAsync();
+    }
+
+    private async void OnScanQrCodeClickedAsync(object? sender, EventArgs e)
+    {
+        if (!OperatingSystem.IsAndroid() || _isVerifying)
+        {
+            return;
+        }
+
+        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
+
+        try
+        {
+            var qrScanner = IPlatformApplication.Current?.Services?.GetService<IQrScannerService>();
+            if (qrScanner == null || !qrScanner.IsSupported)
+            {
+                return;
+            }
+
+            var scannedData = await qrScanner.ScanQrCodeAsync();
+            if (string.IsNullOrWhiteSpace(scannedData))
+            {
+                return;
+            }
+
+            if (App.TryParseDeepLinkLogin(scannedData, out var email, out var code))
+            {
+                await HandleDeepLinkLoginAsync(email, code);
+            }
+            else
+            {
+                await ShowLoginErrorAsync("QR-код не содержит данных авторизации Обходка VPN.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[QR SCAN ERROR] {ex.Message}");
+            await ShowLoginErrorAsync("Не удалось отсканировать QR-код.");
+        }
     }
 
     private async void OnPasteCodeClickedAsync(object? sender, EventArgs e)
