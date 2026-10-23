@@ -34,7 +34,7 @@ public static class SmartMtuEngine
                 return;
             }
 
-            var maxMss = (ushort)Math.Clamp(clientMtu - 40, 536, 1460);
+            var maxMss = (ushort)Math.Clamp(clientMtu - 140, 536, 1360);
             if (TryPatchTcpOptionsMss(pkt.Slice(ihl + 20, tcpHeaderLen - 20), maxMss))
             {
                 RecalculateIpv4TcpChecksum(pkt, ihl);
@@ -53,7 +53,7 @@ public static class SmartMtuEngine
                 return;
             }
 
-            var maxMss = (ushort)Math.Clamp(clientMtu - 60, 1220, 1440);
+            var maxMss = (ushort)Math.Clamp(clientMtu - 160, 536, 1340);
             if (TryPatchTcpOptionsMss(pkt.Slice(60, tcpHeaderLen - 20), maxMss))
             {
                 RecalculateIpv6TcpChecksum(pkt);

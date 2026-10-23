@@ -183,7 +183,7 @@ public sealed class SmartMtuEngineTests
         SmartMtuEngine.ClampTcpMss(pkt.AsSpan(0, 60), 1280);
 
         var clampedMss = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(42, 2));
-        Assert.Equal(1240, clampedMss);
+        Assert.Equal(1140, clampedMss);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public sealed class SmartMtuEngineTests
         SmartMtuEngine.ClampTcpMss(pkt.AsSpan(0, 60), 1400);
 
         var clampedMss = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(42, 2));
-        Assert.Equal(1360, clampedMss);
+        Assert.Equal(1260, clampedMss);
     }
 
     [Fact]
@@ -232,6 +232,6 @@ public sealed class SmartMtuEngineTests
         SmartMtuEngine.ClampTcpMss(pkt.AsSpan(0, 80), 1280);
 
         var clampedMss = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(62, 2));
-        Assert.Equal(1220, clampedMss);
+        Assert.Equal(1120, clampedMss);
     }
 }
