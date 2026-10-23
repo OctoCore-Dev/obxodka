@@ -66,7 +66,7 @@ public sealed class RayInspector
     public void RecordDataRx(int length = 0)
     {
         Volatile.Write(ref _lastDataRxTicks, Stopwatch.GetTimestamp());
-        if (length is 0 or > 512)
+        if (length is 0 or >= 20)
         {
             Volatile.Write(ref _mtuStalls, 0);
         }
@@ -143,7 +143,7 @@ public sealed class RayInspector
         var txAge = (nowTs - tx) * 1000.0 / Stopwatch.Frequency;
         var rxAge = (nowTs - rx) * 1000.0 / Stopwatch.Frequency;
 
-        if (txAge < 1500 && rxAge > 1400)
+        if (txAge < 1500 && rxAge > 2000)
         {
             for (var candidate = 0; candidate < MaxInspectorRays; candidate++)
             {
