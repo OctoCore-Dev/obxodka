@@ -22,15 +22,21 @@ public sealed partial class PaymentView : ContentView
     public PaymentView()
     {
         InitializeComponent();
-#if WINDOWS
+#if ANDROID
+        PaymentSubtitleLabel.Text = "Оплата через Google Play — часы не сгорают, когда VPN выключен";
+        Btn300.Text = "Купить за 300 ₽ (Google Play)";
+        Btn500.Text = "Купить за 500 ₽ (Google Play)";
+        Btn1000.Text = "Купить за 1000 ₽ (Google Play)";
+        CardConstructor.IsVisible = false;
+        PaymentInfoNoticeLabel.Text = "Покупки в Google Play активируются автоматически. Часы привязываются к вашему аккаунту Obxodka и доступны на всех ваших устройствах.";
+#else
         PaymentSubtitleLabel.Text = "Оплата через СБП и банковские карты (Lava.top) — часы не сгорают, когда VPN выключен";
         Btn300.Text = "Купить за 300 ₽ (СБП / Карта)";
         Btn500.Text = "Купить за 500 ₽ (СБП / Карта)";
         Btn1000.Text = "Купить за 1000 ₽ (СБП / Карта)";
         CardConstructor.IsVisible = true;
+        PaymentInfoNoticeLabel.Text = "При оплате картой РФ или через СБП межбанковская проверка может занимать от 2 до 15 минут (статус «Покупка обрабатывается» в банке). Время начисляется на баланс автоматически сразу после подтверждения платежной системой.";
         UpdateCalculatedHoursUI(300);
-#else
-        CardConstructor.IsVisible = false;
 #endif
     }
 
@@ -128,21 +134,28 @@ public sealed partial class PaymentView : ContentView
 
     private void SetCustomAmount(int amount, bool updateEntry, bool updateSlider)
     {
+        var clamped = Math.Clamp(amount, 50, 10000);
+        _selectedCustomAmount = clamped;
+
         _isUpdatingAmountControls = true;
         try
         {
-            var clamped = Math.Clamp(amount, 50, 10000);
-            _selectedCustomAmount = clamped;
-
             if (updateEntry)
             {
-                CustomAmountEntry.Text = clamped.ToString(CultureInfo.InvariantCulture);
+                var text = clamped.ToString(CultureInfo.InvariantCulture);
+                if (CustomAmountEntry.Text != text)
+                {
+                    CustomAmountEntry.Text = text;
+                }
             }
 
             if (updateSlider)
             {
                 var sliderVal = Math.Clamp(clamped, (int)CustomAmountSlider.Minimum, (int)CustomAmountSlider.Maximum);
-                CustomAmountSlider.Value = sliderVal;
+                if (Math.Abs(CustomAmountSlider.Value - sliderVal) > 0.01)
+                {
+                    CustomAmountSlider.Value = sliderVal;
+                }
             }
 
             UpdateCalculatedHoursUI(clamped);
@@ -199,7 +212,13 @@ public sealed partial class PaymentView : ContentView
         }
 
         var rounded = (int)(Math.Round(e.NewValue / 10.0) * 10);
-        SetCustomAmount(Math.Max(50, rounded), updateEntry: true, updateSlider: false);
+        rounded = Math.Clamp(rounded, 50, 10000);
+        if (rounded == _selectedCustomAmount)
+        {
+            return;
+        }
+
+        SetCustomAmount(rounded, updateEntry: true, updateSlider: false);
     }
 
     private async void OnBuy300ClickedAsync(object? sender, EventArgs e) =>
