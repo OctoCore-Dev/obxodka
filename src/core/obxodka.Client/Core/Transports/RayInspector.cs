@@ -169,7 +169,7 @@ public sealed class RayInspector
         }
 
         var txCount = Volatile.Read(ref _dataTxCount);
-        if (txCount < 20)
+        if (txCount < 6)
         {
             return false;
         }
@@ -182,7 +182,7 @@ public sealed class RayInspector
         }
 
         var silenceData = (nowTs - lastDataRx) * 1000.0 / Stopwatch.Frequency;
-        if (silenceData > 4000)
+        if (silenceData > 3500)
         {
             var stalls = Interlocked.Increment(ref _mtuStalls);
             return stalls >= 3;
@@ -204,6 +204,14 @@ public sealed class RayInspector
         else if (currentMtu > 1280)
         {
             newMtu = 1280;
+        }
+        else if (currentMtu > 1240)
+        {
+            newMtu = 1240;
+        }
+        else if (currentMtu > 1200)
+        {
+            newMtu = 1200;
         }
         else
         {

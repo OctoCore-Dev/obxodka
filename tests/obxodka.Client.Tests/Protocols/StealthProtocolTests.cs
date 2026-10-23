@@ -483,13 +483,21 @@ public sealed class StealthProtocolTests
         Assert.True(inspector.TryDownshiftMtu(mtu2, out var mtu3));
         Assert.Equal(1280, mtu3);
 
-        Assert.False(inspector.TryDownshiftMtu(mtu3, out var mtu4));
-        Assert.Equal(1280, mtu4);
+        Assert.True(inspector.TryDownshiftMtu(mtu3, out var mtu4));
+        Assert.Equal(1240, mtu4);
+
+        Assert.True(inspector.TryDownshiftMtu(mtu4, out var mtu5));
+        Assert.Equal(1200, mtu5);
+
+        Assert.False(inspector.TryDownshiftMtu(mtu5, out var mtu6));
+        Assert.Equal(1200, mtu6);
 
         var steps = inspector.GetDiagnosticSteps();
         Assert.Contains("1400 -> 1360", steps);
         Assert.Contains("1360 -> 1300", steps);
         Assert.Contains("1300 -> 1280", steps);
+        Assert.Contains("1280 -> 1240", steps);
+        Assert.Contains("1240 -> 1200", steps);
     }
 
     [Fact]

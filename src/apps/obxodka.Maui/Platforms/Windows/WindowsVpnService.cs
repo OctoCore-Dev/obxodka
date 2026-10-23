@@ -1,4 +1,4 @@
-﻿using obxodka.Core.Models;
+using obxodka.Core.Models;
 using Microsoft.Win32;
 using Uri = System.Uri;
 
@@ -771,7 +771,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (-not $adapter) {{ exit 1; }}
                 try {{ Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue }} catch {{ }}
                 try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop | Out-Null }} catch {{ }}
-                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 50 -NlMtuBytes {NetworkDefaults.CurrentMtu} -ErrorAction Stop | Out-Null }} catch {{ }}
+                try {{ Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -InterfaceMetric 50 -NlMtuBytes 1500 -ErrorAction Stop | Out-Null }} catch {{ }}
                 try {{ Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses '{NetworkDefaults.PrimaryDns}','{NetworkDefaults.SecondaryDns}' -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 try {{ Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }}
                 if ('{ipv6}' -ne '') {{ try {{ New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress '{ipv6}' -PrefixLength 64 -ErrorAction SilentlyContinue | Out-Null }} catch {{ }} }}

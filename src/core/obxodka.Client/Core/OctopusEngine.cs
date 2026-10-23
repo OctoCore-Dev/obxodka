@@ -469,18 +469,8 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             int optimalMtu;
             if (burstResults.Length > 0)
             {
-                var maxWireMtu = burstResults.Max();
-                var candidateMtu = maxWireMtu >= 1500 ? 1500 : Math.Clamp(maxWireMtu - 80, NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
-                var uplinkOk = await (_transport?.ProbeMtuAsync(candidateMtu, ct) ?? Task.FromResult(false)).ConfigureAwait(false);
-                if (uplinkOk)
-                {
-                    optimalMtu = candidateMtu;
-                    EmitStatus(VpnStatusMessages.MtuHoleFound(optimalMtu));
-                }
-                else
-                {
-                    optimalMtu = await EscalateMtuAsync(NetworkDefaults.DefaultMtu, ct).ConfigureAwait(false);
-                }
+                optimalMtu = Math.Clamp(burstResults.Max(), NetworkDefaults.MinMtu, NetworkDefaults.MaxMtu);
+                EmitStatus(VpnStatusMessages.MtuHoleFound(optimalMtu));
             }
             else
             {
@@ -498,68 +488,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             Volatile.Write(ref _isScanningMtu, 0);
         }
-    }
-
-    private async Task<int> EscalateMtuAsync(int initialMtu, CancellationToken ct)
-    {
-        var bestMtu = Math.Max(initialMtu, NetworkDefaults.MinMtu);
-        var steps = NetworkDefaults.MtuEscalationSteps.Where(s => s > bestMtu).OrderBy(s => s);
-        foreach (var candidate in steps)
-        {
-            if (ct.IsCancellationRequested || !IsConnected)
-            {
-                break;
-            }
-
-            var transportOk = await (_transport?.ProbeMtuAsync(candidate, ct) ?? Task.FromResult(false)).ConfigureAwait(false);
-            if (!transportOk)
-            {
-                break;
-            }
-
-            if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", candidate) is { } probe)
-            {
-                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                void OnStepPacket(byte[] pkt, int len)
-                {
-                    if (len == candidate && IsIcmpEchoReply(pkt, len))
-                    {
-                        _ = tcs.TrySetResult(true);
-                    }
-                }
-
-                OnProbePacketInspect += OnStepPacket;
-                try
-                {
-                    _ = SendPacketAsync(probe);
-                    var timeoutMs = Math.Clamp((int)(_smoothedPing > 0 ? _smoothedPing * 2.5 : 750), 350, 1500);
-                    var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
-                    if (completed != tcs.Task || !await tcs.Task.ConfigureAwait(false))
-                    {
-                        break;
-                    }
-                }
-                finally
-                {
-                    OnProbePacketInspect -= OnStepPacket;
-                }
-            }
-
-            bestMtu = candidate;
-            EmitStatus(VpnStatusMessages.MtuHoleFound(bestMtu));
-        }
-
-        return bestMtu;
-    }
-
-    private static bool IsIcmpEchoReply(byte[] pkt, int len)
-    {
-        if (len >= 28 && (pkt[0] >> 4) == 4 && pkt[9] == 1 && (pkt[0] & 0x0F) >= 5)
-        {
-            var ihl = (pkt[0] & 0x0F) * 4;
-            return len >= ihl + 8 && pkt[ihl] == 0;
-        }
-        return false;
     }
 
     private static byte[]? BuildIcmpProbePacket(string assignedIp, string targetIp = "100.64.0.1", int totalLen = 28)

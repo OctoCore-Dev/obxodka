@@ -214,4 +214,24 @@ public sealed class SmartMtuEngineTests
         var clampedMss = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(42, 2));
         Assert.Equal(1360, clampedMss);
     }
+
+    [Fact]
+    public void ClampTcpMssIpv6SynClampsToClientMtu()
+    {
+        var pkt = new byte[80];
+        pkt[0] = 0x60;
+        BinaryPrimitives.WriteUInt16BigEndian(pkt.AsSpan(4, 2), 40);
+        pkt[6] = 6;
+        pkt[40 + 13] = 0x02;
+        pkt[40 + 12] = 0xA0;
+
+        pkt[60] = 2;
+        pkt[61] = 4;
+        BinaryPrimitives.WriteUInt16BigEndian(pkt.AsSpan(62, 2), 1440);
+
+        SmartMtuEngine.ClampTcpMss(pkt.AsSpan(0, 80), 1280);
+
+        var clampedMss = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(62, 2));
+        Assert.Equal(1220, clampedMss);
+    }
 }

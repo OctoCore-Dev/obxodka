@@ -485,7 +485,7 @@ public sealed partial class OctopusVpnService : VpnService, IDisposable
                 _ = builder
                     .SetSession("Obxodka")
                     .AddAddress(ip, 32)
-                    .SetMtu(NetworkDefaults.CurrentMtu)
+                    .SetMtu(1500)
                     .SetBlocking(true)
                     .AddRoute("0.0.0.0", 0);
 

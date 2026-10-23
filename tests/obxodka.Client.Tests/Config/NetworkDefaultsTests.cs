@@ -1,4 +1,4 @@
-﻿namespace obxodka.Client.Tests.Config;
+namespace obxodka.Client.Tests.Config;
 
 [Trait("Category", "Unit")]
 public class NetworkDefaultsTests
@@ -6,7 +6,7 @@ public class NetworkDefaultsTests
     [Fact]
     public void NetworkDefaultsConstantsAreValid()
     {
-        Assert.Equal(1360, NetworkDefaults.DefaultMtu);
+        Assert.Equal(1280, NetworkDefaults.DefaultMtu);
         Assert.Equal(1200, NetworkDefaults.MinMtu);
         Assert.Equal(1500, NetworkDefaults.MaxMtu);
         Assert.Equal("1.1.1.1", NetworkDefaults.PrimaryDns);
