@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.PaymentView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -72,7 +72,7 @@
                             FontSize="12"
                             LineBreakMode="WordWrap"
                             Style="{StaticResource LabelMuted}"
-                            Text="Страница оплаты открыта в браузере. Баланс обновится автоматически сразу после платежа." />
+                            Text="Оплата передана на обработку в банк. Если в банковском приложении отображается статус «Покупка обрабатывается», время начислится автоматически после завершения клиринга (2–15 мин)." />
                         <Button
                             x:Name="BtnCheckPayment"
                             Grid.Row="0"
@@ -484,6 +484,33 @@
                             </Border>
                         </Grid>
                     </VerticalStackLayout>
+                </Border>
+                <Border
+                    Padding="16,12"
+                    BackgroundColor="{DynamicResource PrimaryDim}"
+                    Stroke="{DynamicResource BorderSubtle}"
+                    StrokeShape="RoundRectangle 12"
+                    StrokeThickness="1">
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="12">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Info24}"
+                            IconColor="{DynamicResource Accent}"
+                            IconSize="20"
+                            VerticalOptions="Start" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label
+                                FontFamily="{DynamicResource AppFontBold}"
+                                FontSize="12"
+                                Text="Информация о зачислении платежей"
+                                TextColor="{DynamicResource TextPrimary}" />
+                            <Label
+                                FontSize="11"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="При оплате картой РФ или через СБП межбанковская проверка может занимать от 2 до 15 минут (статус «Покупка обрабатывается» в банке). Время начисляется на баланс автоматически сразу после подтверждения платежной системой." />
+                        </VerticalStackLayout>
+                    </Grid>
                 </Border>
             </VerticalStackLayout>
         </ScrollView>

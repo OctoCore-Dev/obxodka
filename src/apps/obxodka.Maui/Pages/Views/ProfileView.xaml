@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.ProfileView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -171,48 +171,64 @@
                     Padding="20"
                     Style="{StaticResource NeoCard}"
                     VerticalOptions="Fill">
-                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="12">
-                        <Grid
-                            Grid.Column="0"
-                            ColumnDefinitions="Auto, Auto"
-                            ColumnSpacing="24"
-                            VerticalOptions="Center">
-                            <VerticalStackLayout Grid.Column="0" Spacing="2">
-                                <Label
-                                    FontSize="10"
-                                    Style="{StaticResource LabelMuted}"
-                                    Text="БАЛАНС" />
-                                <Label
-                                    x:Name="ProfileTokenLabel"
-                                    FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="18"
-                                    Text="0ч 00м"
-                                    TextColor="{DynamicResource Accent}" />
-                            </VerticalStackLayout>
-                            <VerticalStackLayout
-                                x:Name="SubscriptionContainer"
+                    <VerticalStackLayout Spacing="10">
+                        <Grid ColumnDefinitions="*, Auto" ColumnSpacing="12">
+                            <Grid
+                                Grid.Column="0"
+                                ColumnDefinitions="Auto, Auto"
+                                ColumnSpacing="24"
+                                VerticalOptions="Center">
+                                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                    <Label
+                                        FontSize="10"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="БАЛАНС" />
+                                    <Label
+                                        x:Name="ProfileTokenLabel"
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="18"
+                                        Text="0ч 00м"
+                                        TextColor="{DynamicResource Accent}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout
+                                    x:Name="SubscriptionContainer"
+                                    Grid.Column="1"
+                                    Spacing="2">
+                                    <Label
+                                        FontSize="10"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="ПОДПИСКА" />
+                                    <Label
+                                        x:Name="ProfileSubLabel"
+                                        FontAttributes="Bold"
+                                        FontSize="14"
+                                        Text="до 01.01.2026"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                            <Button
                                 Grid.Column="1"
-                                Spacing="2">
-                                <Label
-                                    FontSize="10"
-                                    Style="{StaticResource LabelMuted}"
-                                    Text="ПОДПИСКА" />
-                                <Label
-                                    x:Name="ProfileSubLabel"
-                                    FontAttributes="Bold"
-                                    FontSize="14"
-                                    Text="до 01.01.2026"
-                                    TextColor="{DynamicResource TextPrimary}" />
-                            </VerticalStackLayout>
+                                Clicked="OnBuyTokensClicked"
+                                HeightRequest="40"
+                                Text="Пополнить"
+                                VerticalOptions="Center"
+                                WidthRequest="110" />
                         </Grid>
-                        <Button
-                            Grid.Column="1"
-                            Clicked="OnBuyTokensClicked"
-                            HeightRequest="40"
-                            Text="Пополнить"
-                            VerticalOptions="Center"
-                            WidthRequest="110" />
-                    </Grid>
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" Margin="0,4,0,0">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Info16}"
+                                IconColor="{DynamicResource Primary}"
+                                IconSize="14"
+                                VerticalOptions="Center" />
+                            <Label
+                                Grid.Column="1"
+                                FontSize="11"
+                                LineBreakMode="WordWrap"
+                                Style="{StaticResource LabelMuted}"
+                                Text="После оплаты банковская обработка (СБП/карты) занимает 2-15 минут. Часы начисляются автоматически." />
+                        </Grid>
+                    </VerticalStackLayout>
                 </Border>
 
                 <Border
