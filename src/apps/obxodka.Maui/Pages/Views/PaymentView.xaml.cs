@@ -28,13 +28,14 @@ public sealed partial class PaymentView : ContentView
         Btn500.Text = "Купить за 500 ₽ (Google Play)";
         Btn1000.Text = "Купить за 1000 ₽ (Google Play)";
         CardConstructor.IsVisible = false;
-        PaymentInfoNoticeLabel.Text = "Покупки в Google Play активируются автоматически. Часы привязываются к вашему аккаунту Obxodka и доступны на всех ваших устройствах.";
+        PaymentInfoCard.IsVisible = false;
 #else
         PaymentSubtitleLabel.Text = "Оплата через СБП и банковские карты (Lava.top) — часы не сгорают, когда VPN выключен";
         Btn300.Text = "Купить за 300 ₽ (СБП / Карта)";
         Btn500.Text = "Купить за 500 ₽ (СБП / Карта)";
         Btn1000.Text = "Купить за 1000 ₽ (СБП / Карта)";
         CardConstructor.IsVisible = true;
+        PaymentInfoCard.IsVisible = true;
         PaymentInfoNoticeLabel.Text = "При оплате картой РФ или через СБП межбанковская проверка может занимать от 2 до 15 минут (статус «Покупка обрабатывается» в банке). Время начисляется на баланс автоматически сразу после подтверждения платежной системой.";
         UpdateCalculatedHoursUI(300);
 #endif

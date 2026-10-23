@@ -214,7 +214,12 @@
                                 VerticalOptions="Center"
                                 WidthRequest="110" />
                         </Grid>
-                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" Margin="0,4,0,0">
+                        <Grid
+                            x:Name="AcquiringNoticeRow"
+                            ColumnDefinitions="Auto, *"
+                            ColumnSpacing="8"
+                            IsVisible="{OnPlatform WinUI=True, Android=False, Default=False}"
+                            Margin="0,4,0,0">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Info16}"

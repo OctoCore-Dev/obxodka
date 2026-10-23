@@ -57,9 +57,6 @@ public sealed partial class SplitView : ContentView
         AndroidWarningBanner.IsVisible = false;
         IsSplitEditingAllowed = true;
         LoadWindowsSitesAndPresetsState();
-#elif ANDROID
-        SplitAppsList.HandlerChanged += OnSplitAppsListHandlerChanged;
-        Loaded += (_, _) => AttachScrollListener();
 #endif
     }
 
@@ -68,6 +65,7 @@ public sealed partial class SplitView : ContentView
         _parent = parent;
         _appManager = appManager;
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
+        UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
     }
 
     public void ForceLayoutWidth()
@@ -122,7 +120,20 @@ public sealed partial class SplitView : ContentView
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        {
+            MainContentGrid.ClearValue(WidthRequestProperty);
+            MainContentGrid.ClearValue(MaximumWidthRequestProperty);
+            SplitAppsList?.ClearValue(WidthRequestProperty);
+            SplitAppsList?.ClearValue(MaximumWidthRequestProperty);
+            SitesSplitScrollView?.ClearValue(WidthRequestProperty);
+            SitesSplitScrollView?.ClearValue(MaximumWidthRequestProperty);
+            HeaderContainer?.ClearValue(WidthRequestProperty);
+            HeaderContainer?.ClearValue(MaximumWidthRequestProperty);
+            return;
+        }
+
+        var safeWidth = Math.Min(targetWidth, 950);
         if (safeWidth <= 0)
         {
             return;
@@ -151,15 +162,12 @@ public sealed partial class SplitView : ContentView
     {
         RootLayout.SizeChanged -= OnRootLayoutSizeChanged;
         _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
-#if ANDROID
-        SplitAppsList.HandlerChanged -= OnSplitAppsListHandlerChanged;
-        DetachScrollListener();
-#endif
     }
 
     private void OnVpnStateChanged(AppVpnState s) =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            UpdateRestartWarningVisibility(s);
 #if WINDOWS
             IsSplitEditingAllowed = true;
             UpdateWindowsDynamicRouteCounter();
@@ -173,6 +181,7 @@ public sealed partial class SplitView : ContentView
 
     public async Task LoadSplitAppsAsync()
     {
+        UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();
 #endif
@@ -914,60 +923,6 @@ public sealed partial class SplitView : ContentView
         _ = HideSplitToastAsync();
     }
 
-#if ANDROID
-    private CardStackScrollHelper.CardStackRecyclerViewScrollListener? _scrollListener;
-    private AndroidX.RecyclerView.Widget.RecyclerView? _attachedRecyclerView;
-
-    private void OnSplitAppsListHandlerChanged(object? sender, EventArgs e) =>
-        AttachScrollListener();
-
-    private void AttachScrollListener()
-    {
-        if (SplitAppsList.Handler?.PlatformView is Android.Views.ViewGroup viewGroup)
-        {
-            var recyclerView = viewGroup as AndroidX.RecyclerView.Widget.RecyclerView
-                ?? FindRecyclerView(viewGroup);
-
-            if (recyclerView != null && recyclerView != _attachedRecyclerView)
-            {
-                DetachScrollListener();
-                _attachedRecyclerView = recyclerView;
-                _scrollListener = new CardStackScrollHelper.CardStackRecyclerViewScrollListener();
-                _attachedRecyclerView.AddOnScrollListener(_scrollListener);
-            }
-        }
-    }
-
-    private void DetachScrollListener()
-    {
-        if (_attachedRecyclerView != null && _scrollListener != null)
-        {
-            _attachedRecyclerView.RemoveOnScrollListener(_scrollListener);
-            _scrollListener.Dispose();
-            _scrollListener = null;
-            _attachedRecyclerView = null;
-        }
-    }
-
-    private static AndroidX.RecyclerView.Widget.RecyclerView? FindRecyclerView(Android.Views.ViewGroup parent)
-    {
-        for (var i = 0; i < parent.ChildCount; i++)
-        {
-            var child = parent.GetChildAt(i);
-            if (child is AndroidX.RecyclerView.Widget.RecyclerView rv)
-            {
-                return rv;
-            }
-            if (child is Android.Views.ViewGroup vg)
-            {
-                var nested = FindRecyclerView(vg);
-                if (nested != null)
-                {
-                    return nested;
-                }
-            }
-        }
-        return null;
-    }
-#endif
+    private void UpdateRestartWarningVisibility(AppVpnState s) =>
+        SplitRestartWarningCard.IsVisible = s == AppVpnState.Connected;
 }

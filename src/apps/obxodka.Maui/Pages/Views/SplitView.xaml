@@ -17,14 +17,14 @@
 
         <Grid
             x:Name="MainContentGrid"
-            HorizontalOptions="Start"
+            HorizontalOptions="{OnIdiom Desktop=Center, Default=Fill}"
+            VerticalOptions="Fill"
             RowDefinitions="Auto, *"
             RowSpacing="10">
 
             <Grid Grid.Row="1">
                 <CollectionView
                     x:Name="SplitAppsList"
-                    ItemSizingStrategy="MeasureFirstItem"
                     VerticalScrollBarVisibility="Never">
                     <CollectionView.Footer>
                         <ContentView HeightRequest="{OnIdiom Phone=120, Default=36}" />
@@ -553,6 +553,7 @@
 
                     <Border
                         x:Name="SplitRestartWarningCard"
+                        IsVisible="False"
                         Padding="12,8"
                         BackgroundColor="{DynamicResource BgElevated}"
                         Stroke="{DynamicResource Warning}"

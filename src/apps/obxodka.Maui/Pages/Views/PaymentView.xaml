@@ -486,8 +486,10 @@
                     </VerticalStackLayout>
                 </Border>
                 <Border
+                    x:Name="PaymentInfoCard"
                     Padding="16,12"
                     BackgroundColor="{DynamicResource PrimaryDim}"
+                    IsVisible="{OnPlatform WinUI=True, Android=False, Default=False}"
                     Stroke="{DynamicResource BorderSubtle}"
                     StrokeShape="RoundRectangle 12"
                     StrokeThickness="1">

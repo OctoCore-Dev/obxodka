@@ -61,10 +61,9 @@
                                               Default='16,10'}"
                             Style="{StaticResource NeoCard}"
                             VerticalOptions="Fill">
-                            <Grid ColumnDefinitions="Auto, *" VerticalOptions="Center">
+                            <Grid VerticalOptions="Center">
                                 <HorizontalStackLayout
-                                    Grid.Column="1"
-                                    HorizontalOptions="End"
+                                    HorizontalOptions="Center"
                                     Spacing="6"
                                     VerticalOptions="Center">
                                     <Border
