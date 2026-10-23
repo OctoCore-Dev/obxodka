@@ -1,4 +1,4 @@
-using obxodka.Core.Models;
+﻿using obxodka.Core.Models;
 using Microsoft.Win32;
 using Uri = System.Uri;
 
@@ -55,14 +55,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
     }
 
-    private void HandleMtuUpdated(int optimalMtu)
-    {
-        var adapter = _adapter;
-        if (adapter is not null)
-        {
-            _ = UpdateAdapterMtuAsync(adapter.Name, optimalMtu);
-        }
-    }
+    private void HandleMtuUpdated(int optimalMtu) =>
+        Shared.Logging.AppLogger.Log($"[SMART MTU] In-flight MSS clamping adjusted to {optimalMtu}B (Wintun adapter maintained at 1500B).");
 
     private static async Task CleanupStaleRoutesAsync()
     {
@@ -473,10 +467,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             if ((verified || curRx > 0) && curTx > 0)
                             {
                                 Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={NetworkDefaults.CurrentMtu})! Activating routes and elevating adapter priority.");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 if (hasValidIpv6)
                                 {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
@@ -484,10 +478,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             else if (curTx > 0)
                             {
                                 Shared.Logging.AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 if (hasValidIpv6)
                                 {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
@@ -746,7 +740,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active");
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2 validate=no");
@@ -756,7 +750,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                 if (!string.IsNullOrWhiteSpace(ipv6))
                 {
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={NetworkDefaults.CurrentMtu} store=active");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
                     Shared.Logging.AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out.Trim()}");
@@ -801,9 +795,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         try
         {
-            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={mtu} store=active").ConfigureAwait(false);
-            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={mtu} store=active").ConfigureAwait(false);
-            Shared.Logging.AppLogger.Log($"[MTU ADAPTER] Updated Wintun adapter '{adapterName}' MTU to {mtu}B");
+            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
+            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
+            Shared.Logging.AppLogger.Log($"[MTU ADAPTER] Maintaining Wintun adapter '{adapterName}' at 1500B (effective MSS MTU: {mtu}B)");
         }
         catch (Exception ex)
         {

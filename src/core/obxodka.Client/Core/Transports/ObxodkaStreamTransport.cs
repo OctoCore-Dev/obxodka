@@ -9,6 +9,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
     public event Action<byte[], int>? OnPacketReceived;
     public event Action<long>? OnPingUpdated;
     public event Action? OnConnectionDropped;
+    public event Action<int>? OnMtuUpdated;
     public static Action<Socket>? OnSocketCreated { get; set; }
 
     private readonly Channel<(byte[] buffer, int length)>[] _txChannels =
@@ -680,7 +681,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                         }
                         else if (command == ObxodkaFraming.CmdData)
                         {
-                            _inspector.RecordDataRx();
+                            _inspector.RecordDataRx(payloadLen);
                             if (payloadLen >= 20 && !_deduplicator.IsDuplicate(payloadSpan))
                             {
                                 var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
@@ -876,6 +877,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
                 {
                     NetworkDefaults.CurrentMtu = newMtu;
                     _ = SendMtuSyncAsync(newMtu);
+                    OnMtuUpdated?.Invoke(newMtu);
                     Shared.Logging.AppLogger.LogWarning($"[RAY-INSPECTOR] Adaptive MTU downshifted by inspector: {currentMtu} -> {newMtu}");
                 }
                 else
@@ -1218,7 +1220,7 @@ public sealed class ObxodkaStreamTransport(int serverPort = 443, string? configu
 
         try
         {
-            await Task.Delay(400, ct).ConfigureAwait(false);
+            await Task.Delay(1200, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

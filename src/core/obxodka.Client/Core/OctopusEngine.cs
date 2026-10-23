@@ -1,4 +1,4 @@
-namespace obxodka.Core;
+﻿namespace obxodka.Core;
 
 public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 {
@@ -286,6 +286,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             {
                 _ = Interlocked.Increment(ref _largeRxPackets);
             }
+            SmartMtuEngine.ClampTcpMss(pkt.AsSpan(0, len), NetworkDefaults.CurrentMtu);
             OnProbePacketInspect?.Invoke(pkt, len);
             var handler = OnPacketReceived;
             if (handler is not null)
@@ -299,6 +300,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         };
         transport.OnPingUpdated += ReportPing;
         transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
+        transport.OnMtuUpdated += mtu => OnMtuUpdated?.Invoke(mtu);
 
         var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
         AssignedIp = ip;
@@ -482,7 +484,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             }
             else
             {
-                optimalMtu = await EscalateMtuAsync(NetworkDefaults.CurrentMtu, ct).ConfigureAwait(false);
+                optimalMtu = NetworkDefaults.DefaultMtu;
             }
 
             NetworkDefaults.CurrentMtu = optimalMtu;
@@ -744,7 +746,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                         windowLargeTx = curLargeTx;
                         windowLargeRx = curLargeRx;
 
-                        if (NetworkDefaults.CurrentMtu > NetworkDefaults.DefaultMtu && Volatile.Read(ref _isScanningMtu) == 0)
+                        if (NetworkDefaults.CurrentMtu > NetworkDefaults.MinMtu && Volatile.Read(ref _isScanningMtu) == 0)
                         {
                             if (deltaLargeTx >= 10 && deltaLargeRx == 0)
                             {
@@ -752,11 +754,12 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
                                 if (mtuBlackholeWindows >= 2)
                                 {
                                     mtuBlackholeWindows = 0;
-                                    NetworkDefaults.CurrentMtu = NetworkDefaults.DefaultMtu;
-                                    _ = _transport?.SendMtuSyncAsync(NetworkDefaults.DefaultMtu);
-                                    OnMtuUpdated?.Invoke(NetworkDefaults.DefaultMtu);
-                                    Shared.Logging.AppLogger.LogWarning($"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, LargeRX=0). Stepped down to {NetworkDefaults.DefaultMtu}B and rescheduling scan.");
-                                    ScheduleSmartMtuScan(2000);
+                                    var fallbackMtu = NetworkDefaults.CurrentMtu > 1300 ? 1280 : NetworkDefaults.MinMtu;
+                                    NetworkDefaults.CurrentMtu = fallbackMtu;
+                                    _ = _transport?.SendMtuSyncAsync(fallbackMtu);
+                                    OnMtuUpdated?.Invoke(fallbackMtu);
+                                    Shared.Logging.AppLogger.LogWarning($"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, LargeRX=0). Stepped down to {fallbackMtu}B and rescheduling scan.");
+                                    ScheduleSmartMtuScan(4000);
                                 }
                             }
                             else if (deltaLargeRx > 0)
@@ -793,6 +796,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
         var poolBuf = ArrayPool<byte>.Shared.Rent(packet.Length);
         Buffer.BlockCopy(packet, 0, poolBuf, 0, packet.Length);
+        SmartMtuEngine.ClampTcpMss(poolBuf.AsSpan(0, packet.Length), NetworkDefaults.CurrentMtu);
         _ = Interlocked.Add(ref _totalBytesSent, packet.Length);
         if (packet.Length > NetworkDefaults.DefaultMtu)
         {
@@ -810,6 +814,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
             return;
         }
 
+        SmartMtuEngine.ClampTcpMss(inputBuf.AsSpan(0, length), NetworkDefaults.CurrentMtu);
         _ = Interlocked.Add(ref _totalBytesSent, length);
         if (length > NetworkDefaults.DefaultMtu)
         {

@@ -38,6 +38,7 @@ public sealed partial class PaymentView : ContentView
         PaymentInfoCard.IsVisible = true;
         PaymentInfoNoticeLabel.Text = "При оплате картой РФ или через СБП межбанковская проверка может занимать от 2 до 15 минут (статус «Покупка обрабатывается» в банке). Время начисляется на баланс автоматически сразу после подтверждения платежной системой.";
         UpdateCalculatedHoursUI(300);
+        HighlightPresetChip(300);
 #endif
     }
 
@@ -113,6 +114,10 @@ public sealed partial class PaymentView : ContentView
             300 => 350,
             500 => 750,
             1000 => 2200,
+            2000 => 4700,
+            5000 => 12000,
+            >= 5000 => (int)(amount * 2.4m),
+            >= 2000 => (int)(amount * 2.35m),
             >= 1000 => (int)(amount * 2.2m),
             >= 500 => (int)(amount * 1.5m),
             >= 300 => (int)(amount * 1.17m),
@@ -122,6 +127,8 @@ public sealed partial class PaymentView : ContentView
         var bonusHours = Math.Max(0, totalHours - amount);
         var badge = amount switch
         {
+            >= 5000 => "+140% БОНУС",
+            >= 2000 => "+135% БОНУС",
             >= 1000 => "+120% БОНУС",
             >= 500 => "+50% БОНУС",
             >= 300 => "+17% БОНУС",
@@ -160,6 +167,7 @@ public sealed partial class PaymentView : ContentView
             }
 
             UpdateCalculatedHoursUI(clamped);
+            HighlightPresetChip(clamped);
         }
         finally
         {
@@ -182,6 +190,38 @@ public sealed partial class PaymentView : ContentView
     private void OnPreset300Clicked(object? sender, EventArgs e) => SetCustomAmount(300, updateEntry: true, updateSlider: true);
     private void OnPreset500Clicked(object? sender, EventArgs e) => SetCustomAmount(500, updateEntry: true, updateSlider: true);
     private void OnPreset1000Clicked(object? sender, EventArgs e) => SetCustomAmount(1000, updateEntry: true, updateSlider: true);
+    private void OnPreset2000Clicked(object? sender, EventArgs e) => SetCustomAmount(2000, updateEntry: true, updateSlider: true);
+    private void OnPreset5000Clicked(object? sender, EventArgs e) => SetCustomAmount(5000, updateEntry: true, updateSlider: true);
+
+    private void HighlightPresetChip(int amount)
+    {
+        var bgElevated = (Application.Current?.Resources.TryGetValue("BgElevated", out var bge) == true && bge is Color bgec)
+            ? bgec
+            : Color.FromArgb("#1e1e2d");
+        var accentDim = (Application.Current?.Resources.TryGetValue("AccentDim", out var ad) == true && ad is Color adc)
+            ? adc
+            : Color.FromArgb("#2d2040");
+        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+            ? bsc
+            : Color.FromArgb("#33ffffff");
+        var accent = (Application.Current?.Resources.TryGetValue("Accent", out var ac) == true && ac is Color acc)
+            ? acc
+            : Color.FromArgb("#60cdff");
+
+        void UpdateChip(Button chip, bool isSelected)
+        {
+            chip.BackgroundColor = isSelected ? accentDim : bgElevated;
+            chip.BorderColor = isSelected ? accent : borderSubtle;
+        }
+
+        UpdateChip(ChipPreset99, amount == 99);
+        UpdateChip(ChipPreset250, amount is 249 or 250);
+        UpdateChip(ChipPreset300, amount == 300);
+        UpdateChip(ChipPreset500, amount == 500);
+        UpdateChip(ChipPreset1000, amount == 1000);
+        UpdateChip(ChipPreset2000, amount == 2000);
+        UpdateChip(ChipPreset5000, amount == 5000);
+    }
 
     private void OnCustomAmountTextChanged(object? sender, TextChangedEventArgs e)
     {
@@ -212,7 +252,14 @@ public sealed partial class PaymentView : ContentView
             return;
         }
 
-        var rounded = (int)(Math.Round(e.NewValue / 10.0) * 10);
+        var val = e.NewValue;
+        var step = val switch
+        {
+            >= 2000 => 100,
+            >= 1000 => 50,
+            _ => 10
+        };
+        var rounded = (int)(Math.Round(val / step) * step);
         rounded = Math.Clamp(rounded, 50, 10000);
         if (rounded == _selectedCustomAmount)
         {

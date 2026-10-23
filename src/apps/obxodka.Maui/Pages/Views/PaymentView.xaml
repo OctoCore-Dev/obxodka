@@ -41,6 +41,9 @@
                 HorizontalOptions="Center"
                 MaximumWidthRequest="{OnIdiom Desktop=920,
                                               Default=420}"
+                Padding="{OnIdiom Desktop='0,0,0,70',
+                                  Phone='0,0,0,100',
+                                  Default='0,0,0,40'}"
                 Spacing="16"
                 WidthRequest="{OnIdiom Desktop=900,
                                        Default=-1}">
@@ -314,7 +317,7 @@
                                 <Label
                                     FontSize="12"
                                     Style="{StaticResource LabelMuted}"
-                                    Text="От 50 ₽ до 10 000 ₽. Бонус до +120% часов при пополнении от 300 ₽" />
+                                    Text="От 50 ₽ до 10 000 ₽. Бонус до +140% часов при пополнении от 300 ₽" />
                             </VerticalStackLayout>
                             <Border
                                 Grid.Column="1"
@@ -333,62 +336,117 @@
                             </Border>
                         </Grid>
 
-                        <FlexLayout
-                            AlignItems="Center"
-                            Direction="Row"
-                            JustifyContent="Start"
-                            Wrap="Wrap">
-                            <Button
-                                Margin="0,0,8,8"
-                                Padding="12,0"
-                                BackgroundColor="{DynamicResource BgElevated}"
-                                Clicked="OnPreset99Clicked"
-                                CornerRadius="8"
-                                FontSize="12"
-                                HeightRequest="32"
-                                Text="99 ₽ (100ч)"
-                                TextColor="{DynamicResource TextPrimary}" />
-                            <Button
-                                Margin="0,0,8,8"
-                                Padding="12,0"
-                                BackgroundColor="{DynamicResource BgElevated}"
-                                Clicked="OnPreset250Clicked"
-                                CornerRadius="8"
-                                FontSize="12"
-                                HeightRequest="32"
-                                Text="250 ₽ (260ч)"
-                                TextColor="{DynamicResource TextPrimary}" />
-                            <Button
-                                Margin="0,0,8,8"
-                                Padding="12,0"
-                                BackgroundColor="{DynamicResource BgElevated}"
-                                Clicked="OnPreset300Clicked"
-                                CornerRadius="8"
-                                FontSize="12"
-                                HeightRequest="32"
-                                Text="300 ₽ (350ч)"
-                                TextColor="{DynamicResource TextPrimary}" />
-                            <Button
-                                Margin="0,0,8,8"
-                                Padding="12,0"
-                                BackgroundColor="{DynamicResource BgElevated}"
-                                Clicked="OnPreset500Clicked"
-                                CornerRadius="8"
-                                FontSize="12"
-                                HeightRequest="32"
-                                Text="500 ₽ (750ч)"
-                                TextColor="{DynamicResource Accent}" />
-                            <Button
-                                Margin="0,0,8,8"
-                                Padding="12,0"
-                                BackgroundColor="{DynamicResource BgElevated}"
-                                Clicked="OnPreset1000Clicked"
-                                CornerRadius="8"
-                                FontSize="12"
-                                HeightRequest="32"
-                                Text="1000 ₽ (2200ч)"
-                                TextColor="{DynamicResource Warning}" />
-                        </FlexLayout>
+                        <Grid RowDefinitions="Auto, Auto" RowSpacing="8">
+                            <Grid
+                                Grid.Row="0"
+                                ColumnDefinitions="*, *, *, *"
+                                ColumnSpacing="8">
+                                <Button
+                                    Grid.Column="0"
+                                    x:Name="ChipPreset99"
+                                    Padding="4,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset99Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="99 ₽ (100ч)"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Button
+                                    Grid.Column="1"
+                                    x:Name="ChipPreset250"
+                                    Padding="4,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset250Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="250 ₽ (260ч)"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Button
+                                    Grid.Column="2"
+                                    x:Name="ChipPreset300"
+                                    Padding="4,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset300Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="300 ₽ (350ч)"
+                                    TextColor="{DynamicResource TextPrimary}" />
+                                <Button
+                                    Grid.Column="3"
+                                    x:Name="ChipPreset500"
+                                    Padding="4,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset500Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="500 ₽ (750ч)"
+                                    TextColor="{DynamicResource Accent}" />
+                            </Grid>
+
+                            <Grid
+                                Grid.Row="1"
+                                ColumnDefinitions="*, *, *"
+                                ColumnSpacing="8">
+                                <Button
+                                    Grid.Column="0"
+                                    x:Name="ChipPreset1000"
+                                    Padding="6,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset1000Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="1000 ₽ (2200ч)"
+                                    TextColor="{DynamicResource Warning}" />
+                                <Button
+                                    Grid.Column="1"
+                                    x:Name="ChipPreset2000"
+                                    Padding="6,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset2000Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="2000 ₽ (4700ч)"
+                                    TextColor="{DynamicResource PrimaryBright}" />
+                                <Button
+                                    Grid.Column="2"
+                                    x:Name="ChipPreset5000"
+                                    Padding="6,0"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    BorderColor="{DynamicResource BorderSubtle}"
+                                    BorderWidth="1"
+                                    Clicked="OnPreset5000Clicked"
+                                    CornerRadius="8"
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="12"
+                                    HeightRequest="36"
+                                    Text="5000 ₽ (12 000ч)"
+                                    TextColor="{DynamicResource Accent}" />
+                            </Grid>
+                        </Grid>
 
                         <Grid
                             ColumnDefinitions="{OnIdiom Desktop='180, *, Auto',
@@ -436,7 +494,7 @@
                                 VerticalOptions="Center">
                                 <Slider
                                     x:Name="CustomAmountSlider"
-                                    Maximum="2000"
+                                    Maximum="10000"
                                     MaximumTrackColor="{DynamicResource BorderSubtle}"
                                     Minimum="50"
                                     MinimumTrackColor="{DynamicResource Accent}"

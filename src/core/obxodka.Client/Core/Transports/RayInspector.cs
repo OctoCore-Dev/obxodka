@@ -1,4 +1,4 @@
-namespace obxodka.Core.Transports;
+﻿namespace obxodka.Core.Transports;
 
 public sealed class RayInspector
 {
@@ -63,10 +63,13 @@ public sealed class RayInspector
 
     public void RecordDataTx() => Interlocked.Increment(ref _dataTxCount);
 
-    public void RecordDataRx()
+    public void RecordDataRx(int length = 0)
     {
         Volatile.Write(ref _lastDataRxTicks, Stopwatch.GetTimestamp());
-        Volatile.Write(ref _mtuStalls, 0);
+        if (length is 0 or > 512)
+        {
+            Volatile.Write(ref _mtuStalls, 0);
+        }
     }
 
     public void RecordPong(int ray, long sendTs, long nowTs)
