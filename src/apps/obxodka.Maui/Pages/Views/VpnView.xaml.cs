@@ -332,13 +332,14 @@ public sealed partial class VpnView : ContentView, IDisposable
     }
 
     private static string GetServerFlag(VpnServerDto server) =>
-        !string.IsNullOrWhiteSpace(server.Flag) ? server.Flag : "🌐";
+        !string.IsNullOrWhiteSpace(server.Flag) ? server.Flag : "";
 
     private static string GetServerProvider(VpnServerDto server) =>
         !string.IsNullOrWhiteSpace(server.Provider) ? server.Provider : "Vultr";
 
     private static string GetServerRole(VpnServerDto server) =>
-        string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase) ? "Main" : "Worker";
+        string.Equals(server.Role, "shield", StringComparison.OrdinalIgnoreCase) ? "Shield" :
+        (string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase) ? "Main" : "Worker");
 
     private static string GetStatusTextForState(AppVpnState state, string fallback)
     {
@@ -408,7 +409,7 @@ public sealed partial class VpnView : ContentView, IDisposable
                 return;
             }
 
-            var flagEmoji = _selectedServer != null ? GetServerFlag(_selectedServer) : "🌐";
+            var flagEmoji = _selectedServer != null ? GetServerFlag(_selectedServer) : "";
             var flagUrl = NetworkDefaults.GetFlagImageUrl(flagEmoji);
 
 #if WINDOWS
@@ -706,21 +707,23 @@ public sealed partial class VpnView : ContentView, IDisposable
                 providerBadge.Content = providerLabel;
                 badgeStack.Children.Add(providerBadge);
 
+                var isShieldRole = string.Equals(server.Role, "shield", StringComparison.OrdinalIgnoreCase);
                 var isMainRole = string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase);
+                var isHighlightRole = isShieldRole || isMainRole;
                 var roleBadge = new Border
                 {
                     Padding = new Thickness(5, 1),
                     StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
                     StrokeThickness = 0.6,
-                    BackgroundColor = isMainRole ? primaryDim : accentDim,
-                    Stroke = isMainRole ? primaryBright : accentColor
+                    BackgroundColor = isHighlightRole ? primaryDim : accentDim,
+                    Stroke = isHighlightRole ? primaryBright : accentColor
                 };
 
                 var roleLabel = new Label
                 {
                     Text = GetServerRole(server),
                     FontSize = 9,
-                    TextColor = isMainRole ? primaryBright : accentColor
+                    TextColor = isHighlightRole ? primaryBright : accentColor
                 };
                 roleLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
                 roleBadge.Content = roleLabel;

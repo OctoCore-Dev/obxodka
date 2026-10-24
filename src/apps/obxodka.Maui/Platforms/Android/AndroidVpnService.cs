@@ -98,7 +98,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupServer(_currentServerIp));
                         try
                         {
-                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort, targetSni: nextServer.Ip);
                             _ = OctopusVpnService.Instance?.EstablishTun();
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.IsConnected)
@@ -424,7 +424,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         var nodeRole = s.Role ?? "worker";
                         Shared.Logging.AppLogger.Log($"[ANDROID-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                         OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToServer(candidateIp, candidatePort));
-                        await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
+                        await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: s.Ip);
                         Shared.Logging.AppLogger.Log($"[ANDROID-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {OctopusEngine.Current.AssignedIp}");
 
                         var tunOk = OctopusVpnService.Instance?.EstablishTun() ?? false;

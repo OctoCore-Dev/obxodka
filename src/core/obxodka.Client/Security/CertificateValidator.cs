@@ -27,8 +27,8 @@ public static class CertificateValidator
                 return false;
             }
 
-            var expectedPin = !string.IsNullOrWhiteSpace(dynamicPinningHash)
-                ? dynamicPinningHash
+            var expectedPin = dynamicPinningHash is not null
+                ? (string.IsNullOrWhiteSpace(dynamicPinningHash) ? null : dynamicPinningHash)
                 : OctopusEngine.DynamicSslPublicKeyHash;
 
             var pubKey = cert2.GetPublicKey();

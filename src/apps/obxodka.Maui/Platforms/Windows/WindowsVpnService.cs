@@ -153,7 +153,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         {
                             await SwitchHostRouteAsync(oldIp, newIp);
                             OctopusEngine.Current.RegisterServerEndpoint(newIp);
-                            await OctopusEngine.Current.ReconnectAsync(newIp, newPort);
+                            await OctopusEngine.Current.ReconnectAsync(newIp, newPort, targetSni: nextServer.Ip);
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                             {
@@ -427,7 +427,7 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                             var nodeRole = s.Role ?? "worker";
                             Shared.Logging.AppLogger.Log($"[WINDOWS-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                             OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(candidateIp, candidatePort));
-                            await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort);
+                            await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: s.Ip);
 
                             _cts?.Cancel();
                             _cts?.Dispose();

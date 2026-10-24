@@ -17,6 +17,17 @@ public static class AppConfig
     public static readonly List<VpnServerDto> BootstrapServers =
     [
         new(
+            Ip: "obxodka.one",
+            Port: 443,
+            Location: "Швеция, Стокгольм (Cloudflare)",
+            IsOnline: true,
+            LoadPercent: 5,
+            CertHash: "",
+            Provider: "Cloudflare",
+            Flag: "SE",
+            Role: "shield"
+        ),
+        new(
             Ip: "70.34.201.253",
             Port: 443,
             Location: "Швеция, Стокгольм",
@@ -24,7 +35,7 @@ public static class AppConfig
             LoadPercent: 10,
             CertHash: "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
             Provider: "Vultr",
-            Flag: "🇸🇪",
+            Flag: "SE",
             Role: "main"
         ),
         new(
@@ -35,7 +46,7 @@ public static class AppConfig
             LoadPercent: 8,
             CertHash: "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
             Provider: "Vultr",
-            Flag: "🇵🇱",
+            Flag: "PL",
             Role: "worker"
         )
     ];

@@ -1,4 +1,4 @@
-﻿namespace obxodka.Core;
+namespace obxodka.Core;
 
 public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 {
@@ -44,8 +44,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public long TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
     public string ActiveProtocol { get; private set; } = "AUTO";
-    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
+    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
 
+    private string? _lastTargetSni;
     private long _watchdogArmedTicks;
     private CancellationTokenSource? _mtuScanCts;
     private int _isScanningMtu;
@@ -267,12 +268,33 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _ = configuredRays;
         ActiveRays = 2;
 
+        if (!string.IsNullOrWhiteSpace(targetSni))
+        {
+            _lastTargetSni = targetSni;
+        }
+        else if (!string.IsNullOrWhiteSpace(_lastTargetSni))
+        {
+            targetSni = _lastTargetSni;
+        }
+
+        var isWebSocketMode = serverIp.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+                              serverIp.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+                              (targetSni != null && targetSni.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase)) ||
+                              Preferences.Get("ForceWebSocket", false);
+
         var effectiveSni = !string.IsNullOrWhiteSpace(targetSni)
             ? targetSni
-            : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null);
+            : (isWebSocketMode ? "obxodka.one" : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null));
 
-        Shared.Logging.AppLogger.Log($"[OCTOPUS] Initializing transport to {serverIp}:{serverPort} with SNI '{effectiveSni ?? "none"}'");
-        var transport = new ObxodkaStreamTransport(serverPort, effectiveSni);
+        if (isWebSocketMode && (serverIp.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase) || (targetSni != null && targetSni.Contains("obxodka.one", StringComparison.OrdinalIgnoreCase))))
+        {
+            DynamicSslPublicKeyHash = null;
+        }
+
+        Shared.Logging.AppLogger.Log($"[OCTOPUS] Initializing transport (mode: {(isWebSocketMode ? "WebSocket" : "H2Stream")}) to {serverIp}:{serverPort} with SNI '{effectiveSni ?? "none"}'");
+        IVpnTransport transport = isWebSocketMode
+            ? new ObxodkaWebSocketTransport(serverPort, effectiveSni)
+            : new ObxodkaStreamTransport(serverPort, effectiveSni);
         if (_protectAction is not null)
         {
             transport.ProtectSockets(_protectAction);
@@ -312,7 +334,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public async Task ReconnectAsync(string serverIp, int serverPort, string? protocolOverride = null, string? targetSni = null)
     {
         await DisposeAsync();
-        await ConnectAsync(serverIp, serverPort, protocolOverride, targetSni);
+        await ConnectAsync(serverIp, serverPort, protocolOverride, targetSni ?? _lastTargetSni);
     }
 
     public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default)
