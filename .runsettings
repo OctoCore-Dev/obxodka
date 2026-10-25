@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+    <RunConfiguration>
+        <MaxCpuCount>0</MaxCpuCount>
+        <TargetPlatform>x64</TargetPlatform>
+        <ResultsDirectory>C:\BuildCache\TestResults</ResultsDirectory>
+        <TestSessionTimeout>300000</TestSessionTimeout>
+        <EnvironmentVariables>
+            <DOTNET_ENVIRONMENT>Testing</DOTNET_ENVIRONMENT>
+            <ASPNETCORE_ENVIRONMENT>Testing</ASPNETCORE_ENVIRONMENT>
+        </EnvironmentVariables>
+    </RunConfiguration>
+
+    <DataCollectionRunSettings>
+        <DataCollectors>
+            <DataCollector friendlyName="XPlat Code Coverage">
+                <Configuration>
+                    <Format>cobertura,opencover</Format>
+                    <Exclude>
+                        [*]*.Migrations.*,[*]*.Designer,[*]*.g.cs,[*]System.Runtime.CompilerServices.*,[*]*Tests*</Exclude>
+                    <ExcludeByAttribute>
+                        GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+                    <Include>
+                        [obxodka.*]*,[Core.AI.*]*,[AgentBrain.*]*,[PCDiagnosticTool.*]*,[OctoCoreWeb.*]*,[UniSentinel.*]*</Include>
+                    <SingleHit>false</SingleHit>
+                    <UseSourceLink>true</UseSourceLink>
+                </Configuration>
+            </DataCollector>
+        </DataCollectors>
+    </DataCollectionRunSettings>
+
+    <xUnit>
+        <ParallelizeTestCollections>true</ParallelizeTestCollections>
+        <MaxParallelThreads>0</MaxParallelThreads>
+        <PreEnumerateTheories>true</PreEnumerateTheories>
+    </xUnit>
+</RunSettings>

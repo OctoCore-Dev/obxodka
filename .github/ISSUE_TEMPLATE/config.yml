@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Поддержка и обратная связь
+    url: https://github.com/OctoCore-Dev/obxodka/discussions
+    about: Связаться с разработчиками через GitHub Discussions
+  - name: 🌐 Официальные релизы
+    url: https://github.com/OctoCore-Dev/obxodka/releases
+    about: Личный кабинет и новости сервиса Obxodka

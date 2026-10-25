@@ -1,0 +1,37 @@
+name: 💡 Предложение функции (Feature Request)
+description: Предложить новую идею, протокол или улучшение для Obxodka
+title: "[FEATURE]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Есть классная идея для **Obxodka**? Расскажите нам о ней!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Связано ли предложение с какой-то проблемой?
+      description: Чёткое описание проблемы, которую вы хотите решить (например, 'Мне неудобно делать X...').
+    validations:
+      required: false
+  - type: textarea
+    id: solution
+    attributes:
+      label: Предлагаемое решение
+      description: Опишите, как по вашему мнению должна работать эта функция.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Рассматриваемые альтернативы
+      description: Рассматривали ли вы какие-то альтернативные варианты или обходные пути?
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Дополнительный контекст
+      description: Добавьте любые ссылки, макеты, диаграммы или скриншоты.
+    validations:
+      required: false

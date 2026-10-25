@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.DeviceCardView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:obxodka.Converters"
+    xmlns:helpers="clr-namespace:obxodka.Helpers"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:models="clr-namespace:obxodka.Models;assembly=obxodka.Shared"
+    x:Name="ThisDeviceCard"
+    x:DataType="models:DeviceItem">
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <converters:DeviceIconConverter x:Key="DeviceIconConverter" />
+        </ResourceDictionary>
+    </ContentView.Resources>
+    <Border
+        x:Name="CardBorder"
+        Padding="24"
+        HeightRequest="{OnIdiom Desktop='220',
+                                Default='-1'}"
+        Style="{StaticResource NeoCard}">
+        <Grid>
+            <Border
+                x:Name="DeleteBtn"
+                helpers:UIAnimations.BounceOnClick="True"
+                BackgroundColor="{DynamicResource ErrorDim}"
+                HeightRequest="40"
+                HorizontalOptions="End"
+                Stroke="{DynamicResource Error}"
+                StrokeShape="RoundRectangle 6"
+                StrokeThickness="1"
+                VerticalOptions="Start"
+                WidthRequest="40"
+                ZIndex="2">
+                <mi:MauiIcon
+                    x:Name="DeleteIcon"
+                    HorizontalOptions="Center"
+                    Icon="{mi:Fluent Icon=Delete24}"
+                    IconColor="{DynamicResource Error}"
+                    IconSize="20"
+                    VerticalOptions="Center" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnRemoveDeviceClicked" />
+                </Border.GestureRecognizers>
+            </Border>
+
+            <VerticalStackLayout
+                HorizontalOptions="Center"
+                Spacing="14"
+                VerticalOptions="Center">
+
+                <Border
+                    x:Name="DeviceIconWrapper"
+                    BackgroundColor="{DynamicResource PrimaryDim}"
+                    HeightRequest="64"
+                    HorizontalOptions="Center"
+                    StrokeShape="RoundRectangle 32"
+                    StrokeThickness="0"
+                    WidthRequest="64">
+                    <mi:MauiIcon
+                        x:Name="DeviceIcon"
+                        HorizontalOptions="Center"
+                        Icon="{Binding Name, Converter={StaticResource DeviceIconConverter}}"
+                        IconColor="{DynamicResource Primary}"
+                        IconSize="32"
+                        VerticalOptions="Center" />
+                </Border>
+
+                <VerticalStackLayout HorizontalOptions="Center" Spacing="4">
+                    <Label
+                        FontFamily="{DynamicResource AppFontBold}"
+                        FontSize="17"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        Text="{Binding Name}" />
+                    <Label
+                        FontSize="13"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        Style="{StaticResource LabelMuted}"
+                        Text="{Binding LastActiveText}" />
+                </VerticalStackLayout>
+
+                <Border
+                    x:Name="CurrentDeviceBadge"
+                    Padding="10,4"
+                    BackgroundColor="{DynamicResource SuccessDim}"
+                    HorizontalOptions="Center"
+                    IsVisible="False"
+                    Stroke="{DynamicResource Success}"
+                    StrokeShape="RoundRectangle 12"
+                    StrokeThickness="1">
+                    <HorizontalStackLayout
+                        HorizontalOptions="Center"
+                        Spacing="6"
+                        VerticalOptions="Center">
+                        <BoxView
+                            x:Name="CurrentDeviceDot"
+                            CornerRadius="3"
+                            HeightRequest="6"
+                            VerticalOptions="Center"
+                            WidthRequest="6"
+                            Color="{DynamicResource Success}" />
+                        <Label
+                            x:Name="CurrentDeviceLabel"
+                            FontFamily="{DynamicResource AppFontMedium}"
+                            FontSize="11"
+                            Text="Текущее устройство"
+                            TextColor="{DynamicResource Success}"
+                            VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </Grid>
+    </Border>
+</ContentView>

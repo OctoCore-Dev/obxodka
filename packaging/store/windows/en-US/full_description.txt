@@ -1,0 +1,36 @@
+Obxodka is a modern, high-performance VPN client built on C# (.NET), engineered to deliver privacy, connection resilience, and low-latency network performance.
+
+Enjoy low connection latency, zero packet loss, and a clean Fluent Design interface tailored for Windows 10 and Windows 11.
+
+
+TECHNICAL HIGHLIGHTS & ARCHITECTURE:
+
+1. Mutual TLS (mTLS) & AES-256-GCM Encryption
+Individual client X.509 certificates authenticate every transport-level connection (L4). All payload packets are secured with AES-256-GCM encryption. Private keys remain protected in your operating system certificate store.
+
+2. OBXODKA-STREAM Protocol & DPI Bypass
+Network traffic is encapsulated in optimized duplex HTTP/2 streams over TLS 1.3, masquerading as regular web browsing sessions. Micro-segmentation packet desynchronization (DpiBypassStream) and a dynamic trusted SNI pool ensure tunnel resilience against deep packet inspection (DPI) systems.
+
+3. Dual-Ray Hedging Architecture (Stream Redundancy)
+The Octopus networking engine parallelizes and hedges packets across independent streams (Rays), minimizing bufferbloat and gaming packet loss. If packets are dropped on one route, duplicate frames arrive instantaneously via the secondary ray.
+
+4. Smart Adaptive MTU Calibration
+Automated in-tunnel MTU probing continuously determines the optimal packet size for your network provider, preventing packet fragmentation black holes and maximizing throughput.
+
+
+KEY FEATURES:
+• Low latency: direct routing minimizes jitter and ping spikes for online services and games.
+• High throughput: asynchronous network pipeline with optimized ring buffers.
+• Public Wi-Fi protection: strong transport encryption secures data on open wireless networks.
+• One-click connection: streamlined controls with zero complex manual configuration.
+• Flexible access: pay only for the connection time you actually use without hidden recurring fees.
+
+
+PRICING & PAYMENT INFORMATION:
+The application includes optional paid access time purchases. Payments are processed via secure external billing outside the Microsoft Store.
+
+New users receive a complimentary 1-hour trial upon registration.
+
+
+SYSTEM REQUIREMENTS:
+Administrator privileges (UAC) are required to install the virtual network adapter (Wintun) and configure routing tables.

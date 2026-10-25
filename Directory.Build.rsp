@@ -1,0 +1,6 @@
+-nologo
+-terminalLogger:auto
+-maxcpucount
+-lowPriority:True
+-nodeReuse:false
+-clp:Summary;Verbosity=minimal;ForceConsoleColor;ShowEventId

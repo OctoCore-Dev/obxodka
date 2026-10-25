@@ -1,0 +1,241 @@
+namespace obxodka.Shared.Stealth;
+
+public static class ObxodkaFraming
+{
+    public const ushort TotalMask = 0x7E3A;
+    public const ushort PayloadMask = 0x4C1F;
+    public const byte CommandMask = 0xA5;
+
+    public const byte CmdData = 0x01;
+    public const byte CmdPing = 0x02;
+    public const byte CmdPong = 0x03;
+    public const byte CmdHandshake = 0x04;
+    public const byte CmdHandshakeResponse = 0x05;
+    public const byte CmdDisconnect = 0x06;
+    public const byte CmdMtuSync = 0x07;
+    public const byte CmdMtuBurstRequest = 0x08;
+    public const byte CmdMtuBurstPayload = 0x09;
+    public const byte CmdChaff = 0x0A;
+
+    public const int HeaderSize = 6;
+    public const int MaxFrameSize = 65535;
+    public const int EarlyStageWindowBytes = 16384;
+
+    private static readonly byte[] t_noiseBuffer = GC.AllocateUninitializedArray<byte>(8192, pinned: true);
+    private static readonly byte[] t_baseMask = GC.AllocateUninitializedArray<byte>(MaxFrameSize + 1, pinned: true);
+
+    static ObxodkaFraming()
+    {
+        RandomNumberGenerator.Fill(t_noiseBuffer);
+        for (var i = 0; i < t_baseMask.Length; i++)
+        {
+            t_baseMask[i] = (byte)((i * 37) + ((i >> 3) ^ 0x9D));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint DeriveSessionKey(string? thumbprint, int ray, uint sessionSeed)
+    {
+        if (sessionSeed == 0 || string.IsNullOrWhiteSpace(thumbprint))
+        {
+            return 0u;
+        }
+
+        Span<byte> input = stackalloc byte[128];
+        var formatted = $"OBX-V7:{thumbprint.Trim().ToUpperInvariant()}:{ray}:{sessionSeed:X8}";
+        var written = Encoding.UTF8.GetBytes(formatted, input);
+        Span<byte> digest = stackalloc byte[32];
+        _ = SHA256.HashData(input[..written], digest);
+        var derived = BinaryPrimitives.ReadUInt32LittleEndian(digest);
+        return derived == 0 ? 0xA57E4C1Fu : derived;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void MaskPayload(Span<byte> payload, byte salt)
+    {
+        var len = payload.Length;
+        if (len <= 0)
+        {
+            return;
+        }
+
+        ref var dstRef = ref MemoryMarshal.GetReference(payload);
+        ref var maskRef = ref MemoryMarshal.GetArrayDataReference(t_baseMask);
+        var i = 0;
+
+        if (Vector256.IsHardwareAccelerated && len >= 32)
+        {
+            var vSalt = Vector256.Create(salt);
+            for (; i <= len - 32; i += 32)
+            {
+                var vBase = Vector256.LoadUnsafe(ref Unsafe.Add(ref maskRef, i));
+                var vData = Vector256.LoadUnsafe(ref Unsafe.Add(ref dstRef, i));
+                (vData ^ (vBase + vSalt)).StoreUnsafe(ref Unsafe.Add(ref dstRef, i));
+            }
+        }
+
+        if (Vector128.IsHardwareAccelerated && i <= len - 16)
+        {
+            var vSalt128 = Vector128.Create(salt);
+            for (; i <= len - 16; i += 16)
+            {
+                var vBase = Vector128.LoadUnsafe(ref Unsafe.Add(ref maskRef, i));
+                var vData = Vector128.LoadUnsafe(ref Unsafe.Add(ref dstRef, i));
+                (vData ^ (vBase + vSalt128)).StoreUnsafe(ref Unsafe.Add(ref dstRef, i));
+            }
+        }
+
+        for (; i < len; i++)
+        {
+            Unsafe.Add(ref dstRef, i) ^= (byte)(Unsafe.Add(ref maskRef, i) + salt);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UnmaskPayload(Span<byte> payload, byte salt, uint sessionKey = 0) =>
+        MaskPayload(payload, (byte)(salt ^ (byte)sessionKey));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeHeader(ReadOnlySpan<byte> header, out int totalLen, out int payloadLen, out byte command, out byte salt, uint sessionKey = 0)
+    {
+        totalLen = 0;
+        payloadLen = 0;
+        command = 0;
+        salt = 0;
+
+        if (header.Length < HeaderSize)
+        {
+            return false;
+        }
+
+        salt = header[0];
+        var rawTotal = BinaryPrimitives.ReadUInt16BigEndian(header.Slice(1, 2));
+        var rawPayload = BinaryPrimitives.ReadUInt16BigEndian(header.Slice(3, 2));
+        var rawCmd = header[5];
+
+        var kTotal = (ushort)(sessionKey & 0xFFFF);
+        var kPayload = (ushort)(sessionKey >> 16);
+        var kCmd = (byte)((sessionKey >> 8) ^ (sessionKey >> 24));
+
+        var totalMask = (ushort)(TotalMask ^ kTotal ^ ((salt << 8) | salt));
+        var payloadMask = (ushort)(PayloadMask ^ kPayload ^ ((salt << 8) | (salt ^ 0x5C)));
+        var cmdMask = (byte)(CommandMask ^ kCmd ^ salt);
+
+        var decTotal = (ushort)(rawTotal ^ totalMask);
+        var decPayload = (ushort)(rawPayload ^ payloadMask);
+        var decCmd = (byte)(rawCmd ^ cmdMask);
+
+        if (decCmd is < CmdData or > CmdChaff || decTotal < HeaderSize || decPayload > decTotal - HeaderSize)
+        {
+            return false;
+        }
+
+        totalLen = decTotal;
+        payloadLen = decPayload;
+        command = decCmd;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeHeader(ReadOnlySpan<byte> header, out int totalLen, out int payloadLen, out byte command) =>
+        TryDecodeHeader(header, out totalLen, out payloadLen, out command, out _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CalculatePaddingLength(byte command, int payloadLength, int maxMtu = 1360, bool isEarlySession = false)
+    {
+        if (command == CmdChaff)
+        {
+            return Random.Shared.Next(180, Math.Min(Math.Max(220, maxMtu - HeaderSize), 640));
+        }
+
+        if (command is CmdPong or CmdMtuSync or CmdMtuBurstRequest or CmdMtuBurstPayload)
+        {
+            return 0;
+        }
+
+        if (command == CmdData)
+        {
+            if (payloadLength >= 1100)
+            {
+                return 0;
+            }
+
+            var available = maxMtu - (HeaderSize + payloadLength);
+            return available <= 8
+                ? 0
+                : isEarlySession
+                    ? (payloadLength <= 160
+                        ? Random.Shared.Next(Math.Min(available, 64), Math.Min(available, 280))
+                        : payloadLength <= 600
+                            ? Random.Shared.Next(Math.Min(available, 24), Math.Min(available, 140))
+                            : Random.Shared.Next(8, Math.Min(available, 48)))
+                    : (payloadLength <= 128
+                        ? Random.Shared.Next(8, Math.Min(available, 64))
+                        : payloadLength <= 600
+                            ? Random.Shared.Next(8, Math.Min(available, 40))
+                            : 0);
+        }
+
+        if (payloadLength <= 100)
+        {
+            return Random.Shared.Next(64, 220);
+        }
+
+        if (payloadLength <= 1000)
+        {
+            return Random.Shared.Next(24, 96);
+        }
+
+        var avail = maxMtu - (HeaderSize + payloadLength);
+        return avail <= 0 ? 0 : Random.Shared.Next(0, Math.Min(avail, 16));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CalculatePaddingLength(int payloadLength, int maxMtu = 1360) =>
+        CalculatePaddingLength(CmdData, payloadLength, maxMtu);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] Pack(byte command, ReadOnlySpan<byte> payload, out int totalLen, int maxMtu = 1360, uint sessionKey = 0)
+    {
+        var paddingLen = CalculatePaddingLength(command, payload.Length, maxMtu);
+        totalLen = HeaderSize + payload.Length + paddingLen;
+
+        var buffer = ArrayPool<byte>.Shared.Rent(totalLen);
+        WriteFrame(buffer.AsSpan(0, totalLen), command, payload, paddingLen, sessionKey);
+        return buffer;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteFrame(Span<byte> destination, byte command, ReadOnlySpan<byte> payload, int paddingLen, uint sessionKey = 0)
+    {
+        var salt = (byte)Random.Shared.Next(0, 256);
+        var totalLen = (ushort)(HeaderSize + payload.Length + paddingLen);
+        var payloadLen = (ushort)payload.Length;
+
+        var kTotal = (ushort)(sessionKey & 0xFFFF);
+        var kPayload = (ushort)(sessionKey >> 16);
+        var kCmd = (byte)((sessionKey >> 8) ^ (sessionKey >> 24));
+
+        destination[0] = salt;
+        var totalMask = (ushort)(TotalMask ^ kTotal ^ ((salt << 8) | salt));
+        var payloadMask = (ushort)(PayloadMask ^ kPayload ^ ((salt << 8) | (salt ^ 0x5C)));
+        var cmdMask = (byte)(CommandMask ^ kCmd ^ salt);
+
+        BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(1, 2), (ushort)(totalLen ^ totalMask));
+        BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(3, 2), (ushort)(payloadLen ^ payloadMask));
+        destination[5] = (byte)(command ^ cmdMask);
+
+        if (payloadLen > 0)
+        {
+            var payloadDest = destination.Slice(HeaderSize, payloadLen);
+            payload.CopyTo(payloadDest);
+            MaskPayload(payloadDest, (byte)(salt ^ (byte)sessionKey));
+        }
+
+        if (paddingLen > 0)
+        {
+            var noiseOffset = Random.Shared.Next(0, t_noiseBuffer.Length - paddingLen);
+            t_noiseBuffer.AsSpan(noiseOffset, paddingLen).CopyTo(destination.Slice(HeaderSize + payloadLen, paddingLen));
+        }
+    }
+}

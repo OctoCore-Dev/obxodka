@@ -1,0 +1,21 @@
+namespace obxodka.Core.Transports;
+
+public interface IVpnTransport : IDisposable, IAsyncDisposable
+{
+    public string ProtocolName { get; }
+    public bool IsConnected { get; }
+
+    public event Action<byte[], int>? OnPacketReceived;
+    public event Action<long>? OnPingUpdated;
+    public event Action? OnConnectionDropped;
+    public event Action<int>? OnMtuUpdated;
+
+    public Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct);
+    public void SendPacketFromPool(byte[] packet, int length);
+    public Task SendDisconnectSignalAsync();
+    public Task SendPingProbeAsync();
+    public Task<bool> ProbeMtuAsync(int size, CancellationToken ct) => Task.FromResult(true);
+    public Task<int[]> MeasureBurstMtuAsync(CancellationToken ct) => Task.FromResult(Array.Empty<int>());
+    public Task SendMtuSyncAsync(int mtu) => Task.CompletedTask;
+    public void ProtectSockets(Action<Socket> protectAction);
+}

@@ -1,0 +1,48 @@
+﻿<UserControl
+    x:Class="obxodka.Avalonia.Views.Sidebar"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="500"
+    d:DesignWidth="150"
+    mc:Ignorable="d">
+
+    <!--  Сайдбар как отдельная плашка (Внешняя рамка DarkGray)  -->
+    <Border
+        Margin="26"
+        Padding="4"
+        Background="DarkGray"
+        ClipToBounds="True"
+        CornerRadius="15">
+
+        <!--  Внутренний фон сайдбара (#17171A)  -->
+        <Border
+            Background="#17171A"
+            ClipToBounds="True"
+            CornerRadius="10">
+            <Grid Margin="12" RowDefinitions="Auto, *, Auto">
+
+                <!--  Верх: Логотип приложения  -->
+                <StackPanel
+                    Grid.Row="0"
+                    HorizontalAlignment="Center"
+                    Spacing="10">
+                    <Image
+                        Width="48"
+                        Height="48"
+                        Source="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png" />
+                </StackPanel>
+
+                <!--  Середина  -->
+                <StackPanel Grid.Row="1" Margin="0,20,0,0" />
+
+                <!--  Низ  -->
+                <StackPanel Grid.Row="2" />
+
+            </Grid>
+        </Border>
+
+    </Border>
+
+</UserControl>

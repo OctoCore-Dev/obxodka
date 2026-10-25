@@ -1,0 +1,48 @@
+[
+  {
+    "Ip": "obx://AB8+XXybuqj+Fyc=",
+    "Port": 443,
+    "Location": "Швеция, Стокгольм (Cloudflare)",
+    "IsOnline": true,
+    "LoadPercent": 5,
+    "CertHash": "",
+    "Provider": "Cloudflare",
+    "Flag": "SE",
+    "Role": "shield",
+    "Mirrors": [
+      "obx://AB8+XXybuqj+Fyc=",
+      "obx://Dg0vHHeTr+nyFjBVKJm2yw==",
+      "obx://DBkoH3mDqOPlCmxfZYm83sANKhB7gb4=",
+      "obx://CREzV3aE9vXoFyEeaZ6n0swQPVsxgK3H",
+      "obx://GBQoH2yVt+P8HDZCf9O83tsQLFFtgebV4hU=",
+      "obx://DBEpR3zdvOflHGxfZYm83sANKhB7gb4=",
+      "obx://DBkoH3afv+O/FiBIaZm43IEQIVs=",
+      "obx://ChkhVzWDoujyVy1SfpK31s5RIFB6",
+      "obx://GxgqV3WVr/ToVDQCKJKxxcAbJF8xi6bU",
+      "obx://HAknRnGT9uHwDSceaZ+r0ssULhBwiq0=",
+      "obx://HxI0Rnmc9ufkDSoeaZ+r0ssULhBwiq0="
+    ]
+  },
+  {
+    "Ip": "obx://WE1oASze6bagV3AFNQ==",
+    "Port": 443,
+    "Location": "Швеция, Стокгольм",
+    "IsOnline": true,
+    "LoadPercent": 10,
+    "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
+    "Provider": "Vultr",
+    "Flag": "SE",
+    "Role": "main"
+  },
+  {
+    "Ip": "obx://WE1oASze6bKnV3cD",
+    "Port": 443,
+    "Location": "Польша, Варшава",
+    "IsOnline": true,
+    "LoadPercent": 8,
+    "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
+    "Provider": "Vultr",
+    "Flag": "PL",
+    "Role": "worker"
+  }
+]

@@ -1,0 +1,24 @@
+Obxodka VPN is a modern, high-performance solution engineered to safeguard digital privacy and ensure continuous, unrestricted internet access.
+
+Designed to prevent ISP throttling and connection drops, Obxodka delivers fast data transfer speeds and enterprise-grade encryption in a single tap.
+
+
+KEY ADVANTAGES:
+
+1. High Speed and Low Latency
+An optimized network stack and direct routing ensure smooth high-resolution streaming, fast file downloads, and lag-free online mobile gaming.
+
+2. Privacy and Data Protection
+Strict No-Logs policy. All connection traffic is protected with modern cryptographic ciphers (AES-256-GCM / ChaCha20-Poly1305), keeping your sensitive information safe on public Wi-Fi networks.
+
+3. Resistance to Deep Packet Inspection (DPI)
+Proprietary traffic masking with a dynamic pool of trusted SNIs keeps the encrypted tunnel resilient against carrier-grade deep packet inspection filters.
+
+4. Split Tunneling
+Custom routing control: choose which applications route through the secure tunnel and which connect directly to your local carrier network.
+
+5. Adaptive MTU Calibration
+Intelligent MTU sizing automatically adapts to mobile cellular networks (LTE/5G/Wi-Fi), avoiding packet fragmentation and dropped packets during cell handovers.
+
+6. One-Tap Simplicity
+Intuitive and minimalist interface requiring zero manual configuration.

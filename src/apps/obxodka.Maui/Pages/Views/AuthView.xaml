@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Views.AuthView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
+    <Grid>
+        <VerticalStackLayout
+            x:Name="ContentLayout"
+            Padding="{OnIdiom Phone='24,48',
+                              Desktop='0,40'}"
+            HorizontalOptions="Center"
+            Spacing="0"
+            VerticalOptions="Center">
+
+            <VerticalStackLayout
+                x:Name="AppIconLeft"
+                Margin="0,0,0,28"
+                HorizontalOptions="Center"
+                Spacing="10">
+                <Image
+                    x:Name="AppLogoImage"
+                    HeightRequest="90"
+                    HorizontalOptions="Center"
+                    Source="app_logo.png"
+                    VerticalOptions="Center"
+                    WidthRequest="90" />
+                <Label
+                    x:Name="TitleLabelLogin"
+                    CharacterSpacing="2.5"
+                    FontFamily="{DynamicResource AppFontBold}"
+                    FontSize="28"
+                    HorizontalOptions="Center"
+                    Text="ОБХОДКА VPN" />
+            </VerticalStackLayout>
+
+            <Border
+                x:Name="FormContainer"
+                Padding="28,24"
+                HorizontalOptions="Center"
+                Style="{StaticResource NeoCard}"
+                WidthRequest="{OnIdiom Phone=340,
+                                       Default=400}">
+
+                <VerticalStackLayout Spacing="0">
+
+                    <Label
+                        x:Name="AuthErrorLabel"
+                        Margin="0,0,0,12"
+                        AutomationId="AuthErrorLabel"
+                        IsVisible="False"
+                        Opacity="0"
+                        Style="{StaticResource LabelError}"
+                        TranslationY="-8" />
+
+                    <Grid>
+                        <VerticalStackLayout x:Name="EmailInputView" Spacing="14">
+                            <Label
+                                Margin="0,0,0,10"
+                                HorizontalOptions="Center"
+                                HorizontalTextAlignment="Center"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Быстрый вход и регистрация без паролей. Один клик — и вы в безопасности." />
+
+                            <Border Style="{StaticResource NeoInput}">
+                                <Entry
+                                    x:Name="EmailEntry"
+                                    AutomationId="AuthEmailInput"
+                                    Keyboard="Email"
+                                    Placeholder="Ваш Email" />
+                            </Border>
+
+                            <Border
+                                Margin="0,4,0,0"
+                                HeightRequest="48"
+                                Style="{StaticResource NeoBtnPrimary}">
+                                <Grid>
+                                    <Button
+                                        x:Name="GetCodeButton"
+                                        AutomationId="AuthGetCodeButton"
+                                        BackgroundColor="Transparent"
+                                        Clicked="OnGetCodeClickedAsync"
+                                        FontFamily="{DynamicResource AppFontMedium}"
+                                        FontSize="14"
+                                        Text="Получить код"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <ActivityIndicator
+                                        x:Name="GetCodeLoader"
+                                        HeightRequest="24"
+                                        HorizontalOptions="Center"
+                                        IsRunning="True"
+                                        IsVisible="False"
+                                        VerticalOptions="Center"
+                                        WidthRequest="24"
+                                        Color="{DynamicResource TextPrimary}" />
+                                </Grid>
+                            </Border>
+
+                            <Button
+                                x:Name="ScanQrCodeButton"
+                                Margin="0,4,0,0"
+                                Clicked="OnScanQrCodeClickedAsync"
+                                FontSize="12"
+                                HeightRequest="36"
+                                IsVisible="{OnPlatform Android=True, Default=False}"
+                                Style="{StaticResource BtnGhost}"
+                                Text="Сканировать QR-код с сайта" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout
+                            x:Name="CodeInputView"
+                            IsVisible="False"
+                            Spacing="14">
+                            <Label
+                                Margin="0,0,0,10"
+                                HorizontalOptions="Center"
+                                HorizontalTextAlignment="Center"
+                                Style="{StaticResource LabelMuted}"
+                                Text="{OnPlatform Android='Введите 6-значный код из письма или QR-окна на сайте.', Default='Введите 6-значный код, отправленный на ваш Email.'}" />
+
+                            <Border Style="{StaticResource NeoInput}">
+                                <Entry
+                                    x:Name="CodeEntry"
+                                    AutomationId="AuthCodeInput"
+                                    HorizontalTextAlignment="Center"
+                                    Keyboard="Numeric"
+                                    MaxLength="6"
+                                    Placeholder="6-значный код"
+                                    TextChanged="OnCodeEntryTextChanged" />
+                            </Border>
+
+                            <Button
+                                x:Name="PasteCodeButton"
+                                Margin="0,-6,0,0"
+                                Clicked="OnPasteCodeClickedAsync"
+                                FontSize="12"
+                                HeightRequest="34"
+                                Style="{StaticResource BtnGhost}"
+                                Text="Вставить код из буфера" />
+
+                            <Label
+                                Margin="0,-4,0,0"
+                                FontSize="10"
+                                HorizontalOptions="Center"
+                                HorizontalTextAlignment="Center"
+                                Style="{StaticResource LabelMuted}"
+                                Text="Код отправлен на вашу почту, проверьте папку «Спам».&#x0a;Официальный аккаунт: noreply.obxodkavpn@gmail.com" />
+
+                            <Border
+                                Margin="0,4,0,0"
+                                HeightRequest="48"
+                                Style="{StaticResource NeoBtnPrimary}">
+                                <Grid>
+                                    <Button
+                                        x:Name="VerifyCodeButton"
+                                        AutomationId="AuthVerifyCodeButton"
+                                        BackgroundColor="Transparent"
+                                        Clicked="OnVerifyCodeClickedAsync"
+                                        FontFamily="{DynamicResource AppFontMedium}"
+                                        FontSize="14"
+                                        Text="Войти"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <ActivityIndicator
+                                        x:Name="VerifyCodeLoader"
+                                        HeightRequest="24"
+                                        HorizontalOptions="Center"
+                                        IsRunning="True"
+                                        IsVisible="False"
+                                        VerticalOptions="Center"
+                                        WidthRequest="24"
+                                        Color="{DynamicResource TextPrimary}" />
+                                </Grid>
+                            </Border>
+
+                            <Button
+                                Clicked="OnBackToEmailClickedAsync"
+                                Style="{StaticResource BtnGhost}"
+                                Text="Изменить Email" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </Grid>
+</ContentView>

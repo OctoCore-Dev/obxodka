@@ -1,0 +1,62 @@
+name: 🐛 Отчёт об ошибке (Bug Report)
+description: Создать отчёт о проблеме или сбое в работе Obxodka
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что помогаете улучшить **Obxodka**! Пожалуйста, заполните форму ниже.
+  - type: input
+    id: version
+    attributes:
+      label: Версия приложения
+      description: Укажите версию (например, v4.8.1)
+      placeholder: v4.8.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Операционная система
+      description: На каком устройстве произошла ошибка?
+      options:
+        - Windows 11
+        - Windows 10
+        - Android (Google Play)
+        - Android (APK / Sideload)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Описание ошибки
+      description: Чёткое и понятное описание проблемы.
+      placeholder: Опишите, что пошло не так...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Шаги для воспроизведения
+      description: Как повторить проблему?
+      value: |
+        1. Открыть приложение
+        2. Нажать '...'
+        3. Наблюдать ошибку
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+      description: Что должно было произойти?
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи или скриншоты
+      description: Приложите логи или перетащите скриншоты сюда.
+    validations:
+      required: false

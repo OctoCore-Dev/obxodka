@@ -1,0 +1,80 @@
+# =============================================================================
+# Master .gitattributes for C# / .NET / Cross-Platform (Windows + WSL)
+# =============================================================================
+
+# Default: Git automatically detects text vs binary
+* text=auto
+
+# C# and .NET Solution/Project files -> strictly CRLF
+*.cs text diff=csharp eol=crlf
+*.csx text diff=csharp eol=crlf
+*.xaml text eol=crlf
+*.axaml text eol=crlf
+*.csproj text eol=crlf
+*.fsproj text eol=crlf
+*.vbproj text eol=crlf
+*.props text eol=crlf
+*.targets text eol=crlf
+*.sln text eol=crlf
+*.slnx text eol=crlf
+*.config text eol=crlf
+*.editorconfig text eol=crlf
+
+# Web, JSON and Configs -> CRLF
+*.json text eol=crlf
+*.xml text eol=crlf
+*.md text eol=crlf
+*.txt text eol=crlf
+*.csv text eol=crlf
+*.resw text eol=crlf
+*.resx text eol=crlf
+
+# Windows Scripts -> CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+
+# Linux and Container files -> strictly LF
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.dockerfile text eol=lf
+Caddyfile* text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.globalconfig text eol=crlf
+
+# Binary Assets -> raw binary, never touch or convert
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.svg text
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.so binary
+*.dylib binary
+*.pfx binary
+*.crt binary
+*.key binary
+*.cer binary
+*.der binary
+*.zip binary
+*.7z binary
+*.tar binary
+*.gz binary
+*.tar.gz binary
+*.bin binary
+*.db binary
+*.sqlite binary
+*.wasm binary

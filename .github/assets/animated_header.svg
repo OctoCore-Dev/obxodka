@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 130" width="100%" height="130">
+  <defs>
+    <!-- Фон панели -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117" />
+      <stop offset="50%" stop-color="#161b22" />
+      <stop offset="100%" stop-color="#0a0c10" />
+    </linearGradient>
+
+    <!-- Анимированная неоновая рамка -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00e5ff">
+        <animate attributeName="stop-color" values="#00e5ff;#8b5cf6;#ff007f;#00ff88;#00e5ff" dur="8s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="50%" stop-color="#8b5cf6">
+        <animate attributeName="stop-color" values="#8b5cf6;#ff007f;#00ff88;#00e5ff;#8b5cf6" dur="8s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="100%" stop-color="#ff007f">
+        <animate attributeName="stop-color" values="#ff007f;#00ff88;#00e5ff;#8b5cf6;#ff007f" dur="8s" repeatCount="indefinite" />
+      </stop>
+    </linearGradient>
+
+    <!-- Градиент заголовка -->
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00e5ff" />
+      <stop offset="50%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+
+    <!-- Фирменный градиент Obxodka -->
+    <linearGradient id="octoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#FF2E93"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Фоновая карточка -->
+  <rect x="5" y="5" width="890" height="120" rx="16" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="2" />
+
+  <!-- Верхний индикатор LIVE STATUS -->
+  <rect x="25" y="20" width="168" height="24" rx="12" fill="#00e5ff" fill-opacity="0.15" stroke="#00e5ff" stroke-width="1" />
+  <circle cx="38" cy="32" r="4" fill="#00ff88">
+    <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite" />
+  </circle>
+  <text x="49" y="36" fill="#00e5ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="1">LIVE CORE ENGINE v6.0.3</text>
+
+  <!-- Заголовок экосистемы -->
+  <text x="25" y="72" fill="url(#textGrad)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="800" letter-spacing="0.5">
+    OBXODKA-STREAM STEALTH TUNNEL
+  </text>
+
+  <!-- Анимированные строки телеметрии (без устаревшего gRPC и без Unicode эмодзи) -->
+  <g font-family="'JetBrains Mono', 'Fira Code', Consolas, monospace" font-size="13" font-weight="500">
+    <!-- Строка 1: DPI / TSPU Bypass -->
+    <text x="25" y="100" fill="#f1f5f9">
+      <animate attributeName="opacity" values="1;1;0;0;0;0;0;0;1" dur="16s" repeatCount="indefinite" />
+      <tspan fill="#00e5ff">&gt; </tspan><tspan fill="#00e5ff">●</tspan> Next-Gen Stealth Tunneling • 100% DPI &amp; TSPU Resistant (TLS 1.3 Microsegmentation)
+    </text>
+
+    <!-- Строка 2: Dual-Ray Hedging -->
+    <text x="25" y="100" fill="#f1f5f9">
+      <animate attributeName="opacity" values="0;0;1;1;0;0;0;0;0" dur="16s" repeatCount="indefinite" />
+      <tspan fill="#00e5ff">&gt; </tspan><tspan fill="#a855f7">●</tspan> OBXODKA-STREAM Dual-Ray Hedging • Duplex HTTP/2 with Zero-Allocation Deduplication
+    </text>
+
+    <!-- Строка 3: Драйверы и производительность -->
+    <text x="25" y="100" fill="#f1f5f9">
+      <animate attributeName="opacity" values="0;0;0;0;1;1;0;0;0" dur="16s" repeatCount="indefinite" />
+      <tspan fill="#00e5ff">&gt; </tspan><tspan fill="#38bdf8">●</tspan> Ultra-Fast Wintun Layer 3 Driver &amp; Android VpnService • Sub-1ms Gaming Ping
+    </text>
+
+    <!-- Строка 4: Zero-Log и конфиденциальность -->
+    <text x="25" y="100" fill="#f1f5f9">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;1;1;0" dur="16s" repeatCount="indefinite" />
+      <tspan fill="#00e5ff">&gt; </tspan><tspan fill="#00ff88">●</tspan> Strict Zero-Log Architecture • Hardware L3 DNS Sinkhole &amp; mTLS Zero-Trust
+    </text>
+  </g>
+
+  <!-- Анимированные полосы эквалайзера трафика справа -->
+  <g transform="translate(805, 45)">
+    <rect x="0" y="0" width="5" height="40" rx="2" fill="#00e5ff">
+      <animate attributeName="height" values="10;38;15;30;10" dur="1.2s" repeatCount="indefinite" />
+      <animate attributeName="y" values="30;2;25;10;30" dur="1.2s" repeatCount="indefinite" />
+    </rect>
+    <rect x="10" y="0" width="5" height="40" rx="2" fill="#8b5cf6">
+      <animate attributeName="height" values="25;10;38;18;25" dur="0.9s" repeatCount="indefinite" />
+      <animate attributeName="y" values="15;30;2;22;15" dur="0.9s" repeatCount="indefinite" />
+    </rect>
+    <rect x="20" y="0" width="5" height="40" rx="2" fill="#ff007f">
+      <animate attributeName="height" values="35;20;10;38;35" dur="1.4s" repeatCount="indefinite" />
+      <animate attributeName="y" values="5;20;30;2;5" dur="1.4s" repeatCount="indefinite" />
+    </rect>
+    <rect x="30" y="0" width="5" height="40" rx="2" fill="#00ff88">
+      <animate attributeName="height" values="15;35;22;8;15" dur="1.1s" repeatCount="indefinite" />
+      <animate attributeName="y" values="25;5;18;32;25" dur="1.1s" repeatCount="indefinite" />
+    </rect>
+    <rect x="40" y="0" width="5" height="40" rx="2" fill="#38bdf8">
+      <animate attributeName="height" values="30;12;35;20;30" dur="1.3s" repeatCount="indefinite" />
+      <animate attributeName="y" values="10;28;5;20;10" dur="1.3s" repeatCount="indefinite" />
+    </rect>
+  </g>
+</svg>
