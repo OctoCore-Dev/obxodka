@@ -1,11 +1,14 @@
 #if ANDROID
+using System.Diagnostics.CodeAnalysis;
 using Android.Gms.Tasks;
+using Android.Runtime;
 using Xamarin.Google.MLKit.Vision.Barcode.Common;
 using Xamarin.Google.MLKit.Vision.CodeScanner;
 
 namespace obxodka.Platforms.Android.Services;
 
 [SupportedOSPlatform("android29.0")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
 public sealed class AndroidQrScannerService : IQrScannerService
 {
     public bool IsSupported => true;
@@ -50,11 +53,18 @@ public sealed class AndroidQrScannerService : IQrScannerService
         }
     }
 
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private sealed class SuccessListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnSuccessListener
     {
-        public void OnSuccess(Java.Lang.Object? result) => _ = result is Barcode barcode ? tcs.TrySetResult(barcode.RawValue) : tcs.TrySetResult(null);
+        public void OnSuccess(Java.Lang.Object? result)
+        {
+            var barcode = result as Barcode ?? result?.JavaCast<Barcode>();
+            var raw = barcode?.RawValue ?? barcode?.DisplayValue;
+            _ = tcs.TrySetResult(raw);
+        }
     }
 
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private sealed class FailureListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnFailureListener
     {
         public void OnFailure(Java.Lang.Exception? e)
@@ -72,6 +82,7 @@ public sealed class AndroidQrScannerService : IQrScannerService
         }
     }
 
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private sealed class CanceledListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnCanceledListener
     {
         public void OnCanceled() =>
