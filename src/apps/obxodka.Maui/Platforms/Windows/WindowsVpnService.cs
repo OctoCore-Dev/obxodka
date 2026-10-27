@@ -1528,7 +1528,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
     private static (string Gateway, int InterfaceIndex) GetDefaultGatewayInfo(string? targetIp = null)
     {
-        LogNetworkDiagnostics();
+        if (!string.IsNullOrEmpty(t_savedPhysicalGateway) &&
+            !t_savedPhysicalGateway.Contains(':') &&
+            t_savedPhysicalGateway != "0.0.0.0" &&
+            t_savedPhysicalIfIndex > 0)
+        {
+            return (t_savedPhysicalGateway, t_savedPhysicalIfIndex);
+        }
 
         var targetStr = !string.IsNullOrEmpty(targetIp) && IPAddress.TryParse(targetIp, out _) ? targetIp : "1.1.1.1";
         if (IPAddress.TryParse(targetStr, out var targetAddr))
@@ -1719,18 +1725,17 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             var physIfArg = physicalIfIndex > 0 ? $" if {physicalIfIndex}" : "";
             if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
             {
+                var srvRouteTasks = new List<Task>();
                 foreach (var serverIp in serverIps)
                 {
                     if (!string.IsNullOrEmpty(serverIp) && IPAddress.TryParse(serverIp, out _))
                     {
-                        _ = await RunCmdAsync("route", $"delete {serverIp} mask 255.255.255.255");
-                        var (exitCode, output) = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{physIfArg}");
-                        Debug.WriteLine($"[ROUTE] Add Server Route: {serverIp}, ExitCode {exitCode}, Output: {output}");
-                        if (exitCode != 0 && physicalIfIndex > 0)
-                        {
-                            _ = await RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1");
-                        }
+                        srvRouteTasks.Add(RunCmdAsync("route", $"add {serverIp} mask 255.255.255.255 {gw} metric 1{physIfArg}", timeoutMs: 1500));
                     }
+                }
+                if (srvRouteTasks.Count > 0)
+                {
+                    await Task.WhenAll(srvRouteTasks).ConfigureAwait(false);
                 }
             }
 
@@ -1745,14 +1750,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
                         tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
                     }
                 }
-                var r2Task = RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
-                var r3Task = RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}");
-                var results = await Task.WhenAll(r2Task, r3Task).ConfigureAwait(false);
+                var r2Task = RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}", timeoutMs: 1500);
+                var r3Task = RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}", timeoutMs: 1500);
+                var metricTask = RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
+                var results = await Task.WhenAll(r2Task, r3Task, metricTask).ConfigureAwait(false);
                 Debug.WriteLine($"[ROUTE] Add IPv4 Tun Routes: R2={results[0].exitCode}, R3={results[1].exitCode}");
-
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {NetworkDefaults.PrimaryDns} primary validate=no");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {NetworkDefaults.SecondaryDns} index=2 validate=no");
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=1");
                 _ = DnsFlushResolverCache();
 
                 if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
@@ -1765,18 +1767,18 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
 
                         if (SplitTunnelPolicy.BypassRemoteManagement)
                         {
-                            await ApplyRemoteManagementBypassRoutesAsync(gw, physIfArg);
+                            _ = Task.Run(() => ApplyRemoteManagementBypassRoutesAsync(gw, physIfArg));
                         }
                     }
                 }
 
                 if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
                 {
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no", timeoutMs: 1500);
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 add route fd00::/64 interface=\"{adapterName}\" metric=50", timeoutMs: 1500);
+                    var v6MetricTask = RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
+                    var v6R1Task = RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
+                    var v6R2Task = RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
+                    var v6R3Task = RunCmdAsync("netsh", $"interface ipv6 add route fd00::/64 interface=\"{adapterName}\" metric=50", timeoutMs: 1500);
+                    _ = await Task.WhenAll(v6MetricTask, v6R1Task, v6R2Task, v6R3Task).ConfigureAwait(false);
                 }
             }
             else

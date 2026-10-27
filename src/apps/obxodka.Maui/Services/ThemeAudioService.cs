@@ -8,17 +8,13 @@ public static partial class ThemeAudioService
     private static string? t_notificationPath;
     private static string? t_connectPath;
     private static string? t_disconnectPath;
-    private static string? t_ambientPath;
     private static string? t_defaultClickPath;
     private static double t_volume = 0.85;
-    private static bool t_ambientShouldPlay;
     private static long t_lastHoverTicks;
 
 #if WINDOWS
     private static Windows.Media.Playback.MediaPlayer?[]? t_sfxPool;
     private static int t_sfxPoolIndex;
-    private static Windows.Media.Playback.MediaPlayer? t_ambientPlayer;
-    private static string? t_loadedAmbientPath;
 #endif
 
     public static double Volume
@@ -36,6 +32,7 @@ public static partial class ThemeAudioService
         string? ambientPath,
         double volume = 0.85)
     {
+        _ = ambientPath;
         lock (t_sync)
         {
             t_clickPath = SanitizeClickPath(clickPath, connectPath);
@@ -43,11 +40,8 @@ public static partial class ThemeAudioService
             t_notificationPath = notificationPath;
             t_connectPath = connectPath;
             t_disconnectPath = disconnectPath;
-            t_ambientPath = ambientPath;
             t_volume = Math.Clamp(volume, 0.0, 1.0);
         }
-
-        RefreshAmbientPlayback();
     }
 
     public static void Reset()
@@ -59,11 +53,7 @@ public static partial class ThemeAudioService
             t_notificationPath = null;
             t_connectPath = null;
             t_disconnectPath = null;
-            t_ambientPath = null;
-            t_ambientShouldPlay = false;
         }
-
-        StopAmbientInternal();
     }
 
     public static void SetVolume(double volume)
@@ -92,17 +82,6 @@ public static partial class ThemeAudioService
                         {
                         }
                     }
-                }
-            }
-
-            if (t_ambientPlayer != null)
-            {
-                try
-                {
-                    t_ambientPlayer.Volume = Math.Clamp(clamped * 0.45, 0.0, 1.0);
-                }
-                catch
-                {
                 }
             }
 #endif
@@ -284,95 +263,7 @@ public static partial class ThemeAudioService
         PlaySound(t_disconnectPath, enabled, 1.0);
     }
 
-    public static void UpdateAmbientState(bool shouldPlay)
-    {
-        lock (t_sync)
-        {
-            t_ambientShouldPlay = shouldPlay;
-        }
-
-        RefreshAmbientPlayback();
-    }
-
-    private static void RefreshAmbientPlayback()
-    {
-        var soundsEnabled = ThemeManager.Instance?.SoundsEnabled ?? true;
-        var ambientEnabled = ThemeManager.Instance?.AmbientEnabled ?? true;
-        string? path;
-        bool shouldPlay;
-        double vol;
-
-        lock (t_sync)
-        {
-            path = t_ambientPath;
-            shouldPlay = t_ambientShouldPlay && soundsEnabled && ambientEnabled && !string.IsNullOrWhiteSpace(path) && File.Exists(path);
-            vol = Math.Clamp(t_volume * 0.45, 0.0, 1.0);
-        }
-
-        if (!shouldPlay || string.IsNullOrWhiteSpace(path))
-        {
-            StopAmbientInternal();
-            return;
-        }
-
-#if WINDOWS
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 10240))
-        {
-            return;
-        }
-
-        try
-        {
-            lock (t_sync)
-            {
-                t_ambientPlayer ??= new Windows.Media.Playback.MediaPlayer
-                {
-                    IsLoopingEnabled = true
-                };
-
-                var fullPath = Path.GetFullPath(path);
-                if (!string.Equals(t_loadedAmbientPath, fullPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    t_ambientPlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(fullPath));
-                    t_loadedAmbientPath = fullPath;
-                }
-
-                t_ambientPlayer.IsLoopingEnabled = true;
-                t_ambientPlayer.Volume = vol;
-                t_ambientPlayer.Play();
-            }
-        }
-        catch
-        {
-        }
-#endif
-    }
-
-    private static void StopAmbientInternal()
-    {
-#if WINDOWS
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 10240))
-        {
-            return;
-        }
-
-        try
-        {
-            lock (t_sync)
-            {
-                if (t_ambientPlayer != null)
-                {
-                    t_ambientPlayer.Pause();
-                    t_ambientPlayer.Source = null;
-                    t_loadedAmbientPath = null;
-                }
-            }
-        }
-        catch
-        {
-        }
-#endif
-    }
+    public static void UpdateAmbientState(bool shouldPlay) => _ = shouldPlay;
 
     public static void PlaySound(string? soundFilePath, bool isSoundEnabled = true, double volumeScale = 1.0)
     {

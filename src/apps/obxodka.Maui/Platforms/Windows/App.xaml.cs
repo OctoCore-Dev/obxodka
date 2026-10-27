@@ -104,6 +104,7 @@ public sealed partial class App : MauiWinUIApplication
     {
         try
         {
+#if DEBUG
             var logPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Obxodka",
@@ -112,6 +113,7 @@ public sealed partial class App : MauiWinUIApplication
             _ = Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
             var logEntry = $"[{DateTime.UtcNow:O}] {e.Exception}{Environment.NewLine}{Environment.NewLine}";
             File.AppendAllText(logPath, logEntry);
+#endif
             e.Handled = true;
         }
         catch { }

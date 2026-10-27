@@ -416,7 +416,7 @@
                                 <Label
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
-                                    Text="Громкость звуков и эмбиента"
+                                    Text="Громкость звуковых эффектов"
                                     TextColor="{DynamicResource TextSecondary}"
                                     VerticalOptions="Center" />
                                 <Label
@@ -443,7 +443,8 @@
                         <Grid
                             Margin="48,0,0,0"
                             ColumnDefinitions="*, Auto"
-                            ColumnSpacing="12">
+                            ColumnSpacing="12"
+                            IsVisible="False">
                             <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontMedium}"

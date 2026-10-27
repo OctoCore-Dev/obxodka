@@ -4,14 +4,15 @@ namespace obxodka.Shared.Logging;
 
 public static class AppLogger
 {
+    public static string LogFilePath { get; private set; } = string.Empty;
+    public static string HtmlLogFilePath { get; private set; } = string.Empty;
+    public static string BackupLogFilePath { get; private set; } = string.Empty;
+
+#if DEBUG
     private readonly record struct LogItem(DateTime Timestamp, string Message, bool IsError);
 
     private static readonly Channel<LogItem> t_channel =
         Channel.CreateUnbounded<LogItem>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
-
-    public static string LogFilePath { get; private set; } = string.Empty;
-    public static string HtmlLogFilePath { get; private set; } = string.Empty;
-    public static string BackupLogFilePath { get; private set; } = string.Empty;
 
     private static StreamWriter? t_txtWriter;
     private static StreamWriter? t_htmlWriter;
@@ -20,11 +21,52 @@ public static class AppLogger
     private static readonly Lock t_lock = new();
     private static readonly List<string> t_recentLogs = new(500);
 
+    private const long MaxLogFileBytes = 5 * 1024 * 1024;
+
     [ModuleInitializer]
     public static void AutoInitialize() => Initialize();
+#else
+    [ModuleInitializer]
+    public static void AutoInitialize() => CleanupLegacyReleaseLogs();
 
+    private static void CleanupLegacyReleaseLogs()
+    {
+        try
+        {
+            var localLogsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "logs");
+            if (Directory.Exists(localLogsDir))
+            {
+                Directory.Delete(localLogsDir, recursive: true);
+            }
+        }
+        catch { }
+
+        try
+        {
+            var baseDir = AppContext.BaseDirectory;
+            if (!string.IsNullOrWhiteSpace(baseDir))
+            {
+                var txtPath = Path.Combine(baseDir, "debug.txt");
+                if (File.Exists(txtPath))
+                {
+                    File.Delete(txtPath);
+                }
+
+                var htmlPath = Path.Combine(baseDir, "debug.html");
+                if (File.Exists(htmlPath))
+                {
+                    File.Delete(htmlPath);
+                }
+            }
+        }
+        catch { }
+    }
+#endif
+
+    [Conditional("DEBUG")]
     public static void Initialize()
     {
+#if DEBUG
         lock (t_lock)
         {
             if (t_isInitialized)
@@ -45,6 +87,22 @@ public static class AppLogger
                 Log($"[AppLogger] Backup log path: {BackupLogFilePath}");
             }
         }
+#endif
+    }
+
+#if DEBUG
+    private static FileMode GetBoundedFileMode(string path)
+    {
+        try
+        {
+            if (File.Exists(path) && new FileInfo(path).Length > MaxLogFileBytes)
+            {
+                return FileMode.Create;
+            }
+        }
+        catch { }
+
+        return FileMode.Append;
     }
 
     private static void SetupPaths()
@@ -57,12 +115,13 @@ public static class AppLogger
                 LogFilePath = Path.Combine(baseDir, "debug.txt");
                 HtmlLogFilePath = Path.Combine(baseDir, "debug.html");
 
-                var fsTxt = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-                t_txtWriter = new StreamWriter(fsTxt, Encoding.UTF8) { AutoFlush = true };
+                var fsTxt = new FileStream(LogFilePath, GetBoundedFileMode(LogFilePath), FileAccess.Write, FileShare.ReadWrite);
+                t_txtWriter = new StreamWriter(fsTxt, Encoding.UTF8) { AutoFlush = false };
 
-                var exists = File.Exists(HtmlLogFilePath);
-                var fsHtml = new FileStream(HtmlLogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-                t_htmlWriter = new StreamWriter(fsHtml, Encoding.UTF8) { AutoFlush = true };
+                var htmlMode = GetBoundedFileMode(HtmlLogFilePath);
+                var exists = htmlMode == FileMode.Append && File.Exists(HtmlLogFilePath);
+                var fsHtml = new FileStream(HtmlLogFilePath, htmlMode, FileAccess.Write, FileShare.ReadWrite);
+                t_htmlWriter = new StreamWriter(fsHtml, Encoding.UTF8) { AutoFlush = false };
                 if (!exists || fsHtml.Length == 0)
                 {
                     t_htmlWriter.WriteLine("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Obxodka Debug Log</title>");
@@ -94,8 +153,8 @@ public static class AppLogger
                 HtmlLogFilePath = Path.Combine(localAppData, "debug.html");
             }
 
-            var fsBackup = new FileStream(BackupLogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-            t_backupWriter = new StreamWriter(fsBackup, Encoding.UTF8) { AutoFlush = true };
+            var fsBackup = new FileStream(BackupLogFilePath, GetBoundedFileMode(BackupLogFilePath), FileAccess.Write, FileShare.ReadWrite);
+            t_backupWriter = new StreamWriter(fsBackup, Encoding.UTF8) { AutoFlush = false };
         }
         catch (Exception ex)
         {
@@ -119,9 +178,22 @@ public static class AppLogger
         var reader = t_channel.Reader;
         while (true)
         {
+            var wroteAny = false;
             while (reader.TryRead(out var item))
             {
                 WriteToOutputs(item);
+                wroteAny = true;
+            }
+
+            if (wroteAny)
+            {
+                try
+                {
+                    t_txtWriter?.Flush();
+                    t_htmlWriter?.Flush();
+                    t_backupWriter?.Flush();
+                }
+                catch { }
             }
 
             try
@@ -166,7 +238,6 @@ public static class AppLogger
             }
             else
             {
-#if DEBUG
                 var txtLine = $"[{ts}] {item.Message}";
                 t_txtWriter?.WriteLine(txtLine);
                 t_backupWriter?.WriteLine(txtLine);
@@ -176,24 +247,6 @@ public static class AppLogger
                     var htmlEncoded = WebUtility.HtmlEncode(item.Message);
                     t_htmlWriter.WriteLine($"<div class='entry info'><span class='ts'>[{ts}]</span>{htmlEncoded}</div>");
                 }
-#else
-                if (item.Message.StartsWith("[WARN]", StringComparison.OrdinalIgnoreCase) ||
-                    item.Message.StartsWith("[OBXODKA-ESTABLISHED]", StringComparison.OrdinalIgnoreCase) ||
-                    item.Message.StartsWith("[WINDOWS-VPN]", StringComparison.OrdinalIgnoreCase) ||
-                    item.Message.StartsWith("[ANDROID-VPN]", StringComparison.OrdinalIgnoreCase) ||
-                    item.Message.StartsWith("[CERT PINNING]", StringComparison.OrdinalIgnoreCase))
-                {
-                    var txtLine = $"[{ts}] {item.Message}";
-                    t_txtWriter?.WriteLine(txtLine);
-                    t_backupWriter?.WriteLine(txtLine);
-
-                    if (t_htmlWriter != null)
-                    {
-                        var htmlEncoded = WebUtility.HtmlEncode(item.Message);
-                        t_htmlWriter.WriteLine($"<div class='entry info'><span class='ts'>[{ts}]</span>{htmlEncoded}</div>");
-                    }
-                }
-#endif
             }
 
             lock (t_lock)
@@ -223,9 +276,11 @@ public static class AppLogger
         }
         catch { }
     }
+#endif
 
     public static string GetRecentLogs(int maxLines = 150)
     {
+#if DEBUG
         lock (t_lock)
         {
             if (t_recentLogs.Count == 0)
@@ -237,10 +292,16 @@ public static class AppLogger
             var count = t_recentLogs.Count - start;
             return string.Join(Environment.NewLine, t_recentLogs.Skip(start).Take(count));
         }
+#else
+        _ = maxLines;
+        return string.Empty;
+#endif
     }
 
+    [Conditional("DEBUG")]
     public static void FlushRecentLogsToFile()
     {
+#if DEBUG
         lock (t_lock)
         {
             try
@@ -261,10 +322,13 @@ public static class AppLogger
             }
             catch { }
         }
+#endif
     }
 
+    [Conditional("DEBUG")]
     public static void OpenLogFile()
     {
+#if DEBUG
         try
         {
             FlushRecentLogsToFile();
@@ -300,10 +364,13 @@ public static class AppLogger
         {
             LogError($"[AppLogger] Failed to open log file via shell: {ex.Message}");
         }
+#endif
     }
 
+    [Conditional("DEBUG")]
     public static void Log(string message)
     {
+#if DEBUG
         if (string.IsNullOrWhiteSpace(message))
         {
             return;
@@ -316,39 +383,46 @@ public static class AppLogger
                       message.Contains(" Ошибка:", StringComparison.OrdinalIgnoreCase);
 
         _ = t_channel.Writer.TryWrite(new LogItem(DateTime.Now, message, isError));
+#endif
     }
 
+    [Conditional("DEBUG")]
     public static void LogError(string message, Exception? ex = null)
     {
+#if DEBUG
         var fullMessage = ex != null
             ? $"{message} | Exception: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}"
             : message;
         _ = t_channel.Writer.TryWrite(new LogItem(DateTime.Now, fullMessage, IsError: true));
+#endif
     }
 
-    public static void LogWarning(string message) =>
+    [Conditional("DEBUG")]
+    public static void LogWarning(string message)
+    {
+#if DEBUG
         _ = t_channel.Writer.TryWrite(new LogItem(DateTime.Now, $"[WARN] {message}", IsError: false));
+#endif
+    }
 
+#if DEBUG
     private sealed class AppLoggerTraceListener : TraceListener
     {
         public override void Write(string? message)
         {
-#if DEBUG
             if (!string.IsNullOrEmpty(message))
             {
                 Log(message);
             }
-#endif
         }
 
         public override void WriteLine(string? message)
         {
-#if DEBUG
             if (!string.IsNullOrEmpty(message))
             {
                 Log(message);
             }
-#endif
         }
     }
+#endif
 }

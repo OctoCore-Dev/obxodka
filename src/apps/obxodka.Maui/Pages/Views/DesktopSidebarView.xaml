@@ -21,8 +21,8 @@
         <Grid RowDefinitions="Auto, *, Auto" RowSpacing="0">
             <Grid
                 Grid.Row="0"
-                Margin="10,0,10,32"
-                ColumnDefinitions="Auto, *"
+                Margin="0,0,0,32"
+                ColumnDefinitions="50, *"
                 VerticalOptions="Center">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnLogoTapped" />
@@ -33,13 +33,14 @@
                     Grid.Column="0"
                     Aspect="AspectFit"
                     HeightRequest="32"
+                    HorizontalOptions="Center"
                     Source="app_logo.png"
                     VerticalOptions="Center"
                     WidthRequest="32" />
                 <Label
                     x:Name="AppLogoText"
                     Grid.Column="1"
-                    Margin="8,0,0,0"
+                    Margin="4,0,0,0"
                     FontFamily="{DynamicResource AppFontBold}"
                     FontSize="24"
                     LineBreakMode="NoWrap"
@@ -56,10 +57,11 @@
                         <TapGestureRecognizer Tapped="OnNavVpnTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavVpnIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Shield24}"
                             IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
@@ -67,7 +69,7 @@
                         <Label
                             x:Name="LabelVpn"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -82,10 +84,11 @@
                         <TapGestureRecognizer Tapped="OnNavProfileTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavProfileIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Person24}"
                             IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
@@ -93,7 +96,7 @@
                         <Label
                             x:Name="LabelProfile"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -108,10 +111,11 @@
                         <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavConfigurationIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Settings24}"
                             IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
@@ -119,7 +123,7 @@
                         <Label
                             x:Name="LabelConfiguration"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -134,10 +138,11 @@
                         <TapGestureRecognizer Tapped="OnNavDevicesTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavDevicesIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=PhoneDesktop24}"
                             IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
@@ -145,7 +150,7 @@
                         <Label
                             x:Name="LabelDevices"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -160,10 +165,11 @@
                         <TapGestureRecognizer Tapped="OnNavSplitTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavSplitIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=AppsList24}"
                             IconColor="{DynamicResource TextMuted}"
                             IconSize="22"
@@ -171,7 +177,7 @@
                         <Label
                             x:Name="LabelSplit"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -191,17 +197,19 @@
                         <TapGestureRecognizer Tapped="OnNavBugTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavBugIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Bug24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="20" />
+                            IconSize="20"
+                            VerticalOptions="Center" />
                         <Label
                             x:Name="LabelBug"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -216,17 +224,19 @@
                         <TapGestureRecognizer Tapped="OnNavReviewsTapped" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="16,8" ColumnDefinitions="Auto, *">
+                    <Grid Padding="0,8" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="NavReviewsIcon"
                             Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Star24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="20" />
+                            IconSize="20"
+                            VerticalOptions="Center" />
                         <Label
                             x:Name="LabelReviews"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="14"
                             LineBreakMode="NoWrap"
@@ -245,25 +255,25 @@
 
                 <Border
                     x:Name="VpnStatusCard"
-                    Padding="16,8"
+                    Padding="0,8"
                     helpers:UIAnimations.AnimateEntrance="False"
                     BackgroundColor="Transparent"
                     Stroke="Transparent"
                     Style="{StaticResource NeoCard}">
-                    <Grid ColumnDefinitions="Auto, *">
+                    <Grid ColumnDefinitions="50, *">
                         <BoxView
                             x:Name="VpnStatusDot"
                             Grid.Column="0"
-                            Margin="5,0,5,0"
                             CornerRadius="5"
                             HeightRequest="10"
+                            HorizontalOptions="Center"
                             VerticalOptions="Center"
                             WidthRequest="10"
                             Color="{DynamicResource TextMuted}" />
                         <Label
                             x:Name="VpnStatusLabel"
                             Grid.Column="1"
-                            Margin="14,0,0,0"
+                            Margin="4,0,0,0"
                             FontSize="13"
                             HorizontalOptions="Start"
                             LineBreakMode="NoWrap"
@@ -282,10 +292,11 @@
                         <TapGestureRecognizer Tapped="OnLogoutClicked" />
                         <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="12,10">
+                    <Grid Padding="0,10" ColumnDefinitions="50, *">
                         <mi:MauiIcon
                             x:Name="LogoutIcon"
-                            HorizontalOptions="Start"
+                            Grid.Column="0"
+                            HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=ArrowExit20}"
                             IconColor="{DynamicResource Error}"
                             IconSize="20"
@@ -294,6 +305,8 @@
 
                         <Label
                             x:Name="LogoutText"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
                             FontFamily="{DynamicResource AppFontBold}"
                             FontSize="13"
                             HorizontalOptions="Center"
@@ -328,4 +341,3 @@
         </Grid>
     </Border>
 </ContentView>
-

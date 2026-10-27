@@ -40,6 +40,13 @@ public sealed partial class PaymentView : ContentView
         UpdateCalculatedHoursUI(300);
         HighlightPresetChip(300);
 #endif
+        CardsScrollView.Scrolled += (s, e) =>
+            CardStackScrollHelper.ApplyToChildren(
+                CardsScrollView,
+                [PendingPaymentBanner, Card300, Card500, Card1000, CardConstructor, PaymentInfoCard],
+                zone: 65.0,
+                minScale: 0.92,
+                power: 2.5);
     }
 
     public void Initialize(MainPage parent, ApiService apiService)

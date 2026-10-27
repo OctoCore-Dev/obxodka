@@ -64,7 +64,7 @@ public class AppInfoItem : INotifyPropertyChanged
         }
     }
 
-    public object? IconSource => _iconPath is { Length: > 0 } ? _iconPath : null;
+    public string? IconSource => _iconPath is { Length: > 0 } ? _iconPath : null;
 
     public bool HasIcon => !string.IsNullOrEmpty(_iconPath);
 

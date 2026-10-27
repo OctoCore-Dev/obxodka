@@ -633,6 +633,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 break;
             case "split":
                 TabContentSplit.ForceLayoutWidth();
+                _ = TabContentSplit.PlayEntranceAnimationAsync();
                 _ = TabContentSplit.LoadSplitAppsAsync();
                 break;
             case "auth":
@@ -703,7 +704,6 @@ public sealed partial class MainPage : ContentPage, IDisposable
         if (_themeManager.SoundsEnabled)
         {
             ThemeAudioService.PlayConnect();
-            ThemeAudioService.UpdateAmbientState(true);
         }
     }
 
@@ -1010,10 +1010,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     catch { }
                 }
 
-                if (VpnService.CurrentState == AppVpnState.Connected && _themeManager.SoundsEnabled)
-                {
-                    ThemeAudioService.UpdateAmbientState(true);
-                }
+                ThemeAudioService.UpdateAmbientState(false);
 
                 NotifyViewsThemeChanged();
             }

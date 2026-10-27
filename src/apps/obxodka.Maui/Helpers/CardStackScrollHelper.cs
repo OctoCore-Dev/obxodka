@@ -78,6 +78,28 @@ public static class CardStackScrollHelper
         }
     }
 
+    public static void ApplyToChildren(
+        ScrollView scrollView,
+        IEnumerable<IView> items,
+        double zone = DefaultTransitionZone,
+        double minScale = DefaultMinScale,
+        double power = DefaultPower)
+    {
+        if (scrollView.Height <= 0)
+        {
+            return;
+        }
+
+        ApplyToChildren(
+            items.OfType<VisualElement>(),
+            scrollView.ScrollY,
+            scrollView.Height,
+            containerOffsetY: 0.0,
+            zone: zone,
+            minScale: minScale,
+            power: power);
+    }
+
 #if ANDROID
     public sealed class CardStackRecyclerViewScrollListener(
         float dpZone = (float)DefaultTransitionZone,

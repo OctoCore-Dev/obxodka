@@ -47,6 +47,14 @@ public sealed partial class ProfileView : ContentView
             }
         };
 
+        ProfileScrollView.Scrolled += (s, e) =>
+            CardStackScrollHelper.ApplyToChildren(
+                ProfileScrollView,
+                ContentGrid.Children,
+                zone: 65.0,
+                minScale: 0.92,
+                power: 2.5);
+
         Unloaded += OnUnloaded;
     }
 

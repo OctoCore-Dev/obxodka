@@ -13,9 +13,14 @@ public sealed partial class DesktopSidebarView : ContentView
 
     public event EventHandler<string>? NavTapped;
     public event EventHandler? LogoutTapped;
+    public event EventHandler? SidebarWidthChanged;
     private bool _isExpanded;
     private bool _isVpnConnected;
     private string _currentTab = "vpn";
+
+    public double OccupiedWidth => IsVisible && DesktopSidebar.IsVisible
+        ? (DesktopSidebar.WidthRequest > 0 ? DesktopSidebar.WidthRequest : 84) + 16
+        : 0;
 
     public DesktopSidebarView()
     {
@@ -140,8 +145,12 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelHideAsync(LogoutText);
             _ = LogoutIcon.FadeToAsync(1, 140);
 
-            var anim = new Animation(v => DesktopSidebar.WidthRequest = v, DesktopSidebar.Width, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicInOut);
+            var anim = new Animation(v =>
+            {
+                DesktopSidebar.WidthRequest = v;
+                SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+            }, DesktopSidebar.Width, targetWidth);
+            anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicInOut, (_, _) => SidebarWidthChanged?.Invoke(this, EventArgs.Empty));
         }
         else
         {
@@ -160,8 +169,12 @@ public sealed partial class DesktopSidebarView : ContentView
             _ = AnimateLabelShowAsync(AppVersionLabel, 145, 0.5);
             _ = LogoutIcon.FadeToAsync(0, 120);
 
-            var anim = new Animation(v => DesktopSidebar.WidthRequest = v, DesktopSidebar.Width, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 220, Easing.CubicOut);
+            var anim = new Animation(v =>
+            {
+                DesktopSidebar.WidthRequest = v;
+                SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+            }, DesktopSidebar.Width, targetWidth);
+            anim.Commit(this, "SidebarResize", 16, 220, Easing.CubicOut, (_, _) => SidebarWidthChanged?.Invoke(this, EventArgs.Empty));
         }
     }
 

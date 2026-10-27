@@ -107,6 +107,7 @@ internal static partial class MauiProgram
         }
         catch (Exception ex)
         {
+#if DEBUG
             try
             {
                 Debug.WriteLine($"[MAUI STARTUP ERROR] {ex}");
@@ -115,6 +116,9 @@ internal static partial class MauiProgram
                 File.AppendAllText(Path.Combine(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
             }
             catch { }
+#else
+            _ = ex;
+#endif
 
             throw;
         }

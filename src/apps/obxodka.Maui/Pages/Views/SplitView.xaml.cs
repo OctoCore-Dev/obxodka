@@ -1,5 +1,4 @@
 using Microsoft.Maui.Controls.Shapes;
-using Switch = Microsoft.Maui.Controls.Switch;
 
 namespace obxodka.Views;
 
@@ -30,12 +29,19 @@ public sealed partial class SplitView : ContentView
         : Color.FromArgb("#EF4444");
 
     private MainPage _parent = null!;
+    private DesktopSidebarView? _sidebar;
     private IAppManager _appManager = null!;
 
     private List<AppInfoItem> _allApps = [];
+    private readonly Dictionary<string, Border> _activeChipBorders = [with(StringComparer.OrdinalIgnoreCase)];
     private bool _showOnlyBypassed;
     private bool _isSitesTabActive;
     private bool _isUpdatingInternally;
+    private CancellationTokenSource? _saveDebounceCts;
+    private CancellationTokenSource? _searchDebounceCts;
+#if WINDOWS
+    private CancellationTokenSource? _routesDebounceCts;
+#endif
 
     public static readonly BindableProperty IsSplitEditingAllowedProperty =
         BindableProperty.Create(nameof(IsSplitEditingAllowed), typeof(bool), typeof(SplitView), false);
@@ -51,11 +57,16 @@ public sealed partial class SplitView : ContentView
         InitializeComponent();
         Unloaded += OnUnloaded;
         RootLayout.SizeChanged += OnRootLayoutSizeChanged;
+        SitesSplitScrollView.Scrolled += OnSitesScrollViewScrolled;
 #if WINDOWS
         ModeTabsGrid.IsVisible = true;
         ChipAddExe.IsVisible = true;
         AndroidWarningBanner.IsVisible = false;
         IsSplitEditingAllowed = true;
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            Platforms.Windows.WindowsSplitTunnelEngine.OnRoutesUpdated += OnWindowsRoutesUpdated;
+        }
         LoadWindowsSitesAndPresetsState();
 #endif
     }
@@ -65,53 +76,66 @@ public sealed partial class SplitView : ContentView
         _parent = parent;
         _appManager = appManager;
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
+        _parent.SizeChanged += OnParentOrSidebarSizeChanged;
+        _sidebar = _parent.FindByName<DesktopSidebarView>("DesktopSidebar");
+        _sidebar?.SidebarWidthChanged += OnParentOrSidebarSizeChanged;
         UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
+    }
+
+    private void OnParentOrSidebarSizeChanged(object? sender, EventArgs e)
+    {
+        if (IsVisible)
+        {
+            ForceLayoutWidth();
+        }
+    }
+
+    private double ComputeAvailableContentWidth()
+    {
+        if (RootLayout is null)
+        {
+            return 0;
+        }
+
+        var pad = RootLayout.Padding.HorizontalThickness;
+        if (_parent is not null && _parent.Width > 0 && DeviceInfo.Idiom != DeviceIdiom.Phone)
+        {
+            var sidebarW = _sidebar?.OccupiedWidth ?? 0;
+            var fromParent = _parent.Width - sidebarW - pad;
+            if (fromParent > 0)
+            {
+                return fromParent;
+            }
+        }
+
+        if (RootLayout.Width > 0)
+        {
+            var fromRoot = RootLayout.Width - pad;
+            if (fromRoot > 0)
+            {
+                return fromRoot;
+            }
+        }
+
+        return Width > 0 ? Math.Max(0, Width - pad) : 0;
     }
 
     public void ForceLayoutWidth()
     {
-        if (RootLayout is not null && RootLayout.Width > 0)
+        var avail = ComputeAvailableContentWidth();
+        if (avail > 0)
         {
-            var avail = RootLayout.Width - RootLayout.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-        else if (Width > 0 && RootLayout is not null)
-        {
-            var avail = Width - RootLayout.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
+            ApplyCardWidth(avail);
         }
     }
 
     protected override void OnSizeAllocated(double width, double height)
     {
         base.OnSizeAllocated(width, height);
-        if (width > 0 && RootLayout is not null)
-        {
-            var availableWidth = width - RootLayout.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
+        ForceLayoutWidth();
     }
 
-    private void OnRootLayoutSizeChanged(object? sender, EventArgs e)
-    {
-        if (RootLayout is not null && RootLayout.Width > 0)
-        {
-            var availableWidth = RootLayout.Width - RootLayout.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
-    }
+    private void OnRootLayoutSizeChanged(object? sender, EventArgs e) => ForceLayoutWidth();
 
     private void ApplyCardWidth(double targetWidth)
     {
@@ -130,10 +154,11 @@ public sealed partial class SplitView : ContentView
             SitesSplitScrollView?.ClearValue(MaximumWidthRequestProperty);
             HeaderContainer?.ClearValue(WidthRequestProperty);
             HeaderContainer?.ClearValue(MaximumWidthRequestProperty);
+            ActiveBypassedScrollView?.ClearValue(MaximumWidthRequestProperty);
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth, 950);
+        var safeWidth = Math.Min(targetWidth - 6, 950);
         if (safeWidth <= 0)
         {
             return;
@@ -156,13 +181,89 @@ public sealed partial class SplitView : ContentView
             HeaderContainer.WidthRequest = safeWidth;
             HeaderContainer.MaximumWidthRequest = safeWidth;
         }
+        ActiveBypassedScrollView?.MaximumWidthRequest = safeWidth;
     }
 
     private void OnUnloaded(object? sender, EventArgs e)
     {
         RootLayout.SizeChanged -= OnRootLayoutSizeChanged;
-        _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
+        SitesSplitScrollView.Scrolled -= OnSitesScrollViewScrolled;
+        if (_parent is not null)
+        {
+            _parent.VpnService.OnStateChanged -= OnVpnStateChanged;
+            _parent.SizeChanged -= OnParentOrSidebarSizeChanged;
+        }
+        _sidebar?.SidebarWidthChanged -= OnParentOrSidebarSizeChanged;
+#if WINDOWS
+        _routesDebounceCts?.Cancel();
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            Platforms.Windows.WindowsSplitTunnelEngine.OnRoutesUpdated -= OnWindowsRoutesUpdated;
+        }
+#endif
     }
+
+    private void OnSitesScrollViewScrolled(object? sender, ScrolledEventArgs e)
+    {
+        if (SitesSplitScrollView.Content is VerticalStackLayout stack && SitesSplitScrollView.Height > 0)
+        {
+            CardStackScrollHelper.ApplyToChildren(
+                stack.Children.OfType<VisualElement>(),
+                e.ScrollY,
+                SitesSplitScrollView.Height,
+                zone: 65.0,
+                minScale: 0.92,
+                power: 2.5);
+        }
+    }
+
+    public async Task PlayEntranceAnimationAsync()
+    {
+        Opacity = 1;
+        TranslationY = 0;
+        if (_isSitesTabActive)
+        {
+            await UIAnimations.PlayEntranceCascadeAsync(
+                30,
+                230,
+                HeaderContainer,
+                SitesInfoBanner,
+                PresetGovCard,
+                PresetBanksCard,
+                PresetMediaCard,
+                PresetMarketCard,
+                PresetRuTldsCard,
+                CustomRulesCard,
+                ActiveRoutesCard);
+        }
+        else
+        {
+            await UIAnimations.PlayEntranceCascadeAsync(35, 220, HeaderContainer, SplitAppsList);
+        }
+    }
+
+#if WINDOWS
+    private void OnWindowsRoutesUpdated()
+    {
+        _routesDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _routesDebounceCts = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(220, token).ConfigureAwait(false);
+                if (!token.IsCancellationRequested)
+                {
+                    MainThread.BeginInvokeOnMainThread(UpdateWindowsDynamicRouteCounter);
+                }
+            }
+            catch { }
+        }, token);
+    }
+#endif
 
     private void OnVpnStateChanged(AppVpnState s) =>
         MainThread.BeginInvokeOnMainThread(() =>
@@ -175,23 +276,20 @@ public sealed partial class SplitView : ContentView
             if (_allApps.Count > 0)
             {
                 IsSplitEditingAllowed = s == AppVpnState.Disconnected;
+                AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
             }
 #endif
         });
 
     public async Task LoadSplitAppsAsync()
     {
+        ForceLayoutWidth();
         UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();
 #endif
         if (_allApps.Count > 0)
         {
-            _allApps =
-            [
-                .. _allApps.Where(a => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
-                                       !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
-            ];
             var bypassed = _appManager.GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
             _isUpdatingInternally = true;
             foreach (var app in _allApps)
@@ -200,16 +298,24 @@ public sealed partial class SplitView : ContentView
             }
             _isUpdatingInternally = false;
 
-            if (SplitAppsList.ItemsSource is null)
-            {
-                ApplyFilterAndRenderList();
-            }
+            _allApps =
+            [
+                .. _allApps
+                    .Where(a => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
+                                !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                    .OrderByDescending(a => a.IsBypassed)
+                    .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            ];
 
-            UpdateChipsAndCounters();
+            UpdateFilterChipStyles();
+            RebuildAllBypassedChips();
+            UpdateCountersOnly();
+            ApplyFilterAndRenderList();
 #if WINDOWS
             IsSplitEditingAllowed = true;
 #else
             IsSplitEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
+            AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
 #endif
             return;
         }
@@ -228,15 +334,21 @@ public sealed partial class SplitView : ContentView
             {
                 _allApps =
                 [
-                    .. apps.Where(a => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
-                                       !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                    .. apps
+                        .Where(a => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
+                                    !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                        .OrderByDescending(a => a.IsBypassed)
+                        .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
                 ];
+                UpdateFilterChipStyles();
+                RebuildAllBypassedChips();
+                UpdateCountersOnly();
                 ApplyFilterAndRenderList();
-                UpdateChipsAndCounters();
 #if WINDOWS
                 IsSplitEditingAllowed = true;
 #else
                 IsSplitEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
+                AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
 #endif
             }
         }
@@ -258,6 +370,17 @@ public sealed partial class SplitView : ContentView
         }
     }
 
+    private async void OnRefreshAppsClickedAsync(object? sender, EventArgs e)
+    {
+        ThemeAudioService.PlayClick();
+        _ = ChipRefreshApps.BounceClickAsync();
+        _allApps.Clear();
+        _activeChipBorders.Clear();
+        ActiveBypassedChipsLayout.Children.Clear();
+        SplitAppsList.ItemsSource = null;
+        await LoadSplitAppsAsync();
+    }
+
     private void OnTabModeAppsClicked(object? sender, EventArgs e)
     {
         if (!_isSitesTabActive)
@@ -266,6 +389,7 @@ public sealed partial class SplitView : ContentView
         }
 
         ThemeAudioService.PlayClick();
+        _ = TabModeApps.BounceClickAsync();
         _toastCts?.Cancel();
         _ = HideSplitToastAsync();
         _isSitesTabActive = false;
@@ -273,6 +397,9 @@ public sealed partial class SplitView : ContentView
         SplitAppsList.IsVisible = true;
         SitesSplitScrollView.IsVisible = false;
         UpdateModeTabStyles();
+        UpdateFilterChipStyles();
+        ApplyFilterAndRenderList();
+        _ = UIAnimations.PlayEntranceCascadeAsync(30, 200, AppsHeaderControls, SplitAppsList);
     }
 
     private void OnTabModeSitesClicked(object? sender, EventArgs e)
@@ -283,6 +410,7 @@ public sealed partial class SplitView : ContentView
         }
 
         ThemeAudioService.PlayClick();
+        _ = TabModeSites.BounceClickAsync();
         _toastCts?.Cancel();
         _ = HideSplitToastAsync();
         _isSitesTabActive = true;
@@ -293,6 +421,17 @@ public sealed partial class SplitView : ContentView
         LoadWindowsSitesAndPresetsState();
 #endif
         UpdateModeTabStyles();
+        _ = UIAnimations.PlayEntranceCascadeAsync(
+            25,
+            210,
+            SitesInfoBanner,
+            PresetGovCard,
+            PresetBanksCard,
+            PresetMediaCard,
+            PresetMarketCard,
+            PresetRuTldsCard,
+            CustomRulesCard,
+            ActiveRoutesCard);
     }
 
     private void UpdateModeTabStyles()
@@ -346,10 +485,145 @@ public sealed partial class SplitView : ContentView
             ? Platforms.Windows.WindowsSplitTunnelEngine.ActiveRouteCount
             : 0;
         var rulesCount = Platforms.Windows.AppManager.GetCustomRules().Count;
-        TabModeSitesLabel.Text = rulesCount > 0 ? $"Сайты и Сервисы РФ ({rulesCount})" : "Сайты и Сервисы РФ";
-        ActiveDynamicRoutesLabel.Text = count > 0 ? $"{count} маршр." : "Активно";
+        var activePresetsCount =
+            (PresetGovSwitch.IsToggled ? 1 : 0) +
+            (PresetBanksSwitch.IsToggled ? 1 : 0) +
+            (PresetMediaSwitch.IsToggled ? 1 : 0) +
+            (PresetMarketSwitch.IsToggled ? 1 : 0) +
+            (PresetRuTldsSwitch.IsToggled ? 1 : 0);
+        var totalConfigured = rulesCount + activePresetsCount;
+        TabModeSitesLabel.Text = totalConfigured > 0 ? $"Сайты и Сервисы РФ ({totalConfigured})" : "Сайты и Сервисы РФ";
+        ActiveDynamicRoutesLabel.Text = count > 0 ? $"{count} маршр." : "Готово";
+        RenderActiveBypassRoutesChips();
+    }
+
+    private void RenderActiveBypassRoutesChips()
+    {
+        if (ActiveRoutesFlexLayout is null || ActiveRoutesEmptyLabel is null || !IsVisible || !_isSitesTabActive)
+        {
+            return;
+        }
+
+        ActiveRoutesFlexLayout.Children.Clear();
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            ActiveRoutesEmptyLabel.IsVisible = true;
+            ActiveRoutesFlexLayout.IsVisible = false;
+            return;
+        }
+
+        var routes = Platforms.Windows.WindowsSplitTunnelEngine.ActiveBypassRoutes;
+        if (routes.Count == 0)
+        {
+            var isConnected = _parent?.VpnService.CurrentState == AppVpnState.Connected;
+            ActiveRoutesEmptyLabel.Text = isConnected
+                ? "Ожидание трафика: маршруты добавляются мгновенно при обращении к выбранным сайтам или приложениям."
+                : "Маршруты появятся автоматически при подключении VPN и открытии выбранных сайтов или приложений.";
+            ActiveRoutesEmptyLabel.IsVisible = true;
+            ActiveRoutesFlexLayout.IsVisible = false;
+            return;
+        }
+
+        ActiveRoutesEmptyLabel.IsVisible = false;
+        ActiveRoutesFlexLayout.IsVisible = true;
+
+        const int maxVisibleChips = 28;
+        var displayed = routes.Take(maxVisibleChips).ToList();
+
+        foreach (var (ip, reason) in displayed)
+        {
+            var chip = new Border
+            {
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(9, 5),
+                BackgroundColor = InactiveChipBg,
+                Stroke = InactiveChipStroke,
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 10 }
+            };
+
+            var row = new HorizontalStackLayout
+            {
+                Spacing = 5,
+                VerticalOptions = LayoutOptions.Center
+            };
+
+            var isExe = reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+            row.Children.Add(new MauiIcon
+            {
+                Icon = isExe ? FluentIcons.Apps16 : FluentIcons.ArrowRouting20,
+                IconColor = ActiveChipBright,
+                IconSize = 13,
+                VerticalOptions = LayoutOptions.Center
+            });
+
+            var text = string.Equals(reason, ip, StringComparison.OrdinalIgnoreCase)
+                ? ip
+                : $"{reason} ({ip})";
+
+            var lbl = new Label
+            {
+                Text = text,
+                FontSize = 11,
+                TextColor = InactiveChipText,
+                VerticalOptions = LayoutOptions.Center
+            };
+            lbl.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
+            row.Children.Add(lbl);
+
+            chip.Content = row;
+            ActiveRoutesFlexLayout.Children.Add(chip);
+        }
+
+        if (routes.Count > maxVisibleChips)
+        {
+            var moreChip = new Border
+            {
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(9, 5),
+                BackgroundColor = ActiveChipBg,
+                Stroke = ActiveChipColor,
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 10 }
+            };
+
+            var moreLbl = new Label
+            {
+                Text = $"+{routes.Count - maxVisibleChips} ещё",
+                FontSize = 11,
+                TextColor = ActiveChipBright,
+                VerticalOptions = LayoutOptions.Center
+            };
+            moreLbl.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
+            moreChip.Content = moreLbl;
+            ActiveRoutesFlexLayout.Children.Add(moreChip);
+        }
     }
 #endif
+
+    private void OnPresetGovCardTapped(object? sender, EventArgs e) =>
+        PresetGovSwitch.IsToggled = !PresetGovSwitch.IsToggled;
+
+    private void OnPresetBanksCardTapped(object? sender, EventArgs e) =>
+        PresetBanksSwitch.IsToggled = !PresetBanksSwitch.IsToggled;
+
+    private void OnPresetMediaCardTapped(object? sender, EventArgs e) =>
+        PresetMediaSwitch.IsToggled = !PresetMediaSwitch.IsToggled;
+
+    private void OnPresetMarketCardTapped(object? sender, EventArgs e) =>
+        PresetMarketSwitch.IsToggled = !PresetMarketSwitch.IsToggled;
+
+    private void OnPresetRuTldsCardTapped(object? sender, EventArgs e) =>
+        PresetRuTldsSwitch.IsToggled = !PresetRuTldsSwitch.IsToggled;
+
+    private void OnRefreshSplitRoutesClicked(object? sender, EventArgs e)
+    {
+#if WINDOWS
+        ThemeAudioService.PlayClick();
+        Platforms.Windows.AppManager.SyncPolicyFromPreferences();
+        UpdateWindowsDynamicRouteCounter();
+#endif
+    }
 
     private void OnPresetSwitchToggled(object? sender, ToggledEventArgs e)
     {
@@ -366,11 +640,7 @@ public sealed partial class SplitView : ContentView
         Preferences.Set(Platforms.Windows.AppManager.PresetMarketKey, PresetMarketSwitch.IsToggled);
         Preferences.Set(Platforms.Windows.AppManager.PresetRuTldsKey, PresetRuTldsSwitch.IsToggled);
         Platforms.Windows.AppManager.SyncPolicyFromPreferences();
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(350);
-            MainThread.BeginInvokeOnMainThread(UpdateWindowsDynamicRouteCounter);
-        });
+        UpdateWindowsDynamicRouteCounter();
 #endif
     }
 
@@ -412,11 +682,7 @@ public sealed partial class SplitView : ContentView
 
         CustomRuleEntry.Text = string.Empty;
         RenderCustomRulesChips();
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(350);
-            MainThread.BeginInvokeOnMainThread(UpdateWindowsDynamicRouteCounter);
-        });
+        UpdateWindowsDynamicRouteCounter();
 #endif
     }
 
@@ -534,19 +800,23 @@ public sealed partial class SplitView : ContentView
                     var existing = _allApps.FirstOrDefault(a => a.PackageName.Equals(addedItem.PackageName, StringComparison.OrdinalIgnoreCase));
                     if (existing is not null)
                     {
+                        _isUpdatingInternally = true;
                         existing.IsBypassed = true;
+                        _isUpdatingInternally = false;
                         if (!string.IsNullOrEmpty(addedItem.IconPath))
                         {
                             existing.IconPath = addedItem.IconPath;
                         }
+                        SyncSingleAppChip(existing);
                     }
                     else
                     {
                         _allApps.Insert(0, addedItem);
+                        SyncSingleAppChip(addedItem);
                     }
 
+                    UpdateCountersOnly();
                     ApplyFilterAndRenderList();
-                    UpdateChipsAndCounters();
                     UpdateWindowsDynamicRouteCounter();
                 }
             }
@@ -565,7 +835,7 @@ public sealed partial class SplitView : ContentView
 
     private void ApplyFilterAndRenderList()
     {
-        var q = SplitSearchEntry.Text?.Trim().ToLowerInvariant();
+        var q = SplitSearchEntry.Text?.Trim();
         ClearSearchBtn.IsVisible = !string.IsNullOrEmpty(q);
 
         IEnumerable<AppInfoItem> filtered = _allApps;
@@ -585,111 +855,120 @@ public sealed partial class SplitView : ContentView
         _isUpdatingInternally = false;
     }
 
-    private void UpdateChipsAndCounters()
+    private void UpdateCountersOnly()
     {
-        var bypassedApps = _allApps.Where(a => a.IsBypassed).ToList();
-        FilterAllLabel.Text = $"Все ({_allApps.Count})";
-        FilterBypassedLabel.Text = $"В обходе ({bypassedApps.Count})";
+        var bypassedCount = 0;
+        for (var i = 0; i < _allApps.Count; i++)
+        {
+            if (_allApps[i].IsBypassed)
+            {
+                bypassedCount++;
+            }
+        }
 
-        if (bypassedApps.Count == 0)
+        FilterAllLabel.Text = $"Все ({_allApps.Count})";
+        FilterBypassedLabel.Text = $"В обходе ({bypassedCount})";
+
+        if (bypassedCount == 0)
         {
             ActiveBypassedSection.IsVisible = false;
         }
         else
         {
             ActiveBypassedSection.IsVisible = true;
-            ActiveBypassedCountLabel.Text = $"{bypassedApps.Count} прил.";
-            PopulateActiveBypassedChips(bypassedApps);
-        }
-
-        if (_showOnlyBypassed)
-        {
-            ApplyFilterAndRenderList();
+            ActiveBypassedCountLabel.Text = $"{bypassedCount} прил.";
         }
     }
 
-    private void PopulateActiveBypassedChips(List<AppInfoItem> bypassedApps)
+    private void RebuildAllBypassedChips()
     {
+        _activeChipBorders.Clear();
         ActiveBypassedChipsLayout.Children.Clear();
 
-        foreach (var app in bypassedApps)
+        foreach (var app in _allApps)
         {
-            var chip = new Border
+            if (app.IsBypassed)
             {
-                Padding = new Thickness(10, 6, 8, 6),
-                BackgroundColor = ActiveChipBg,
-                Stroke = ActiveChipColor,
-                StrokeThickness = 1,
-                StrokeShape = new RoundRectangle { CornerRadius = 16 }
-            };
-
-            var grid = new Grid
-            {
-                ColumnDefinitions =
-                [
-                    new ColumnDefinition(GridLength.Auto),
-                    new ColumnDefinition(GridLength.Auto),
-                    new ColumnDefinition(GridLength.Auto)
-                ],
-                ColumnSpacing = 6
-            };
-
-            View iconView = app.HasIcon && app.IconPath is { Length: > 0 }
-                ? new Image
-                {
-                    Source = ImageSource.FromFile(app.IconPath),
-                    HeightRequest = 18,
-                    WidthRequest = 18,
-                    VerticalOptions = LayoutOptions.Center
-                }
-                : new MauiIcon
-                {
-                    Icon = FluentIcons.AppGeneric20,
-                    IconColor = ActiveChipBright,
-                    IconSize = 16,
-                    VerticalOptions = LayoutOptions.Center
-                };
-
-            var nameLabel = new Label
-            {
-                Text = app.Name,
-                FontSize = 12,
-                TextColor = ActiveChipBright,
-                VerticalOptions = LayoutOptions.Center
-            };
-            nameLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
-
-            var removeBtn = new Border
-            {
-                Padding = new Thickness(2),
-                BackgroundColor = Colors.Transparent,
-                StrokeThickness = 0,
-                VerticalOptions = LayoutOptions.Center,
-                Content = new MauiIcon
-                {
-                    Icon = FluentIcons.Dismiss16,
-                    IconColor = ErrorColor,
-                    IconSize = 14
-                }
-            };
-
-            var targetApp = app;
-            removeBtn.GestureRecognizers.Add(new TapGestureRecognizer
-            {
-                Command = new Command(async () => await RemoveFromBypassAsync(targetApp))
-            });
-
-            Grid.SetColumn(iconView, 0);
-            Grid.SetColumn(nameLabel, 1);
-            Grid.SetColumn(removeBtn, 2);
-
-            grid.Children.Add(iconView);
-            grid.Children.Add(nameLabel);
-            grid.Children.Add(removeBtn);
-
-            chip.Content = grid;
-            ActiveBypassedChipsLayout.Children.Add(chip);
+                var chip = CreateAppChipBorder(app);
+                _activeChipBorders[app.PackageName] = chip;
+                ActiveBypassedChipsLayout.Children.Add(chip);
+            }
         }
+    }
+
+    private void SyncSingleAppChip(AppInfoItem app)
+    {
+        if (app.IsBypassed)
+        {
+            if (_activeChipBorders.ContainsKey(app.PackageName))
+            {
+                return;
+            }
+
+            var chip = CreateAppChipBorder(app);
+            _activeChipBorders[app.PackageName] = chip;
+            chip.Opacity = 0;
+            chip.Scale = 0.85;
+            ActiveBypassedChipsLayout.Children.Insert(0, chip);
+            _ = chip.FadeToAsync(1.0, 150, Easing.CubicOut);
+            _ = chip.ScaleToAsync(1.0, 180, Easing.SpringOut);
+        }
+        else if (_activeChipBorders.Remove(app.PackageName, out var existingChip))
+        {
+            _ = ActiveBypassedChipsLayout.Children.Remove(existingChip);
+        }
+    }
+
+    private Border CreateAppChipBorder(AppInfoItem app)
+    {
+        var chip = new Border
+        {
+            Padding = new Thickness(10, 5, 8, 5),
+            BackgroundColor = ActiveChipBg,
+            Stroke = ActiveChipColor,
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 14 }
+        };
+
+        var row = new HorizontalStackLayout
+        {
+            Spacing = 6,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+
+        var nameLabel = new Label
+        {
+            Text = app.Name,
+            FontSize = 12,
+            TextColor = ActiveChipBright,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+        nameLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
+
+        var closeLabel = new Label
+        {
+            Text = "✕",
+            FontSize = 11,
+            TextColor = ErrorColor,
+            VerticalOptions = LayoutOptions.Center,
+            Margin = new Thickness(2, 0, 0, 0),
+            InputTransparent = true
+        };
+        closeLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
+
+        row.Children.Add(nameLabel);
+        row.Children.Add(closeLabel);
+        chip.Content = row;
+
+        var targetApp = app;
+        chip.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(async () => await RemoveFromBypassAsync(targetApp))
+        });
+
+        return chip;
     }
 
     private async Task RemoveFromBypassAsync(AppInfoItem app)
@@ -701,28 +980,70 @@ public sealed partial class SplitView : ContentView
         }
 
         ThemeAudioService.PlayClick();
+        _isUpdatingInternally = true;
         app.IsBypassed = false;
-        SaveBypassedState();
-        UpdateChipsAndCounters();
-    }
-
-    private void SaveBypassedState()
-    {
-        try
+        _isUpdatingInternally = false;
+        SyncSingleAppChip(app);
+        UpdateCountersOnly();
+        if (_showOnlyBypassed)
         {
-            var bypassed = _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName).ToList();
-            _appManager.SaveBypassedPackages(bypassed);
-#if WINDOWS
-            UpdateWindowsDynamicRouteCounter();
-#endif
+            ApplyFilterAndRenderList();
         }
-        catch { }
+        ScheduleSaveBypassedState();
     }
 
-    private void OnSplitSearchTextChanged(object? sender, TextChangedEventArgs e) => ApplyFilterAndRenderList();
+    private void ScheduleSaveBypassedState()
+    {
+        _saveDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _saveDebounceCts = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(180, token).ConfigureAwait(false);
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var bypassed = _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName).ToList();
+                _appManager.SaveBypassedPackages(bypassed);
+#if WINDOWS
+                MainThread.BeginInvokeOnMainThread(UpdateWindowsDynamicRouteCounter);
+#endif
+            }
+            catch { }
+        }, token);
+    }
+
+    private void OnSplitSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        ClearSearchBtn.IsVisible = !string.IsNullOrEmpty(e.NewTextValue);
+        _searchDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(110, token).ConfigureAwait(false);
+                if (!token.IsCancellationRequested)
+                {
+                    MainThread.BeginInvokeOnMainThread(ApplyFilterAndRenderList);
+                }
+            }
+            catch { }
+        }, token);
+    }
 
     private void OnClearSearchClicked(object? sender, EventArgs e)
     {
+        _searchDebounceCts?.Cancel();
         SplitSearchEntry.Text = string.Empty;
         ApplyFilterAndRenderList();
     }
@@ -730,17 +1051,33 @@ public sealed partial class SplitView : ContentView
     private void OnFilterAllClicked(object? sender, EventArgs e)
     {
         ThemeAudioService.PlayClick();
+        _ = ChipFilterAll.BounceClickAsync();
         _showOnlyBypassed = false;
+        _allApps =
+        [
+            .. _allApps
+                .OrderByDescending(a => a.IsBypassed)
+                .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+        ];
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
+        SplitAppsList.Opacity = 0.35;
+        SplitAppsList.TranslationY = 10;
+        _ = SplitAppsList.FadeToAsync(1.0, 160, Easing.CubicOut);
+        _ = SplitAppsList.TranslateToAsync(0, 0, 160, Easing.CubicOut);
     }
 
     private void OnFilterBypassedClicked(object? sender, EventArgs e)
     {
         ThemeAudioService.PlayClick();
+        _ = ChipFilterBypassed.BounceClickAsync();
         _showOnlyBypassed = true;
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
+        SplitAppsList.Opacity = 0.35;
+        SplitAppsList.TranslationY = 10;
+        _ = SplitAppsList.FadeToAsync(1.0, 160, Easing.CubicOut);
+        _ = SplitAppsList.TranslateToAsync(0, 0, 160, Easing.CubicOut);
     }
 
     private void UpdateFilterChipStyles()
@@ -775,6 +1112,7 @@ public sealed partial class SplitView : ContentView
 
         HeaderContainer.BackgroundColor = Colors.Transparent;
         ChipResetAll.BackgroundColor = bgSurface;
+        ChipRefreshApps.BackgroundColor = bgSurface;
         UpdateFilterChipStyles();
         UpdateModeTabStyles();
     }
@@ -799,14 +1137,17 @@ public sealed partial class SplitView : ContentView
             UpdateCardOpacity();
             UpdateFilterChipStyles();
             UpdateModeTabStyles();
-            UpdateChipsAndCounters();
+            RebuildAllBypassedChips();
+            UpdateCountersOnly();
 #if WINDOWS
             RenderCustomRulesChips();
+            RenderActiveBypassRoutesChips();
 #endif
         });
 
     private async void OnResetAllBypassedClickedAsync(object? sender, EventArgs e)
     {
+        _ = ChipResetAll.BounceClickAsync();
         if (!IsSplitEditingAllowed)
         {
             await _parent.DisplayAlertAsync("Внимание", "Отключите VPN, чтобы изменить список приложений.", "OK");
@@ -827,11 +1168,16 @@ public sealed partial class SplitView : ContentView
         }
         _isUpdatingInternally = false;
 
-        _appManager.SaveBypassedPackages([]);
-        UpdateChipsAndCounters();
-#if WINDOWS
-        UpdateWindowsDynamicRouteCounter();
-#endif
+        _activeChipBorders.Clear();
+        ActiveBypassedChipsLayout.Children.Clear();
+        UpdateCountersOnly();
+        if (_showOnlyBypassed)
+        {
+            _showOnlyBypassed = false;
+            UpdateFilterChipStyles();
+        }
+        ApplyFilterAndRenderList();
+        ScheduleSaveBypassedState();
     }
 
     private void OnAppRowTapped(object? sender, EventArgs e)
@@ -844,34 +1190,18 @@ public sealed partial class SplitView : ContentView
             }
 
             ThemeAudioService.PlayClick();
-            app.IsBypassed = !app.IsBypassed;
-            SaveBypassedState();
-            UpdateChipsAndCounters();
-        }
-    }
-
-    private void OnSplitAppToggled(object? sender, ToggledEventArgs e)
-    {
-        if (_isUpdatingInternally || sender is not Switch { BindingContext: AppInfoItem app })
-        {
-            return;
-        }
-
-        if (!IsSplitEditingAllowed)
-        {
             _isUpdatingInternally = true;
-            app.IsBypassed = !e.Value;
+            app.IsBypassed = !app.IsBypassed;
             _isUpdatingInternally = false;
-            return;
-        }
 
-        if (app.IsBypassed != e.Value)
-        {
-            app.IsBypassed = e.Value;
+            SyncSingleAppChip(app);
+            UpdateCountersOnly();
+            if (_showOnlyBypassed && !app.IsBypassed)
+            {
+                ApplyFilterAndRenderList();
+            }
+            ScheduleSaveBypassedState();
         }
-
-        SaveBypassedState();
-        UpdateChipsAndCounters();
     }
 
     private CancellationTokenSource? _toastCts;
@@ -923,6 +1253,13 @@ public sealed partial class SplitView : ContentView
         _ = HideSplitToastAsync();
     }
 
-    private void UpdateRestartWarningVisibility(AppVpnState s) =>
+    private void UpdateRestartWarningVisibility(AppVpnState s)
+    {
+#if WINDOWS
+        _ = s;
+        SplitRestartWarningCard.IsVisible = false;
+#else
         SplitRestartWarningCard.IsVisible = s == AppVpnState.Connected;
+#endif
+    }
 }

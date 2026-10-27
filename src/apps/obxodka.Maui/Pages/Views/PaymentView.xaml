@@ -3,6 +3,7 @@
     x:Class="obxodka.Views.PaymentView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:helpers="clr-namespace:obxodka.Helpers"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
 
     <Grid
@@ -88,6 +89,7 @@
                             FontFamily="{DynamicResource AppFontBold}"
                             FontSize="12"
                             HeightRequest="38"
+                            MinimumHeightRequest="0"
                             Text="Проверить"
                             TextColor="{DynamicResource BgBase}"
                             VerticalOptions="Center" />
@@ -114,22 +116,27 @@
                         Grid.Column="0"
                         Padding="20,18"
                         Style="{StaticResource NeoCard}">
-                        <VerticalStackLayout Spacing="8">
+                        <Grid RowDefinitions="24, Auto, Auto, *, Auto" RowSpacing="8">
                             <Label
+                                Grid.Row="0"
                                 FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="11"
                                 Text="СТАРТОВЫЙ"
-                                TextColor="{DynamicResource Primary}" />
+                                TextColor="{DynamicResource Primary}"
+                                VerticalOptions="Center" />
                             <Label
+                                Grid.Row="1"
                                 FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="300 ₽"
                                 TextColor="{DynamicResource Primary}" />
                             <Label
+                                Grid.Row="2"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
                                 Text="350 часов (+50ч бонус)" />
                             <Label
+                                Grid.Row="3"
                                 FontSize="12"
                                 LineBreakMode="WordWrap"
                                 Style="{StaticResource LabelMuted}"
@@ -137,18 +144,22 @@
 
                             <Border
                                 x:Name="Btn300Border"
+                                Grid.Row="4"
                                 Margin="0,6,0,0"
-                                HeightRequest="42"
+                                HeightRequest="46"
                                 Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="Btn300"
+                                        Padding="10,0"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuy300ClickedAsync"
                                         FontFamily="{DynamicResource AppFontMedium}"
                                         FontSize="13"
+                                        MinimumHeightRequest="0"
                                         Text="Купить за 300 ₽"
-                                        TextColor="{DynamicResource TextPrimary}" />
+                                        TextColor="{DynamicResource TextPrimary}"
+                                        VerticalOptions="Fill" />
                                     <ActivityIndicator
                                         x:Name="Loader300"
                                         HeightRequest="22"
@@ -160,7 +171,7 @@
                                         Color="{DynamicResource TextPrimary}" />
                                 </Grid>
                             </Border>
-                        </VerticalStackLayout>
+                        </Grid>
                     </Border>
 
                     <Border
@@ -173,21 +184,23 @@
                         Stroke="{DynamicResource Accent}"
                         StrokeThickness="1.5"
                         Style="{StaticResource NeoCard}">
-                        <VerticalStackLayout Spacing="8">
-                            <Grid ColumnDefinitions="*, Auto">
+                        <Grid RowDefinitions="24, Auto, Auto, *, Auto" RowSpacing="8">
+                            <Grid Grid.Row="0" ColumnDefinitions="*, Auto">
                                 <Label
                                     Grid.Column="0"
                                     FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="11"
                                     Text="ОПТИМАЛЬНЫЙ"
-                                    TextColor="{DynamicResource Accent}" />
+                                    TextColor="{DynamicResource Accent}"
+                                    VerticalOptions="Center" />
                                 <Border
                                     Grid.Column="1"
                                     Padding="6,2"
                                     BackgroundColor="{DynamicResource BorderSubtle}"
                                     Stroke="{DynamicResource Accent}"
                                     StrokeShape="RoundRectangle 4"
-                                    StrokeThickness="1">
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
                                     <Label
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="10"
@@ -197,15 +210,18 @@
                             </Grid>
 
                             <Label
+                                Grid.Row="1"
                                 FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="500 ₽"
                                 TextColor="{DynamicResource Accent}" />
                             <Label
+                                Grid.Row="2"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
                                 Text="750 часов (+250ч бонус)" />
                             <Label
+                                Grid.Row="3"
                                 FontSize="12"
                                 LineBreakMode="WordWrap"
                                 Style="{StaticResource LabelMuted}"
@@ -213,20 +229,24 @@
 
                             <Border
                                 x:Name="Btn500Border"
+                                Grid.Row="4"
                                 Margin="0,6,0,0"
                                 BackgroundColor="{DynamicResource Accent}"
-                                HeightRequest="42"
+                                HeightRequest="46"
                                 Stroke="{DynamicResource Accent}"
                                 Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="Btn500"
+                                        Padding="10,0"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuy500ClickedAsync"
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="13"
+                                        MinimumHeightRequest="0"
                                         Text="Купить за 500 ₽"
-                                        TextColor="{DynamicResource BgBase}" />
+                                        TextColor="{DynamicResource BgBase}"
+                                        VerticalOptions="Fill" />
                                     <ActivityIndicator
                                         x:Name="Loader500"
                                         HeightRequest="22"
@@ -238,7 +258,7 @@
                                         Color="{DynamicResource BgBase}" />
                                 </Grid>
                             </Border>
-                        </VerticalStackLayout>
+                        </Grid>
                     </Border>
 
                     <Border
@@ -249,22 +269,27 @@
                                               Phone=0}"
                         Padding="20,18"
                         Style="{StaticResource NeoCard}">
-                        <VerticalStackLayout Spacing="8">
+                        <Grid RowDefinitions="24, Auto, Auto, *, Auto" RowSpacing="8">
                             <Label
+                                Grid.Row="0"
                                 FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="11"
                                 Text="МАКСИМУМ (VIP x2.2)"
-                                TextColor="{DynamicResource Warning}" />
+                                TextColor="{DynamicResource Warning}"
+                                VerticalOptions="Center" />
                             <Label
+                                Grid.Row="1"
                                 FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="1000 ₽"
                                 TextColor="{DynamicResource Warning}" />
                             <Label
+                                Grid.Row="2"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
                                 Text="2200 часов (+1200ч бонус)" />
                             <Label
+                                Grid.Row="3"
                                 FontSize="12"
                                 LineBreakMode="WordWrap"
                                 Style="{StaticResource LabelMuted}"
@@ -272,20 +297,24 @@
 
                             <Border
                                 x:Name="Btn1000Border"
+                                Grid.Row="4"
                                 Margin="0,6,0,0"
                                 BackgroundColor="{DynamicResource Warning}"
-                                HeightRequest="42"
+                                HeightRequest="46"
                                 Stroke="{DynamicResource Warning}"
                                 Style="{StaticResource NeoBtnPrimary}">
                                 <Grid>
                                     <Button
                                         x:Name="Btn1000"
+                                        Padding="10,0"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuy1000ClickedAsync"
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="13"
+                                        MinimumHeightRequest="0"
                                         Text="Купить за 1000 ₽"
-                                        TextColor="{DynamicResource BgBase}" />
+                                        TextColor="{DynamicResource BgBase}"
+                                        VerticalOptions="Fill" />
                                     <ActivityIndicator
                                         x:Name="Loader1000"
                                         HeightRequest="22"
@@ -297,7 +326,7 @@
                                         Color="{DynamicResource BgBase}" />
                                 </Grid>
                             </Border>
-                        </VerticalStackLayout>
+                        </Grid>
                     </Border>
                 </Grid>
 
@@ -353,6 +382,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="99 ₽ (100ч)"
                                     TextColor="{DynamicResource TextPrimary}" />
                                 <Button
@@ -367,6 +397,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="250 ₽ (260ч)"
                                     TextColor="{DynamicResource TextPrimary}" />
                                 <Button
@@ -381,6 +412,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="300 ₽ (350ч)"
                                     TextColor="{DynamicResource TextPrimary}" />
                                 <Button
@@ -395,6 +427,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="500 ₽ (750ч)"
                                     TextColor="{DynamicResource Accent}" />
                             </Grid>
@@ -415,6 +448,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="1000 ₽ (2200ч)"
                                     TextColor="{DynamicResource Warning}" />
                                 <Button
@@ -429,6 +463,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="2000 ₽ (4700ч)"
                                     TextColor="{DynamicResource PrimaryBright}" />
                                 <Button
@@ -443,6 +478,7 @@
                                     FontFamily="{DynamicResource AppFontMedium}"
                                     FontSize="12"
                                     HeightRequest="36"
+                                    MinimumHeightRequest="0"
                                     Text="5000 ₽ (12 000ч)"
                                     TextColor="{DynamicResource Accent}" />
                             </Grid>
@@ -516,19 +552,22 @@
                                 Grid.Column="{OnIdiom Desktop=2,
                                                       Default=0}"
                                 Padding="18,0"
-                                HeightRequest="44"
+                                HeightRequest="46"
                                 MinimumWidthRequest="210"
                                 Style="{StaticResource NeoBtnPrimary}"
                                 VerticalOptions="Center">
                                 <Grid>
                                     <Button
                                         x:Name="BtnCustomLava"
+                                        Padding="4,0"
                                         BackgroundColor="Transparent"
                                         Clicked="OnBuyCustomLavaClickedAsync"
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="13"
+                                        MinimumHeightRequest="0"
                                         Text="Оплатить 300 ₽ (Lava.top)"
-                                        TextColor="{DynamicResource TextPrimary}" />
+                                        TextColor="{DynamicResource TextPrimary}"
+                                        VerticalOptions="Fill" />
                                     <ActivityIndicator
                                         x:Name="LoaderCustomLava"
                                         HeightRequest="22"
@@ -546,6 +585,7 @@
                 <Border
                     x:Name="PaymentInfoCard"
                     Padding="16,12"
+                    helpers:UIAnimations.AnimateEntrance="True"
                     BackgroundColor="{DynamicResource PrimaryDim}"
                     IsVisible="{OnPlatform WinUI=True, Android=False, Default=False}"
                     Stroke="{DynamicResource BorderSubtle}"

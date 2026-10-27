@@ -21,7 +21,7 @@ public sealed class AppManager : IAppManager
                 return apps;
             }
 
-            var bypassed = GetBypassedPackages().ToHashSet();
+            var bypassed = GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             if (t_cachedApps is not null && t_cachedApps.Count > 0)
             {
@@ -69,8 +69,9 @@ public sealed class AppManager : IAppManager
                     }
 
                     var iconPath = Path.Combine(iconsDir, $"{pkgName}.png");
+                    var hasIcon = File.Exists(iconPath);
 
-                    if (!File.Exists(iconPath))
+                    if (!hasIcon)
                     {
                         pendingIcons.Add((appInfo, pkgName, iconPath));
                     }
@@ -80,7 +81,7 @@ public sealed class AppManager : IAppManager
                         Name = appName,
                         PackageName = pkgName,
                         IsBypassed = bypassed.Contains(pkgName),
-                        IconPath = File.Exists(iconPath) ? iconPath : null
+                        IconPath = hasIcon ? iconPath : null
                     });
                 }
             }
@@ -104,8 +105,9 @@ public sealed class AppManager : IAppManager
                         }
 
                         var iconPath = Path.Combine(iconsDir, $"{bypassedPkg}.png");
+                        var hasIcon = File.Exists(iconPath);
 
-                        if (!File.Exists(iconPath))
+                        if (!hasIcon)
                         {
                             pendingIcons.Add((appInfo, bypassedPkg, iconPath));
                         }
@@ -115,37 +117,41 @@ public sealed class AppManager : IAppManager
                             Name = appName,
                             PackageName = bypassedPkg,
                             IsBypassed = true,
-                            IconPath = File.Exists(iconPath) ? iconPath : null
+                            IconPath = hasIcon ? iconPath : null
                         });
                     }
                     catch { }
                 }
             }
 
-            t_cachedApps = [.. apps.OrderBy(a => a.Name)];
+            t_cachedApps = [.. apps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
 
             if (pendingIcons.Count > 0)
             {
                 var appsByPkg = apps.ToDictionary(a => a.PackageName, a => a, StringComparer.OrdinalIgnoreCase);
-                _ = Task.Run(() =>
+                var orderedPending = pendingIcons
+                    .OrderByDescending(p => bypassed.Contains(p.pkgName))
+                    .ToArray();
+
+                _ = Task.Run(async () =>
                 {
-                    foreach (var (appInfo, pkgName, iconPath) in pendingIcons)
+                    await Task.Delay(180).ConfigureAwait(false);
+                    var batch = new List<(AppInfoItem Target, string Path)>(35);
+                    foreach (var (appInfo, pkgName, iconPath) in orderedPending)
                     {
                         try
                         {
                             if (File.Exists(iconPath))
                             {
-                                if (appsByPkg.TryGetValue(pkgName, out var targetApp))
+                                if (appsByPkg.TryGetValue(pkgName, out var existingTarget))
                                 {
-                                    MainThread.BeginInvokeOnMainThread(() => targetApp.IconPath = iconPath);
+                                    batch.Add((existingTarget, iconPath));
                                 }
-                                continue;
                             }
-
-                            if (appInfo.LoadIcon(pm) is { } drawable)
+                            else if (appInfo.LoadIcon(pm) is { } drawable)
                             {
-                                var width = Math.Clamp(drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48, 32, 64);
-                                var height = Math.Clamp(drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48, 32, 64);
+                                var width = Math.Clamp(drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48, 32, 56);
+                                var height = Math.Clamp(drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48, 32, 56);
                                 using var bmp = global::Android.Graphics.Bitmap.CreateBitmap(
                                     width,
                                     height,
@@ -163,12 +169,39 @@ public sealed class AppManager : IAppManager
 
                                     if (appsByPkg.TryGetValue(pkgName, out var targetApp))
                                     {
-                                        MainThread.BeginInvokeOnMainThread(() => targetApp.IconPath = iconPath);
+                                        batch.Add((targetApp, iconPath));
                                     }
                                 }
                             }
+
+                            if (batch.Count >= 35)
+                            {
+                                var toApply = batch.ToArray();
+                                batch.Clear();
+                                MainThread.BeginInvokeOnMainThread(() =>
+                                {
+                                    foreach (var (target, path) in toApply)
+                                    {
+                                        target.IconPath = path;
+                                    }
+                                });
+                                await Task.Delay(45).ConfigureAwait(false);
+                            }
                         }
                         catch { }
+                    }
+
+                    if (batch.Count > 0)
+                    {
+                        var toApply = batch.ToArray();
+                        batch.Clear();
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            foreach (var (target, path) in toApply)
+                            {
+                                target.IconPath = path;
+                            }
+                        });
                     }
                 });
             }
@@ -219,4 +252,3 @@ public sealed class AppManager : IAppManager
     public void SaveBypassedPackages(List<string> packages) =>
         Preferences.Set(BypassedAppsKey, string.Join(",", packages.Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))));
 }
-

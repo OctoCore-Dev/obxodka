@@ -21,6 +21,14 @@ public sealed partial class DevicesView : ContentView
                 ApplyCardWidth(DevicesScrollView.Width);
             }
         };
+
+        DevicesScrollView.Scrolled += (s, e) =>
+            CardStackScrollHelper.ApplyToChildren(
+                DevicesScrollView,
+                DevicesGrid.Children,
+                zone: 65.0,
+                minScale: 0.92,
+                power: 2.5);
     }
 
     public void ForceLayoutWidth()
@@ -125,11 +133,7 @@ public sealed partial class DevicesView : ContentView
 
             if (ConnectedDevices.Count > 0)
             {
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(100);
-                    await MainThread.InvokeOnMainThreadAsync(PlayEntranceAnimationAsync);
-                });
+                _ = PlayEntranceAnimationAsync();
             }
         }
     }
