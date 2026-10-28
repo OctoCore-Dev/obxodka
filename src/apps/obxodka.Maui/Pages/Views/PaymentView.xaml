@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.PaymentView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -105,12 +105,12 @@
             Orientation="Vertical"
             VerticalScrollBarVisibility="Never">
             <VerticalStackLayout
-                HorizontalOptions="Center"
-                MaximumWidthRequest="{OnIdiom Desktop=920,
-                                              Default=420}"
                 Padding="{OnIdiom Desktop='0,0,0,70',
                                   Phone='0,0,0,100',
                                   Default='0,0,0,40'}"
+                HorizontalOptions="Center"
+                MaximumWidthRequest="{OnIdiom Desktop=920,
+                                              Default=420}"
                 Spacing="16"
                 WidthRequest="{OnIdiom Desktop=900,
                                        Default=-1}">
@@ -413,7 +413,8 @@
                 <Border
                     x:Name="CardConstructor"
                     Padding="22,18"
-                    IsVisible="{OnPlatform WinUI=True, Default=False}"
+                    IsVisible="{OnPlatform WinUI=True,
+                                           Default=False}"
                     Style="{StaticResource NeoCard}">
                     <VerticalStackLayout Spacing="12">
                         <Grid ColumnDefinitions="*, Auto">
@@ -453,8 +454,8 @@
                                 ColumnDefinitions="*, *, *, *"
                                 ColumnSpacing="8">
                                 <Button
-                                    Grid.Column="0"
                                     x:Name="ChipPreset99"
+                                    Grid.Column="0"
                                     Padding="4,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -468,8 +469,8 @@
                                     Text="99 ₽ (100ч)"
                                     TextColor="{DynamicResource TextPrimary}" />
                                 <Button
-                                    Grid.Column="1"
                                     x:Name="ChipPreset250"
+                                    Grid.Column="1"
                                     Padding="4,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -483,8 +484,8 @@
                                     Text="250 ₽ (260ч)"
                                     TextColor="{DynamicResource TextPrimary}" />
                                 <Button
-                                    Grid.Column="2"
                                     x:Name="ChipPreset300"
+                                    Grid.Column="2"
                                     Padding="4,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -498,8 +499,8 @@
                                     Text="300 ₽ (350ч)"
                                     TextColor="{DynamicResource TextPrimary}" />
                                 <Button
-                                    Grid.Column="3"
                                     x:Name="ChipPreset500"
+                                    Grid.Column="3"
                                     Padding="4,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -519,8 +520,8 @@
                                 ColumnDefinitions="*, *, *"
                                 ColumnSpacing="8">
                                 <Button
-                                    Grid.Column="0"
                                     x:Name="ChipPreset1000"
+                                    Grid.Column="0"
                                     Padding="6,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -534,8 +535,8 @@
                                     Text="1000 ₽ (2200ч)"
                                     TextColor="{DynamicResource Warning}" />
                                 <Button
-                                    Grid.Column="1"
                                     x:Name="ChipPreset2000"
+                                    Grid.Column="1"
                                     Padding="6,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -549,8 +550,8 @@
                                     Text="2000 ₽ (4700ч)"
                                     TextColor="{DynamicResource PrimaryBright}" />
                                 <Button
-                                    Grid.Column="2"
                                     x:Name="ChipPreset5000"
+                                    Grid.Column="2"
                                     Padding="6,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     BorderColor="{DynamicResource BorderSubtle}"
@@ -618,8 +619,8 @@
                                     Minimum="50"
                                     MinimumTrackColor="{DynamicResource Accent}"
                                     ThumbColor="{DynamicResource Accent}"
-                                    Value="300"
-                                    ValueChanged="OnCustomAmountSliderChanged" />
+                                    ValueChanged="OnCustomAmountSliderChanged"
+                                    Value="300" />
                                 <Label
                                     x:Name="CalculatedHoursLabel"
                                     FontFamily="{DynamicResource AppFontMedium}"
@@ -671,7 +672,9 @@
                     Padding="16,12"
                     helpers:UIAnimations.AnimateEntrance="True"
                     BackgroundColor="{DynamicResource PrimaryDim}"
-                    IsVisible="{OnPlatform WinUI=True, Android=False, Default=False}"
+                    IsVisible="{OnPlatform WinUI=True,
+                                           Android=False,
+                                           Default=False}"
                     Stroke="{DynamicResource BorderSubtle}"
                     StrokeShape="RoundRectangle 12"
                     StrokeThickness="1">

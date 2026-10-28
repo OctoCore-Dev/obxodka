@@ -1,5 +1,4 @@
 using Microsoft.Maui.Controls.Shapes;
-using obxodka.Helpers;
 
 namespace obxodka.Views;
 
@@ -15,9 +14,9 @@ public sealed partial class SplitView : ContentView
     private static Color ActiveChipBg => (Application.Current?.Resources.TryGetValue("PrimaryDim", out var pd) == true && pd is Color pdc)
         ? pdc
         : ActiveChipColor.WithAlpha(0.18f);
-    private static Color InactiveChipBg => (Application.Current?.Resources.TryGetValue("BgSurface", out var bs) == true && bs is Color bsc)
+    private static Color InactiveChipBg => (Application.Current?.Resources.TryGetValue("BgElevated", out var bs) == true && bs is Color bsc)
         ? bsc
-        : Color.FromArgb("#15FFFFFF");
+        : Color.FromArgb("#202030");
     private static Color InactiveChipStroke => (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bst) == true && bst is Color bstc)
         ? bstc
         : Color.FromArgb("#30FFFFFF");
@@ -44,6 +43,10 @@ public sealed partial class SplitView : ContentView
 #if WINDOWS
     private CancellationTokenSource? _routesDebounceCts;
 #endif
+    private double _lastAppsScrollY;
+    private double _lastSitesScrollY;
+    private bool _isHeaderHidden;
+    private CancellationTokenSource? _headerAnimCts;
 
     public static readonly BindableProperty IsSplitEditingAllowedProperty =
         BindableProperty.Create(nameof(IsSplitEditingAllowed), typeof(bool), typeof(SplitView), false);
@@ -59,14 +62,9 @@ public sealed partial class SplitView : ContentView
         InitializeComponent();
         Unloaded += OnUnloaded;
         RootLayout.SizeChanged += OnRootLayoutSizeChanged;
+        HeaderContainer.SizeChanged += OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled += OnSitesScrollViewScrolled;
-#if ANDROID
-        SplitAppsList.HandlerChanged += (s, e) => AttachCardStackToCollectionView();
-        if (SplitAppsList.Handler?.PlatformView != null)
-        {
-            AttachCardStackToCollectionView();
-        }
-#endif
+        SplitAppsScrollView.Scrolled += OnSplitAppsScrollViewScrolled;
 #if WINDOWS
         ModeTabsGrid.IsVisible = true;
         ChipAddExe.IsVisible = true;
@@ -146,16 +144,24 @@ public sealed partial class SplitView : ContentView
 
     private void OnRootLayoutSizeChanged(object? sender, EventArgs e) => ForceLayoutWidth();
 
-#if ANDROID
-    private void AttachCardStackToCollectionView()
+    private void OnHeaderContainerSizeChanged(object? sender, EventArgs e)
     {
-        if (SplitAppsList.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+        if (HeaderContainer.Height <= 0)
         {
-            rv.ClearOnScrollListeners();
-            rv.AddOnScrollListener(new CardStackScrollHelper.CardStackRecyclerViewScrollListener(dpZone: 65f, minScale: 0.94f, power: 2.2f));
+            return;
+        }
+
+        var spacerH = HeaderContainer.Height + HeaderContainer.Margin.Top + 10;
+        if (AppsListTopSpacer != null && Math.Abs(AppsListTopSpacer.HeightRequest - spacerH) > 1)
+        {
+            AppsListTopSpacer.HeightRequest = spacerH;
+        }
+
+        if (SitesListTopSpacer != null && Math.Abs(SitesListTopSpacer.HeightRequest - spacerH) > 1)
+        {
+            SitesListTopSpacer.HeightRequest = spacerH;
         }
     }
-#endif
 
     private void ApplyCardWidth(double targetWidth)
     {
@@ -173,10 +179,14 @@ public sealed partial class SplitView : ContentView
             _lastAppliedWidth = 0;
             MainContentGrid.ClearValue(WidthRequestProperty);
             MainContentGrid.ClearValue(MaximumWidthRequestProperty);
-            SplitAppsList?.ClearValue(WidthRequestProperty);
-            SplitAppsList?.ClearValue(MaximumWidthRequestProperty);
+            SplitAppsScrollView?.ClearValue(WidthRequestProperty);
+            SplitAppsScrollView?.ClearValue(MaximumWidthRequestProperty);
+            SplitAppsContentStack?.ClearValue(WidthRequestProperty);
+            SplitAppsContentStack?.ClearValue(MaximumWidthRequestProperty);
             SitesSplitScrollView?.ClearValue(WidthRequestProperty);
             SitesSplitScrollView?.ClearValue(MaximumWidthRequestProperty);
+            SitesContentStack?.ClearValue(WidthRequestProperty);
+            SitesContentStack?.ClearValue(MaximumWidthRequestProperty);
             HeaderContainer?.ClearValue(WidthRequestProperty);
             HeaderContainer?.ClearValue(MaximumWidthRequestProperty);
             ActiveBypassedScrollView?.ClearValue(MaximumWidthRequestProperty);
@@ -190,17 +200,22 @@ public sealed partial class SplitView : ContentView
         }
         _lastAppliedWidth = safeWidth;
 
-        MainContentGrid.WidthRequest = safeWidth;
-        MainContentGrid.MaximumWidthRequest = safeWidth;
-        if (SplitAppsList != null)
+        MainContentGrid.ClearValue(WidthRequestProperty);
+        MainContentGrid.ClearValue(MaximumWidthRequestProperty);
+        SplitAppsScrollView?.ClearValue(WidthRequestProperty);
+        SplitAppsScrollView?.ClearValue(MaximumWidthRequestProperty);
+        SitesSplitScrollView?.ClearValue(WidthRequestProperty);
+        SitesSplitScrollView?.ClearValue(MaximumWidthRequestProperty);
+
+        if (SplitAppsContentStack != null)
         {
-            SplitAppsList.WidthRequest = safeWidth;
-            SplitAppsList.MaximumWidthRequest = safeWidth;
+            SplitAppsContentStack.WidthRequest = safeWidth;
+            SplitAppsContentStack.MaximumWidthRequest = safeWidth;
         }
-        if (SitesSplitScrollView != null)
+        if (SitesContentStack != null)
         {
-            SitesSplitScrollView.WidthRequest = safeWidth;
-            SitesSplitScrollView.MaximumWidthRequest = safeWidth;
+            SitesContentStack.WidthRequest = safeWidth;
+            SitesContentStack.MaximumWidthRequest = safeWidth;
         }
         if (HeaderContainer != null)
         {
@@ -212,14 +227,11 @@ public sealed partial class SplitView : ContentView
 
     private void OnUnloaded(object? sender, EventArgs e)
     {
+        _headerAnimCts?.Cancel();
         RootLayout.SizeChanged -= OnRootLayoutSizeChanged;
+        HeaderContainer.SizeChanged -= OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled -= OnSitesScrollViewScrolled;
-#if ANDROID
-        if (SplitAppsList.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
-        {
-            rv.ClearOnScrollListeners();
-        }
-#endif
+        SplitAppsScrollView.Scrolled -= OnSplitAppsScrollViewScrolled;
         if (_parent is not null)
         {
             _parent.VpnService.OnStateChanged -= OnVpnStateChanged;
@@ -235,22 +247,127 @@ public sealed partial class SplitView : ContentView
 #endif
     }
 
+    private void OnSplitAppsScrollViewScrolled(object? sender, ScrolledEventArgs e)
+    {
+        if (SplitAppsScrollView.Height <= 0)
+        {
+            return;
+        }
+
+        var currentScrollY = e.ScrollY;
+        var deltaY = currentScrollY - _lastAppsScrollY;
+        _lastAppsScrollY = currentScrollY;
+        UpdateQuickReturnHeader(currentScrollY, deltaY);
+
+        var containerOffset = SplitAppsItemsStack.Y > 0 ? SplitAppsItemsStack.Y : (AppsListTopSpacer?.HeightRequest ?? 0.0);
+        CardStackScrollHelper.ApplyToChildren(
+            SplitAppsItemsStack.Children.OfType<VisualElement>(),
+            currentScrollY,
+            SplitAppsScrollView.Height,
+            containerOffsetY: containerOffset,
+            zone: 70.0,
+            minScale: 0.90,
+            power: 2.2);
+    }
+
     private void OnSitesScrollViewScrolled(object? sender, ScrolledEventArgs e)
     {
-        if (SitesSplitScrollView.Content is VerticalStackLayout stack && SitesSplitScrollView.Height > 0)
+        if (SitesSplitScrollView.Height <= 0)
+        {
+            return;
+        }
+
+        var currentScrollY = e.ScrollY;
+        var deltaY = currentScrollY - _lastSitesScrollY;
+        _lastSitesScrollY = currentScrollY;
+        UpdateQuickReturnHeader(currentScrollY, deltaY);
+
+        if (SitesSplitScrollView.Content is VerticalStackLayout stack)
         {
             CardStackScrollHelper.ApplyToChildren(
-                stack.Children.OfType<VisualElement>(),
-                e.ScrollY,
+                stack.Children.OfType<VisualElement>().Where(c => c != SitesListTopSpacer),
+                currentScrollY,
                 SitesSplitScrollView.Height,
-                zone: 65.0,
-                minScale: 0.92,
-                power: 2.5);
+                containerOffsetY: 0.0,
+                zone: 70.0,
+                minScale: 0.90,
+                power: 2.2);
         }
+    }
+
+    private void UpdateQuickReturnHeader(double scrollY, double deltaY)
+    {
+        if (HeaderContainer == null || HeaderContainer.Height <= 0 || (SplitSearchEntry != null && SplitSearchEntry.IsFocused))
+        {
+            return;
+        }
+
+        var maxHideOffset = HeaderContainer.Height + HeaderContainer.Margin.Top + 20.0;
+
+        if (scrollY <= 25.0)
+        {
+            if (_isHeaderHidden || Math.Abs(HeaderContainer.TranslationY) > 0.5)
+            {
+                _isHeaderHidden = false;
+                _headerAnimCts?.Cancel();
+                var cts = new CancellationTokenSource();
+                _headerAnimCts = cts;
+                _ = AnimateHeaderAsync(0, 1.0, false);
+            }
+            return;
+        }
+
+        if (deltaY > 12.0 && !_isHeaderHidden && scrollY > 70.0)
+        {
+            _isHeaderHidden = true;
+            _headerAnimCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _headerAnimCts = cts;
+            _ = AnimateHeaderAsync(-maxHideOffset, 0.0, true);
+        }
+        else if (deltaY < -10.0 && _isHeaderHidden)
+        {
+            _isHeaderHidden = false;
+            _headerAnimCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _headerAnimCts = cts;
+            _ = AnimateHeaderAsync(0, 1.0, false);
+        }
+    }
+
+    private async Task AnimateHeaderAsync(double targetY, double targetOpacity, bool inputTransparent)
+    {
+        try
+        {
+            HeaderContainer.InputTransparent = inputTransparent;
+            var dist = Math.Abs(HeaderContainer.TranslationY - targetY);
+            var duration = (uint)Math.Clamp(dist * 0.8, 140, 240);
+            var tTask = HeaderContainer.TranslateToAsync(0, targetY, duration, Easing.CubicOut);
+            var fTask = HeaderContainer.FadeToAsync(targetOpacity, duration, Easing.CubicOut);
+            _ = await Task.WhenAll(tTask, fTask).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private void ResetHeaderToVisible()
+    {
+        _isHeaderHidden = false;
+        _headerAnimCts?.Cancel();
+        if (HeaderContainer != null)
+        {
+            HeaderContainer.TranslationY = 0;
+            HeaderContainer.Opacity = 1.0;
+            HeaderContainer.InputTransparent = false;
+        }
+        _lastAppsScrollY = 0;
+        _lastSitesScrollY = 0;
     }
 
     public async Task PlayEntranceAnimationAsync()
     {
+        ResetHeaderToVisible();
         Opacity = 1;
         TranslationY = 0;
         if (_isSitesTabActive)
@@ -270,7 +387,7 @@ public sealed partial class SplitView : ContentView
         }
         else
         {
-            await UIAnimations.PlayEntranceCascadeAsync(35, 220, HeaderContainer, SplitAppsList);
+            await UIAnimations.PlayEntranceCascadeAsync(35, 220, HeaderContainer, SplitAppsScrollView);
         }
     }
 
@@ -355,7 +472,7 @@ public sealed partial class SplitView : ContentView
         SplitLoadingOverlay.IsVisible = true;
         if (!_isSitesTabActive)
         {
-            SplitAppsList.IsVisible = false;
+            SplitAppsScrollView.IsVisible = false;
         }
         _ = HideSplitToastAsync();
 
@@ -397,7 +514,7 @@ public sealed partial class SplitView : ContentView
             SplitLoadingOverlay.IsVisible = false;
             if (!_isSitesTabActive)
             {
-                SplitAppsList.IsVisible = true;
+                SplitAppsScrollView.IsVisible = true;
             }
         }
     }
@@ -409,7 +526,7 @@ public sealed partial class SplitView : ContentView
         _allApps.Clear();
         _activeChipBorders.Clear();
         ActiveBypassedChipsLayout.Children.Clear();
-        SplitAppsList.ItemsSource = null;
+        BindableLayout.SetItemsSource(SplitAppsItemsStack, null);
         await LoadSplitAppsAsync();
     }
 
@@ -420,18 +537,19 @@ public sealed partial class SplitView : ContentView
             return;
         }
 
+        ResetHeaderToVisible();
         ThemeAudioService.PlayClick();
         _ = TabModeApps.BounceClickAsync();
         _toastCts?.Cancel();
         _ = HideSplitToastAsync();
         _isSitesTabActive = false;
         AppsHeaderControls.IsVisible = true;
-        SplitAppsList.IsVisible = true;
+        SplitAppsScrollView.IsVisible = true;
         SitesSplitScrollView.IsVisible = false;
         UpdateModeTabStyles();
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
-        _ = UIAnimations.PlayEntranceCascadeAsync(30, 200, AppsHeaderControls, SplitAppsList);
+        _ = UIAnimations.PlayEntranceCascadeAsync(30, 200, AppsHeaderControls, SplitAppsScrollView);
     }
 
     private void OnTabModeSitesClicked(object? sender, EventArgs e)
@@ -441,13 +559,14 @@ public sealed partial class SplitView : ContentView
             return;
         }
 
+        ResetHeaderToVisible();
         ThemeAudioService.PlayClick();
         _ = TabModeSites.BounceClickAsync();
         _toastCts?.Cancel();
         _ = HideSplitToastAsync();
         _isSitesTabActive = true;
         AppsHeaderControls.IsVisible = false;
-        SplitAppsList.IsVisible = false;
+        SplitAppsScrollView.IsVisible = false;
         SitesSplitScrollView.IsVisible = true;
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();
@@ -883,7 +1002,7 @@ public sealed partial class SplitView : ContentView
         }
 
         _isUpdatingInternally = true;
-        SplitAppsList.ItemsSource = filtered.ToList();
+        BindableLayout.SetItemsSource(SplitAppsItemsStack, filtered.ToList());
         _isUpdatingInternally = false;
     }
 
@@ -1093,10 +1212,10 @@ public sealed partial class SplitView : ContentView
         ];
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
-        SplitAppsList.Opacity = 0.35;
-        SplitAppsList.TranslationY = 10;
-        _ = SplitAppsList.FadeToAsync(1.0, 160, Easing.CubicOut);
-        _ = SplitAppsList.TranslateToAsync(0, 0, 160, Easing.CubicOut);
+        SplitAppsScrollView.Opacity = 0.35;
+        SplitAppsScrollView.TranslationY = 10;
+        _ = SplitAppsScrollView.FadeToAsync(1.0, 160, Easing.CubicOut);
+        _ = SplitAppsScrollView.TranslateToAsync(0, 0, 160, Easing.CubicOut);
     }
 
     private void OnFilterBypassedClicked(object? sender, EventArgs e)
@@ -1106,10 +1225,10 @@ public sealed partial class SplitView : ContentView
         _showOnlyBypassed = true;
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
-        SplitAppsList.Opacity = 0.35;
-        SplitAppsList.TranslationY = 10;
-        _ = SplitAppsList.FadeToAsync(1.0, 160, Easing.CubicOut);
-        _ = SplitAppsList.TranslateToAsync(0, 0, 160, Easing.CubicOut);
+        SplitAppsScrollView.Opacity = 0.35;
+        SplitAppsScrollView.TranslationY = 10;
+        _ = SplitAppsScrollView.FadeToAsync(1.0, 160, Easing.CubicOut);
+        _ = SplitAppsScrollView.TranslateToAsync(0, 0, 160, Easing.CubicOut);
     }
 
     private void UpdateFilterChipStyles()
@@ -1141,25 +1260,43 @@ public sealed partial class SplitView : ContentView
         var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
             ? bgColor
             : Color.FromArgb("#161622");
+        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+            ? bsc
+            : Color.FromArgb("#282838");
 
-        HeaderContainer.BackgroundColor = Colors.Transparent;
-        ChipResetAll.BackgroundColor = bgSurface;
-        ChipRefreshApps.BackgroundColor = bgSurface;
+        HeaderContainer.BackgroundColor = bgSurface;
+        HeaderContainer.Stroke = borderSubtle;
+        ChipResetAll.BackgroundColor = InactiveChipBg;
+        ChipRefreshApps.BackgroundColor = InactiveChipBg;
         UpdateFilterChipStyles();
         UpdateModeTabStyles();
     }
 
     public void SetHeaderTopInset(double top)
     {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
+        if (DeviceInfo.Idiom != DeviceIdiom.Phone)
         {
-            var safeTop = Math.Max(top + 16, 50);
-            HeaderContainer.Padding = new Thickness(0, safeTop, 0, 6);
+            return;
         }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+
+        var safeTop = DeviceInfo.Platform == DevicePlatform.Android
+            ? Math.Max(top + 8, 38)
+            : Math.Max(top, 14);
+
+        HeaderContainer.Margin = new Thickness(16, safeTop, 16, 0);
+
+        var spacerH = HeaderContainer.Height > 0
+            ? HeaderContainer.Height + safeTop + 10
+            : safeTop + 240;
+
+        if (AppsListTopSpacer != null && Math.Abs(AppsListTopSpacer.HeightRequest - spacerH) > 1)
         {
-            var safeTop = Math.Max(top, 10);
-            HeaderContainer.Padding = new Thickness(0, safeTop, 0, 6);
+            AppsListTopSpacer.HeightRequest = spacerH;
+        }
+
+        if (SitesListTopSpacer != null && Math.Abs(SitesListTopSpacer.HeightRequest - spacerH) > 1)
+        {
+            SitesListTopSpacer.HeightRequest = spacerH;
         }
     }
 

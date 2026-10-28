@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.SplitView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -10,160 +10,195 @@
 
     <Grid
         x:Name="RootLayout"
-        Padding="{OnIdiom Desktop='32,28',
-                          Phone='16,0,16,0',
-                          Default='16,20'}"
+        Padding="0"
         IsClippedToBounds="True"
         SafeAreaEdges="None">
 
         <Grid
             x:Name="MainContentGrid"
-            HorizontalOptions="{OnIdiom Desktop=Center, Default=Fill}"
-            VerticalOptions="Fill"
-            RowDefinitions="Auto, *"
-            RowSpacing="10">
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
 
-            <Grid Grid.Row="1">
-                <CollectionView
-                    x:Name="SplitAppsList"
-                    ItemSizingStrategy="MeasureFirstItem"
-                    Margin="{OnIdiom Phone='0,0,0,105', Default='0,0,0,12'}"
-                    SelectionMode="None"
-                    VerticalScrollBarVisibility="Never">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="m:AppInfoItem">
-                            <Border
-                                Margin="0,3"
-                                Padding="14,8"
-                                BackgroundColor="{DynamicResource BgSurface}"
-                                HeightRequest="64"
-                                Stroke="{DynamicResource BorderSubtle}"
-                                StrokeShape="RoundRectangle 12"
-                                StrokeThickness="1">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnAppRowTapped" />
-                                </Border.GestureRecognizers>
-                                <Grid
-                                    ColumnDefinitions="38, *, 46"
-                                    ColumnSpacing="12"
-                                    InputTransparent="True"
-                                    RowDefinitions="*, *"
-                                    RowSpacing="1">
-                                    <Image
-                                        Grid.Row="0"
-                                        Grid.RowSpan="2"
-                                        Grid.Column="0"
-                                        Aspect="AspectFit"
-                                        HeightRequest="32"
-                                        HorizontalOptions="Center"
-                                        InputTransparent="True"
-                                        IsVisible="{Binding HasIcon}"
-                                        Source="{Binding IconSource}"
-                                        VerticalOptions="Center"
-                                        WidthRequest="32" />
-
+            <Grid ZIndex="1">
+                <ScrollView
+                    x:Name="SplitAppsScrollView"
+                    Margin="0"
+                    BackgroundColor="Transparent"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill"
+                    VerticalScrollBarVisibility="Never"
+                    ZIndex="1">
+                    <VerticalStackLayout
+                        x:Name="SplitAppsContentStack"
+                        Padding="{OnIdiom Desktop='0',
+                                          Phone='16,0,16,0',
+                                          Default='16,0,16,0'}"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="{OnIdiom Desktop=Center,
+                                                    Default=Fill}"
+                        Spacing="0">
+                        <Grid
+                            x:Name="AppsListTopSpacer"
+                            BackgroundColor="Transparent"
+                            HeightRequest="280"
+                            InputTransparent="True" />
+                        <VerticalStackLayout x:Name="SplitAppsItemsStack" Spacing="6">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="m:AppInfoItem">
                                     <Border
-                                        Grid.Row="0"
-                                        Grid.RowSpan="2"
-                                        Grid.Column="0"
-                                        BackgroundColor="{DynamicResource PrimaryDim}"
-                                        HeightRequest="32"
-                                        HorizontalOptions="Center"
-                                        InputTransparent="True"
-                                        IsVisible="{Binding HasNoIcon}"
-                                        StrokeShape="RoundRectangle 16"
-                                        StrokeThickness="0"
-                                        VerticalOptions="Center"
-                                        WidthRequest="32">
-                                        <Label
-                                            FontFamily="{DynamicResource AppFontBold}"
-                                            FontSize="13"
-                                            HorizontalOptions="Center"
-                                            InputTransparent="True"
-                                            Text="{Binding InitialLetter}"
-                                            TextColor="{DynamicResource PrimaryBright}"
-                                            VerticalOptions="Center" />
-                                    </Border>
-
-                                    <Label
-                                        Grid.Row="0"
-                                        Grid.Column="1"
-                                        FontFamily="{DynamicResource AppFontBold}"
-                                        FontSize="14"
-                                        InputTransparent="True"
-                                        LineBreakMode="TailTruncation"
-                                        Text="{Binding Name}"
-                                        TextColor="{DynamicResource TextPrimary}"
-                                        VerticalOptions="End" />
-
-                                    <Label
-                                        Grid.Row="1"
-                                        Grid.Column="1"
-                                        FontSize="11"
-                                        InputTransparent="True"
-                                        LineBreakMode="TailTruncation"
-                                        Style="{StaticResource LabelMuted}"
-                                        Text="{Binding PackageName}"
-                                        VerticalOptions="Start" />
-
-                                    <Border
-                                        Grid.Row="0"
-                                        Grid.RowSpan="2"
-                                        Grid.Column="2"
-                                        Padding="3,0"
-                                        BackgroundColor="{DynamicResource BgElevated}"
-                                        HeightRequest="24"
-                                        HorizontalOptions="End"
-                                        InputTransparent="True"
+                                        Margin="0,0"
+                                        Padding="14,8"
+                                        BackgroundColor="{DynamicResource BgSurface}"
+                                        HeightRequest="64"
                                         Stroke="{DynamicResource BorderSubtle}"
                                         StrokeShape="RoundRectangle 12"
-                                        StrokeThickness="1"
-                                        VerticalOptions="Center"
-                                        WidthRequest="44">
-                                        <Border.Triggers>
-                                            <DataTrigger
-                                                Binding="{Binding IsBypassed}"
-                                                TargetType="Border"
-                                                Value="True">
-                                                <Setter Property="BackgroundColor" Value="{DynamicResource Primary}" />
-                                                <Setter Property="Stroke" Value="{DynamicResource PrimaryBright}" />
-                                            </DataTrigger>
-                                        </Border.Triggers>
-                                        <BoxView
-                                            CornerRadius="9"
-                                            HeightRequest="18"
-                                            HorizontalOptions="Start"
+                                        StrokeThickness="1">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnAppRowTapped" />
+                                        </Border.GestureRecognizers>
+                                        <Grid
+                                            ColumnDefinitions="38, *, 46"
+                                            ColumnSpacing="12"
                                             InputTransparent="True"
-                                            TranslationX="0"
-                                            VerticalOptions="Center"
-                                            WidthRequest="18"
-                                            Color="{DynamicResource TextMuted}">
-                                            <BoxView.Triggers>
-                                                <DataTrigger
-                                                    Binding="{Binding IsBypassed}"
-                                                    TargetType="BoxView"
-                                                    Value="True">
-                                                    <Setter Property="TranslationX" Value="18" />
-                                                    <Setter Property="Color" Value="#FFFFFF" />
-                                                </DataTrigger>
-                                            </BoxView.Triggers>
-                                        </BoxView>
+                                            RowDefinitions="*, *"
+                                            RowSpacing="1">
+                                            <Image
+                                                Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="0"
+                                                Aspect="AspectFit"
+                                                HeightRequest="32"
+                                                HorizontalOptions="Center"
+                                                InputTransparent="True"
+                                                IsVisible="{Binding HasIcon}"
+                                                Source="{Binding IconSource}"
+                                                VerticalOptions="Center"
+                                                WidthRequest="32" />
+
+                                            <Border
+                                                Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="0"
+                                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                                HeightRequest="32"
+                                                HorizontalOptions="Center"
+                                                InputTransparent="True"
+                                                IsVisible="{Binding HasNoIcon}"
+                                                StrokeShape="RoundRectangle 16"
+                                                StrokeThickness="0"
+                                                VerticalOptions="Center"
+                                                WidthRequest="32">
+                                                <Label
+                                                    FontFamily="{DynamicResource AppFontBold}"
+                                                    FontSize="13"
+                                                    HorizontalOptions="Center"
+                                                    InputTransparent="True"
+                                                    Text="{Binding InitialLetter}"
+                                                    TextColor="{DynamicResource PrimaryBright}"
+                                                    VerticalOptions="Center" />
+                                            </Border>
+
+                                            <Label
+                                                Grid.Row="0"
+                                                Grid.Column="1"
+                                                FontFamily="{DynamicResource AppFontBold}"
+                                                FontSize="14"
+                                                InputTransparent="True"
+                                                LineBreakMode="TailTruncation"
+                                                Text="{Binding Name}"
+                                                TextColor="{DynamicResource TextPrimary}"
+                                                VerticalOptions="End" />
+
+                                            <Label
+                                                Grid.Row="1"
+                                                Grid.Column="1"
+                                                FontSize="11"
+                                                InputTransparent="True"
+                                                LineBreakMode="TailTruncation"
+                                                Style="{StaticResource LabelMuted}"
+                                                Text="{Binding PackageName}"
+                                                VerticalOptions="Start" />
+
+                                            <Border
+                                                Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="2"
+                                                Padding="3,0"
+                                                BackgroundColor="{DynamicResource BgElevated}"
+                                                HeightRequest="24"
+                                                HorizontalOptions="End"
+                                                InputTransparent="True"
+                                                Stroke="{DynamicResource BorderSubtle}"
+                                                StrokeShape="RoundRectangle 12"
+                                                StrokeThickness="1"
+                                                VerticalOptions="Center"
+                                                WidthRequest="44">
+                                                <Border.Triggers>
+                                                    <DataTrigger
+                                                        Binding="{Binding IsBypassed}"
+                                                        TargetType="Border"
+                                                        Value="True">
+                                                        <Setter Property="BackgroundColor" Value="{DynamicResource Primary}" />
+                                                        <Setter Property="Stroke" Value="{DynamicResource PrimaryBright}" />
+                                                    </DataTrigger>
+                                                </Border.Triggers>
+                                                <BoxView
+                                                    CornerRadius="9"
+                                                    HeightRequest="18"
+                                                    HorizontalOptions="Start"
+                                                    InputTransparent="True"
+                                                    TranslationX="0"
+                                                    VerticalOptions="Center"
+                                                    WidthRequest="18"
+                                                    Color="{DynamicResource TextMuted}">
+                                                    <BoxView.Triggers>
+                                                        <DataTrigger
+                                                            Binding="{Binding IsBypassed}"
+                                                            TargetType="BoxView"
+                                                            Value="True">
+                                                            <Setter Property="TranslationX" Value="18" />
+                                                            <Setter Property="Color" Value="#FFFFFF" />
+                                                        </DataTrigger>
+                                                    </BoxView.Triggers>
+                                                </BoxView>
+                                            </Border>
+                                        </Grid>
                                     </Border>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Grid
+                            BackgroundColor="Transparent"
+                            HeightRequest="{OnIdiom Desktop=85,
+                                                    Phone=135,
+                                                    Default=85}"
+                            InputTransparent="True" />
+                    </VerticalStackLayout>
+                </ScrollView>
 
                 <ScrollView
                     x:Name="SitesSplitScrollView"
+                    Margin="0"
+                    BackgroundColor="Transparent"
+                    HorizontalOptions="Fill"
                     IsVisible="False"
-                    VerticalScrollBarVisibility="Never">
+                    VerticalOptions="Fill"
+                    VerticalScrollBarVisibility="Never"
+                    ZIndex="1">
                     <VerticalStackLayout
-                        Padding="{OnIdiom Desktop='0,0,0,36',
-                                          Phone='0,0,0,120',
-                                          Default='0,0,0,36'}"
+                        x:Name="SitesContentStack"
+                        Padding="{OnIdiom Desktop='0',
+                                          Phone='16,0,16,0',
+                                          Default='16,0,16,0'}"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="{OnIdiom Desktop=Center,
+                                                    Default=Fill}"
                         Spacing="10">
+                        <Grid
+                            x:Name="SitesListTopSpacer"
+                            BackgroundColor="Transparent"
+                            HeightRequest="280"
+                            InputTransparent="True" />
 
                         <Border
                             x:Name="SitesInfoBanner"
@@ -469,7 +504,10 @@
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnAddCustomRuleClicked" />
                                         </Border.GestureRecognizers>
-                                        <HorizontalStackLayout InputTransparent="True" Spacing="6" VerticalOptions="Center">
+                                        <HorizontalStackLayout
+                                            InputTransparent="True"
+                                            Spacing="6"
+                                            VerticalOptions="Center">
                                             <mi:MauiIcon
                                                 Icon="{mi:Fluent Icon=Add20}"
                                                 IconColor="{DynamicResource TextOnPrimary}"
@@ -522,7 +560,10 @@
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnRefreshSplitRoutesClicked" />
                                 </Border.GestureRecognizers>
-                                <HorizontalStackLayout InputTransparent="True" Spacing="4" VerticalOptions="Center">
+                                <HorizontalStackLayout
+                                    InputTransparent="True"
+                                    Spacing="4"
+                                    VerticalOptions="Center">
                                     <mi:MauiIcon
                                         Icon="{mi:Fluent Icon=ArrowSync16}"
                                         IconColor="{DynamicResource TextSecondary}"
@@ -563,6 +604,12 @@
                                     Wrap="Wrap" />
                             </VerticalStackLayout>
                         </Border>
+                        <Grid
+                            BackgroundColor="Transparent"
+                            HeightRequest="{OnIdiom Desktop=85,
+                                                    Phone=135,
+                                                    Default=85}"
+                            InputTransparent="True" />
                     </VerticalStackLayout>
                 </ScrollView>
 
@@ -587,7 +634,10 @@
                     StrokeThickness="1"
                     VerticalOptions="End"
                     ZIndex="100">
-                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                    <Grid
+                        ColumnDefinitions="Auto, *, Auto"
+                        ColumnSpacing="10"
+                        VerticalOptions="Center">
                         <mi:MauiIcon
                             Grid.Column="0"
                             Icon="{mi:Fluent Icon=Warning24}"
@@ -621,14 +671,20 @@
 
             <Border
                 x:Name="HeaderContainer"
-                Grid.Row="0"
-                Padding="{OnIdiom Desktop='0,4,0,4',
-                                  Phone='0,10,0,4',
-                                  Default='0,8,0,4'}"
-                BackgroundColor="Transparent"
-                StrokeThickness="0"
+                Margin="{OnIdiom Desktop='0,28,0,0',
+                                 Phone='16,14,16,0',
+                                 Default='16,20,16,0'}"
+                Padding="{OnIdiom Desktop='16,12',
+                                  Phone='14,12',
+                                  Default='14,12'}"
+                BackgroundColor="{DynamicResource BgSurface}"
+                HorizontalOptions="{OnIdiom Desktop=Center,
+                                            Default=Fill}"
+                Stroke="{DynamicResource BorderSubtle}"
+                StrokeShape="RoundRectangle 14"
+                StrokeThickness="1"
                 VerticalOptions="Start"
-                ZIndex="20">
+                ZIndex="30">
                 <VerticalStackLayout Spacing="10">
                     <Label
                         FontFamily="{DynamicResource AppFontTitle}"
@@ -654,7 +710,10 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnTabModeAppsClicked" />
                             </Border.GestureRecognizers>
-                            <HorizontalStackLayout HorizontalOptions="Center" InputTransparent="True" Spacing="6">
+                            <HorizontalStackLayout
+                                HorizontalOptions="Center"
+                                InputTransparent="True"
+                                Spacing="6">
                                 <mi:MauiIcon
                                     Icon="{mi:Fluent Icon=Apps20}"
                                     IconColor="{DynamicResource PrimaryBright}"
@@ -676,14 +735,17 @@
                             x:Name="TabModeSites"
                             Grid.Column="1"
                             Padding="10,7"
-                            BackgroundColor="{DynamicResource BgSurface}"
+                            BackgroundColor="{DynamicResource BgElevated}"
                             Stroke="{DynamicResource BorderSubtle}"
                             StrokeShape="RoundRectangle 8"
                             StrokeThickness="1">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnTabModeSitesClicked" />
                             </Border.GestureRecognizers>
-                            <HorizontalStackLayout HorizontalOptions="Center" InputTransparent="True" Spacing="6">
+                            <HorizontalStackLayout
+                                HorizontalOptions="Center"
+                                InputTransparent="True"
+                                Spacing="6">
                                 <mi:MauiIcon
                                     Icon="{mi:Fluent Icon=Globe20}"
                                     IconColor="{DynamicResource TextSecondary}"
@@ -704,20 +766,26 @@
 
                     <Border
                         x:Name="SplitRestartWarningCard"
-                        IsVisible="False"
                         Padding="12,8"
                         BackgroundColor="{DynamicResource BgElevated}"
+                        IsVisible="False"
                         Stroke="{DynamicResource Warning}"
                         StrokeShape="RoundRectangle 8"
                         StrokeThickness="1">
-                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" VerticalOptions="Center">
+                        <Grid
+                            ColumnDefinitions="Auto, *"
+                            ColumnSpacing="8"
+                            VerticalOptions="Center">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Info20}"
                                 IconColor="{DynamicResource Warning}"
                                 IconSize="18"
                                 VerticalOptions="Center" />
-                            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="1"
+                                VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="{OnIdiom Desktop=11,
@@ -793,7 +861,7 @@
                                 x:Name="ChipFilterBypassed"
                                 Grid.Column="1"
                                 Padding="8,6"
-                                BackgroundColor="{DynamicResource BgSurface}"
+                                BackgroundColor="{DynamicResource BgElevated}"
                                 Stroke="{DynamicResource BorderSubtle}"
                                 StrokeShape="RoundRectangle 6"
                                 StrokeThickness="1">
@@ -814,7 +882,7 @@
                                 x:Name="ChipRefreshApps"
                                 Grid.Column="2"
                                 Padding="9,6"
-                                BackgroundColor="{DynamicResource BgSurface}"
+                                BackgroundColor="{DynamicResource BgElevated}"
                                 Stroke="{DynamicResource BorderSubtle}"
                                 StrokeShape="RoundRectangle 6"
                                 StrokeThickness="1">
@@ -841,7 +909,10 @@
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnAddCustomExeClickedAsync" />
                                 </Border.GestureRecognizers>
-                                <HorizontalStackLayout InputTransparent="True" Spacing="4" VerticalOptions="Center">
+                                <HorizontalStackLayout
+                                    InputTransparent="True"
+                                    Spacing="4"
+                                    VerticalOptions="Center">
                                     <mi:MauiIcon
                                         Icon="{mi:Fluent Icon=FolderOpen20}"
                                         IconColor="{DynamicResource PrimaryBright}"
@@ -862,7 +933,7 @@
                                 x:Name="ChipResetAll"
                                 Grid.Column="4"
                                 Padding="10,6"
-                                BackgroundColor="{DynamicResource BgSurface}"
+                                BackgroundColor="{DynamicResource BgElevated}"
                                 Stroke="{DynamicResource BorderSubtle}"
                                 StrokeShape="RoundRectangle 6"
                                 StrokeThickness="1">

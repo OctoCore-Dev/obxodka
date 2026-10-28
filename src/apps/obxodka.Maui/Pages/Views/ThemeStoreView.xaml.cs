@@ -1,5 +1,4 @@
 using Microsoft.Maui.Controls.Shapes;
-using obxodka.Helpers;
 using Path = System.IO.Path;
 
 namespace obxodka.Views;
@@ -425,15 +424,6 @@ public sealed partial class ThemeStoreView : ContentView
             }
         }
 
-        CardStackScrollHelper.ApplyToChildren(
-            [CardSearch, CardVfxSettings],
-            scrollY,
-            viewportHeight,
-            containerOffsetY: 0.0,
-            zone: 65.0,
-            minScale: 0.94,
-            power: 2.2);
-
         if (ThemesContainer.Children.Count > 0)
         {
             CardStackScrollHelper.ApplyToChildren(
@@ -441,8 +431,8 @@ public sealed partial class ThemeStoreView : ContentView
                 scrollY,
                 viewportHeight,
                 containerOffsetY: ThemesContainer.Y,
-                zone: 65.0,
-                minScale: 0.94,
+                zone: 70.0,
+                minScale: 0.92,
                 power: 2.2);
         }
     }

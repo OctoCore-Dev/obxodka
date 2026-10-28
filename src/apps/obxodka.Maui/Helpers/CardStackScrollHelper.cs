@@ -18,20 +18,21 @@ public static class CardStackScrollHelper
             return (1.0, 0.0, 1.0);
         }
 
-        var topThreshold = zone;
+        var startThreshold = zone;
         var bottomThreshold = viewportHeight - zone;
 
-        if (relativeY >= topThreshold && relativeY <= bottomThreshold)
+        if (relativeY >= startThreshold && relativeY <= bottomThreshold)
         {
             return (1.0, 0.0, 1.0);
         }
 
-        var isTop = relativeY < topThreshold;
-        var delta = isTop ? topThreshold - relativeY : relativeY - bottomThreshold;
+        var isTop = relativeY < startThreshold;
+        var delta = isTop ? startThreshold - relativeY : relativeY - bottomThreshold;
         var progress = Math.Clamp(delta / zone, 0.0, 1.0);
         var easeProgress = Math.Pow(1.0 - progress, power);
         var scale = Math.Max(minScale, minScale + ((1.0 - minScale) * easeProgress));
-        var stackTranslateY = isTop ? delta * 0.45 : -delta * 0.45;
+        var clampedDelta = Math.Min(delta, zone);
+        var stackTranslateY = isTop ? clampedDelta * 0.45 : -clampedDelta * 0.45;
         var opacity = Math.Clamp(Math.Pow(1.0 - progress, 1.4), 0.0, 1.0);
 
         return (scale, stackTranslateY, opacity);
@@ -99,87 +100,4 @@ public static class CardStackScrollHelper
             minScale: minScale,
             power: power);
     }
-
-#if ANDROID
-    public sealed class CardStackRecyclerViewScrollListener(
-        float dpZone = (float)DefaultTransitionZone,
-        float minScale = (float)DefaultMinScale,
-        float power = (float)DefaultPower) : AndroidX.RecyclerView.Widget.RecyclerView.OnScrollListener
-    {
-        private readonly float _dpZone = dpZone;
-        private readonly float _minScale = minScale;
-        private readonly float _power = power;
-
-        public override void OnScrolled(AndroidX.RecyclerView.Widget.RecyclerView recyclerView, int dx, int dy)
-        {
-            base.OnScrolled(recyclerView, dx, dy);
-            ApplyTransformations(recyclerView);
-        }
-
-        public void ApplyTransformations(AndroidX.RecyclerView.Widget.RecyclerView recyclerView)
-        {
-            var childCount = recyclerView.ChildCount;
-            if (childCount == 0)
-            {
-                return;
-            }
-
-            var density = recyclerView.Resources?.DisplayMetrics?.Density ?? 1.0f;
-            var zone = _dpZone * density;
-            var viewportHeight = recyclerView.Height;
-            if (viewportHeight <= 0)
-            {
-                return;
-            }
-
-            var topThreshold = zone;
-            var bottomThreshold = viewportHeight - zone;
-
-            for (var i = 0; i < childCount; i++)
-            {
-                var child = recyclerView.GetChildAt(i);
-                if (child is null)
-                {
-                    continue;
-                }
-
-                var itemCenterY = child.Top + (child.Height / 2.0f);
-
-                if (itemCenterY >= topThreshold && itemCenterY <= bottomThreshold)
-                {
-                    if (child.ScaleX != 1.0f)
-                    {
-                        child.ScaleX = 1.0f;
-                        child.ScaleY = 1.0f;
-                    }
-
-                    if (child.TranslationY != 0f)
-                    {
-                        child.TranslationY = 0f;
-                    }
-
-                    if (child.Alpha != 1.0f)
-                    {
-                        child.Alpha = 1.0f;
-                    }
-                }
-                else
-                {
-                    var isTop = itemCenterY < topThreshold;
-                    var delta = isTop ? topThreshold - itemCenterY : itemCenterY - bottomThreshold;
-                    var progress = Math.Clamp(delta / zone, 0f, 1f);
-                    var easeProgress = (float)Math.Pow(1.0f - progress, _power);
-                    var targetScale = Math.Max(_minScale, _minScale + ((1.0f - _minScale) * easeProgress));
-                    var stackTranslateY = isTop ? delta * 0.45f : -delta * 0.45f;
-                    var opacity = Math.Clamp((float)Math.Pow(1.0f - progress, 1.4f), 0f, 1f);
-
-                    child.ScaleX = targetScale;
-                    child.ScaleY = targetScale;
-                    child.TranslationY = stackTranslateY;
-                    child.Alpha = opacity;
-                }
-            }
-        }
-    }
-#endif
 }

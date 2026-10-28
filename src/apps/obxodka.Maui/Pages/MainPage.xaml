@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
     x:Class="obxodka.Pages.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -17,7 +17,10 @@
         IsClippedToBounds="True"
         SafeAreaEdges="None">
         <Grid.GestureRecognizers>
-            <PointerGestureRecognizer PointerExited="OnPagePointerExited" PointerMoved="OnPagePointerMoved" PointerPressed="OnPagePointerPressed" />
+            <PointerGestureRecognizer
+                PointerExited="OnPagePointerExited"
+                PointerMoved="OnPagePointerMoved"
+                PointerPressed="OnPagePointerPressed" />
             <TapGestureRecognizer Tapped="OnPageTapped" />
         </Grid.GestureRecognizers>
 
@@ -260,9 +263,9 @@
                 <Border.Shadow>
                     <Shadow
                         Brush="{DynamicResource BgBase}"
-                        Offset="0,8"
                         Opacity="0.6"
-                        Radius="24" />
+                        Radius="24"
+                        Offset="0,8" />
                 </Border.Shadow>
                 <VerticalStackLayout HorizontalOptions="Center" Spacing="16">
                     <ActivityIndicator

@@ -1,524 +1,740 @@
-name: Build & Auto-Deploy (Android Google Play + Microsoft Store)
+name: Obxodka Multi-Store Release Pipeline
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      target_platform:
-        description: 'Целевая платформа (all = Android + Windows, windows = только Windows, android = только Android)'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - windows
-          - android
-      version_name:
-        description: 'Версия приложения (оставьте пустым для версии из csproj)'
-        required: false
-        default: ''
-      android_track:
-        description: 'Google Play Track'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - internal
-          - alpha
-          - beta
-      publish_to_stores:
-        description: 'Отправить в Google Play и Microsoft Store'
-        required: true
-        type: boolean
-        default: true
+    push:
+        branches:
+            - main
+            - master
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            target_platform:
+                description: "Target platform to build and release"
+                required: true
+                default: "all"
+                type: choice
+                options:
+                    - all
+                    - windows
+                    - android
+            version_name:
+                description: "Override application display version (leave blank to use version.props)"
+                required: false
+                default: ""
+            android_track:
+                description: "Google Play Release Track"
+                required: true
+                default: "production"
+                type: choice
+                options:
+                    - production
+                    - internal
+                    - alpha
+                    - beta
+            publish_to_stores:
+                description: "Publish automatically to Microsoft Store & Google Play Store"
+                required: true
+                type: boolean
+                default: true
+            dry_run:
+                description: "Dry run (build and test without publishing to stores)"
+                required: false
+                type: boolean
+                default: false
 
 permissions:
-  contents: write
+    contents: write
 
 env:
-  BUILD_CACHE_PATH: 'C:/BuildCache'
+    BUILD_CACHE_PATH: "C:/BuildCache"
+    DOTNET_NOLOGO: "true"
+    DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
 jobs:
-  # ==========================================
-  # 🚦 ЭТАП 0: ДВОЙНАЯ ПРОВЕРКА ВЕРСИИ (PRE-FLIGHT)
-  # ==========================================
-  check-version:
-    name: 🚦 Pre-Flight Version Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 5
+    # ============================================================
+    # [STAGE 0] PRE-FLIGHT VERSION INSPECTION & VALIDATION
+    # ============================================================
+    check-version:
+        name: "[PREFLIGHT] Version & Branch Validation"
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.check.outputs.version }}
+            build_number: ${{ steps.check.outputs.build_number }}
+            tag: ${{ steps.check.outputs.tag }}
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 5
 
-      - name: 🔍 Validate Version Bump
-        shell: bash
-        run: |
-          PROPS="version.props"
-          if [ ! -f "$PROPS" ]; then
-            echo "❌ $PROPS not found!"
-            exit 1
-          fi
+            - name: "[PREFLIGHT] Inspect Version & Check Bump"
+              id: check
+              shell: bash
+              run: |
+                  CYAN='\033[1;36m'
+                  GREEN='\033[1;32m'
+                  RED='\033[1;31m'
+                  RESET='\033[0m'
 
-          CUR_VER=$(grep -oPm1 "(?<=<AppVersion>)[^<]+" "$PROPS" || true)
-          CUR_BUILD=$(grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" "$PROPS" || true)
-          echo "📦 Current AppVersion: $CUR_VER, Build Code: $CUR_BUILD"
+                  echo -e "${CYAN}============================================================${RESET}"
+                  echo -e "${CYAN}  [PREFLIGHT] OBXODKA VERSION & BRANCH VALIDATOR${RESET}"
+                  echo -e "${CYAN}============================================================${RESET}"
 
-          if [ "${{ github.event_name }}" = "push" ]; then
-            PREV_PROPS=$(git show HEAD~1:"$PROPS" 2>/dev/null || echo "")
-            if [ -n "$PREV_PROPS" ]; then
-              PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
-              echo "⏮️ Previous Build Code on main: $PREV_BUILD"
-              if [ -n "$PREV_BUILD" ] && [ "$CUR_BUILD" -le "$PREV_BUILD" ] 2>/dev/null; then
-                echo "::error::🚨 [ОШИБКА ДЕПЛОЯ] ВЫ ЗАБЫЛИ ПОВЫСИТЬ ВЕРСИЮ / НОМЕР СБОРКИ В version.props!"
-                echo "::error::Текущий номер сборки ($CUR_BUILD) меньше или равен предыдущему ($PREV_BUILD)."
-                echo "::error::Google Play и Microsoft Store гарантированно отклонят релиз как дубликат."
-                echo "::error::Пожалуйста, увеличьте <AppVersion> и <AppBuildNumber> в version.props перед деплоем в main!"
-                exit 1
-              fi
-            fi
-          fi
-          echo "✅ Pre-flight version validation passed: v$CUR_VER (Build $CUR_BUILD)"
+                  PROPS="version.props"
+                  if [ ! -f "$PROPS" ]; then
+                    echo -e "${RED}[ERROR] File $PROPS not found!${RESET}"
+                    echo "::error::[ERROR] $PROPS not found!"
+                    exit 1
+                  fi
 
-  # ==========================================
-  # 🧪 ЭТАП 1: АВТОМАТИЧЕСКИЕ ТЕСТЫ И ВАЛИДАЦИЯ
-  # ==========================================
-  run-tests:
-    name: 🧪 Automated Unit & Security Tests
-    needs: [check-version]
-    runs-on: windows-latest
+                  CUR_VER=$(grep -oPm1 "(?<=<AppVersion>)[^<]+" "$PROPS" || true)
+                  CUR_BUILD=$(grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" "$PROPS" || true)
 
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+                  if [ -z "$CUR_VER" ] || [ -z "$CUR_BUILD" ]; then
+                    echo -e "${RED}[ERROR] Failed to parse <AppVersion> or <AppBuildNumber> from $PROPS${RESET}"
+                    echo "::error::[ERROR] Failed to parse <AppVersion> or <AppBuildNumber> from $PROPS"
+                    exit 1
+                  fi
 
-      - name: 📁 Ensure Build Cache Directory
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path "C:\BuildCache" -Force
+                  echo -e "${CYAN}[INFO] Target Version:${RESET} $CUR_VER"
+                  echo -e "${CYAN}[INFO] Build Number:${RESET} $CUR_BUILD"
 
-      - name: 🌐 Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
+                  if [ "${{ github.event_name }}" = "push" ]; then
+                    PREV_PROPS=$(git show HEAD~1:"$PROPS" 2>/dev/null || echo "")
+                    if [ -n "$PREV_PROPS" ]; then
+                      PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
+                      if [ -n "$PREV_BUILD" ] && [ "$CUR_BUILD" -le "$PREV_BUILD" ] 2>/dev/null; then
+                        echo -e "${RED}============================================================${RESET}"
+                        echo -e "${RED}  [BUILD CONFLICT] Build number $CUR_BUILD <= previous commit $PREV_BUILD!${RESET}"
+                        echo -e "${RED}  Google Play and Microsoft Store will reject duplicate build codes.${RESET}"
+                        echo -e "${RED}  Please increment <AppBuildNumber> in version.props before push.${RESET}"
+                        echo -e "${RED}============================================================${RESET}"
+                        echo "::error::[VERSION CONFLICT] Current build number ($CUR_BUILD) <= previous commit ($PREV_BUILD). Increment <AppBuildNumber> in version.props."
+                        exit 1
+                      fi
+                    fi
+                  fi
 
-      - name: 🚀 Run Client Tests (xUnit)
-        run: |
-          dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=detailed"
+                  echo -e "${GREEN}[SUCCESS] Version validation passed: v$CUR_VER (Build $CUR_BUILD)${RESET}"
 
-  # ==========================================
-  # 🤖 ЭТАП 2: СБОРКА И АРТЕФАКТ ANDROID (AAB)
-  # ==========================================
-  build-android:
-    name: 🤖 Android AAB Build
-    needs: [run-tests]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows' }}
+                  echo "version=$CUR_VER" >> $GITHUB_OUTPUT
+                  echo "build_number=$CUR_BUILD" >> $GITHUB_OUTPUT
+                  echo "tag=v$CUR_VER" >> $GITHUB_OUTPUT
 
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
+                  cat << EOF >> $GITHUB_STEP_SUMMARY
+                  ### [PREFLIGHT] Inspection Report
+                  | Parameter | Value | Status |
+                  |---|---|---|
+                  | **Target Version** | \`v$CUR_VER\` | \`[OK]\` |
+                  | **Build Code** | \`$CUR_BUILD\` | \`[OK]\` |
+                  | **Release Tag** | \`v$CUR_VER\` | \`[OK]\` |
+                  | **Trigger Event** | \`${{ github.event_name }}\` | \`[OK]\` |
+                  EOF
 
-      - name: ☕ Setup Java JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'microsoft'
-          java-version: '17'
+    # ============================================================
+    # [STAGE 1] AUTOMATED UNIT & CRYPTO TESTS
+    # ============================================================
+    run-tests:
+        name: "[TESTS] Automated Client xUnit Suite"
+        needs: [check-version]
+        runs-on: windows-latest
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
 
-      - name: 🌐 Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
+            - name: "[SETUP] Ensure Build Cache Directory"
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
-      - name: 📦 Install .NET MAUI Android Workload
-        run: |
-          dotnet workload install maui-android
+            - name: "[SETUP] .NET 10 SDK"
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: "10.0.x"
 
-      - name: 🔑 Decode Android Keystore
+            - name: "[CACHE] NuGet Package Dependencies"
+              uses: actions/cache@v4
+              with:
+                  path: ~/.nuget/packages
+                  key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+                  restore-keys: |
+                      ${{ runner.os }}-nuget-
+
+            - name: "[TEST] Execute xUnit Test Runner"
+              shell: pwsh
+              run: |
+                  Write-Host "============================================================" -ForegroundColor Cyan
+                  Write-Host "  [TESTS] RUNNING OBXODKA CLIENT XUNIT TEST SUITE" -ForegroundColor Cyan
+                  Write-Host "============================================================" -ForegroundColor Cyan
+                  dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --logger "console;verbosity=normal"
+                  if ($LASTEXITCODE -ne 0) {
+                      Write-Error "[FAIL] Client unit tests failed!"
+                      exit 1
+                  }
+                  Write-Host "[SUCCESS] All unit and cryptographic tests passed successfully." -ForegroundColor Green
+
+    # ============================================================
+    # [STAGE 2] BUILD ANDROID (AAB FOR STORE & APK FOR SIDELOAD)
+    # ============================================================
+    build-android:
+        name: "[BUILD-ANDROID] MAUI AAB & APK Packages"
+        needs: [check-version, run-tests]
+        runs-on: ubuntu-latest
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows' }}
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+                  fetch-depth: 0
+
+            - name: "[SETUP] Microsoft OpenJDK 17"
+              uses: actions/setup-java@v4
+              with:
+                  distribution: "microsoft"
+                  java-version: "17"
+
+            - name: "[SETUP] .NET 10 SDK"
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: "10.0.x"
+
+            - name: "[CACHE] NuGet Package Dependencies"
+              uses: actions/cache@v4
+              with:
+                  path: ~/.nuget/packages
+                  key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+                  restore-keys: |
+                      ${{ runner.os }}-nuget-
+
+            - name: "[WORKLOAD] Install MAUI Android Workload"
+              run: |
+                  dotnet workload install maui-android
+
+            - name: "[KEYSTORE] Decode Android Release Keystore"
+              env:
+                  KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+              run: |
+                  mkdir -p $HOME/keystore
+                  if [ -n "$KEYSTORE_BASE64" ]; then
+                    echo "$KEYSTORE_BASE64" | base64 --decode > $HOME/keystore/release.keystore
+                    echo "[INFO] Android keystore restored successfully."
+                  else
+                    echo "::warning::[WARN] ANDROID_KEYSTORE_BASE64 secret not found!"
+                  fi
+
+            - name: "[CHANGELOG] Prepare WhatsNew Release Notes"
+              run: |
+                  mkdir -p packaging/whatsnew
+                  if [ ! -s packaging/whatsnew/whatsnew-ru-RU ]; then
+                    git log -1 --pretty=%B > packaging/whatsnew/whatsnew-ru-RU
+                  fi
+                  if [ ! -s packaging/whatsnew/whatsnew-en-US ]; then
+                    git log -1 --pretty=%B > packaging/whatsnew/whatsnew-en-US
+                  fi
+
+            - name: "[COMPILE] Build Android AAB & Standalone APK"
+              env:
+                  KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'irovbyte' }}
+                  KEY_PASS: ${{ secrets.ANDROID_KEY_PASS || '123123' }}
+                  STORE_PASS: ${{ secrets.ANDROID_STORE_PASS || '123123' }}
+                  VERSION_NAME: ${{ inputs.version_name }}
+              run: |
+                  CYAN='\033[1;36m'
+                  GREEN='\033[1;32m'
+                  RESET='\033[0m'
+
+                  EXTRA_ARGS=""
+                  if [ -n "$VERSION_NAME" ]; then
+                    EXTRA_ARGS="-p:ApplicationDisplayVersion=$VERSION_NAME -p:Version=$VERSION_NAME"
+                  fi
+
+                  echo -e "${CYAN}============================================================${RESET}"
+                  echo -e "${CYAN}  [BUILD] COMPILING ANDROID APP BUNDLE (AAB)${RESET}"
+                  echo -e "${CYAN}============================================================${RESET}"
+
+                  dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+                    -p:AndroidKeyStore=true \
+                    -p:AndroidSigningKeyStore="$HOME/keystore/release.keystore" \
+                    -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
+                    -p:AndroidSigningKeyPass="$KEY_PASS" \
+                    -p:AndroidSigningStorePass="$STORE_PASS" \
+                    $EXTRA_ARGS
+
+                  echo -e "${CYAN}============================================================${RESET}"
+                  echo -e "${CYAN}  [BUILD] COMPILING STANDALONE APK${RESET}"
+                  echo -e "${CYAN}============================================================${RESET}"
+
+                  dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+                    -p:AndroidPackageFormat=apk \
+                    -p:AndroidKeyStore=true \
+                    -p:AndroidSigningKeyStore="$HOME/keystore/release.keystore" \
+                    -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
+                    -p:AndroidSigningKeyPass="$KEY_PASS" \
+                    -p:AndroidSigningStorePass="$STORE_PASS" \
+                    $EXTRA_ARGS
+
+                  echo -e "${GREEN}[SUCCESS] Android packages built successfully.${RESET}"
+
+            - name: "[HASH] Locate Android Packages & Compute SHA256"
+              id: find-pkgs
+              run: |
+                  mkdir -p ./android-dist
+                  AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
+                  if [ -z "$AAB_FILE" ]; then
+                    AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
+                  fi
+                  if [ -z "$AAB_FILE" ]; then
+                    echo "::error::[ERROR] No AAB bundle found!"
+                    exit 1
+                  fi
+                  cp "$AAB_FILE" ./android-dist/Obxodka-Release.aab
+                  echo "[INFO] Located AAB: $AAB_FILE -> ./android-dist/Obxodka-Release.aab"
+
+                  APK_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
+                  if [ -z "$APK_FILE" ]; then
+                    APK_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
+                  fi
+                  if [ -n "$APK_FILE" ]; then
+                    cp "$APK_FILE" ./android-dist/Obxodka-Android.apk
+                    echo "[INFO] Located APK: $APK_FILE -> ./android-dist/Obxodka-Android.apk"
+                  fi
+
+                  cd ./android-dist
+                  sha256sum * > SHA256SUMS-android.txt
+                  cat SHA256SUMS-android.txt
+
+            - name: "[ARTIFACT] Upload Android Dist Package"
+              uses: actions/upload-artifact@v4
+              with:
+                  name: obxodka-android-dist
+                  path: ./android-dist/*
+                  retention-days: 14
+
+    # ============================================================
+    # [STAGE 3] BUILD WINDOWS (STORE MSIX & INNO SETUP INSTALLER)
+    # ============================================================
+    build-windows:
+        name: "[BUILD-WINDOWS] MAUI MSIX & Setup EXE"
+        needs: [check-version, run-tests]
+        runs-on: windows-latest
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android' }}
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+                  fetch-depth: 0
+
+            - name: "[SETUP] Ensure Build Cache Directory"
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
+
+            - name: "[SETUP] .NET 10 SDK"
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: "10.0.x"
+
+            - name: "[CACHE] NuGet Package Dependencies"
+              uses: actions/cache@v4
+              with:
+                  path: ~/.nuget/packages
+                  key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+                  restore-keys: |
+                      ${{ runner.os }}-nuget-
+
+            - name: "[WORKLOAD] Install MAUI Windows Workload"
+              run: |
+                  dotnet workload install maui-windows --skip-manifest-update
+
+            - name: "[COMPILE] Build MSIX Store Package"
+              env:
+                  VERSION_NAME: ${{ inputs.version_name }}
+              shell: pwsh
+              run: |
+                  Write-Host "============================================================" -ForegroundColor Cyan
+                  Write-Host "  [BUILD] COMPILING WINDOWS STORE MSIX PACKAGE" -ForegroundColor Cyan
+                  Write-Host "============================================================" -ForegroundColor Cyan
+
+                  $extraArgs = @()
+                  if ($env:VERSION_NAME) {
+                      $extraArgs += "-p:ApplicationDisplayVersion=$env:VERSION_NAME"
+                      $extraArgs += "-p:Version=$env:VERSION_NAME"
+                  }
+
+                  dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+                    -p:PackageMode=MSIX `
+                    -p:GenerateAppxPackageOnBuild=true `
+                    -p:AppxPackageSigningEnabled=false `
+                    -p:AppxBundle=Always `
+                    -p:AppxBundlePlatforms="x64" `
+                    -p:UapAppxPackageBuildMode=StoreUpload `
+                    $extraArgs
+
+            - name: "[LOCATE] Resolve Windows Store Package Path"
+              id: find-windows-pkg
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Path "./win-dist" -Force | Out-Null
+                  $pkg = Get-ChildItem -Path "src/apps/obxodka.Maui/AppPackages", "AppPackages", "bin\Release", "C:\BuildCache" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
+                  if (-not $pkg) {
+                      $pkg = Get-ChildItem -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Where-Object { $_.FullName -notmatch "\\obj\\" } | Select-Object -First 1
+                  }
+                  if ($pkg) {
+                      Write-Host "[INFO] Found Store Package: $($pkg.FullName)" -ForegroundColor Cyan
+                      Copy-Item -Path $pkg.FullName -Destination "./win-dist/$($pkg.Name)"
+                      echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
+                      echo "pkg_name=$($pkg.Name)" >> $env:GITHUB_OUTPUT
+                  } else {
+                      Write-Error "[FAIL] Windows Store package not found!"
+                      exit 1
+                  }
+
+            - name: "[INSTALLER] Compile Inno Setup Executable"
+              env:
+                  VERSION_NAME: ${{ inputs.version_name }}
+              shell: pwsh
+              run: |
+                  Write-Host "============================================================" -ForegroundColor Cyan
+                  Write-Host "  [BUILD] COMPILING STANDALONE INNO SETUP INSTALLER" -ForegroundColor Cyan
+                  Write-Host "============================================================" -ForegroundColor Cyan
+
+                  $ver = $env:VERSION_NAME
+                  if (-not $ver) {
+                      $ver = (Select-String -Path "version.props" -Pattern "<AppVersion>(.*)</AppVersion>").Matches.Groups[1].Value
+                  }
+                  if (-not $ver) { $ver = "6.0.8" }
+
+                  Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
+                  dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+                    -p:PackageMode=None `
+                    -p:WindowsPackageType=None `
+                    -p:GenerateAppxPackageOnBuild=false `
+                    -o ./win-unpackaged
+
+                  Write-Host "[INFO] Executing Inno Setup compiler (ISCC)..." -ForegroundColor Cyan
+                  $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+                  if (-not (Test-Path $iscc)) {
+                      $iscc = (Get-Command iscc -ErrorAction SilentlyContinue)?.Source
+                  }
+                  if (-not $iscc) {
+                      choco install innosetup --no-progress -y
+                      $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+                  }
+
+                  & $iscc "/DMyAppVersion=$ver" installer/obxodka.iss
+
+                  if (Test-Path "installer-output/Obxodka-Setup.exe") {
+                      Write-Host "[SUCCESS] Installer created: installer-output/Obxodka-Setup.exe" -ForegroundColor Green
+                      Copy-Item -Path "installer-output/Obxodka-Setup.exe" -Destination "./win-dist/Obxodka-Setup.exe"
+                  } else {
+                      Write-Error "[FAIL] Failed to generate Obxodka-Setup.exe!"
+                      exit 1
+                  }
+
+            - name: "[HASH] Generate Windows SHA256 Checksums"
+              shell: pwsh
+              run: |
+                  Get-ChildItem -Path "./win-dist" -File | ForEach-Object {
+                      $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLower()
+                      "$hash  $($_.Name)" | Out-File -FilePath "./win-dist/SHA256SUMS-windows.txt" -Append -Encoding ascii
+                  }
+                  Get-Content "./win-dist/SHA256SUMS-windows.txt"
+
+            - name: "[ARTIFACT] Upload Windows Dist Package"
+              uses: actions/upload-artifact@v4
+              with:
+                  name: obxodka-windows-dist
+                  path: ./win-dist/*
+                  retention-days: 14
+
+    # ============================================================
+    # [STAGE 4] DEPLOY ANDROID TO GOOGLE PLAY VIA OCTOPUBLISHER
+    # ============================================================
+    deploy-android:
+        name: "[PUBLISH-ANDROID] Google Play Console (OctoPublisher)"
+        needs: [check-version, build-android]
+        runs-on: ubuntu-latest
+        if: |
+            always() &&
+            (needs.build-android.result == 'success') &&
+            (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows') &&
+            (github.event_name == 'push' || inputs.publish_to_stores == true) &&
+            (inputs.dry_run != true)
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          mkdir -p $HOME/keystore
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > $HOME/keystore/release.keystore
-          else
-            echo "⚠️ ANDROID_KEYSTORE_BASE64 secret not found!"
-          fi
+            PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
+            PLAY_PACKAGE_NAME: ${{ secrets.PLAY_PACKAGE_NAME || 'com.octocore.obxodka' }}
+            ANDROID_TRACK: ${{ inputs.android_track || 'production' }}
 
-      - name: 📝 Prepare Release Notes (Commit Message Fallback)
-        run: |
-          mkdir -p packaging/whatsnew
-          if [ ! -s packaging/whatsnew/whatsnew-ru-RU ]; then
-            git log -1 --pretty=%B > packaging/whatsnew/whatsnew-ru-RU
-          fi
-          if [ ! -s packaging/whatsnew/whatsnew-en-US ]; then
-            git log -1 --pretty=%B > packaging/whatsnew/whatsnew-en-US
-          fi
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
 
-      - name: 🚀 Publish Android AAB & APK
+            - name: "[SETUP] .NET 10 SDK"
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: "10.0.x"
+
+            - name: "[TOOL] Install OctoPublisher Global Tool"
+              run: |
+                  dotnet tool install -g octopublisher || dotnet tool update -g octopublisher
+                  echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+                  export PATH="$PATH:$HOME/.dotnet/tools"
+                  octopublish --version
+
+            - name: "[DOWNLOAD] Download Android Dist Artifacts"
+              uses: actions/download-artifact@v4
+              with:
+                  name: obxodka-android-dist
+                  path: ./android-dist
+
+            - name: "[RESOLVE] Locate AAB Package File"
+              id: find-aab
+              run: |
+                  AAB_FILE=$(find ./android-dist -type f -name "*.aab" | head -n 1)
+                  if [ -z "$AAB_FILE" ]; then
+                    echo "::error::[ERROR] No AAB bundle found in downloaded artifact!"
+                    exit 1
+                  fi
+                  echo "[INFO] Found AAB target: $AAB_FILE"
+                  echo "aab_path=$(realpath "$AAB_FILE")" >> $GITHUB_OUTPUT
+
+            - name: "[PUBLISH] OctoPublisher Play Store Engine"
+              if: ${{ env.PLAY_CONFIG_JSON != '' }}
+              id: publish-play
+              run: |
+                  CYAN='\033[1;36m'
+                  RESET='\033[0m'
+                  export PATH="$PATH:$HOME/.dotnet/tools"
+
+                  echo -e "${CYAN}============================================================${RESET}"
+                  echo -e "${CYAN}  [OCTOPUBLISHER] DEPLOYING TO GOOGLE PLAY STORE${RESET}"
+                  echo -e "${CYAN}============================================================${RESET}"
+
+                  octopublish playstore publish \
+                    --bundle "${{ steps.find-aab.outputs.aab_path }}" \
+                    --package-name "$PLAY_PACKAGE_NAME" \
+                    --service-account "$PLAY_CONFIG_JSON" \
+                    --track "$ANDROID_TRACK" \
+                    --notes-dir "packaging/whatsnew" \
+                    --desc-dir "packaging/store/android" \
+                    --release-name "v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }})"
+
+            - name: "[TELEMETRY] Google Play Deployment Telemetry"
+              if: always()
+              run: |
+                  STATUS="${{ steps.publish-play.outcome }}"
+                  STATUS_TAG="[PASS] DEPLOYED"
+                  if [ "$STATUS" != "success" ]; then
+                    STATUS_TAG="[FAIL] ERROR"
+                    if [ -z "${{ env.PLAY_CONFIG_JSON }}" ]; then
+                      STATUS_TAG="[SKIP] SKIPPED (PLAY_CONFIG_JSON secret not configured)"
+                    fi
+                  fi
+
+                  cat << EOF >> $GITHUB_STEP_SUMMARY
+                  ### [PUBLISH] Google Play Store (OctoPublisher)
+                  | Parameter | Value |
+                  |---|---|
+                  | **Status** | \`$STATUS_TAG\` |
+                  | **Engine** | OctoPublisher CLI (.NET 10) |
+                  | **Package Name** | \`$PLAY_PACKAGE_NAME\` |
+                  | **Release Track** | \`$ANDROID_TRACK\` |
+                  | **Version** | \`v${{ needs.check-version.outputs.version }}\` (Build \`${{ needs.check-version.outputs.build_number }}\`) |
+                  | **Play Console** | [Open Play Console](https://play.google.com/console/u/0/developers/) |
+                  EOF
+
+    # ============================================================
+    # [STAGE 5] DEPLOY WINDOWS TO MICROSOFT STORE VIA OCTOPUBLISHER
+    # ============================================================
+    deploy-windows:
+        name: "[PUBLISH-WINDOWS] Microsoft Partner Center (OctoPublisher)"
+        needs: [check-version, build-windows]
+        runs-on: windows-latest
+        if: |
+            always() &&
+            (needs.build-windows.result == 'success') &&
+            (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android') &&
+            (github.event_name == 'push' || inputs.publish_to_stores == true) &&
+            (inputs.dry_run != true)
         env:
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'irovbyte' }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASS || '123123' }}
-          STORE_PASS: ${{ secrets.ANDROID_STORE_PASS || '123123' }}
-          VERSION_NAME: ${{ inputs.version_name }}
-        run: |
-          EXTRA_ARGS=""
-          if [ -n "$VERSION_NAME" ]; then
-            EXTRA_ARGS="-p:ApplicationDisplayVersion=$VERSION_NAME -p:Version=$VERSION_NAME"
-          fi
+            STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+            STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+            STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+            STORE_APP_ID: ${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}
+            SELLER_ID: ${{ secrets.SELLER_ID || '94042650' }}
 
-          echo "::group::Building Android AAB"
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
-            -p:AndroidKeyStore=true \
-            -p:AndroidSigningKeyStore="$HOME/keystore/release.keystore" \
-            -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
-            -p:AndroidSigningKeyPass="$KEY_PASS" \
-            -p:AndroidSigningStorePass="$STORE_PASS" \
-            $EXTRA_ARGS
-          echo "::endgroup::"
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
 
-          echo "::group::Building Android APK"
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
-            -p:AndroidPackageFormat=apk \
-            -p:AndroidKeyStore=true \
-            -p:AndroidSigningKeyStore="$HOME/keystore/release.keystore" \
-            -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
-            -p:AndroidSigningKeyPass="$KEY_PASS" \
-            -p:AndroidSigningStorePass="$STORE_PASS" \
-            $EXTRA_ARGS
-          echo "::endgroup::"
+            - name: "[SETUP] .NET 10 SDK"
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: "10.0.x"
 
-      - name: 🔍 Locate Packages
-        id: find-aab
-        run: |
-          mkdir -p ./android-dist
-          AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
-          if [ -z "$AAB_FILE" ]; then
-            AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
-          fi
-          echo "Found AAB at: $AAB_FILE"
-          if [ -z "$AAB_FILE" ]; then
-            echo "❌ No AAB found!"
-            exit 1
-          fi
-          cp "$AAB_FILE" ./android-dist/
-          echo "aab_path=$AAB_FILE" >> $GITHUB_OUTPUT
+            - name: "[TOOL] Install OctoPublisher Global Tool"
+              shell: pwsh
+              run: |
+                  dotnet tool install -g octopublisher
+                  if ($LASTEXITCODE -ne 0) {
+                      dotnet tool update -g octopublisher
+                  }
+                  octopublish --version
 
-          APK_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
-          if [ -z "$APK_FILE" ]; then
-            APK_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
-          fi
-          if [ -n "$APK_FILE" ]; then
-            echo "Found APK at: $APK_FILE"
-            cp "$APK_FILE" ./android-dist/
-          fi
+            - name: "[DOWNLOAD] Download Windows Dist Artifacts"
+              uses: actions/download-artifact@v4
+              with:
+                  name: obxodka-windows-dist
+                  path: ./win-dist
 
-      - name: 📤 Upload AAB Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: obxodka-android-aab
-          path: ./android-dist/*
-          retention-days: 14
+            - name: "[RESOLVE] Locate MSIX Store Package File"
+              id: find-windows-pkg
+              shell: pwsh
+              run: |
+                  $pkg = Get-ChildItem -Path "./win-dist" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Select-Object -First 1
+                  if ($pkg) {
+                      Write-Host "[INFO] Located Store target: $($pkg.FullName)" -ForegroundColor Cyan
+                      echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
+                      echo "pkg_name=$($pkg.Name)" >> $env:GITHUB_OUTPUT
+                  } else {
+                      Write-Error "[FAIL] Windows Store package not found in downloaded artifact!"
+                      exit 1
+                  }
 
-  # ==========================================
-  # 🪟 ЭТАП 3: СБОРКА И АРТЕФАКТ WINDOWS (MSIX)
-  # ==========================================
-  build-windows:
-    name: 🪟 Windows MSIX Build
-    needs: [run-tests]
-    runs-on: windows-latest
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android' }}
+            - name: "[PUBLISH] OctoPublisher Microsoft Store Engine"
+              if: ${{ env.STORE_CLIENT_ID != '' }}
+              id: publish-mstore
+              shell: pwsh
+              run: |
+                  Write-Host "============================================================" -ForegroundColor Cyan
+                  Write-Host "  [OCTOPUBLISHER] DEPLOYING TO MICROSOFT STORE" -ForegroundColor Cyan
+                  Write-Host "============================================================" -ForegroundColor Cyan
 
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
+                  octopublish mstore publish `
+                    --package "${{ steps.find-windows-pkg.outputs.pkg_path }}" `
+                    --app-id "$env:STORE_APP_ID" `
+                    --tenant-id "$env:STORE_TENANT_ID" `
+                    --client-id "$env:STORE_CLIENT_ID" `
+                    --client-secret "$env:STORE_CLIENT_SECRET" `
+                    --seller-id "$env:SELLER_ID" `
+                    --notes-dir "packaging/whatsnew" `
+                    --desc-dir "packaging/store/windows"
 
-      - name: 📁 Ensure Build Cache Directory
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path "C:\BuildCache" -Force
+            - name: "[TELEMETRY] Microsoft Store Deployment Telemetry"
+              if: always()
+              shell: pwsh
+              run: |
+                  $status = "${{ steps.publish-mstore.outcome }}"
+                  $statusTag = "[PASS] COMMITTED TO CERTIFICATION"
+                  if ($status -ne "success") {
+                      $statusTag = "[FAIL] ERROR"
+                      if (-not $env:STORE_CLIENT_ID) {
+                          $statusTag = "[SKIP] SKIPPED (STORE_CLIENT_ID secret not configured)"
+                      }
+                  }
 
-      - name: 🌐 Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
+                  $summary = @"
+                  ### [PUBLISH] Microsoft Store (OctoPublisher)
+                  | Parameter | Value |
+                  |---|---|
+                  | **Status** | `$statusTag` |
+                  | **Engine** | OctoPublisher CLI (.NET 10) |
+                  | **App ID** | `$env:STORE_APP_ID` |
+                  | **Seller ID** | `$env:SELLER_ID` |
+                  | **Package** | `${{ steps.find-windows-pkg.outputs.pkg_name }}` |
+                  | **Partner Center** | [Open Partner Center](https://partner.microsoft.com/dashboard/products/$env:STORE_APP_ID/overview) |
+                  "@
+                  $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: 📦 Install .NET MAUI Windows Workload
-        run: |
-          dotnet workload install maui-windows --skip-manifest-update
+    # ============================================================
+    # [STAGE 6] AUTOMATED GITHUB RELEASE WITH ASSETS & CHECKSUMS
+    # ============================================================
+    create-release:
+        name: "[RELEASE] GitHub Production Distribution"
+        needs: [check-version, build-android, build-windows, deploy-android, deploy-windows]
+        if: |
+            always() &&
+            (needs.build-android.result == 'success' || needs.build-windows.result == 'success')
+        runs-on: ubuntu-latest
+        steps:
+            - name: "[CHECKOUT] Repository Source"
+              uses: actions/checkout@v4
 
-      - name: 🚀 Publish Windows Package
-        env:
-          VERSION_NAME: ${{ inputs.version_name }}
-        shell: pwsh
-        run: |
-          $extraArgs = @()
-          if ($env:VERSION_NAME) {
-              $extraArgs += "-p:ApplicationDisplayVersion=$env:VERSION_NAME"
-              $extraArgs += "-p:Version=$env:VERSION_NAME"
-          }
+            - name: "[DOWNLOAD] Download Android Dist Artifacts"
+              uses: actions/download-artifact@v4
+              continue-on-error: true
+              with:
+                  name: obxodka-android-dist
+                  path: ./release-artifacts/android
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
-            -p:PackageMode=MSIX `
-            -p:GenerateAppxPackageOnBuild=true `
-            -p:AppxPackageSigningEnabled=false `
-            -p:AppxBundle=Always `
-            -p:AppxBundlePlatforms="x64" `
-            -p:UapAppxPackageBuildMode=StoreUpload `
-            $extraArgs
+            - name: "[DOWNLOAD] Download Windows Dist Artifacts"
+              uses: actions/download-artifact@v4
+              continue-on-error: true
+              with:
+                  name: obxodka-windows-dist
+                  path: ./release-artifacts/windows
 
-      - name: 🔍 Locate Windows Package
-        id: find-windows-pkg
-        shell: pwsh
-        run: |
-          $pkg = Get-ChildItem -Path "src/apps/obxodka.Maui/AppPackages", "AppPackages", "bin\Release", "C:\BuildCache" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
-          if (-not $pkg) {
-              $pkg = Get-ChildItem -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Where-Object { $_.FullName -notmatch "\\obj\\" } | Select-Object -First 1
-          }
-          if ($pkg) {
-              Write-Host "Found Windows Package: $($pkg.FullName)"
-              echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
-          } else {
-              Write-Error "Windows package not found!"
-              exit 1
-          }
+            - name: "[BUNDLE] Consolidate Artifacts & SHA256 Checksums"
+              id: release-meta
+              run: |
+                  mkdir -p ./release-dist
+                  find ./release-artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.exe" -o -name "*.msix*" \) -exec cp {} ./release-dist/ \;
 
-      - name: 📤 Upload Windows Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: obxodka-windows-package
-          path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
-          retention-days: 14
+                  cd ./release-dist
+                  sha256sum * > SHA256SUMS.txt
+                  echo "### [CHECKSUMS] SHA256 Distribution Verification" > release_body.md
+                  echo '```' >> release_body.md
+                  cat SHA256SUMS.txt >> release_body.md
+                  echo '```' >> release_body.md
+                  echo "" >> release_body.md
 
-      - name: 📦 Build GitHub Standalone Installer (Inno Setup)
-        env:
-          VERSION_NAME: ${{ inputs.version_name }}
-        shell: pwsh
-        run: |
-          $ver = $env:VERSION_NAME
-          if (-not $ver) {
-              $ver = (Select-String -Path "version.props" -Pattern "<AppVersion>(.*)</AppVersion>").Matches.Groups[1].Value
-          }
-          if (-not $ver) { $ver = "6.0.7" }
+                  if [ -s ../packaging/whatsnew/whatsnew-ru-RU ]; then
+                    echo "### [CHANGELOG] Release Notes" >> release_body.md
+                    cat ../packaging/whatsnew/whatsnew-ru-RU >> release_body.md
+                  fi
 
-          Write-Host "Publishing unpackaged Windows binary for installer v$ver..."
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
-            -p:PackageMode=None `
-            -p:WindowsPackageType=None `
-            -p:GenerateAppxPackageOnBuild=false `
-            -o ./win-unpackaged
+                  echo "body_file=$(realpath release_body.md)" >> $GITHUB_OUTPUT
 
-          Write-Host "Compiling Inno Setup installer..."
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-              $iscc = (Get-Command iscc -ErrorAction SilentlyContinue)?.Source
-          }
-          if (-not $iscc) {
-              choco install innosetup --no-progress -y
-              $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          }
+            - name: "[RELEASE] Publish GitHub Release & Attach Assets"
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ needs.check-version.outputs.tag }}
+                  name: Obxodka v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }})
+                  body_path: ${{ steps.release-meta.outputs.body_file }}
+                  draft: false
+                  prerelease: false
+                  files: |
+                      ./release-dist/*
 
-          & $iscc "/DMyAppVersion=$ver" installer/obxodka.iss
+    # ============================================================
+    # [STAGE 7] EXECUTIVE DASHBOARD & TELEMETRY
+    # ============================================================
+    telemetry-summary:
+        name: "[SUMMARY] Pipeline Telemetry & Status"
+        needs: [check-version, run-tests, build-android, build-windows, deploy-android, deploy-windows, create-release]
+        if: always()
+        runs-on: ubuntu-latest
+        steps:
+            - name: "[SUMMARY] Generate Executive Telemetry Dashboard"
+              run: |
+                  cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+                  # [TELEMETRY] Obxodka Multi-Store Release Pipeline Dashboard
 
-          if (Test-Path "installer-output/Obxodka-Setup.exe") {
-              Write-Host "Installer created successfully: installer-output/Obxodka-Setup.exe"
-          } else {
-              Write-Error "Failed to generate Obxodka-Setup.exe!"
-              exit 1
-          }
+                  | Stage | Identifier | Status | Target Details |
+                  |---|---|---|---|
+                  | 0 | `[PREFLIGHT]` | ${{ needs.check-version.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }}) |
+                  | 1 | `[TESTS]` | ${{ needs.run-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | xUnit Client Test Suite |
+                  | 2 | `[BUILD-ANDROID]` | ${{ needs.build-android.result == 'success' && '`[PASS]`' || (needs.build-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | AAB & APK Bundles |
+                  | 3 | `[BUILD-WINDOWS]` | ${{ needs.build-windows.result == 'success' && '`[PASS]`' || (needs.build-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | MSIX & Inno Setup EXE |
+                  | 4 | `[PUBLISH-ANDROID]` | ${{ needs.deploy-android.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | Google Play Console (OctoPublisher) |
+                  | 5 | `[PUBLISH-WINDOWS]` | ${{ needs.deploy-windows.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | Microsoft Partner Center (OctoPublisher) |
+                  | 6 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} |
 
-      - name: 📤 Upload Windows Installer Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: obxodka-windows-installer
-          path: installer-output/Obxodka-Setup.exe
-          retention-days: 14
-
-  # ==========================================
-  # 📲 ЭТАП 4: ДЕПЛОЙ ANDROID В GOOGLE PLAY
-  # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)
-  # ==========================================
-  deploy-android:
-    name: 📲 Deploy to Google Play Store
-    needs: [build-android]
-    runs-on: ubuntu-latest
-    if: |
-      always() &&
-      (needs.build-android.result == 'success') &&
-      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows') &&
-      (github.event_name == 'push' || inputs.publish_to_stores == true)
-    env:
-      PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
-
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-
-      - name: 📥 Download Android AAB Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: obxodka-android-aab
-          path: ./aab-artifact
-
-      - name: 🔍 Locate AAB Package
-        id: find-aab
-        run: |
-          AAB_FILE=$(find ./aab-artifact -type f -name "*.aab" | head -n 1)
-          echo "Found AAB for store deployment: $AAB_FILE"
-          if [ -z "$AAB_FILE" ]; then
-            echo "❌ No AAB found in downloaded artifact!"
-            exit 1
-          fi
-          echo "aab_path=$AAB_FILE" >> $GITHUB_OUTPUT
-
-      - name: 📲 Upload to Google Play Store
-        if: ${{ env.PLAY_CONFIG_JSON != '' }}
-        id: upload_play
-        continue-on-error: true
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
-          packageName: com.octocore.obxodka
-          releaseFiles: ${{ steps.find-aab.outputs.aab_path }}
-          track: ${{ inputs.android_track || 'production' }}
-          whatsNewDirectory: packaging/whatsnew
-          status: 'completed'
-
-      - name: 🔍 Check Google Play Upload Result
-        if: ${{ env.PLAY_CONFIG_JSON != '' && steps.upload_play.outcome == 'failure' }}
-        shell: bash
-        run: |
-          echo "::error::🚨 [ОШИБКА ДЕПЛОЯ GOOGLE PLAY]"
-          echo "::error::Загрузка сборки в Google Play Console завершилась ошибкой."
-          echo "::error::Наиболее частая причина: номер сборки (Version Code) уже был использован для предыдущего релиза!"
-          echo "::error::Убедитесь, что вы увеличили <AppBuildNumber> в version.props (текущий: $(grep -oPm1 '(?<=<AppBuildNumber>)[^<]+' version.props))."
-          echo "::error::Также проверьте валидность service account ключа и права доступа."
-          exit 1
-
-      - name: 📝 Sync Google Play Store Listings (Descriptions)
-        if: ${{ env.PLAY_CONFIG_JSON != '' && steps.upload_play.outcome == 'success' }}
-        shell: pwsh
-        run: |
-          pwsh tools/scripts/sync_playstore_listing.ps1
-
-  # ==========================================
-  # 🚀 ЭТАП 5: ДЕПЛОЙ WINDOWS В MICROSOFT STORE
-  # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)
-  # ==========================================
-  deploy-windows:
-    name: 🚀 Deploy to Microsoft Store
-    needs: [build-android, build-windows]
-    runs-on: windows-latest
-    if: |
-      always() &&
-      (needs.build-windows.result == 'success') &&
-      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android') &&
-      (github.event_name == 'push' || inputs.publish_to_stores == true)
-    env:
-      STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
-
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-
-      - name: 📥 Download Windows Package Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: obxodka-windows-package
-          path: ./win-artifact
-
-      - name: 🔍 Locate Windows Package
-        id: find-windows-pkg
-        shell: pwsh
-        run: |
-          $pkg = Get-ChildItem -Path "./win-artifact" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Select-Object -First 1
-          if ($pkg) {
-              Write-Host "Found Windows Package for Store deployment: $($pkg.FullName)"
-              echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
-          } else {
-              Write-Error "Windows package not found in downloaded artifact!"
-              exit 1
-          }
-
-      - name: 🚀 Publish to Microsoft Store
-        if: ${{ env.STORE_CLIENT_ID != '' }}
-        continue-on-error: true
-        shell: pwsh
-        env:
-          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
-          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
-          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
-          STORE_APP_ID: ${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}
-          SELLER_ID: ${{ secrets.SELLER_ID || '94042650' }}
-        run: |
-          pwsh tools/scripts/publish_msstore.ps1 -PackagePath "${{ steps.find-windows-pkg.outputs.pkg_path }}"
-
-  # ==========================================
-  # 🏷️ ЭТАП 6: АВТОМАТИЧЕСКИЙ РЕЛИЗ НА GITHUB
-  # ==========================================
-  create-release:
-    name: 📦 Publish GitHub Release
-    needs: [build-android, build-windows, deploy-android]
-    if: |
-      always() &&
-      (needs.build-android.result == 'success')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
-      - name: 📥 Download Android Artifact
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: obxodka-android-aab
-          path: ./release-artifacts/android
-
-      - name: 📥 Download Windows Artifact
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: obxodka-windows-package
-          path: ./release-artifacts/windows
-
-      - name: 📥 Download Windows Installer Artifact
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: obxodka-windows-installer
-          path: ./release-artifacts/windows
-
-      - name: 📝 Extract Release Info
-        id: release-info
-        run: |
-          VERSION=$(grep -oPm1 "(?<=<AppVersion>)[^<]+" version.props || echo "4.8.6")
-          TAG="v${VERSION}"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: 🚀 Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release-info.outputs.tag }}
-          name: Obxodka ${{ steps.release-info.outputs.version }}
-          body_path: packaging/whatsnew/whatsnew-ru-RU
-          draft: false
-          prerelease: false
-          files: |
-            ./release-artifacts/android/*
-            ./release-artifacts/windows/*
+                  ---
+                  *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) v1.0.2 on .NET 10.*
+                  EOF

@@ -216,10 +216,12 @@
                         </Grid>
                         <Grid
                             x:Name="AcquiringNoticeRow"
+                            Margin="0,4,0,0"
                             ColumnDefinitions="Auto, *"
                             ColumnSpacing="8"
-                            IsVisible="{OnPlatform WinUI=True, Android=False, Default=False}"
-                            Margin="0,4,0,0">
+                            IsVisible="{OnPlatform WinUI=True,
+                                                   Android=False,
+                                                   Default=False}">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Info16}"

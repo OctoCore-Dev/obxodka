@@ -1,6 +1,6 @@
 #define MyAppName "Obxodka"
 #ifndef MyAppVersion
-  #define MyAppVersion "6.0.7"
+  #define MyAppVersion "6.0.9"
 #endif
 #define MyAppPublisher "OctoCore"
 #define MyAppURL "https://github.com/OctoCore-Dev/obxodka"

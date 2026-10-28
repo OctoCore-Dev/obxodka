@@ -66,13 +66,6 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
             }
         };
 
-        ConfigScrollView.Scrolled += (s, e) =>
-            CardStackScrollHelper.ApplyToChildren(
-                ConfigScrollView,
-                MainContentGrid.Children,
-                zone: 65.0,
-                minScale: 0.92,
-                power: 2.5);
     }
 
     public void ForceLayoutWidth()

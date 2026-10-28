@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView
     x:Class="obxodka.Views.AuthView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -102,7 +102,8 @@
                                 Clicked="OnScanQrCodeClickedAsync"
                                 FontSize="12"
                                 HeightRequest="36"
-                                IsVisible="{OnPlatform Android=True, Default=False}"
+                                IsVisible="{OnPlatform Android=True,
+                                                       Default=False}"
                                 Style="{StaticResource BtnGhost}"
                                 Text="Сканировать QR-код с сайта" />
                         </VerticalStackLayout>
@@ -116,7 +117,8 @@
                                 HorizontalOptions="Center"
                                 HorizontalTextAlignment="Center"
                                 Style="{StaticResource LabelMuted}"
-                                Text="{OnPlatform Android='Введите 6-значный код из письма или QR-окна на сайте.', Default='Введите 6-значный код, отправленный на ваш Email.'}" />
+                                Text="{OnPlatform Android='Введите 6-значный код из письма или QR-окна на сайте.',
+                                                  Default='Введите 6-значный код, отправленный на ваш Email.'}" />
 
                             <Border Style="{StaticResource NeoInput}">
                                 <Entry
