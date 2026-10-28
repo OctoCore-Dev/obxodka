@@ -1,7 +1,32 @@
 #define MyAppName "Obxodka"
+
+; =========================================================================
+; Dynamic Version Extraction from version.props (Inno Setup Preprocessor)
+; =========================================================================
+#ifndef MyAppVersion
+  #define PropsPath SourcePath + "\..\version.props"
+  #if FileExists(PropsPath)
+    #define FileHandle FileOpen(PropsPath)
+    #define LineText ""
+    #sub ParsePropsLine
+      #if Pos("<AppVersion>", LineText) > 0
+        #define StartIdx Pos("<AppVersion>", LineText) + 12
+        #define EndIdx Pos("</AppVersion>", LineText)
+        #expr MyAppVersion = Copy(LineText, StartIdx, EndIdx - StartIdx)
+      #endif
+    #endsub
+    #for {FileHandle; FileHandle && !FileEof(FileHandle); LineText = FileRead(FileHandle)} ParsePropsLine
+    #if FileHandle
+      #expr FileClose(FileHandle)
+    #endif
+  #endif
+#endif
+
+; Fallback if not resolved
 #ifndef MyAppVersion
   #define MyAppVersion "6.0.9"
 #endif
+
 #define MyAppPublisher "OctoCore"
 #define MyAppURL "https://github.com/OctoCore-Dev/obxodka"
 #define MyAppExeName "obxodka.Maui.exe"
@@ -10,6 +35,9 @@
 AppId={{9F7B6B0E-562F-4E38-9B21-C7D813F4E231}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}.0
+VersionInfoProductName={#MyAppName}
+VersionInfoCompany={#MyAppPublisher}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
