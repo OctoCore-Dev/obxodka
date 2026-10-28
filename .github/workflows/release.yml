@@ -521,7 +521,6 @@ jobs:
                     --service-account "$PLAY_CONFIG_JSON" \
                     --track "$ANDROID_TRACK" \
                     --notes-dir "packaging/whatsnew" \
-                    --desc-dir "packaging/store/android" \
                     --release-name "v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }})"
 
             - name: "[TELEMETRY] Google Play Deployment Telemetry"
@@ -531,7 +530,7 @@ jobs:
                   STATUS_TAG="[PASS] DEPLOYED"
                   if [ "$STATUS" != "success" ]; then
                     STATUS_TAG="[FAIL] ERROR"
-                    if [ -z "${{ env.PLAY_CONFIG_JSON }}" ]; then
+                    if [ -z "$PLAY_CONFIG_JSON" ]; then
                       STATUS_TAG="[SKIP] SKIPPED (PLAY_CONFIG_JSON secret not configured)"
                     fi
                   fi
