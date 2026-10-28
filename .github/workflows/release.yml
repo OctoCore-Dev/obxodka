@@ -304,6 +304,50 @@ jobs:
           path: ${{ steps.find-windows-pkg.outputs.pkg_path }}
           retention-days: 14
 
+      - name: 📦 Build GitHub Standalone Installer (Inno Setup)
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+        shell: pwsh
+        run: |
+          $ver = $env:VERSION_NAME
+          if (-not $ver) {
+              $ver = (Select-String -Path "version.props" -Pattern "<AppVersion>(.*)</AppVersion>").Matches.Groups[1].Value
+          }
+          if (-not $ver) { $ver = "6.0.7" }
+
+          Write-Host "Publishing unpackaged Windows binary for installer v$ver..."
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+            -p:PackageMode=None `
+            -p:WindowsPackageType=None `
+            -p:GenerateAppxPackageOnBuild=false `
+            -o ./win-unpackaged
+
+          Write-Host "Compiling Inno Setup installer..."
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+              $iscc = (Get-Command iscc -ErrorAction SilentlyContinue)?.Source
+          }
+          if (-not $iscc) {
+              choco install innosetup --no-progress -y
+              $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          }
+
+          & $iscc "/DMyAppVersion=$ver" installer/obxodka.iss
+
+          if (Test-Path "installer-output/Obxodka-Setup.exe") {
+              Write-Host "Installer created successfully: installer-output/Obxodka-Setup.exe"
+          } else {
+              Write-Error "Failed to generate Obxodka-Setup.exe!"
+              exit 1
+          }
+
+      - name: 📤 Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obxodka-windows-installer
+          path: installer-output/Obxodka-Setup.exe
+          retention-days: 14
+
   # ==========================================
   # 📲 ЭТАП 4: ДЕПЛОЙ ANDROID В GOOGLE PLAY
   # (Запускается ТОЛЬКО если И Android, И Windows успешно собрались!)
@@ -450,6 +494,13 @@ jobs:
         continue-on-error: true
         with:
           name: obxodka-windows-package
+          path: ./release-artifacts/windows
+
+      - name: 📥 Download Windows Installer Artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: obxodka-windows-installer
           path: ./release-artifacts/windows
 
       - name: 📝 Extract Release Info

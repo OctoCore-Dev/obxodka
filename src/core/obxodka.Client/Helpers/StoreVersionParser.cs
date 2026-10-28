@@ -33,6 +33,68 @@ public static partial class StoreVersionParser
         return (version, whatsNew);
     }
 
+    public static (string? Version, string? WhatsNew, string? DownloadUrl) ParseGitHubReleaseJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return (null, null, null);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("tag_name", out var tagProp))
+            {
+                return (null, null, null);
+            }
+
+            var tagName = tagProp.GetString();
+            if (string.IsNullOrWhiteSpace(tagName))
+            {
+                return (null, null, null);
+            }
+
+            var version = tagName.TrimStart('v', 'V');
+            var whatsNew = root.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() : null;
+            string? downloadUrl = null;
+
+            if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    var name = asset.TryGetProperty("name", out var np) ? np.GetString() ?? string.Empty : string.Empty;
+                    if (asset.TryGetProperty("browser_download_url", out var urlProp))
+                    {
+                        var url = urlProp.GetString();
+                        if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) || name.Contains("Installer", StringComparison.OrdinalIgnoreCase))
+                        {
+                            downloadUrl = url;
+                            break;
+                        }
+                        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                            name.EndsWith(".msixbundle", StringComparison.OrdinalIgnoreCase) ||
+                            name.EndsWith(".msix", StringComparison.OrdinalIgnoreCase))
+                        {
+                            downloadUrl = url;
+                        }
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(downloadUrl) && root.TryGetProperty("html_url", out var htmlUrlProp))
+            {
+                downloadUrl = htmlUrlProp.GetString();
+            }
+
+            return (version, whatsNew, downloadUrl);
+        }
+        catch
+        {
+            return (null, null, null);
+        }
+    }
+
     public static string? ParseMicrosoftStoreCatalogJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

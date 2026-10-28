@@ -1,4 +1,5 @@
 using Microsoft.Maui.Controls.Shapes;
+using obxodka.Helpers;
 
 namespace obxodka.Views;
 
@@ -29,6 +30,7 @@ public sealed partial class SplitView : ContentView
         : Color.FromArgb("#EF4444");
 
     private MainPage _parent = null!;
+    private double _lastAppliedWidth = -1;
     private DesktopSidebarView? _sidebar;
     private IAppManager _appManager = null!;
 
@@ -58,6 +60,13 @@ public sealed partial class SplitView : ContentView
         Unloaded += OnUnloaded;
         RootLayout.SizeChanged += OnRootLayoutSizeChanged;
         SitesSplitScrollView.Scrolled += OnSitesScrollViewScrolled;
+#if ANDROID
+        SplitAppsList.HandlerChanged += (s, e) => AttachCardStackToCollectionView();
+        if (SplitAppsList.Handler?.PlatformView != null)
+        {
+            AttachCardStackToCollectionView();
+        }
+#endif
 #if WINDOWS
         ModeTabsGrid.IsVisible = true;
         ChipAddExe.IsVisible = true;
@@ -137,6 +146,17 @@ public sealed partial class SplitView : ContentView
 
     private void OnRootLayoutSizeChanged(object? sender, EventArgs e) => ForceLayoutWidth();
 
+#if ANDROID
+    private void AttachCardStackToCollectionView()
+    {
+        if (SplitAppsList.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+        {
+            rv.ClearOnScrollListeners();
+            rv.AddOnScrollListener(new CardStackScrollHelper.CardStackRecyclerViewScrollListener(dpZone: 65f, minScale: 0.94f, power: 2.2f));
+        }
+    }
+#endif
+
     private void ApplyCardWidth(double targetWidth)
     {
         if (targetWidth <= 0 || MainContentGrid is null)
@@ -146,6 +166,11 @@ public sealed partial class SplitView : ContentView
 
         if (DeviceInfo.Idiom == DeviceIdiom.Phone)
         {
+            if (_lastAppliedWidth == 0)
+            {
+                return;
+            }
+            _lastAppliedWidth = 0;
             MainContentGrid.ClearValue(WidthRequestProperty);
             MainContentGrid.ClearValue(MaximumWidthRequestProperty);
             SplitAppsList?.ClearValue(WidthRequestProperty);
@@ -159,10 +184,11 @@ public sealed partial class SplitView : ContentView
         }
 
         var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        if (safeWidth <= 0 || Math.Abs(_lastAppliedWidth - safeWidth) < 1.0)
         {
             return;
         }
+        _lastAppliedWidth = safeWidth;
 
         MainContentGrid.WidthRequest = safeWidth;
         MainContentGrid.MaximumWidthRequest = safeWidth;
@@ -188,6 +214,12 @@ public sealed partial class SplitView : ContentView
     {
         RootLayout.SizeChanged -= OnRootLayoutSizeChanged;
         SitesSplitScrollView.Scrolled -= OnSitesScrollViewScrolled;
+#if ANDROID
+        if (SplitAppsList.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+        {
+            rv.ClearOnScrollListeners();
+        }
+#endif
         if (_parent is not null)
         {
             _parent.VpnService.OnStateChanged -= OnVpnStateChanged;
