@@ -15,7 +15,7 @@
             Grid.Row="0"
             Margin="0,0,0,14"
             HorizontalOptions="Center"
-            Spacing="4">
+            Spacing="6">
             <Label
                 FontFamily="{DynamicResource AppFontTitle}"
                 FontSize="{OnIdiom Desktop=24,
@@ -30,6 +30,72 @@
                 HorizontalTextAlignment="Center"
                 Style="{StaticResource LabelMuted}"
                 Text="Выберите удобный пакет часов доступа без ограничений по скорости" />
+
+            <Border
+                x:Name="CurrencySwitcherBorder"
+                Margin="0,6,0,0"
+                Padding="3"
+                BackgroundColor="{DynamicResource BgElevated}"
+                HorizontalOptions="Center"
+                Stroke="{DynamicResource BorderSubtle}"
+                StrokeShape="RoundRectangle 8"
+                StrokeThickness="1">
+                <Grid ColumnDefinitions="88, 88, 88" ColumnSpacing="4">
+                    <Button
+                        x:Name="BtnCurrencyRub"
+                        Grid.Column="0"
+                        Padding="0"
+                        BackgroundColor="{DynamicResource BgSurface}"
+                        BorderColor="{DynamicResource Accent}"
+                        BorderWidth="1"
+                        Clicked="OnCurrencyRubClicked"
+                        CornerRadius="6"
+                        FontFamily="{DynamicResource AppFontBold}"
+                        FontSize="12"
+                        HeightRequest="32"
+                        MinimumHeightRequest="0"
+                        Text="₽ RUB"
+                        TextColor="{DynamicResource Accent}" />
+                    <Button
+                        x:Name="BtnCurrencyUsd"
+                        Grid.Column="1"
+                        Padding="0"
+                        BackgroundColor="Transparent"
+                        BorderColor="Transparent"
+                        BorderWidth="0"
+                        Clicked="OnCurrencyUsdClicked"
+                        CornerRadius="6"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="12"
+                        HeightRequest="32"
+                        MinimumHeightRequest="0"
+                        Text="$ USD"
+                        TextColor="{DynamicResource TextSecondary}" />
+                    <Button
+                        x:Name="BtnCurrencyEur"
+                        Grid.Column="2"
+                        Padding="0"
+                        BackgroundColor="Transparent"
+                        BorderColor="Transparent"
+                        BorderWidth="0"
+                        Clicked="OnCurrencyEurClicked"
+                        CornerRadius="6"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="12"
+                        HeightRequest="32"
+                        MinimumHeightRequest="0"
+                        Text="€ EUR"
+                        TextColor="{DynamicResource TextSecondary}" />
+                </Grid>
+            </Border>
+
+            <Label
+                x:Name="PaymentMethodsHintLabel"
+                FontSize="11"
+                HorizontalOptions="Center"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource LabelMuted}"
+                Text="Способы оплаты: СБП • Карты банков РФ • T-Pay • SberPay" />
         </VerticalStackLayout>
 
         <ScrollView
@@ -118,6 +184,7 @@
                         Style="{StaticResource NeoCard}">
                         <Grid RowDefinitions="24, Auto, Auto, *, Auto" RowSpacing="8">
                             <Label
+                                x:Name="Card1TitleLabel"
                                 Grid.Row="0"
                                 FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="11"
@@ -125,17 +192,20 @@
                                 TextColor="{DynamicResource Primary}"
                                 VerticalOptions="Center" />
                             <Label
+                                x:Name="Card1PriceLabel"
                                 Grid.Row="1"
                                 FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="300 ₽"
                                 TextColor="{DynamicResource Primary}" />
                             <Label
+                                x:Name="Card1HoursLabel"
                                 Grid.Row="2"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
                                 Text="350 часов (+50ч бонус)" />
                             <Label
+                                x:Name="Card1SubtitleLabel"
                                 Grid.Row="3"
                                 FontSize="12"
                                 LineBreakMode="WordWrap"
@@ -187,6 +257,7 @@
                         <Grid RowDefinitions="24, Auto, Auto, *, Auto" RowSpacing="8">
                             <Grid Grid.Row="0" ColumnDefinitions="*, Auto">
                                 <Label
+                                    x:Name="Card2TitleLabel"
                                     Grid.Column="0"
                                     FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="11"
@@ -194,6 +265,7 @@
                                     TextColor="{DynamicResource Accent}"
                                     VerticalOptions="Center" />
                                 <Border
+                                    x:Name="Card2BadgeBorder"
                                     Grid.Column="1"
                                     Padding="6,2"
                                     BackgroundColor="{DynamicResource BorderSubtle}"
@@ -202,6 +274,7 @@
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <Label
+                                        x:Name="Card2BadgeLabel"
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="10"
                                         Text="ХИТ +50%"
@@ -210,17 +283,20 @@
                             </Grid>
 
                             <Label
+                                x:Name="Card2PriceLabel"
                                 Grid.Row="1"
                                 FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="500 ₽"
                                 TextColor="{DynamicResource Accent}" />
                             <Label
+                                x:Name="Card2HoursLabel"
                                 Grid.Row="2"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
                                 Text="750 часов (+250ч бонус)" />
                             <Label
+                                x:Name="Card2SubtitleLabel"
                                 Grid.Row="3"
                                 FontSize="12"
                                 LineBreakMode="WordWrap"
@@ -271,6 +347,7 @@
                         Style="{StaticResource NeoCard}">
                         <Grid RowDefinitions="24, Auto, Auto, *, Auto" RowSpacing="8">
                             <Label
+                                x:Name="Card3TitleLabel"
                                 Grid.Row="0"
                                 FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="11"
@@ -278,17 +355,20 @@
                                 TextColor="{DynamicResource Warning}"
                                 VerticalOptions="Center" />
                             <Label
+                                x:Name="Card3PriceLabel"
                                 Grid.Row="1"
                                 FontFamily="{DynamicResource AppFontTitle}"
                                 FontSize="28"
                                 Text="1000 ₽"
                                 TextColor="{DynamicResource Warning}" />
                             <Label
+                                x:Name="Card3HoursLabel"
                                 Grid.Row="2"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="14"
                                 Text="2200 часов (+1200ч бонус)" />
                             <Label
+                                x:Name="Card3SubtitleLabel"
                                 Grid.Row="3"
                                 FontSize="12"
                                 LineBreakMode="WordWrap"
@@ -339,11 +419,13 @@
                         <Grid ColumnDefinitions="*, Auto">
                             <VerticalStackLayout Grid.Column="0" Spacing="2">
                                 <Label
+                                    x:Name="ConstructorTitleLabel"
                                     FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="12"
                                     Text="КОНСТРУКТОР ТАРИФА — СВОЯ СУММА"
                                     TextColor="{DynamicResource Accent}" />
                                 <Label
+                                    x:Name="ConstructorSubtitleLabel"
                                     FontSize="12"
                                     Style="{StaticResource LabelMuted}"
                                     Text="От 50 ₽ до 10 000 ₽. Бонус до +140% часов при пополнении от 300 ₽" />
@@ -512,6 +594,7 @@
                                         TextColor="{DynamicResource TextPrimary}"
                                         VerticalOptions="Center" />
                                     <Label
+                                        x:Name="CustomCurrencyUnitLabel"
                                         Grid.Column="1"
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="15"
@@ -582,6 +665,7 @@
                         </Grid>
                     </VerticalStackLayout>
                 </Border>
+
                 <Border
                     x:Name="PaymentInfoCard"
                     Padding="16,12"
@@ -617,4 +701,3 @@
         </ScrollView>
     </Grid>
 </ContentView>
-

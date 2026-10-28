@@ -489,10 +489,10 @@ public sealed class ApiService(HttpClient client)
         where TResponse : class =>
         await SendRequestAsync(HttpMethod.Post, url, body, requestInfo, responseInfo, includeAuth, ct).ConfigureAwait(false);
 
-    public async Task<(bool Success, string? Url, string? Error)> GeneratePaymentLinkAsync(decimal amount, CancellationToken ct = default)
+    public async Task<(bool Success, string? Url, string? Error)> GeneratePaymentLinkAsync(decimal amount, string currency = "RUB", CancellationToken ct = default)
     {
         var amountStr = amount.ToString(CultureInfo.InvariantCulture);
-        var url = $"api/payment/generate?amount={amountStr}";
+        var url = $"api/payment/generate?amount={amountStr}&currency={Uri.EscapeDataString(currency)}";
 
         var (success, data, error) = await SendRequestAsync<object, PaymentLinkResponse>(
             HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, includeAuth: true, ct: ct);
