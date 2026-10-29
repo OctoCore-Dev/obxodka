@@ -1,0 +1,6 @@
+High-speed connection with low latency powered by .NET 10
+Bypass DPI-throttling and network slowdowns seamlessly
+Strict No-Logs privacy policy
+Split Tunneling for specific apps and domains
+Modern Fluent 2 interface with Windows 11 Mica material and dark mode
+One-click connect with instant auto-reconnect

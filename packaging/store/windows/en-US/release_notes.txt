@@ -1,0 +1,3 @@
+- Network tunnel driver performance improvements and latency reduction
+- Refined Fluent 2 adaptive UI layout
+- Enhanced reconnection resilience
