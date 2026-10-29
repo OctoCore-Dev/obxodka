@@ -1,4 +1,4 @@
-- Smooth scroll & dynamic card stacking depth for Split Tunneling apps and domains.
-- Fixed background transparency and scroll spacer layout under search bar on mobile platforms.
-- Unified multi-store release automation pipeline powered by OctoPublisher for Google Play & Microsoft Store.
-- Tunnel stability improvements and reduced network connection latency.
+- Upgraded AdBlock engine: zero-allocation L3 DNS sinkhole, cloud filters auto-sync, and tracker protection.
+- DNS-over-HTTPS bypass protection via DoH Canary domain enforcement.
+- Live blocked ads and telemetry counter on the profile dashboard.
+- Network stack optimization and reduced connection latency.

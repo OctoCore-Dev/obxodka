@@ -45,7 +45,7 @@
     <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite" />
     <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite" />
   </circle>
-  <text x="49" y="36" fill="#00e5ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="1">LIVE CORE ENGINE v6.0.9</text>
+  <text x="49" y="36" fill="#00e5ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="1">LIVE CORE ENGINE v6.1.0</text>
 
   <!-- Заголовок экосистемы -->
   <text x="25" y="72" fill="url(#textGrad)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="800" letter-spacing="0.5">
