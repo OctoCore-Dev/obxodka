@@ -2,8 +2,21 @@ namespace obxodka.Core;
 
 public static class DnsAdBlocker
 {
-    private static readonly FrozenSet<string> t_blockedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private sealed class RuleSet
     {
+        public FrozenSet<string> Set { get; }
+        public FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> Lookup { get; }
+
+        public RuleSet(IEnumerable<string> domains)
+        {
+            Set = domains.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+            Lookup = Set.GetAlternateLookup<ReadOnlySpan<char>>();
+        }
+    }
+
+    private static readonly string[] t_defaultBlockedDomains =
+    [
+        "use-application-dns.net",
         "appmetrica.yandex.net",
         "appmetrica.yandex.ru",
         "metrika.yandex.ru",
@@ -23,6 +36,9 @@ public static class DnsAdBlocker
         "adfox.ru",
         "banners.adfox.ru",
         "ads.adfox.ru",
+        "yabs.yandex.ru",
+        "direct.yandex.ru",
+        "analytics.mobile.yandex.net",
         "stat.vk.com",
         "top-fwz1.mail.ru",
         "r3.mail.ru",
@@ -33,6 +49,8 @@ public static class DnsAdBlocker
         "counter.yadro.ru",
         "yadro.ru",
         "target.my.com",
+        "mytarget.com",
+        "mstat.mail.ru",
         "hb.biz.mail.ru",
         "counter.rambler.ru",
         "ad.adriver.ru",
@@ -47,6 +65,7 @@ public static class DnsAdBlocker
         "stats.tinkoff.ru",
         "telemetry.tbank.ru",
         "stat.vtb.ru",
+        "metrics.rutube.ru",
         "appsflyer.com",
         "app.appsflyer.com",
         "events.appsflyer.com",
@@ -85,21 +104,148 @@ public static class DnsAdBlocker
         "ads-twitter.com",
         "graph.facebook.com",
         "connect.facebook.net",
+        "pixel.facebook.com",
         "scorecardresearch.com",
         "admob.com",
         "unityads.unity3d.com",
+        "unityads.com",
         "applovin.com",
         "telemetry.applovin.com",
-        "vungle.com"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        "vungle.com",
+        "ads.vungle.com",
+        "inmobi.com",
+        "ironsource.com",
+        "ironsrc.com",
+        "supersonicads.com",
+        "mintegral.com",
+        "chartboost.com",
+        "tapjoy.com",
+        "adcolony.com",
+        "fyber.com",
+        "pangle.io",
+        "ads.pangle.io",
+        "mobvista.com",
+        "smaato.net",
+        "liftoff.io",
+        "outbrain.com",
+        "taboola.com",
+        "criteo.com",
+        "criteo.net",
+        "rubiconproject.com",
+        "pubmatic.com",
+        "openx.net",
+        "smartadserver.com",
+        "adnxs.com",
+        "popads.net",
+        "propellerads.com",
+        "exoclick.com",
+        "mgid.com",
+        "adkeeper.co.uk",
+        "tracking.miui.com",
+        "data.mistat.xiaomi.com",
+        "metrics.data.hicloud.com",
+        "logservice.hicloud.com",
+        "samsungadhub.com",
+        "smetrics.samsung.com",
+        "ad.lgsmartad.com"
+    ];
 
+    private static readonly string[] t_defaultWhitelistDomains =
+    [
+        "clck.yandex.ru"
+    ];
+
+    private static volatile RuleSet t_rules = new(t_defaultBlockedDomains);
+    private static volatile RuleSet t_whitelist = new(t_defaultWhitelistDomains);
     private static volatile bool t_isAdBlockEnabled = true;
+    private static long t_blockedQueriesCount;
 
     public static bool IsAdBlockEnabled
     {
         get => t_isAdBlockEnabled;
         set => t_isAdBlockEnabled = value;
     }
+
+    public static long BlockedQueriesCount => Volatile.Read(ref t_blockedQueriesCount);
+
+    public static void ResetBlockedCount() => Interlocked.Exchange(ref t_blockedQueriesCount, 0);
+
+    public static int BlockedDomainsCount => t_rules.Set.Count;
+
+    public static int WhitelistDomainsCount => t_whitelist.Set.Count;
+
+    public static void ResetToDefaults()
+    {
+        t_rules = new RuleSet(t_defaultBlockedDomains);
+        t_whitelist = new RuleSet(t_defaultWhitelistDomains);
+        ResetBlockedCount();
+    }
+
+    public static void UpdateBlockedDomains(IEnumerable<string> domains, bool mergeWithDefaults = false)
+    {
+        if (mergeWithDefaults)
+        {
+            var merged = new HashSet<string>(t_defaultBlockedDomains, StringComparer.OrdinalIgnoreCase);
+            merged.UnionWith(domains);
+            t_rules = new RuleSet(merged);
+        }
+        else
+        {
+            t_rules = new RuleSet(domains);
+        }
+    }
+
+    public static void UpdateWhitelist(IEnumerable<string> domains) =>
+        t_whitelist = new RuleSet(domains);
+
+    public static void AddToWhitelist(string domain)
+    {
+        var current = new HashSet<string>(t_whitelist.Set, StringComparer.OrdinalIgnoreCase) { domain };
+        t_whitelist = new RuleSet(current);
+    }
+
+    public static void RemoveFromWhitelist(string domain)
+    {
+        var current = new HashSet<string>(t_whitelist.Set, StringComparer.OrdinalIgnoreCase);
+        _ = current.Remove(domain);
+        t_whitelist = new RuleSet(current);
+    }
+
+    public static bool IsWhitelisted(ReadOnlySpan<char> domain) =>
+        t_whitelist.Lookup.Contains(domain);
+
+    public static bool IsBlocked(ReadOnlySpan<char> domain)
+    {
+        if (IsWhitelisted(domain))
+        {
+            return false;
+        }
+
+        var rules = t_rules;
+        if (rules.Lookup.Contains(domain))
+        {
+            return true;
+        }
+
+        var remaining = domain;
+        while (true)
+        {
+            var dot = remaining.IndexOf('.');
+            if (dot < 0 || dot + 1 >= remaining.Length)
+            {
+                break;
+            }
+            remaining = remaining[(dot + 1)..];
+            if (rules.Lookup.Contains(remaining))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool IsBlocked(string domain) => IsBlocked(domain.AsSpan());
 
     public static byte[]? ProcessPacket(byte[] packet, int length, bool? useAdblock = null)
     {
@@ -165,16 +311,18 @@ public static class DnsAdBlocker
                 return null;
             }
 
-            var queryName = ParseDnsName(dnsSpan, 12, out var bytesRead);
-            if (string.IsNullOrEmpty(queryName))
+            Span<char> domainBuf = stackalloc char[256];
+            if (!TryParseDnsName(dnsSpan, 12, domainBuf, out var charsWritten, out var bytesRead))
             {
                 return null;
             }
 
-            if (IsBlocked(queryName))
+            var domainSpan = domainBuf[..charsWritten];
+            if (IsBlocked(domainSpan))
             {
-                Debug.WriteLine($"[ADBLOCK] Blocked: {queryName}");
-                return CreateDnsResponse(packet, ipHeaderLen, udpHeaderOffset, dnsOffset, bytesRead, version == 4);
+                _ = Interlocked.Increment(ref t_blockedQueriesCount);
+                var isCanary = domainSpan.SequenceEqual("use-application-dns.net");
+                return CreateDnsResponse(packet, ipHeaderLen, udpHeaderOffset, dnsOffset, bytesRead, version == 4, isCanary);
             }
         }
         catch
@@ -248,16 +396,18 @@ public static class DnsAdBlocker
                 return;
             }
 
-            var queryName = ParseDnsName(dnsSpan, 12, out var bytesRead);
-            if (string.IsNullOrEmpty(queryName))
+            Span<char> domainBuf = stackalloc char[256];
+            if (!TryParseDnsName(dnsSpan, 12, domainBuf, out var charsWritten, out var bytesRead))
             {
                 return;
             }
 
-            if (IsBlocked(queryName))
+            var domainSpan = domainBuf[..charsWritten];
+            if (IsBlocked(domainSpan))
             {
-                Debug.WriteLine($"[ADBLOCK_LOCAL] Blocked: {queryName}");
-                var resp = CreateDnsResponse(packet, ipHeaderLen, udpOffset, dnsOffset, bytesRead, isIpv4);
+                _ = Interlocked.Increment(ref t_blockedQueriesCount);
+                var isCanary = domainSpan.SequenceEqual("use-application-dns.net");
+                var resp = CreateDnsResponse(packet, ipHeaderLen, udpOffset, dnsOffset, bytesRead, isIpv4, isCanary);
                 sendBackToTun(resp);
                 return;
             }
@@ -324,30 +474,10 @@ public static class DnsAdBlocker
         return resp;
     }
 
-    private static bool IsBlocked(string domain)
+    private static bool TryParseDnsName(ReadOnlySpan<byte> dnsSpan, int offset, Span<char> dest, out int charsWritten, out int bytesRead)
     {
-        if (t_blockedDomains.Contains(domain))
-        {
-            return true;
-        }
-
-        var dotIdx = domain.IndexOf('.');
-        while (dotIdx >= 0 && dotIdx + 1 < domain.Length)
-        {
-            var parent = domain[(dotIdx + 1)..];
-            if (t_blockedDomains.Contains(parent))
-            {
-                return true;
-            }
-            dotIdx = domain.IndexOf('.', dotIdx + 1);
-        }
-
-        return false;
-    }
-
-    private static string ParseDnsName(ReadOnlySpan<byte> dnsSpan, int offset, out int bytesRead)
-    {
-        var sb = new StringBuilder();
+        charsWritten = 0;
+        bytesRead = 0;
         var currentOffset = offset;
 
         while (currentOffset < dnsSpan.Length)
@@ -364,28 +494,50 @@ public static class DnsAdBlocker
                 break;
             }
 
-            if (sb.Length > 0)
+            if (charsWritten > 0)
             {
-                _ = sb.Append('.');
+                if (charsWritten >= dest.Length)
+                {
+                    return false;
+                }
+                dest[charsWritten++] = '.';
             }
 
-            if (currentOffset + len <= dnsSpan.Length)
+            if (currentOffset + len > dnsSpan.Length || charsWritten + len > dest.Length)
             {
-                _ = sb.Append(Encoding.UTF8.GetString(dnsSpan.Slice(currentOffset, len)));
+                return false;
+            }
+
+            for (var i = 0; i < len; i++)
+            {
+                var b = dnsSpan[currentOffset + i];
+                dest[charsWritten++] = (char)(b is >= (byte)'A' and <= (byte)'Z' ? b + 32 : b);
             }
 
             currentOffset += len;
         }
 
         bytesRead = currentOffset - offset;
-        return sb.ToString();
+        return charsWritten > 0;
     }
 
-    private static byte[] CreateDnsResponse(byte[] req, int ipHdrLen, int udpOffset, int dnsOffset, int qNameLen, bool isIpv4)
+    public static string ParseDnsName(ReadOnlySpan<byte> dnsSpan, int offset, out int bytesRead)
+    {
+        Span<char> dest = stackalloc char[256];
+        if (TryParseDnsName(dnsSpan, offset, dest, out var charsWritten, out bytesRead))
+        {
+            return new string(dest[..charsWritten]);
+        }
+
+        bytesRead = 0;
+        return string.Empty;
+    }
+
+    private static byte[] CreateDnsResponse(byte[] req, int ipHdrLen, int udpOffset, int dnsOffset, int qNameLen, bool isIpv4, bool isNxDomain = false)
     {
         var qType = BinaryPrimitives.ReadUInt16BigEndian(req.AsSpan(dnsOffset + 12 + qNameLen, 2));
         var isAaaa = qType == 28;
-        var ansLen = isAaaa ? 0 : 16;
+        var ansLen = (isAaaa || isNxDomain) ? 0 : 16;
         var totalLen = dnsOffset + 12 + qNameLen + 4 + ansLen;
         var resp = new byte[totalLen];
 
@@ -414,10 +566,11 @@ public static class DnsAdBlocker
         Buffer.BlockCopy(req, dnsOffset, resp, dnsOffset, 12 + qNameLen + 4);
         var dnsSpan = resp.AsSpan(dnsOffset);
 
-        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(2, 2), 0x8180);
-        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), isAaaa ? (ushort)0 : (ushort)1);
+        var flags = isNxDomain ? (ushort)0x8183 : (ushort)0x8180;
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(2, 2), flags);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), (isAaaa || isNxDomain) ? (ushort)0 : (ushort)1);
 
-        if (!isAaaa)
+        if (!isAaaa && !isNxDomain)
         {
             var ansOffset = dnsOffset + 12 + qNameLen + 4;
             var ansSpan = resp.AsSpan(ansOffset);

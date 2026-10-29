@@ -127,7 +127,8 @@
                                     Grid.Row="1"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
-                                    Text="Использовать DNS AdGuard для блокировки рекламы и трекеров" />
+                                    x:Name="AdBlockSubtitleLabel"
+                                    Text="L3 фильтрация рекламы и трекеров" />
                             </Grid>
                             <Switch
                                 x:Name="AdBlockSwitch"

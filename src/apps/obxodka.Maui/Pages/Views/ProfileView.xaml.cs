@@ -32,6 +32,7 @@ public sealed partial class ProfileView : ContentView
         var isAdblock = Preferences.Default.Get("use_adblock_dns", true);
         AdBlockSwitch.IsToggled = isAdblock;
         DnsAdBlocker.IsAdBlockEnabled = isAdblock;
+        UpdateAdBlockSubtitle();
         TelemetrySwitch.IsToggled = Preferences.Default.Get("use_telemetry", true);
 
         if (DeviceInfo.Idiom != DeviceIdiom.Phone)
@@ -333,6 +334,22 @@ public sealed partial class ProfileView : ContentView
 
         Preferences.Default.Set("use_adblock_dns", e.Value);
         DnsAdBlocker.IsAdBlockEnabled = e.Value;
+        UpdateAdBlockSubtitle();
+    }
+
+    private void UpdateAdBlockSubtitle()
+    {
+        if (!DnsAdBlocker.IsAdBlockEnabled)
+        {
+            AdBlockSubtitleLabel.Text = "Фильтрация рекламы и трекеров отключена";
+            return;
+        }
+
+        var blocked = DnsAdBlocker.BlockedQueriesCount;
+        var rules = DnsAdBlocker.BlockedDomainsCount;
+        AdBlockSubtitleLabel.Text = blocked > 0
+            ? $"L3 фильтрация активна ({rules:N0} правил, заблокировано: {blocked:N0})"
+            : $"L3 фильтрация активна (активных правил: {rules:N0})";
     }
 
     private void OnTelemetryToggled(object? sender, ToggledEventArgs e) =>

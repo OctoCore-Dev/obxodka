@@ -128,6 +128,27 @@ internal sealed partial class App : Application
     {
         InitializeComponent();
         DnsAdBlocker.IsAdBlockEnabled = Preferences.Default.Get("use_adblock_dns", true);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var cacheFile = Path.Combine(FileSystem.AppDataDirectory, "adblock_rules.txt");
+                _ = await DnsAdBlockRuleManager.LoadFromCacheAsync(cacheFile);
+
+                var lastSyncTicks = Preferences.Default.Get("adblock_last_sync_ticks", 0L);
+                var lastSync = new DateTime(lastSyncTicks, DateTimeKind.Utc);
+                if (DateTime.UtcNow - lastSync > TimeSpan.FromHours(24))
+                {
+                    if (await DnsAdBlockRuleManager.SyncFromRemoteAsync(cacheFilePath: cacheFile))
+                    {
+                        Preferences.Default.Set("adblock_last_sync_ticks", DateTime.UtcNow.Ticks);
+                    }
+                }
+            }
+            catch
+            {
+            }
+        });
     }
 
     public static void HandleTileClick()
