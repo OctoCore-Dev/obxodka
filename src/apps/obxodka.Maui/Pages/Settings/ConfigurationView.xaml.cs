@@ -409,11 +409,13 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         {
             await Task.Run(async () =>
             {
-                using var handler = new SocketsHttpHandler
-                {
-                    PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-                    EnableMultipleHttp2Connections = true
-                };
+                using HttpMessageHandler handler = OperatingSystem.IsAndroid()
+                    ? new HttpClientHandler { UseProxy = false }
+                    : new SocketsHttpHandler
+                    {
+                        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                        EnableMultipleHttp2Connections = true
+                    };
                 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(25) };
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
 

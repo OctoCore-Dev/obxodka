@@ -14,22 +14,28 @@ public sealed class ApiService(HttpClient client)
     });
 
     //клиент tls 1.2 с проверкой сертификата
-    private static readonly Lazy<HttpClient> s_fallbackTls12 = new(() => new HttpClient(new SocketsHttpHandler
-    {
-        SslOptions = SslOptionsFactory.Create(),
-        UseProxy = false
-    })
+    private static readonly Lazy<HttpClient> s_fallbackTls12 = new(() => new HttpClient(
+        OperatingSystem.IsAndroid()
+            ? new HttpClientHandler { UseProxy = false }
+            : new SocketsHttpHandler
+            {
+                SslOptions = SslOptionsFactory.Create(),
+                UseProxy = false
+            })
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
     });
 
     //клиент http 2.0
-    private static readonly Lazy<HttpClient> s_fallbackHttp2 = new(() => new HttpClient(new SocketsHttpHandler
-    {
-        SslOptions = SslOptionsFactory.Create(),
-        UseProxy = false
-    })
+    private static readonly Lazy<HttpClient> s_fallbackHttp2 = new(() => new HttpClient(
+        OperatingSystem.IsAndroid()
+            ? new HttpClientHandler { UseProxy = false }
+            : new SocketsHttpHandler
+            {
+                SslOptions = SslOptionsFactory.Create(),
+                UseProxy = false
+            })
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(2, 0)
@@ -39,12 +45,15 @@ public sealed class ApiService(HttpClient client)
     private static readonly ConcurrentDictionary<string, IPAddress> s_dohCache = new(StringComparer.OrdinalIgnoreCase);
 
     //клиент для doh запросов
-    private static readonly Lazy<HttpClient> s_dohClient = new(() => new HttpClient(new SocketsHttpHandler
-    {
-        UseProxy = false,
-        ConnectTimeout = TimeSpan.FromSeconds(2),
-        SslOptions = SslOptionsFactory.CreatePublicDoh()
-    })
+    private static readonly Lazy<HttpClient> s_dohClient = new(() => new HttpClient(
+        OperatingSystem.IsAndroid()
+            ? new HttpClientHandler { UseProxy = false }
+            : new SocketsHttpHandler
+            {
+                UseProxy = false,
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+                SslOptions = SslOptionsFactory.CreatePublicDoh()
+            })
     {
         Timeout = TimeSpan.FromSeconds(2)
     });
@@ -162,6 +171,15 @@ public sealed class ApiService(HttpClient client)
     //резервный клиент с обходом dpi через сырой поток
     private static readonly Lazy<HttpClient> s_fallbackDirectDpi = new(() =>
     {
+        if (OperatingSystem.IsAndroid())
+        {
+            return new HttpClient(new HttpClientHandler { UseProxy = false })
+            {
+                Timeout = TimeSpan.FromSeconds(8),
+                DefaultRequestVersion = new Version(1, 1)
+            };
+        }
+
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
@@ -233,30 +251,33 @@ public sealed class ApiService(HttpClient client)
     }
 
     //создание базового http обработчика с проверкой сертификата
-    public static SocketsHttpHandler CreateDefaultHandler() => new()
-    {
-        UseProxy = false,
-        SslOptions = SslOptionsFactory.Create(),
-        ConnectCallback = async (context, cToken) =>
-        {
-            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-            ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-            try
+    public static HttpMessageHandler CreateDefaultHandler() =>
+        OperatingSystem.IsAndroid()
+            ? new HttpClientHandler { UseProxy = false }
+            : new SocketsHttpHandler
             {
-                var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
-                await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
-                var netStream = new NetworkStream(socket, ownsSocket: true);
-                return !IPAddress.IsLoopback(resolvedIp)
-                    ? new DpiBypassStream(netStream, bypassEnabled: true)
-                    : netStream;
-            }
-            catch
-            {
-                socket.Dispose();
-                throw;
-            }
-        }
-    };
+                UseProxy = false,
+                SslOptions = SslOptionsFactory.Create(),
+                ConnectCallback = async (context, cToken) =>
+                {
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+                    try
+                    {
+                        var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
+                        await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
+                        var netStream = new NetworkStream(socket, ownsSocket: true);
+                        return !IPAddress.IsLoopback(resolvedIp)
+                            ? new DpiBypassStream(netStream, bypassEnabled: true)
+                            : netStream;
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
+            };
 
     //отправка запроса с перебором зеркал и обходом блокировок
     private async Task<(bool Success, TResponse? Data, string? Error)> SendRequestAsync<TRequest, TResponse>(
