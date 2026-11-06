@@ -26,6 +26,8 @@ public sealed class TelemetryServiceTests
         var crashPath = AppLogger.CrashLogFilePath;
         try
         {
+            //отключаем телеметрию для проверки локальной записи в файл без отправки на сервер и удаления
+            PlatformServices.Preferences.Set(AppPreferenceKeys.UseTelemetry, false);
             await TelemetryService.Instance.TrackFatalCrashAsync("Test fatal incident", "at UnitTests.Execute()").ConfigureAwait(false);
             Assert.True(File.Exists(crashPath));
 
@@ -34,6 +36,7 @@ public sealed class TelemetryServiceTests
         }
         finally
         {
+            PlatformServices.Preferences.Set(AppPreferenceKeys.UseTelemetry, true);
             if (File.Exists(crashPath))
             {
                 File.Delete(crashPath);
