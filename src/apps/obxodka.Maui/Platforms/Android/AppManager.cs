@@ -4,12 +4,14 @@ using Application = Android.App.Application;
 
 namespace obxodka.Platforms.Android;
 
+//управление списком установленных приложений и исключениями из vpn туннеля (split tunneling)
 [SupportedOSPlatform("android29.0")]
 public sealed class AppManager : IAppManager
 {
     private const string BypassedAppsKey = "obxodka_bypassed_apps";
-    private static List<AppInfoItem>? t_cachedApps;
+    private static List<AppInfoItem>? s_cachedApps;
 
+    //получение списка установленных приложений с иконками и статусом исключения
     public Task<List<AppInfoItem>> GetInstalledAppsAsync() =>
         Task.Run(() =>
         {
@@ -23,14 +25,14 @@ public sealed class AppManager : IAppManager
 
             var bypassed = GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            if (t_cachedApps is not null && t_cachedApps.Count > 0)
+            if (s_cachedApps is not null && s_cachedApps.Count > 0)
             {
-                foreach (var app in t_cachedApps)
+                foreach (var app in s_cachedApps)
                 {
                     app.IsBypassed = bypassed.Contains(app.PackageName);
                 }
 
-                return [.. t_cachedApps];
+                return [.. s_cachedApps];
             }
 
             var cacheDir = FileSystem.Current.CacheDirectory;
@@ -124,7 +126,7 @@ public sealed class AppManager : IAppManager
                 }
             }
 
-            t_cachedApps = [.. apps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
+            s_cachedApps = [.. apps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
 
             if (pendingIcons.Count > 0)
             {
@@ -164,7 +166,7 @@ public sealed class AppManager : IAppManager
                                     drawable.Draw(canvas);
 
                                     using var fs = new FileStream(iconPath, FileMode.Create, FileAccess.Write);
-                                    _ = bmp.Compress(global::Android.Graphics.Bitmap.CompressFormat.Png!, 80, fs);
+                                    _ = await bmp.CompressAsync(global::Android.Graphics.Bitmap.CompressFormat.Png!, 80, fs).ConfigureAwait(false);
                                     bmp.Recycle();
 
                                     if (appsByPkg.TryGetValue(pkgName, out var targetApp))
@@ -206,12 +208,11 @@ public sealed class AppManager : IAppManager
                 });
             }
 
-            return [.. t_cachedApps];
+            return [.. s_cachedApps];
         });
 
-    private static readonly HashSet<string> t_defaultCloakedPackages =
+    private static readonly HashSet<string> s_defaultCloakedPackages = new(
     [
-        with(StringComparer.OrdinalIgnoreCase),
         "ru.sberbankmobile",
         "com.idamob.tinkoff.android",
         "ru.vtb24.mobilebanking",
@@ -234,8 +235,9 @@ public sealed class AppManager : IAppManager
         "ru.samokat.app",
         "ru.magnit.app",
         "ru.x5.app"
-    ];
+    ], StringComparer.OrdinalIgnoreCase);
 
+    //получение списка пакетов приложений исключенных из маршрутизации vpn
     public List<string> GetBypassedPackages()
     {
         if (Preferences.ContainsKey(BypassedAppsKey))
@@ -246,9 +248,10 @@ public sealed class AppManager : IAppManager
                 : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
         }
 
-        return [.. t_defaultCloakedPackages];
+        return [.. s_defaultCloakedPackages];
     }
 
+    //сохранение обновленного списка пакетов приложений исключенных из vpn
     public void SaveBypassedPackages(List<string> packages) =>
         Preferences.Set(BypassedAppsKey, string.Join(",", packages.Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))));
 }

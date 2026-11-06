@@ -1,7 +1,9 @@
 namespace obxodka.Helpers;
 
+//форматирование времени и секунд для отображения таймеров подписки и соединения
 public static class TimeFormatHelper
 {
+    //перевод секунд в формат часов минут секунд или короткий таймер
     public static string FormatSeconds(long seconds, bool verbose = true)
     {
         if (seconds <= 0)

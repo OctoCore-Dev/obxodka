@@ -17,10 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\..\src\core\obxodka.Client\Core\DnsAdBlocker.cs" Link="DnsAdBlocker.cs" />
+    <ProjectReference Include="..\..\src\core\obxodka.Client\obxodka.Client.csproj" />
   </ItemGroup>
 
 </Project>

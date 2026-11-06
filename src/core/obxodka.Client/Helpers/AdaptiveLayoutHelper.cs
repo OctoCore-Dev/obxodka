@@ -1,16 +1,21 @@
 namespace obxodka.Helpers;
 
+//адаптивный расчет размеров элементов интерфейса vpn для разных экранов
 public static class AdaptiveLayoutHelper
 {
     public const double WideBreakpointWidth = 700.0;
     public const double MediumBreakpointWidth = 600.0;
     public const double ShortScreenBreakpointHeight = 520.0;
 
-    public static bool IsWideLayout(double width, bool isDesktopOrTablet = false) => width <= 0 ? isDesktopOrTablet : width >= WideBreakpointWidth || (isDesktopOrTablet && width >= MediumBreakpointWidth);
+    //широкий макет планшет или десктоп
+    public static bool IsWideLayout(double width, bool isDesktopOrTablet = false) =>
+        width <= 0 ? isDesktopOrTablet : width >= WideBreakpointWidth || (isDesktopOrTablet && width >= MediumBreakpointWidth);
 
+    //короткий экран смартфона
     public static bool IsShortScreen(double height) =>
         height is > 0 and < ShortScreenBreakpointHeight;
 
+    //расчет геометрии кнопки графика и отступов под размер экрана
     public static (double buttonSize, double graphHeight, double bottomNavReserve) CalculateVpnViewDimensions(
         double width,
         double height,

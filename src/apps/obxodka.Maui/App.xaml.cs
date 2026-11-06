@@ -8,7 +8,7 @@ internal sealed partial class App : Application
     public static event Action<string, string>? DeepLinkLoginReceived;
     public static (string Email, string Code)? PendingDeepLinkLogin { get; set; }
     public static bool PendingTileAction { get; set; }
-    private static int t_shutdownInitiated;
+    private static int s_shutdownInitiated;
     public static bool IsShutdownCompleted { get; private set; }
 
     public static bool TryParseDeepLinkLogin(string? rawUri, out string email, out string code)
@@ -98,7 +98,7 @@ internal sealed partial class App : Application
 
     public static void InitiateGracefulBackgroundShutdown()
     {
-        if (Interlocked.Exchange(ref t_shutdownInitiated, 1) != 0)
+        if (Interlocked.Exchange(ref s_shutdownInitiated, 1) != 0)
         {
             return;
         }
@@ -128,6 +128,7 @@ internal sealed partial class App : Application
     {
         InitializeComponent();
         DnsAdBlocker.IsAdBlockEnabled = Preferences.Default.Get("use_adblock_dns", true);
+        _ = Task.Run(async () => await TelemetryService.Instance.FlushPreviousSessionCrashLogAsync().ConfigureAwait(false));
         _ = Task.Run(async () =>
         {
             try

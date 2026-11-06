@@ -1,0 +1,1012 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="obxodka.Pages.SplitView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:m="clr-namespace:obxodka.Client.Models;assembly=obxodka.Client"
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+    xmlns:views="clr-namespace:obxodka.Pages"
+    x:Name="ThisView">
+
+    <Grid
+        x:Name="RootLayout"
+        Padding="{OnIdiom Desktop='32,0', Phone='0', Default='16,0'}"
+        IsClippedToBounds="True"
+        SafeAreaEdges="None">
+
+        <Grid
+            x:Name="MainContentGrid"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+
+            <Grid ZIndex="1">
+                <ScrollView
+                    x:Name="SplitAppsScrollView"
+                    Margin="0"
+                    BackgroundColor="Transparent"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill"
+                    VerticalScrollBarVisibility="Never"
+                    ZIndex="1">
+                    <VerticalStackLayout
+                        x:Name="SplitAppsContentStack"
+                        Padding="{OnIdiom Desktop='0',
+                                          Phone='16,0,16,0',
+                                          Default='16,0,16,0'}"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="{OnIdiom Desktop=Center,
+                                                    Default=Fill}"
+                        Spacing="0">
+                        <Grid
+                            x:Name="AppsListTopSpacer"
+                            BackgroundColor="Transparent"
+                            HeightRequest="280"
+                            InputTransparent="True" />
+                        <VerticalStackLayout x:Name="SplitAppsItemsStack" Spacing="6">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="m:AppInfoItem">
+                                    <Border
+                                        Margin="0,0"
+                                        Padding="14,8"
+                                        BackgroundColor="{DynamicResource BgSurface}"
+                                        HeightRequest="64"
+                                        Stroke="{DynamicResource BorderSubtle}"
+                                        StrokeShape="RoundRectangle 12"
+                                        StrokeThickness="1">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnAppRowTapped" />
+                                        </Border.GestureRecognizers>
+                                        <Grid
+                                            ColumnDefinitions="38, *, 46"
+                                            ColumnSpacing="12"
+                                            InputTransparent="True"
+                                            RowDefinitions="*, *"
+                                            RowSpacing="1">
+                                            <Image
+                                                Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="0"
+                                                Aspect="AspectFit"
+                                                HeightRequest="32"
+                                                HorizontalOptions="Center"
+                                                InputTransparent="True"
+                                                IsVisible="{Binding HasIcon}"
+                                                Source="{Binding IconSource}"
+                                                VerticalOptions="Center"
+                                                WidthRequest="32" />
+
+                                            <Border
+                                                Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="0"
+                                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                                HeightRequest="32"
+                                                HorizontalOptions="Center"
+                                                InputTransparent="True"
+                                                IsVisible="{Binding HasNoIcon}"
+                                                StrokeShape="RoundRectangle 16"
+                                                StrokeThickness="0"
+                                                VerticalOptions="Center"
+                                                WidthRequest="32">
+                                                <Label
+                                                    FontFamily="{DynamicResource AppFontBold}"
+                                                    FontSize="13"
+                                                    HorizontalOptions="Center"
+                                                    InputTransparent="True"
+                                                    Text="{Binding InitialLetter}"
+                                                    TextColor="{DynamicResource PrimaryBright}"
+                                                    VerticalOptions="Center" />
+                                            </Border>
+
+                                            <Label
+                                                Grid.Row="0"
+                                                Grid.Column="1"
+                                                FontFamily="{DynamicResource AppFontBold}"
+                                                FontSize="14"
+                                                InputTransparent="True"
+                                                LineBreakMode="TailTruncation"
+                                                Text="{Binding Name}"
+                                                TextColor="{DynamicResource TextPrimary}"
+                                                VerticalOptions="End" />
+
+                                            <Label
+                                                Grid.Row="1"
+                                                Grid.Column="1"
+                                                FontSize="11"
+                                                InputTransparent="True"
+                                                LineBreakMode="TailTruncation"
+                                                Style="{StaticResource LabelMuted}"
+                                                Text="{Binding PackageName}"
+                                                VerticalOptions="Start" />
+
+                                            <Border
+                                                Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="2"
+                                                Padding="3,0"
+                                                BackgroundColor="{DynamicResource BgElevated}"
+                                                HeightRequest="24"
+                                                HorizontalOptions="End"
+                                                InputTransparent="True"
+                                                Stroke="{DynamicResource BorderSubtle}"
+                                                StrokeShape="RoundRectangle 12"
+                                                StrokeThickness="1"
+                                                VerticalOptions="Center"
+                                                WidthRequest="44">
+                                                <Border.Triggers>
+                                                    <DataTrigger
+                                                        Binding="{Binding IsBypassed}"
+                                                        TargetType="Border"
+                                                        Value="True">
+                                                        <Setter Property="BackgroundColor" Value="{DynamicResource Primary}" />
+                                                        <Setter Property="Stroke" Value="{DynamicResource PrimaryBright}" />
+                                                    </DataTrigger>
+                                                </Border.Triggers>
+                                                <Border
+                                                    StrokeShape="RoundRectangle 9"
+                                                    StrokeThickness="0"
+                                                    HeightRequest="18"
+                                                    HorizontalOptions="Start"
+                                                    InputTransparent="True"
+                                                    TranslationX="0"
+                                                    VerticalOptions="Center"
+                                                    WidthRequest="18"
+                                                    BackgroundColor="{DynamicResource TextMuted}">
+                                                    <Border.Triggers>
+                                                        <DataTrigger
+                                                            Binding="{Binding IsBypassed}"
+                                                            TargetType="Border"
+                                                            Value="True">
+                                                            <Setter Property="TranslationX" Value="18" />
+                                                            <Setter Property="BackgroundColor" Value="#FFFFFF" />
+                                                        </DataTrigger>
+                                                    </Border.Triggers>
+                                                </Border>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Grid
+                            BackgroundColor="Transparent"
+                            HeightRequest="{OnIdiom Desktop=85,
+                                                    Phone=135,
+                                                    Default=85}"
+                            InputTransparent="True" />
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <ScrollView
+                    x:Name="SitesSplitScrollView"
+                    Margin="0"
+                    BackgroundColor="Transparent"
+                    HorizontalOptions="Fill"
+                    IsVisible="False"
+                    VerticalOptions="Fill"
+                    VerticalScrollBarVisibility="Never"
+                    ZIndex="1">
+                    <VerticalStackLayout
+                        x:Name="SitesContentStack"
+                        Padding="{OnIdiom Desktop='0',
+                                          Phone='16,0,16,0',
+                                          Default='16,0,16,0'}"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="{OnIdiom Desktop=Center,
+                                                    Default=Fill}"
+                        Spacing="10">
+                        <Grid
+                            x:Name="SitesListTopSpacer"
+                            BackgroundColor="Transparent"
+                            HeightRequest="280"
+                            InputTransparent="True" />
+
+                        <Border
+                            x:Name="SitesInfoBanner"
+                            Padding="14,12"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource Primary}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=GlobeShield24}"
+                                    IconColor="{DynamicResource Accent}"
+                                    IconSize="22"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="13"
+                                        Text="Умная маршрутизация внутри браузера"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Выбранные российские сервисы и домены открываются напрямую через вашего провайдера без отключения VPN." />
+                                </VerticalStackLayout>
+                                <Border
+                                    Grid.Column="2"
+                                    Padding="8,4"
+                                    BackgroundColor="{DynamicResource PrimaryDim}"
+                                    Stroke="{DynamicResource Primary}"
+                                    StrokeShape="RoundRectangle 8"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        x:Name="ActiveDynamicRoutesLabel"
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="11"
+                                        Text="Активно"
+                                        TextColor="{DynamicResource PrimaryBright}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Label
+                            Margin="4,4,0,0"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="11"
+                            Text="КАТЕГОРИИ СЕРВИСОВ РФ (В ОБХОД VPN)"
+                            TextColor="{DynamicResource Primary}" />
+
+                        <Border
+                            x:Name="PresetGovCard"
+                            Padding="14,10"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPresetGovCardTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=BuildingGovernment24}"
+                                    IconColor="{DynamicResource PrimaryBright}"
+                                    IconSize="22"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    InputTransparent="True"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        InputTransparent="True"
+                                        Text="Госуслуги и Госсервисы РФ"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        InputTransparent="True"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="gosuslugi.ru, mos.ru, nalog.ru, pochta.ru, rzd.ru, ЕМИАС" />
+                                </VerticalStackLayout>
+                                <Switch
+                                    x:Name="PresetGovSwitch"
+                                    Grid.Column="2"
+                                    Toggled="OnPresetSwitchToggled"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="PresetBanksCard"
+                            Padding="14,10"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPresetBanksCardTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Payment24}"
+                                    IconColor="{DynamicResource Success}"
+                                    IconSize="22"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    InputTransparent="True"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        InputTransparent="True"
+                                        Text="Банки и Оплата РФ"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        InputTransparent="True"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="СберБанк, Т-Банк, ВТБ, Альфа-Банк, СБП, Мир Pay, ЮMoney" />
+                                </VerticalStackLayout>
+                                <Switch
+                                    x:Name="PresetBanksSwitch"
+                                    Grid.Column="2"
+                                    Toggled="OnPresetSwitchToggled"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="PresetMediaCard"
+                            Padding="14,10"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPresetMediaCardTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=VideoClip24}"
+                                    IconColor="{DynamicResource Accent}"
+                                    IconSize="22"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    InputTransparent="True"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        InputTransparent="True"
+                                        Text="Яндекс, VK и Кинотеатры РФ"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        InputTransparent="True"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Яндекс, Кинопоиск, VK, Дзен, Rutube, Okko, Иви, Mail.ru, 2ГИС" />
+                                </VerticalStackLayout>
+                                <Switch
+                                    x:Name="PresetMediaSwitch"
+                                    Grid.Column="2"
+                                    Toggled="OnPresetSwitchToggled"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="PresetMarketCard"
+                            Padding="14,10"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPresetMarketCardTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=ShoppingBag24}"
+                                    IconColor="{DynamicResource Warning}"
+                                    IconSize="22"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    InputTransparent="True"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        InputTransparent="True"
+                                        Text="Маркетплейсы и Доставка РФ"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        InputTransparent="True"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Ozon, Wildberries, Авито, DNS, Ситилинк, Купер, Самокат, СДЭК" />
+                                </VerticalStackLayout>
+                                <Switch
+                                    x:Name="PresetMarketSwitch"
+                                    Grid.Column="2"
+                                    Toggled="OnPresetSwitchToggled"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            x:Name="PresetRuTldsCard"
+                            Padding="14,10"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPresetRuTldsCardTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Globe24}"
+                                    IconColor="{DynamicResource PrimaryBright}"
+                                    IconSize="22"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    InputTransparent="True"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        InputTransparent="True"
+                                        Text="Все сайты в зонах .RU, .РФ и .SU"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="11"
+                                        InputTransparent="True"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Автоматически направлять любые российские домены напрямую мимо VPN" />
+                                </VerticalStackLayout>
+                                <Switch
+                                    x:Name="PresetRuTldsSwitch"
+                                    Grid.Column="2"
+                                    Toggled="OnPresetSwitchToggled"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Label
+                            Margin="4,8,0,0"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="11"
+                            Text="СВОИ ДОМЕНЫ И IP-АДРЕСА В ОБХОД VPN"
+                            TextColor="{DynamicResource Primary}" />
+
+                        <Border
+                            x:Name="CustomRulesCard"
+                            Padding="14,12"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                                    <Border
+                                        Grid.Column="0"
+                                        Padding="10,4"
+                                        Style="{StaticResource NeoInput}">
+                                        <Entry
+                                            x:Name="CustomRuleEntry"
+                                            Completed="OnAddCustomRuleClicked"
+                                            FontSize="13"
+                                            Placeholder="Введите домен (mybank.ru) или IP (1.2.3.4)..." />
+                                    </Border>
+
+                                    <Border
+                                        x:Name="AddCustomRuleBtn"
+                                        Grid.Column="1"
+                                        Padding="14,8"
+                                        Style="{StaticResource NeoBtnPrimary}"
+                                        VerticalOptions="Center">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnAddCustomRuleClicked" />
+                                        </Border.GestureRecognizers>
+                                        <HorizontalStackLayout
+                                            InputTransparent="True"
+                                            Spacing="6"
+                                            VerticalOptions="Center">
+                                            <mi:MauiIcon
+                                                Icon="{mi:Fluent Icon=Add20}"
+                                                IconColor="{DynamicResource TextOnPrimary}"
+                                                IconSize="16"
+                                                InputTransparent="True"
+                                                VerticalOptions="Center" />
+                                            <Label
+                                                FontFamily="{DynamicResource AppFontBold}"
+                                                FontSize="12"
+                                                InputTransparent="True"
+                                                Text="ДОБАВИТЬ"
+                                                TextColor="{DynamicResource TextOnPrimary}"
+                                                VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
+                                    </Border>
+                                </Grid>
+
+                                <Label
+                                    x:Name="CustomRulesEmptyLabel"
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Пока нет пользовательских доменов или IP-адресов." />
+
+                                <FlexLayout
+                                    x:Name="CustomRulesFlexLayout"
+                                    AlignItems="Center"
+                                    Direction="Row"
+                                    IsVisible="False"
+                                    JustifyContent="Start"
+                                    Wrap="Wrap" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Grid Margin="4,8,0,0" ColumnDefinitions="*, Auto">
+                            <Label
+                                Grid.Column="0"
+                                FontFamily="{DynamicResource AppFontBold}"
+                                FontSize="11"
+                                Text="АКТИВНЫЕ МАРШРУТЫ В ОБХОД VPN"
+                                TextColor="{DynamicResource Primary}"
+                                VerticalOptions="Center" />
+                            <Border
+                                Grid.Column="1"
+                                Padding="8,4"
+                                BackgroundColor="{DynamicResource BgSurface}"
+                                Stroke="{DynamicResource BorderSubtle}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1"
+                                VerticalOptions="Center">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnRefreshSplitRoutesClicked" />
+                                </Border.GestureRecognizers>
+                                <HorizontalStackLayout
+                                    InputTransparent="True"
+                                    Spacing="4"
+                                    VerticalOptions="Center">
+                                    <mi:MauiIcon
+                                        Icon="{mi:Fluent Icon=ArrowSync16}"
+                                        IconColor="{DynamicResource TextSecondary}"
+                                        IconSize="13"
+                                        InputTransparent="True"
+                                        VerticalOptions="Center" />
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="10"
+                                        InputTransparent="True"
+                                        Text="ОБНОВИТЬ"
+                                        TextColor="{DynamicResource TextSecondary}"
+                                        VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Border>
+                        </Grid>
+
+                        <Border
+                            x:Name="ActiveRoutesCard"
+                            Padding="14,12"
+                            BackgroundColor="{DynamicResource BgSurface}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 12"
+                            StrokeThickness="1">
+                            <VerticalStackLayout Spacing="8">
+                                <Label
+                                    x:Name="ActiveRoutesEmptyLabel"
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Маршруты появятся автоматически при подключении VPN и открытии выбранных сайтов или приложений." />
+
+                                <FlexLayout
+                                    x:Name="ActiveRoutesFlexLayout"
+                                    AlignItems="Center"
+                                    Direction="Row"
+                                    IsVisible="False"
+                                    JustifyContent="Start"
+                                    Wrap="Wrap" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <Grid
+                            BackgroundColor="Transparent"
+                            HeightRequest="{OnIdiom Desktop=85,
+                                                    Phone=135,
+                                                    Default=85}"
+                            InputTransparent="True" />
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <ActivityIndicator
+                    x:Name="SplitLoadingOverlay"
+                    HorizontalOptions="Center"
+                    IsRunning="True"
+                    IsVisible="False"
+                    VerticalOptions="Center"
+                    ZIndex="5" />
+
+                <Border
+                    x:Name="SplitToastNotification"
+                    Margin="20,12"
+                    Padding="14,10"
+                    BackgroundColor="{DynamicResource BgElevated}"
+                    HorizontalOptions="Center"
+                    IsVisible="False"
+                    Opacity="0"
+                    Stroke="{DynamicResource Error}"
+                    StrokeShape="RoundRectangle 8"
+                    StrokeThickness="1"
+                    VerticalOptions="End"
+                    ZIndex="100">
+                    <Grid
+                        ColumnDefinitions="Auto, *, Auto"
+                        ColumnSpacing="10"
+                        VerticalOptions="Center">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Warning24}"
+                            IconColor="{DynamicResource Error}"
+                            IconSize="18"
+                            VerticalOptions="Center" />
+                        <Label
+                            x:Name="SplitToastText"
+                            Grid.Column="1"
+                            FontFamily="{DynamicResource AppFontMedium}"
+                            FontSize="12"
+                            TextColor="{DynamicResource TextPrimary}"
+                            VerticalOptions="Center" />
+                        <Border
+                            Grid.Column="2"
+                            Padding="4"
+                            BackgroundColor="Transparent"
+                            StrokeThickness="0"
+                            VerticalOptions="Center">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnDismissToastClicked" />
+                            </Border.GestureRecognizers>
+                            <mi:MauiIcon
+                                Icon="{mi:Fluent Icon=Dismiss16}"
+                                IconColor="{DynamicResource TextMuted}"
+                                IconSize="14" />
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Border
+                x:Name="HeaderContainer"
+                Margin="{OnIdiom Desktop='0,28,0,0',
+                                 Phone='16,14,16,0',
+                                 Default='16,20,16,0'}"
+                Padding="{OnIdiom Desktop='16,12',
+                                  Phone='14,12',
+                                  Default='14,12'}"
+                BackgroundColor="{DynamicResource BgSurface}"
+                HorizontalOptions="{OnIdiom Desktop=Center,
+                                            Default=Fill}"
+                Stroke="{DynamicResource BorderSubtle}"
+                StrokeShape="RoundRectangle 14"
+                StrokeThickness="1"
+                VerticalOptions="Start"
+                ZIndex="30">
+                <VerticalStackLayout Spacing="10">
+                    <Label
+                        FontFamily="{DynamicResource AppFontTitle}"
+                        FontSize="{OnIdiom Desktop=22,
+                                           Default=24}"
+                        HorizontalOptions="Start"
+                        Text="Разделение трафика"
+                        TextColor="{DynamicResource TextPrimary}" />
+
+                    <Grid
+                        x:Name="ModeTabsGrid"
+                        ColumnDefinitions="*, *"
+                        ColumnSpacing="8"
+                        IsVisible="False">
+                        <Border
+                            x:Name="TabModeApps"
+                            Grid.Column="0"
+                            Padding="10,7"
+                            BackgroundColor="{DynamicResource PrimaryDim}"
+                            Stroke="{DynamicResource Primary}"
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnTabModeAppsClicked" />
+                            </Border.GestureRecognizers>
+                            <HorizontalStackLayout
+                                HorizontalOptions="Center"
+                                InputTransparent="True"
+                                Spacing="6">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=Apps20}"
+                                    IconColor="{DynamicResource PrimaryBright}"
+                                    IconSize="16"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <Label
+                                    x:Name="TabModeAppsLabel"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="12"
+                                    InputTransparent="True"
+                                    Text="Приложения (.exe)"
+                                    TextColor="{DynamicResource PrimaryBright}"
+                                    VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+
+                        <Border
+                            x:Name="TabModeSites"
+                            Grid.Column="1"
+                            Padding="10,7"
+                            BackgroundColor="{DynamicResource BgElevated}"
+                            Stroke="{DynamicResource BorderSubtle}"
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnTabModeSitesClicked" />
+                            </Border.GestureRecognizers>
+                            <HorizontalStackLayout
+                                HorizontalOptions="Center"
+                                InputTransparent="True"
+                                Spacing="6">
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=Globe20}"
+                                    IconColor="{DynamicResource TextSecondary}"
+                                    IconSize="16"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                                <Label
+                                    x:Name="TabModeSitesLabel"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="12"
+                                    InputTransparent="True"
+                                    Text="Сайты и Сервисы РФ"
+                                    TextColor="{DynamicResource TextSecondary}"
+                                    VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Border
+                        x:Name="SplitRestartWarningCard"
+                        Padding="12,8"
+                        BackgroundColor="{DynamicResource BgElevated}"
+                        IsVisible="False"
+                        Stroke="{DynamicResource Warning}"
+                        StrokeShape="RoundRectangle 8"
+                        StrokeThickness="1">
+                        <Grid
+                            ColumnDefinitions="Auto, *"
+                            ColumnSpacing="8"
+                            VerticalOptions="Center">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Info20}"
+                                IconColor="{DynamicResource Warning}"
+                                IconSize="18"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="1"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    Text="Перезапуск VPN для применения"
+                                    TextColor="{DynamicResource Warning}" />
+                                <Label
+                                    FontFamily="{DynamicResource AppFontRegular}"
+                                    FontSize="{OnIdiom Desktop=10,
+                                                       Default=11}"
+                                    Text="Все изменения правил разделения трафика вступают в силу после отключения и повторного подключения VPN."
+                                    TextColor="{DynamicResource TextSecondary}" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <VerticalStackLayout x:Name="AppsHeaderControls" Spacing="10">
+                        <Border Padding="10,4" Style="{StaticResource NeoInput}">
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Search24}"
+                                    IconColor="{DynamicResource TextMuted}"
+                                    IconSize="18"
+                                    VerticalOptions="Center" />
+                                <Entry
+                                    x:Name="SplitSearchEntry"
+                                    Grid.Column="1"
+                                    FontSize="13"
+                                    Placeholder="Поиск по названию или .exe / пакету..."
+                                    TextChanged="OnSplitSearchTextChanged" />
+                                <Border
+                                    x:Name="ClearSearchBtn"
+                                    Grid.Column="2"
+                                    Padding="4"
+                                    IsVisible="False"
+                                    VerticalOptions="Center">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnClearSearchClicked" />
+                                    </Border.GestureRecognizers>
+                                    <mi:MauiIcon
+                                        Icon="{mi:Fluent Icon=Dismiss24}"
+                                        IconColor="{DynamicResource TextMuted}"
+                                        IconSize="16"
+                                        InputTransparent="True" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*, *, Auto, Auto, Auto" ColumnSpacing="8">
+                            <Border
+                                x:Name="ChipFilterAll"
+                                Grid.Column="0"
+                                Padding="8,6"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                Stroke="{DynamicResource Primary}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnFilterAllClicked" />
+                                </Border.GestureRecognizers>
+                                <Label
+                                    x:Name="FilterAllLabel"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="11"
+                                    HorizontalOptions="Center"
+                                    InputTransparent="True"
+                                    Text="Все"
+                                    TextColor="{DynamicResource PrimaryBright}" />
+                            </Border>
+
+                            <Border
+                                x:Name="ChipFilterBypassed"
+                                Grid.Column="1"
+                                Padding="8,6"
+                                BackgroundColor="{DynamicResource BgElevated}"
+                                Stroke="{DynamicResource BorderSubtle}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnFilterBypassedClicked" />
+                                </Border.GestureRecognizers>
+                                <Label
+                                    x:Name="FilterBypassedLabel"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="11"
+                                    HorizontalOptions="Center"
+                                    InputTransparent="True"
+                                    Text="В обходе (0)"
+                                    TextColor="{DynamicResource TextSecondary}" />
+                            </Border>
+
+                            <Border
+                                x:Name="ChipRefreshApps"
+                                Grid.Column="2"
+                                Padding="9,6"
+                                BackgroundColor="{DynamicResource BgElevated}"
+                                Stroke="{DynamicResource BorderSubtle}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnRefreshAppsClickedAsync" />
+                                </Border.GestureRecognizers>
+                                <mi:MauiIcon
+                                    Icon="{mi:Fluent Icon=ArrowSync20}"
+                                    IconColor="{DynamicResource TextSecondary}"
+                                    IconSize="14"
+                                    InputTransparent="True"
+                                    VerticalOptions="Center" />
+                            </Border>
+
+                            <Border
+                                x:Name="ChipAddExe"
+                                Grid.Column="3"
+                                Padding="10,6"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                IsVisible="False"
+                                Stroke="{DynamicResource Primary}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnAddCustomExeClickedAsync" />
+                                </Border.GestureRecognizers>
+                                <HorizontalStackLayout
+                                    InputTransparent="True"
+                                    Spacing="4"
+                                    VerticalOptions="Center">
+                                    <mi:MauiIcon
+                                        Icon="{mi:Fluent Icon=FolderOpen20}"
+                                        IconColor="{DynamicResource PrimaryBright}"
+                                        IconSize="14"
+                                        InputTransparent="True"
+                                        VerticalOptions="Center" />
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="11"
+                                        InputTransparent="True"
+                                        Text="+ .EXE"
+                                        TextColor="{DynamicResource PrimaryBright}"
+                                        VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Border>
+
+                            <Border
+                                x:Name="ChipResetAll"
+                                Grid.Column="4"
+                                Padding="10,6"
+                                BackgroundColor="{DynamicResource BgElevated}"
+                                Stroke="{DynamicResource BorderSubtle}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnResetAllBypassedClickedAsync" />
+                                </Border.GestureRecognizers>
+                                <Label
+                                    FontFamily="{DynamicResource AppFontMedium}"
+                                    FontSize="11"
+                                    InputTransparent="True"
+                                    Text="Сброс"
+                                    TextColor="{DynamicResource Error}" />
+                            </Border>
+                        </Grid>
+
+                        <VerticalStackLayout
+                            x:Name="ActiveBypassedSection"
+                            Margin="0,4,0,0"
+                            IsVisible="False"
+                            Spacing="6">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <Label
+                                    Grid.Column="0"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="11"
+                                    Text="ВКЛЮЧЕННЫЕ В ОБХОД (БЫСТРОЕ ОТКЛЮЧЕНИЕ)"
+                                    TextColor="{DynamicResource Primary}" />
+                                <Label
+                                    x:Name="ActiveBypassedCountLabel"
+                                    Grid.Column="1"
+                                    FontSize="11"
+                                    Style="{StaticResource LabelMuted}" />
+                            </Grid>
+
+                            <ScrollView
+                                x:Name="ActiveBypassedScrollView"
+                                HeightRequest="34"
+                                HorizontalScrollBarVisibility="Never"
+                                Orientation="Horizontal"
+                                VerticalScrollBarVisibility="Never">
+                                <HorizontalStackLayout
+                                    x:Name="ActiveBypassedChipsLayout"
+                                    Margin="0,2,0,4"
+                                    Spacing="8"
+                                    VerticalOptions="Center" />
+                            </ScrollView>
+                        </VerticalStackLayout>
+
+                        <Border
+                            x:Name="AndroidWarningBanner"
+                            Margin="0,2,0,0"
+                            IsVisible="False"
+                            Style="{StaticResource WarningBanner}">
+                            <Label
+                                FontSize="11"
+                                HorizontalTextAlignment="Center"
+                                Text="Изменение списка возможно только при выключенном VPN."
+                                TextColor="{DynamicResource Error}"
+                                VerticalTextAlignment="Center" />
+                            <Border.Triggers>
+                                <DataTrigger
+                                    Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=views:SplitView}"
+                                    TargetType="Border"
+                                    Value="True">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                        </Border>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+    </Grid>
+</ContentView>

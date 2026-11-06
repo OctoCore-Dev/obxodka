@@ -1,24 +1,22 @@
 namespace obxodka.Services;
 
+//сервис запросов к api с защитой от блокировок и обходом dpi
 public sealed class ApiService(HttpClient client)
 {
+    //событие сброса авторизации при 401
     public static event Action? OnUnauthorized;
 
-    private static readonly Lazy<HttpClient> t_fallbackNative = new(() => new HttpClient(new HttpClientHandler())
+    //клиент с дефолтным обработчиком
+    private static readonly Lazy<HttpClient> s_fallbackNative = new(() => new HttpClient(new HttpClientHandler())
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
     });
 
-    private static readonly Lazy<HttpClient> t_fallbackTls12 = new(() => new HttpClient(new SocketsHttpHandler
+    //клиент tls 1.2 с проверкой сертификата
+    private static readonly Lazy<HttpClient> s_fallbackTls12 = new(() => new HttpClient(new SocketsHttpHandler
     {
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = SslProtocols.Tls12,
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                CertificateValidator.ValidateServerCertificate(cert, chain, errors)
-        },
+        SslOptions = SslOptionsFactory.Create(),
         UseProxy = false
     })
     {
@@ -26,15 +24,10 @@ public sealed class ApiService(HttpClient client)
         DefaultRequestVersion = new Version(1, 1)
     });
 
-    private static readonly Lazy<HttpClient> t_fallbackHttp2 = new(() => new HttpClient(new SocketsHttpHandler
+    //клиент http 2.0
+    private static readonly Lazy<HttpClient> s_fallbackHttp2 = new(() => new HttpClient(new SocketsHttpHandler
     {
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = SslProtocols.None,
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                CertificateValidator.ValidateServerCertificate(cert, chain, errors)
-        },
+        SslOptions = SslOptionsFactory.Create(),
         UseProxy = false
     })
     {
@@ -42,22 +35,21 @@ public sealed class ApiService(HttpClient client)
         DefaultRequestVersion = new Version(2, 0)
     });
 
-    private static readonly ConcurrentDictionary<string, IPAddress> t_dohCache = new(StringComparer.OrdinalIgnoreCase);
+    //кэш адресов doh резолвера
+    private static readonly ConcurrentDictionary<string, IPAddress> s_dohCache = new(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly Lazy<HttpClient> t_dohClient = new(() => new HttpClient(new SocketsHttpHandler
+    //клиент для doh запросов
+    private static readonly Lazy<HttpClient> s_dohClient = new(() => new HttpClient(new SocketsHttpHandler
     {
         UseProxy = false,
         ConnectTimeout = TimeSpan.FromSeconds(2),
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-        }
+        SslOptions = SslOptionsFactory.CreatePublicDoh()
     })
     {
         Timeout = TimeSpan.FromSeconds(2)
     });
 
+    //проверка не является ли ip локальным или заглушкой
     private static bool IsBogonOrSinkholeIpv4(IPAddress ip)
     {
         if (ip.AddressFamily != AddressFamily.InterNetwork)
@@ -67,6 +59,7 @@ public sealed class ApiService(HttpClient client)
 
         Span<byte> b = stackalloc byte[4];
         _ = ip.TryWriteBytes(b, out _);
+
         return b[0] is 0 or 10 or 127 ||
                (b[0] == 169 && b[1] == 254) ||
                (b[0] == 172 && b[1] is >= 16 and <= 31) ||
@@ -74,6 +67,7 @@ public sealed class ApiService(HttpClient client)
                (b[0] == 100 && b[1] is >= 64 and <= 127);
     }
 
+    //защищенный резолвинг домена через doh против спуфинга
     public static async ValueTask<IPAddress> ResolveHostAntiPoisonAsync(string host, CancellationToken ct = default)
     {
         if (IPAddress.TryParse(host, out var literalIp))
@@ -81,7 +75,7 @@ public sealed class ApiService(HttpClient client)
             return literalIp;
         }
 
-        if (t_dohCache.TryGetValue(host, out var cachedIp))
+        if (s_dohCache.TryGetValue(host, out var cachedIp))
         {
             return cachedIp;
         }
@@ -93,18 +87,19 @@ public sealed class ApiService(HttpClient client)
             {
                 if (addr.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(addr))
                 {
-                    t_dohCache[host] = addr;
+                    s_dohCache[host] = addr;
                     return addr;
                 }
             }
         }
         catch { }
 
-        string[] dohEndpoints =
-        [
-            $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type=A",
-            $"https://8.8.8.8/resolve?name={Uri.EscapeDataString(host)}&type=A"
-        ];
+        var dohResolvers = DnsDefaults.DohResolvers;
+        var dohEndpoints = new string[dohResolvers.Length];
+        for (var i = 0; i < dohResolvers.Length; i++)
+        {
+            dohEndpoints[i] = DnsDefaults.BuildDohQueryUrl(dohResolvers[i], host);
+        }
 
         foreach (var dohUrl in dohEndpoints)
         {
@@ -112,9 +107,11 @@ public sealed class ApiService(HttpClient client)
             {
                 using var dohCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 dohCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
+
                 using var req = new HttpRequestMessage(HttpMethod.Get, dohUrl);
                 req.Headers.Accept.ParseAdd("application/dns-json");
-                using var resp = await t_dohClient.Value.SendAsync(req, dohCts.Token).ConfigureAwait(false);
+
+                using var resp = await s_dohClient.Value.SendAsync(req, dohCts.Token).ConfigureAwait(false);
                 if (!resp.IsSuccessStatusCode)
                 {
                     continue;
@@ -140,9 +137,10 @@ public sealed class ApiService(HttpClient client)
 
                     var candidate = json.Substring(quoteStart + 1, quoteEnd - quoteStart - 1).Trim();
                     searchIdx = quoteEnd + 1;
+
                     if (IPAddress.TryParse(candidate, out var dohIp) && !IsBogonOrSinkholeIpv4(dohIp))
                     {
-                        t_dohCache[host] = dohIp;
+                        s_dohCache[host] = dohIp;
                         return dohIp;
                     }
                 }
@@ -154,31 +152,26 @@ public sealed class ApiService(HttpClient client)
             host.Contains("octocore", StringComparison.OrdinalIgnoreCase))
         {
             var fallbackIp = IPAddress.Parse(AppConfig.DirectServerIp);
-            t_dohCache[host] = fallbackIp;
+            s_dohCache[host] = fallbackIp;
             return fallbackIp;
         }
 
         throw new SocketException((int)SocketError.HostNotFound);
     }
 
-    private static readonly Lazy<HttpClient> t_fallbackDirectDpi = new(() =>
+    //резервный клиент с обходом dpi через сырой поток
+    private static readonly Lazy<HttpClient> s_fallbackDirectDpi = new(() =>
     {
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                TargetHost = AppSecrets.GetRandomSni(),
-                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                    CertificateValidator.ValidateServerCertificate(cert, chain, errors)
-            },
+            SslOptions = SslOptionsFactory.Create(targetHost: AppSecrets.GetRandomSni()),
             ConnectCallback = async (context, cToken) =>
             {
                 var targetIp = IPAddress.TryParse(context.DnsEndPoint.Host, out var parsedHostIp)
                     ? parsedHostIp
                     : IPAddress.Parse(AppConfig.DirectServerIp);
+
                 int[] fallbackPorts = [443, 8443, 2053];
                 Exception? lastConnectEx = null;
 
@@ -204,6 +197,7 @@ public sealed class ApiService(HttpClient client)
                 throw lastConnectEx ?? new SocketException((int)SocketError.TimedOut);
             }
         };
+
         return new HttpClient(handler)
         {
             Timeout = TimeSpan.FromSeconds(8),
@@ -211,6 +205,7 @@ public sealed class ApiService(HttpClient client)
         };
     });
 
+    //добавление сигнатуры hwid и заголовков к запросу
     private static async ValueTask PrepareRequestAsync(HttpRequestMessage request, bool includeAuth = true)
     {
         if (includeAuth)
@@ -222,7 +217,7 @@ public sealed class ApiService(HttpClient client)
             }
         }
 
-        var hwid = DeviceHelper.GetHwid();
+        var hwid = DeviceHelper.Hwid;
         _ = request.Headers.Remove("X-Device-Hwid");
         _ = request.Headers.TryAddWithoutValidation("X-Device-Hwid", hwid);
 
@@ -232,20 +227,16 @@ public sealed class ApiService(HttpClient client)
         _ = request.Headers.Remove("X-Obx-Sig");
         _ = request.Headers.TryAddWithoutValidation("X-Obx-Timestamp", ts);
         _ = request.Headers.TryAddWithoutValidation("X-Obx-Sig", sig);
+
         _ = request.Headers.Remove("X-Obx-Proto");
         _ = request.Headers.TryAddWithoutValidation("X-Obx-Proto", "7");
     }
 
+    //создание базового http обработчика с проверкой сертификата
     public static SocketsHttpHandler CreateDefaultHandler() => new()
     {
         UseProxy = false,
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                CertificateValidator.ValidateServerCertificate(cert, chain, errors)
-        },
+        SslOptions = SslOptionsFactory.Create(),
         ConnectCallback = async (context, cToken) =>
         {
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
@@ -267,6 +258,7 @@ public sealed class ApiService(HttpClient client)
         }
     };
 
+    //отправка запроса с перебором зеркал и обходом блокировок
     private async Task<(bool Success, TResponse? Data, string? Error)> SendRequestAsync<TRequest, TResponse>(
         HttpMethod method,
         string url,
@@ -278,7 +270,7 @@ public sealed class ApiService(HttpClient client)
         where TRequest : class
         where TResponse : class
     {
-        if (Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
+        if (PlatformServices.Connectivity.NetworkAccess == AppNetworkAccess.None)
         {
             return (false, null, "Нет подключения к интернету. Проверьте сеть и повторите попытку.");
         }
@@ -288,6 +280,7 @@ public sealed class ApiService(HttpClient client)
         {
             candidateDomains.Add(AppConfig.ApiBaseUrl);
         }
+
         foreach (var dom in AppConfig.KnownDomainBases)
         {
             if (!candidateDomains.Any(d => d.StartsWith(dom, StringComparison.OrdinalIgnoreCase)))
@@ -296,12 +289,13 @@ public sealed class ApiService(HttpClient client)
             }
         }
 
-        HttpClient[] domainClients = [client, t_fallbackNative.Value, t_fallbackTls12.Value, t_fallbackHttp2.Value];
+        HttpClient[] domainClients = [client, s_fallbackNative.Value, s_fallbackTls12.Value, s_fallbackHttp2.Value];
         Exception? lastEx = null;
 
         foreach (var baseCandidate in candidateDomains)
         {
             var reqUrl = $"{baseCandidate.TrimEnd('/')}/{url.TrimStart('/')}";
+
             foreach (var currentClient in domainClients)
             {
                 try
@@ -319,10 +313,9 @@ public sealed class ApiService(HttpClient client)
                     {
                         try
                         {
-                            MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+                            PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
                         }
                         catch { }
-
                         return (false, null, "Сессия истекла или устройство было удалено.");
                     }
 
@@ -333,7 +326,6 @@ public sealed class ApiService(HttpClient client)
                         {
                             return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
                         }
-
                         return (true, null, null);
                     }
 
@@ -353,7 +345,6 @@ public sealed class ApiService(HttpClient client)
                             }
                             catch { }
                         }
-
                         return (false, null, trimmed);
                     }
 
@@ -367,17 +358,19 @@ public sealed class ApiService(HttpClient client)
                 {
                     lastEx = ex;
                     var innerInfo = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
-                    Shared.Logging.AppLogger.LogWarning($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
+                    AppLogger.LogWarning($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
+
                     var isTlsBlock = ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.InnerException is AuthenticationException or SocketException);
                     if (isTlsBlock)
                     {
-                        Shared.Logging.AppLogger.LogWarning($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");
+                        AppLogger.LogWarning($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");
                         break;
                     }
                 }
             }
         }
 
+        //резервная попытка через прямой ip и обход dpi
         string[] directHosts = [AppSecrets.GetRandomSni(), AppConfig.PrimaryDomain, AppConfig.MirrorDomain];
         var trimmedPath = url.TrimStart('/');
         string[] pathVariants = trimmedPath.StartsWith("api/", StringComparison.OrdinalIgnoreCase)
@@ -401,16 +394,15 @@ public sealed class ApiService(HttpClient client)
                         }
 
                         await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
-                        var response = await t_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
+                        var response = await s_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
 
                         if (response.StatusCode == HttpStatusCode.Unauthorized)
                         {
                             try
                             {
-                                MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+                                PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
                             }
                             catch { }
-
                             return (false, null, "Сессия истекла или устройство было удалено.");
                         }
 
@@ -421,7 +413,6 @@ public sealed class ApiService(HttpClient client)
                             {
                                 return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
                             }
-
                             return (true, null, null);
                         }
 
@@ -441,7 +432,6 @@ public sealed class ApiService(HttpClient client)
                                 }
                                 catch { }
                             }
-
                             return (false, null, trimmed);
                         }
 
@@ -454,7 +444,7 @@ public sealed class ApiService(HttpClient client)
                     catch (Exception ex)
                     {
                         lastEx = ex;
-                        Shared.Logging.AppLogger.LogError($"[API DIRECT DPI ERROR] {method} {relayIp} ({directHost}): {ex.Message}", ex);
+                        AppLogger.LogError($"[API DIRECT DPI ERROR] {method} {relayIp} ({directHost}): {ex.Message}", ex);
                     }
                 }
             }
@@ -465,6 +455,7 @@ public sealed class ApiService(HttpClient client)
         return (false, null, message ?? "Не удалось связаться с сервером");
     }
 
+    //отправка post запроса
     public async Task<(bool Success, string? Error)> PostAsync<TRequest>(
         string url,
         TRequest? body,
@@ -478,6 +469,7 @@ public sealed class ApiService(HttpClient client)
         return (success, error);
     }
 
+    //отправка post запроса с получением ответа
     public async Task<(bool Success, TResponse? Data, string? Error)> PostWithResponseAsync<TRequest, TResponse>(
         string url,
         TRequest? body,
@@ -489,11 +481,11 @@ public sealed class ApiService(HttpClient client)
         where TResponse : class =>
         await SendRequestAsync(HttpMethod.Post, url, body, requestInfo, responseInfo, includeAuth, ct).ConfigureAwait(false);
 
+    //генерация ссылки на оплату
     public async Task<(bool Success, string? Url, string? Error)> GeneratePaymentLinkAsync(decimal amount, string currency = "RUB", CancellationToken ct = default)
     {
         var amountStr = amount.ToString(CultureInfo.InvariantCulture);
         var url = $"api/payment/generate?amount={amountStr}&currency={Uri.EscapeDataString(currency)}";
-
         var (success, data, error) = await SendRequestAsync<object, PaymentLinkResponse>(
             HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, includeAuth: true, ct: ct);
 
@@ -505,6 +497,7 @@ public sealed class ApiService(HttpClient client)
         return (false, null, error ?? "Unknown error generating payment link");
     }
 
+    //получение профиля пользователя
     public async Task<(bool Success, UserProfileResponse? Data, string? Error)> GetProfileAsync(int maxRetries = 2, CancellationToken ct = default)
     {
         for (var attempt = 1; attempt <= maxRetries; attempt++)
@@ -512,7 +505,7 @@ public sealed class ApiService(HttpClient client)
             var result = await SendRequestAsync<object, UserProfileResponse>(
                 HttpMethod.Get, "api/Auth/me", null, null, AppJsonContext.Default.UserProfileResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
 
-            if (result.Success || attempt >= maxRetries || Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
+            if (result.Success || attempt >= maxRetries || PlatformServices.Connectivity.NetworkAccess == AppNetworkAccess.None)
             {
                 return result;
             }
@@ -523,17 +516,21 @@ public sealed class ApiService(HttpClient client)
         return (false, null, "Не удалось получить профиль");
     }
 
+    //запрос кода авторизации на почту
     public async Task<(bool Success, string? Error)> RequestCodeAsync(EmailAuthRequest request, CancellationToken ct = default) =>
         await PostAsync("api/Auth/request-code", request, AppJsonContext.Default.EmailAuthRequest, includeAuth: false, ct: ct).ConfigureAwait(false);
 
+    //проверка кода авторизации
     public async Task<(bool Success, LoginResponse? Data, string? Error)> VerifyCodeAsync(EmailVerifyRequest request, CancellationToken ct = default) =>
         await PostWithResponseAsync(
             "api/Auth/verify-code", request, AppJsonContext.Default.EmailVerifyRequest, AppJsonContext.Default.LoginResponse, includeAuth: false, ct: ct).ConfigureAwait(false);
 
+    //список привязанных устройств
     public async Task<(bool Success, List<DeviceItem>? Devices, string? Error)> GetDevicesAsync(CancellationToken ct = default) =>
         await SendRequestAsync<object, List<DeviceItem>>(
             HttpMethod.Get, "api/Auth/devices", null, null, AppJsonContext.Default.ListDeviceItem, includeAuth: true, ct: ct).ConfigureAwait(false);
 
+    //удаление устройства
     public async Task<(bool Success, string? Error)> RemoveDeviceAsync(string hwid, CancellationToken ct = default)
     {
         var url = $"api/Auth/devices/{Uri.EscapeDataString(hwid)}";
@@ -542,6 +539,7 @@ public sealed class ApiService(HttpClient client)
         return (success, error);
     }
 
+    //удаление аккаунта пользователя
     public async Task<(bool Success, string? Error)> DeleteAccountAsync(CancellationToken ct = default)
     {
         var (success, _, error) = await SendRequestAsync<object, object>(
@@ -549,12 +547,15 @@ public sealed class ApiService(HttpClient client)
         return (success, error);
     }
 
+    //остановка сессии vpn на сервере
     public async Task StopVpnOnServerAsync(CancellationToken ct = default) =>
         _ = await PostAsync<object>("api/Vpn/stop", null, null, includeAuth: true, ct: ct).ConfigureAwait(false);
 
+    //расшифровка адреса сервера
     public static string DecodeObfuscatedEndpoint(string endpoint) =>
         AppSecrets.DecodeObfuscatedEndpoint(endpoint);
 
+    //нормализация и расшифровка списка серверов
     private static List<VpnServerDto> NormalizeServers(List<VpnServerDto> servers)
     {
         for (var i = 0; i < servers.Count; i++)
@@ -569,6 +570,7 @@ public sealed class ApiService(HttpClient client)
         return servers;
     }
 
+    //получение списка серверов с сервера или репозитория
     public async Task<(bool Success, List<VpnServerDto>? Servers, string? Error)> GetServersAsync(int maxRetries = 3, CancellationToken ct = default)
     {
         for (var attempt = 1; attempt <= maxRetries; attempt++)
@@ -580,12 +582,13 @@ public sealed class ApiService(HttpClient client)
             {
                 _ = NormalizeServers(serverList);
             }
+
             if (result.Success && result.Data is { Count: > 0 })
             {
                 return result;
             }
 
-            if (attempt >= maxRetries || Connectivity.Current.NetworkAccess == AppNetworkAccess.None)
+            if (attempt >= maxRetries || PlatformServices.Connectivity.NetworkAccess == AppNetworkAccess.None)
             {
                 break;
             }
@@ -617,29 +620,44 @@ public sealed class ApiService(HttpClient client)
         }
         catch (Exception ex)
         {
-            Shared.Logging.AppLogger.LogWarning($"[API-DISCOVERY] Remote discovery attempt failed: {ex.Message}");
+            AppLogger.LogWarning($"[API-DISCOVERY] Remote discovery attempt failed: {ex.Message}");
         }
 
-        Shared.Logging.AppLogger.LogWarning($"[API-DISCOVERY] Remote servers discovery failed. Falling back to {AppConfig.BootstrapServers.Count} built-in bootstrap servers.");
+        AppLogger.LogWarning($"[API-DISCOVERY] Remote servers discovery failed. Falling back to {AppConfig.BootstrapServers.Count} built-in bootstrap servers.");
         return (true, NormalizeServers([.. AppConfig.BootstrapServers]), null);
     }
 
+    //получение хэша сертификата для ssl pinning
     public async Task<(bool Success, CertHashResponse? Data, string? Error)> GetCertHashAsync(CancellationToken ct = default) =>
         await SendRequestAsync<object, CertHashResponse>(
             HttpMethod.Get, "api/Vpn/cert-hash", null, null, AppJsonContext.Default.CertHashResponse, includeAuth: false, ct: ct).ConfigureAwait(false);
 
+    //проверка покупки google play
     public async Task<(bool Success, string? Error)> VerifyGooglePurchaseAsync(string productId, string purchaseToken, string? orderId, CancellationToken ct = default)
     {
         var request = new GooglePurchaseVerifyRequest(productId, purchaseToken, orderId);
         return await PostAsync("api/Payment/google-verify", request, AppJsonContext.Default.GooglePurchaseVerifyRequest, includeAuth: true, ct: ct).ConfigureAwait(false);
     }
 
+    //получение реферального кода
     public async Task<(bool Success, ReferralCodeResponse? Data, string? Error)> GetMyReferralCodeAsync(CancellationToken ct = default) =>
         await SendRequestAsync<object, ReferralCodeResponse>(
             HttpMethod.Get, "api/Referral/my-code", null, null, AppJsonContext.Default.ReferralCodeResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
 
+    //активация реферального кода
     public async Task<(bool Success, MessageResponse? Data, string? Error)> ActivateReferralCodeAsync(string code, CancellationToken ct = default) =>
         await PostWithResponseAsync(
             "api/Referral/activate", new ActivateReferralRequest(code), AppJsonContext.Default.ActivateReferralRequest, AppJsonContext.Default.MessageResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
-}
 
+    //отправка отчета телеметрии на сервер
+    public async Task<bool> PostTelemetryAsync(TelemetryDto telemetry, CancellationToken ct = default)
+    {
+        var (success, _) = await PostAsync(
+            "api/Vpn/telemetry",
+            telemetry,
+            AppJsonContext.Default.TelemetryDto,
+            includeAuth: false,
+            ct: ct).ConfigureAwait(false);
+        return success;
+    }
+}

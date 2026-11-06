@@ -1,15 +1,17 @@
 using Android.Content;
 using Application = Android.App.Application;
 
-namespace obxodka.Services;
+namespace obxodka.Platforms.Android;
 
+//сервис проверки обновлений приложения в google play для android
 public sealed class AndroidAppUpdaterService : IAppUpdaterService
 {
-    private static readonly HttpClient t_httpClient = new()
+    private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(6)
     };
 
+    //проверка наличия новой версии приложения в google play
     public async Task<StoreUpdateInfo> CheckVersionAsync()
     {
         var currentVersion = AppInfo.Current.VersionString;
@@ -21,7 +23,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
             using var req = new HttpRequestMessage(HttpMethod.Get, storeUrl);
             req.Headers.Add("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)");
 
-            using var resp = await t_httpClient.SendAsync(req).ConfigureAwait(false);
+            using var resp = await s_httpClient.SendAsync(req).ConfigureAwait(false);
             if (resp.IsSuccessStatusCode)
             {
                 var html = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -42,7 +44,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[PLAY STORE VERSION CHECK ERROR] {ex.Message}");
+            AppLogger.LogError($"[PLAY STORE VERSION CHECK ERROR] {ex.Message}", ex);
         }
 
         return new StoreUpdateInfo(
@@ -53,6 +55,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
             StoreUrl: storeUrl);
     }
 
+    //запуск проверки обновлений и показ диалога пользователю
     public async Task CheckForUpdatesAsync(bool manualCheck = false)
     {
         try
@@ -82,7 +85,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ANDROID UPDATE ERROR] {ex.Message}");
+            AppLogger.LogError($"[ANDROID UPDATE ERROR] {ex.Message}", ex);
             if (manualCheck)
             {
                 await OpenPlayStoreAsync();
@@ -90,12 +93,13 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
     }
 
+    //открытие страницы приложения в магазине google play
     public static async Task OpenPlayStoreAsync()
     {
         var packageName = Application.Context?.PackageName ?? "com.octocore.obxodka";
         try
         {
-            var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse($"market://details?id={packageName}"));
+            using var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse($"market://details?id={packageName}"));
             _ = intent.SetPackage("com.android.vending");
             _ = intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop);
             Application.Context?.StartActivity(intent);
@@ -104,7 +108,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         {
             try
             {
-                var fallbackIntent = new Intent(Intent.ActionView, Android.Net.Uri.Parse($"market://details?id={packageName}"));
+                using var fallbackIntent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse($"market://details?id={packageName}"));
                 _ = fallbackIntent.AddFlags(ActivityFlags.NewTask);
                 Application.Context?.StartActivity(fallbackIntent);
             }
@@ -116,7 +120,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[PLAY STORE ERROR] {ex.Message}");
+                    AppLogger.LogError($"[PLAY STORE ERROR] {ex.Message}", ex);
                 }
             }
         }

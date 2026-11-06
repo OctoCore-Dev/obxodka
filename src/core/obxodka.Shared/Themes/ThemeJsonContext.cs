@@ -1,5 +1,6 @@
 namespace obxodka.Shared.Themes;
 
+//контекст source generator для безопасной аотизации json сериализации тем оформления
 [JsonSourceGenerationOptions(
     WriteIndented = false,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -22,6 +23,7 @@ namespace obxodka.Shared.Themes;
 [JsonSerializable(typeof(FrameSlice))]
 [JsonSerializable(typeof(ThemeLayout))]
 [JsonSerializable(typeof(ThemeVfx))]
+[JsonSerializable(typeof(ThemeParticlePhysics))]
 [JsonSerializable(typeof(ThemeGlow))]
 [JsonSerializable(typeof(ThemeStatusText))]
 [JsonSerializable(typeof(ThemeActiveOverrides))]

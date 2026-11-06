@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using obxodka.Shared.MtuEngine;
 using obxodka.Shared.Stealth;
 using Xunit;
 
@@ -34,12 +35,12 @@ public sealed class SmartMtuEngineTests
             originalPacket[i] = (byte)(i % 251);
         }
 
-        SmartMtuEngine.RecalculateIpv4HeaderChecksum(originalPacket.AsSpan(0, ihl));
+        Ipv4MtuHandler.RecalculateHeaderChecksum(originalPacket.AsSpan(0, ihl));
 
         var clientMtu = 1280;
         var fragments = new List<byte[]>();
 
-        var fragmented = SmartMtuEngine.TryFragmentIpv4(originalPacket, originalTotalLen, clientMtu, (buf, len) =>
+        var fragmented = Ipv4MtuHandler.TryFragment(originalPacket.AsSpan(0, originalTotalLen), originalTotalLen, clientMtu, (buf, len) =>
         {
             var copy = new byte[len];
             Buffer.BlockCopy(buf, 0, copy, 0, len);
@@ -85,7 +86,7 @@ public sealed class SmartMtuEngineTests
     {
         var pkt = new byte[500];
         pkt[0] = 0x45;
-        var fragmented = SmartMtuEngine.TryFragmentIpv4(pkt, 500, 1280, (_, _) => { });
+        var fragmented = Ipv4MtuHandler.TryFragment(pkt.AsSpan(0, 500), 500, 1280, (_, _) => { });
         Assert.False(fragmented);
     }
 
@@ -106,7 +107,7 @@ public sealed class SmartMtuEngineTests
         originalPacket[19] = 1;
 
         var clientMtu = 1360;
-        var built = SmartMtuEngine.TryBuildIcmpFragmentationNeeded(originalPacket, 1400, clientMtu, out var icmpPkt, out var icmpLen);
+        var built = Ipv4MtuHandler.TryBuildIcmpFragmentationNeeded(originalPacket.AsSpan(0, 1400), 1400, clientMtu, out var icmpPkt, out var icmpLen);
 
         Assert.True(built);
         Assert.NotNull(icmpPkt);
@@ -140,7 +141,7 @@ public sealed class SmartMtuEngineTests
         }
 
         var clientMtu = 1300;
-        var built = SmartMtuEngine.TryBuildIcmpV6PacketTooBig(originalPacket, 1440, clientMtu, out var icmpPkt, out var icmpLen);
+        var built = Ipv6MtuHandler.TryBuildIcmpPacketTooBig(originalPacket.AsSpan(0, 1440), 1440, clientMtu, out var icmpPkt, out var icmpLen);
 
         Assert.True(built);
         Assert.NotNull(icmpPkt);

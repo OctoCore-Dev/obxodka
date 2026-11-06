@@ -2,6 +2,7 @@ using Uri = System.Uri;
 
 namespace obxodka.Platforms.Android;
 
+//управление системным vpn сервисом android и координация с движком octopus
 [SupportedOSPlatform("android29.0")]
 internal sealed class AndroidVpnService : IVpnService, IDisposable
 {
@@ -17,21 +18,24 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
     public event Action<string>? OnForceLogoutRequested;
 
     private string _currentServerIp = "";
-    private int _currentServerPort = 443;
     private bool _isExplicitlyStopped;
     private List<VpnServerDto> _fallbackServers = [];
     private int _currentServerIndex;
     private int _isHandlingDeadConnection;
+    private int _isHandlingDrop;
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
+    private readonly Lock _roamingLock = new();
+    private CancellationTokenSource? _roamingCts;
 
     private AndroidVpnService()
     {
         OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
-        OctopusEngine.OnCertificateRevoked += (msg) => OnForceLogoutRequested?.Invoke(msg);
+        OctopusEngine.OnCertificateRevoked += msg => OnForceLogoutRequested?.Invoke(msg);
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
     }
 
+    //обработка мертвого соединения (блэкхол пакетов) и интеллектуальный failover
     private void HandleDeadConnection()
     {
         if (!IsRunning || _isExplicitlyStopped)
@@ -48,15 +52,20 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         {
             try
             {
-                Debug.WriteLine("[DEAD CONNECTION] Packet blackhole detected. Initiating smart failover...");
+                AppLogger.LogWarning("[DEAD CONNECTION] Packet blackhole detected. Initiating smart failover...");
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketBlockDetected);
                 ChangeState(AppVpnState.Reconnecting);
 
                 try
                 {
-                    await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                    await OctopusEngine.Current.ReconnectAsync();
                     _ = OctopusVpnService.Instance?.EstablishTun();
                     var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                    if (_isExplicitlyStopped)
+                    {
+                        return;
+                    }
+
                     if (verified || OctopusEngine.Current.IsConnected)
                     {
                         OctopusEngine.Current.ResetTrafficCounters();
@@ -68,13 +77,18 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[SMART CONNECT] Reconnect failed on {_currentServerIp}: {ex.Message}");
+                    AppLogger.LogWarning($"[SMART CONNECT] Reconnect failed on {_currentServerIp}: {ex.Message}");
                 }
 
                 if (_fallbackServers.Count > 1)
                 {
                     for (var i = 0; i < _fallbackServers.Count; i++)
                     {
+                        if (_isExplicitlyStopped)
+                        {
+                            return;
+                        }
+
                         var nextIdx = (_currentServerIndex + 1 + i) % _fallbackServers.Count;
                         var nextServer = _fallbackServers[nextIdx];
                         if (nextServer.Ip == _currentServerIp && _fallbackServers.Count > 1)
@@ -82,28 +96,24 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             continue;
                         }
 
-                        if (_isExplicitlyStopped)
-                        {
-                            return;
-                        }
-
                         _currentServerIndex = nextIdx;
                         _currentServerIp = Uri.CheckHostName(nextServer.Ip) == UriHostNameType.Dns
                             ? (await ApiService.ResolveHostAntiPoisonAsync(nextServer.Ip).ConfigureAwait(false)).ToString()
                             : nextServer.Ip;
+                        var nextPort = nextServer.Port > 0 ? nextServer.Port : 443;
                         OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(nextServer.CertHash) ? nextServer.CertHash : null;
-                        _currentServerPort = nextServer.Port > 0 ? nextServer.Port : 443;
-                        if (!string.IsNullOrWhiteSpace(nextServer.CertHash))
-                        {
-                            OctopusEngine.DynamicSslPublicKeyHash = nextServer.CertHash;
-                        }
 
                         OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupServer(_currentServerIp));
                         try
                         {
-                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort, targetSni: nextServer.Ip);
+                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, nextPort, targetSni: nextServer.Ip);
                             _ = OctopusVpnService.Instance?.EstablishTun();
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                            if (_isExplicitlyStopped)
+                            {
+                                return;
+                            }
+
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
                                 OctopusEngine.Current.ResetTrafficCounters();
@@ -115,9 +125,14 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"[SMART CONNECT] Failover to {_currentServerIp} failed: {ex.Message}");
+                            AppLogger.LogWarning($"[SMART CONNECT] Failover to {_currentServerIp} failed: {ex.Message}");
                         }
                     }
+                }
+
+                if (_isExplicitlyStopped)
+                {
+                    return;
                 }
 
                 await StopVpnAsync();
@@ -130,12 +145,11 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         });
     }
 
-    private int _isHandlingDrop;
-
+    //обработка системного обрыва сетевого соединения движка
     public void HandleEngineDrop()
     {
-        var autoReconnect = Preferences.Get("AutoReconnect", true);
-        var killSwitch = Preferences.Get("KillSwitch", false);
+        var autoReconnect = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
+        var killSwitch = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
 
         if (IsRunning && !_isExplicitlyStopped)
         {
@@ -154,7 +168,10 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 return;
             }
 
-            _roamingCts?.Cancel();
+            lock (_roamingLock)
+            {
+                _roamingCts?.Cancel();
+            }
 
             ChangeState(AppVpnState.Reconnecting);
             _ = Task.Run(async () =>
@@ -173,9 +190,37 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                                 _currentServerIp = Uri.CheckHostName(fb.Ip) == UriHostNameType.Dns
                                     ? (await ApiService.ResolveHostAntiPoisonAsync(fb.Ip).ConfigureAwait(false)).ToString()
                                     : fb.Ip;
-                                _currentServerPort = fb.Port > 0 ? fb.Port : 443;
+                                var fbPort = fb.Port > 0 ? fb.Port : 443;
                                 OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(fb.CertHash) ? fb.CertHash : null;
+
+                                await Task.Delay(backoffMs);
+                                if (_isExplicitlyStopped)
+                                {
+                                    return;
+                                }
+
+                                try
+                                {
+                                    await OctopusEngine.Current.ReconnectAsync(_currentServerIp, fbPort, targetSni: fb.Ip);
+                                    _ = OctopusVpnService.Instance?.EstablishTun();
+                                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                                    if (_isExplicitlyStopped)
+                                    {
+                                        return;
+                                    }
+
+                                    if (verified || OctopusEngine.Current.IsConnected)
+                                    {
+                                        OctopusEngine.Current.ResetTrafficCounters();
+                                        OctopusEngine.Current.ArmTrafficWatchdog();
+                                        ChangeState(AppVpnState.Connected);
+                                        return;
+                                    }
+                                }
+                                catch { }
+                                continue;
                             }
+
                             await Task.Delay(backoffMs);
                         }
 
@@ -186,9 +231,14 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                         try
                         {
-                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                            await OctopusEngine.Current.ReconnectAsync();
                             _ = OctopusVpnService.Instance?.EstablishTun();
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                            if (_isExplicitlyStopped)
+                            {
+                                return;
+                            }
+
                             if (verified || OctopusEngine.Current.IsConnected)
                             {
                                 OctopusEngine.Current.ResetTrafficCounters();
@@ -198,6 +248,11 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             }
                         }
                         catch { }
+                    }
+
+                    if (_isExplicitlyStopped)
+                    {
+                        return;
                     }
 
                     if (killSwitch)
@@ -218,10 +273,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         }
     }
 
-#pragma warning disable CA1001
-    private CancellationTokenSource? _roamingCts;
-#pragma warning restore CA1001
-
+    //быстрый бесшовный реконнект при смене сети (роуминг wi-fi и мобильной связи)
     public void TriggerImmediateReconnect()
     {
         if (_isExplicitlyStopped || string.IsNullOrEmpty(_currentServerIp))
@@ -229,10 +281,14 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             return;
         }
 
-        _roamingCts?.Cancel();
-        _roamingCts?.Dispose();
-        _roamingCts = new CancellationTokenSource();
-        var ct = _roamingCts.Token;
+        CancellationToken ct;
+        lock (_roamingLock)
+        {
+            _roamingCts?.Cancel();
+            _roamingCts?.Dispose();
+            _roamingCts = new CancellationTokenSource();
+            ct = _roamingCts.Token;
+        }
 
         ChangeState(AppVpnState.Reconnecting);
         _ = Task.Run(async () =>
@@ -254,36 +310,41 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                     try
                     {
-                        Debug.WriteLine($"[NETWORK ROAMING] Fast reconnect attempt #{attempt}...");
-                        await OctopusEngine.Current.ReconnectAsync(_currentServerIp, _currentServerPort);
+                        AppLogger.Log($"[NETWORK ROAMING] Fast reconnect attempt #{attempt}...");
+                        await OctopusEngine.Current.ReconnectAsync();
                         _ = OctopusVpnService.Instance?.EstablishTun();
                         var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000), ct);
+                        if (ct.IsCancellationRequested || _isExplicitlyStopped)
+                        {
+                            return;
+                        }
+
                         if (verified || OctopusEngine.Current.IsConnected)
                         {
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
                             ChangeState(AppVpnState.Connected);
-                            Debug.WriteLine("[NETWORK ROAMING] Connected to new network interface seamlessly!");
+                            AppLogger.Log("[NETWORK ROAMING] Connected to new network interface seamlessly!");
                             return;
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[NETWORK ROAMING ATTEMPT #{attempt} FAILED] {ex.Message}");
+                        AppLogger.LogWarning($"[NETWORK ROAMING ATTEMPT #{attempt} FAILED] {ex.Message}");
                         await Task.Delay(1000, ct);
                     }
                 }
 
                 if (!ct.IsCancellationRequested && !_isExplicitlyStopped)
                 {
-                    Debug.WriteLine("[NETWORK ROAMING] Fast reconnect attempts exhausted. Initiating server failover...");
+                    AppLogger.Log("[NETWORK ROAMING] Fast reconnect attempts exhausted. Initiating server failover...");
                     try
                     {
-                        await StartVpnAsync(_currentServerIp, _currentServerPort, _fallbackServers);
+                        await StartVpnAsync(_currentServerIp, OctopusEngine.Current.ConnectedServerPort, _fallbackServers);
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[NETWORK ROAMING FULL RECOVERY ERROR] {ex.Message}");
+                        AppLogger.LogError($"[NETWORK ROAMING FULL RECOVERY ERROR] {ex.Message}");
                         await StopVpnAsync();
                         SetError("Не удалось восстановить подключение после смены сети.");
                     }
@@ -292,14 +353,16 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[NETWORK ROAMING RECONNECT] {ex.Message}");
+                AppLogger.LogError($"[NETWORK ROAMING RECONNECT] {ex.Message}");
             }
         }, ct);
     }
 
+    //запуск vpn по ip и порту без резервных серверов
     public Task StartVpnAsync(string serverIp, int serverPort) =>
         StartVpnAsync(serverIp, serverPort, null);
 
+    //запуск vpn туннеля с приоритетным выбором узла и списком резервных серверов
     public async Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers)
     {
         await _vpnGate.WaitAsync();
@@ -327,14 +390,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
+                    AppLogger.LogWarning($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
                 }
             }
 
             var stealthHost = AppSecrets.AllowedSniPool[0];
-
             _currentServerIp = targetIp;
-            _currentServerPort = serverPort;
             _isExplicitlyStopped = false;
 
             var intent = global::Android.Net.VpnService.Prepare(Platform.AppContext);
@@ -369,11 +430,11 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 if (others.Count > 1)
                 {
                     OnLogUpdated?.Invoke(VpnStatusMessages.ResolvingFastestNode);
-                    others = [.. await NetworkDefaults.RankServersByLatencyAsync(others, 650).ConfigureAwait(false)];
+                    others = [.. await ServerLatencyService.RankServersByLatencyAsync(others, 650).ConfigureAwait(false)];
                 }
                 serversToTry = selected != null
                     ? [selected, .. others]
-                    : [.. await NetworkDefaults.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
+                    : [.. await ServerLatencyService.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
             }
 
             for (var idx = 0; idx < serversToTry.Count; idx++)
@@ -385,7 +446,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                 var s = serversToTry[idx];
                 var candidateIp = s.Ip;
-                var candidatePort = s.Port > 0 ? s.Port : 443;
+                var candidatePort = s.Port > 0 ? s.Port : (serverPort > 0 ? serverPort : 443);
 
                 if (Uri.CheckHostName(candidateIp) == UriHostNameType.Dns)
                 {
@@ -399,7 +460,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[DNS ERROR] Could not resolve candidate {candidateIp}: {ex.Message}");
+                        AppLogger.LogWarning($"[DNS ERROR] Could not resolve candidate {candidateIp}: {ex.Message}");
                         lastEx = ex;
                         continue;
                     }
@@ -407,19 +468,13 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
                 if (!IPAddress.TryParse(candidateIp, out _))
                 {
-                    Debug.WriteLine($"[DNS ERROR] Invalid candidate IP: {candidateIp}. Skipping.");
+                    AppLogger.LogWarning($"[DNS ERROR] Invalid candidate IP: {candidateIp}. Skipping.");
                     continue;
                 }
 
                 _currentServerIp = candidateIp;
-                _currentServerPort = candidatePort;
                 _currentServerIndex = idx;
-
                 OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null;
-                if (!string.IsNullOrWhiteSpace(s.CertHash))
-                {
-                    OctopusEngine.DynamicSslPublicKeyHash = s.CertHash;
-                }
 
                 for (var attempt = 1; attempt <= 2; attempt++)
                 {
@@ -436,10 +491,10 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         }
 
                         var nodeRole = s.Role ?? "worker";
-                        Shared.Logging.AppLogger.Log($"[ANDROID-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
+                        AppLogger.Log($"[ANDROID-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                         OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToServer(candidateIp, candidatePort));
                         await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: s.Ip);
-                        Shared.Logging.AppLogger.Log($"[ANDROID-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {OctopusEngine.Current.AssignedIp}");
+                        AppLogger.Log($"[ANDROID-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {OctopusEngine.Current.AssignedIp}");
 
                         var tunOk = OctopusVpnService.Instance?.EstablishTun() ?? false;
                         if (!tunOk)
@@ -464,7 +519,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         }
                         else if (curTx > 0)
                         {
-                            Shared.Logging.AppLogger.LogWarning($"[ANDROID-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
+                            AppLogger.LogWarning($"[ANDROID-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
                             OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
@@ -485,7 +540,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     catch (Exception ex)
                     {
                         lastEx = ex;
-                        Debug.WriteLine($"[VPN CONNECT FAILED FOR {candidateIp}] {ex.Message}");
+                        AppLogger.LogError($"[VPN CONNECT FAILED FOR {candidateIp}] {ex.Message}");
                         OctopusVpnService.Instance?.StopNativeVpn();
                         await OctopusEngine.Current.DisposeAsync();
                         if (attempt < 2)
@@ -527,13 +582,14 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
 
             if (_isExplicitlyStopped)
             {
-                Debug.WriteLine($"[VPN DISCONNECT] Normal stop/cancellation: {ex.Message}");
+                AppLogger.Log($"[VPN DISCONNECT] Normal stop/cancellation: {ex.Message}");
                 ChangeState(AppVpnState.Disconnected);
                 return;
             }
 
+            var activePort = OctopusEngine.Current.ConnectedServerPort > 0 ? OctopusEngine.Current.ConnectedServerPort : serverPort;
             SetError(ex is TimeoutException or OperationCanceledException
-                ? $"Таймаут подключения: сервер {_currentServerIp}:{_currentServerPort} не ответил на TLS хэндшейк."
+                ? $"Таймаут подключения: сервер {_currentServerIp}:{activePort} не ответил на TLS хэндшейк."
                 : $"Ошибка подключения: {ex.Message}");
         }
         finally
@@ -542,9 +598,24 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         }
     }
 
+    //остановка vpn туннеля и освобождение ресурсов
     public async Task StopVpnAsync()
     {
         _isExplicitlyStopped = true;
+        CancellationTokenSource? roamingCtsToCancel;
+        lock (_roamingLock)
+        {
+            roamingCtsToCancel = _roamingCts;
+        }
+
+        if (roamingCtsToCancel is not null)
+        {
+            try
+            {
+                await roamingCtsToCancel.CancelAsync().ConfigureAwait(false);
+            }
+            catch { }
+        }
         await _vpnGate.WaitAsync();
         try
         {
@@ -569,6 +640,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         }
     }
 
+    //смена внутреннего состояния vpn и оповещение подписчиков
     public void ChangeState(AppVpnState newState)
     {
         if (CurrentState == newState)
@@ -580,6 +652,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         MainThread.BeginInvokeOnMainThread(() => OnStateChanged?.Invoke(CurrentState));
     }
 
+    //установка состояния ошибки и оповещение ui
     public void SetError(string message)
     {
         try
@@ -592,9 +665,19 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         MainThread.BeginInvokeOnMainThread(() => OnErrorOccurred?.Invoke(message));
     }
 
+    //освобождение ресурсов сервиса
     public void Dispose()
     {
-        _roamingCts?.Dispose();
+        lock (_roamingLock)
+        {
+            try
+            {
+                _roamingCts?.Cancel();
+                _roamingCts?.Dispose();
+                _roamingCts = null;
+            }
+            catch { }
+        }
         _vpnGate.Dispose();
     }
 }

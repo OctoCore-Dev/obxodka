@@ -1,5 +1,9 @@
 namespace obxodka.Client.Tests.Performance;
 
+[CollectionDefinition("Non-Parallel", DisableParallelization = true)]
+public class NonParallelCollectionDefinition;
+
+[Collection("Non-Parallel")]
 [Trait("Category", "Performance")]
 [Trait("Category", "Unit")]
 public class ZeroAllocationNetworkTests : IDisposable
@@ -33,12 +37,15 @@ public class ZeroAllocationNetworkTests : IDisposable
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(20, 2), 54321);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(22, 2), 443);
 
-        PacketRouter.GetRays(packet, packet.Length, 8, out _, out _);
+        for (var w = 0; w < 50; w++)
+        {
+            PacketRouter.GetRays(packet.AsSpan(), 3, out _, out _);
+        }
 
         var allocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 5000; i++)
         {
-            PacketRouter.GetRays(packet, packet.Length, 8, out var r1, out var r2);
+            PacketRouter.GetRays(packet.AsSpan(), 3, out var r1, out var r2);
             _ = r1 + r2;
         }
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
@@ -57,12 +64,15 @@ public class ZeroAllocationNetworkTests : IDisposable
             0x00, 0x00, 0x00, 0x00
         ];
 
-        PacketRouter.GetRays(packet, 8, out _, out _);
+        for (var w = 0; w < 50; w++)
+        {
+            PacketRouter.GetRays(packet, 3, out _, out _);
+        }
 
         var allocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 5000; i++)
         {
-            PacketRouter.GetRays(packet, 8, out var r1, out var r2);
+            PacketRouter.GetRays(packet, 3, out var r1, out var r2);
             _ = r1 + r2;
         }
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
@@ -79,12 +89,15 @@ public class ZeroAllocationNetworkTests : IDisposable
         packet[9] = 17;
         Random.Shared.NextBytes(packet.AsSpan(10));
 
-        _ = deduplicator.IsDuplicate(packet, packet.Length);
+        for (var w = 0; w < 50; w++)
+        {
+            _ = deduplicator.IsDuplicate(packet.AsSpan());
+        }
 
         var allocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 5000; i++)
         {
-            _ = deduplicator.IsDuplicate(packet, packet.Length);
+            _ = deduplicator.IsDuplicate(packet.AsSpan());
         }
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
@@ -92,19 +105,23 @@ public class ZeroAllocationNetworkTests : IDisposable
     }
 
     [Fact]
-    public void ObfuscatorTryDecodeLengthsHasZeroAllocations()
+    public void ObxodkaFramingTryDecodeHeaderHasZeroAllocations()
     {
-        Span<byte> header = stackalloc byte[8];
-        BinaryPrimitives.WriteInt32LittleEndian(header[..4], 1428 ^ Obfuscator.ObfsHeaderMask);
-        BinaryPrimitives.WriteInt32LittleEndian(header.Slice(4, 4), 1420 ^ Obfuscator.ObfsPayloadMask);
+        Span<byte> frame = stackalloc byte[32];
+        Span<byte> payload = stackalloc byte[16];
+        payload.Fill(0x42);
+        ObxodkaFraming.WriteFrame(frame, ObxodkaFraming.CmdData, payload, paddingLen: 0, sessionKey: 0);
 
-        _ = Obfuscator.TryDecodeLengths(header, out _, out _);
+        for (var w = 0; w < 50; w++)
+        {
+            _ = ObxodkaFraming.TryDecodeHeader(frame, out _, out _, out _, out _);
+        }
 
         var allocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 5000; i++)
         {
-            _ = Obfuscator.TryDecodeLengths(header, out var totalLen, out var realLen);
-            _ = totalLen + realLen;
+            _ = ObxodkaFraming.TryDecodeHeader(frame, out var tLen, out var pLen, out var cmd, out var salt);
+            _ = tLen + pLen + cmd + salt;
         }
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
@@ -112,19 +129,22 @@ public class ZeroAllocationNetworkTests : IDisposable
     }
 
     [Fact]
-    public void ObfuscatorPackSpanHasZeroGarbageAllocations()
+    public void ObxodkaFramingPackHasZeroGarbageAllocations()
     {
         Span<byte> probe = stackalloc byte[9];
         probe[0] = 0x99;
         BinaryPrimitives.WriteInt64LittleEndian(probe.Slice(1, 8), Stopwatch.GetTimestamp());
 
-        var warmup = Obfuscator.Pack(probe, out _);
-        ArrayPool<byte>.Shared.Return(warmup);
+        for (var w = 0; w < 50; w++)
+        {
+            var warmup = ObxodkaFraming.Pack(ObxodkaFraming.CmdData, probe, out _);
+            ArrayPool<byte>.Shared.Return(warmup);
+        }
 
         var allocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 1000; i++)
         {
-            var packed = Obfuscator.Pack(probe, out var totalLength);
+            var packed = ObxodkaFraming.Pack(ObxodkaFraming.CmdData, probe, out var totalLength);
             _ = totalLength;
             ArrayPool<byte>.Shared.Return(packed);
         }
@@ -133,42 +153,34 @@ public class ZeroAllocationNetworkTests : IDisposable
         Assert.Equal(0, allocAfter - allocBefore);
     }
 
-
     [Fact]
-    public void PriorityPacketQueueCorrectlyPrioritizesObfuscatedPingProbes()
+    public void PriorityPacketQueueCorrectlyPrioritizesPingProbes()
     {
         using var queue = new PriorityPacketQueue(100);
 
-        Span<byte> pingProbe = stackalloc byte[9];
+        var pingProbe = new byte[9];
         pingProbe[0] = 0x99;
-        BinaryPrimitives.WriteInt64LittleEndian(pingProbe.Slice(1, 8), Stopwatch.GetTimestamp());
-        var obfuscatedPing = Obfuscator.Pack(pingProbe, out var pingTotalLen);
+        BinaryPrimitives.WriteInt64LittleEndian(pingProbe.AsSpan(1, 8), Stopwatch.GetTimestamp());
 
         var bulkTcp = new byte[1400];
         bulkTcp[0] = 0x45;
         bulkTcp[9] = 6;
         BinaryPrimitives.WriteUInt16BigEndian(bulkTcp.AsSpan(2, 2), 1400);
         bulkTcp[20 + 12] = 0x50;
-        var obfuscatedBulk = Obfuscator.Pack(bulkTcp, bulkTcp.Length, out var bulkTotalLen);
 
-        Assert.True(queue.TryEnqueue(obfuscatedBulk, bulkTotalLen));
-        Assert.True(queue.TryEnqueue(obfuscatedPing, pingTotalLen));
+        Assert.True(queue.TryEnqueue(bulkTcp, bulkTcp.Length));
+        Assert.True(queue.TryEnqueue(pingProbe, pingProbe.Length));
 
         Assert.True(queue.TryDequeue(out var firstOut));
-        Assert.True(Obfuscator.TryDecodeLengths(firstOut.buffer.AsSpan(0, 8), out _, out var firstRealLen));
-        Assert.Equal(9, firstRealLen);
-        Assert.Equal(0x99, firstOut.buffer[8]);
+        Assert.Equal(9, firstOut.length);
+        Assert.Equal(0x99, firstOut.buffer[0]);
 
         Assert.True(queue.TryDequeue(out var secondOut));
-        Assert.True(Obfuscator.TryDecodeLengths(secondOut.buffer.AsSpan(0, 8), out _, out var secondRealLen));
-        Assert.Equal(1400, secondRealLen);
-
-        ArrayPool<byte>.Shared.Return(firstOut.buffer);
-        ArrayPool<byte>.Shared.Return(secondOut.buffer);
+        Assert.Equal(1400, secondOut.length);
     }
 
     [Fact]
-    public void PriorityPacketQueueCorrectlyPrioritizesObfuscatedIcmp()
+    public void PriorityPacketQueueCorrectlyPrioritizesIcmp()
     {
         using var queue = new PriorityPacketQueue(100);
 
@@ -176,26 +188,23 @@ public class ZeroAllocationNetworkTests : IDisposable
         icmpPkt[0] = 0x45;
         icmpPkt[9] = 1;
         BinaryPrimitives.WriteUInt16BigEndian(icmpPkt.AsSpan(2, 2), 28);
-        var obfuscatedIcmp = Obfuscator.Pack(icmpPkt, icmpPkt.Length, out var icmpTotalLen);
 
         var bulkTcp = new byte[1200];
         bulkTcp[0] = 0x45;
         bulkTcp[9] = 6;
         BinaryPrimitives.WriteUInt16BigEndian(bulkTcp.AsSpan(2, 2), 1200);
         bulkTcp[20 + 12] = 0x50;
-        var obfuscatedBulk = Obfuscator.Pack(bulkTcp, bulkTcp.Length, out var bulkTotalLen);
 
-        Assert.True(queue.TryEnqueue(obfuscatedBulk, bulkTotalLen));
-        Assert.True(queue.TryEnqueue(obfuscatedIcmp, icmpTotalLen));
+        Assert.True(queue.TryEnqueue(bulkTcp, bulkTcp.Length));
+        Assert.True(queue.TryEnqueue(icmpPkt, icmpPkt.Length));
 
         Assert.True(queue.TryDequeue(out var firstOut));
-        Assert.True(Obfuscator.TryDecodeLengths(firstOut.buffer.AsSpan(0, 8), out _, out var firstRealLen));
-        Assert.Equal(28, firstRealLen);
+        Assert.Equal(28, firstOut.length);
 
-        ArrayPool<byte>.Shared.Return(firstOut.buffer);
         if (queue.TryDequeue(out var secondOut))
         {
-            ArrayPool<byte>.Shared.Return(secondOut.buffer);
+            Assert.Equal(1200, secondOut.length);
         }
     }
+
 }

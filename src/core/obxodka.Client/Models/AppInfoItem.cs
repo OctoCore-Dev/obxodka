@@ -1,5 +1,6 @@
 namespace obxodka.Client.Models;
 
+//элемент списка установленных приложений для раздельного туннелирования
 public class AppInfoItem : INotifyPropertyChanged
 {
     private string _name = string.Empty;
@@ -9,6 +10,7 @@ public class AppInfoItem : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    //название приложения
     public string Name
     {
         get => _name;
@@ -22,6 +24,7 @@ public class AppInfoItem : INotifyPropertyChanged
         }
     }
 
+    //имя пакета или путь к исполняемому файлу
     public string PackageName
     {
         get => _packageName;
@@ -35,6 +38,7 @@ public class AppInfoItem : INotifyPropertyChanged
         }
     }
 
+    //флаг обхода vpn для данного приложения
     public bool IsBypassed
     {
         get => _isBypassed;
@@ -48,6 +52,7 @@ public class AppInfoItem : INotifyPropertyChanged
         }
     }
 
+    //путь к иконке приложения
     public string? IconPath
     {
         get => _iconPath;
@@ -64,12 +69,16 @@ public class AppInfoItem : INotifyPropertyChanged
         }
     }
 
+    //источник иконки для биндинга в ui
     public string? IconSource => _iconPath is { Length: > 0 } ? _iconPath : null;
 
+    //наличие иконки
     public bool HasIcon => !string.IsNullOrEmpty(_iconPath);
 
+    //отсутствие иконки
     public bool HasNoIcon => string.IsNullOrEmpty(_iconPath);
 
+    //первая буква для аватарки приложения
     public string InitialLetter => !string.IsNullOrWhiteSpace(_name) ? _name.TrimStart()[0].ToString().ToUpperInvariant() : "?";
 
     public AppInfoItem() { }

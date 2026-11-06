@@ -8,6 +8,7 @@ using obxodka.Platforms.Android;
 
 namespace obxodka;
 
+//главная активность android приложения с обработкой оконных отступов и разрешений vpn
 [Activity(
     Theme = "@style/Maui.SplashTheme",
     MainLauncher = true,
@@ -32,8 +33,9 @@ public sealed class MainActivity : MauiAppCompatActivity
     private const int VpnCustomRequestCode = 1337;
     private const int NotificationRequestCode = 1002;
 
-    private static TaskCompletionSource<bool>? t_vpnPermTcs;
+    private static TaskCompletionSource<bool>? s_vpnPermTcs;
 
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "WindowInsetsHandler is retained by Android View hierarchy")]
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         try
@@ -60,14 +62,14 @@ public sealed class MainActivity : MauiAppCompatActivity
             App.HandleDeepLink(initialUri);
         }
 
-        _ = (Window?.DecorView?.Post(() =>
+        _ = Window?.DecorView?.Post(() =>
         {
             try
             {
                 RequestNotificationPermission();
             }
             catch { }
-        }));
+        });
 
         try
         {
@@ -105,6 +107,7 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
+    //обработчик отступов системных панелей для корректного отображения edge to edge
     private sealed class WindowInsetsHandler : Java.Lang.Object, IOnApplyWindowInsetsListener
     {
         public WindowInsetsCompat? OnApplyWindowInsets(Android.Views.View? v, WindowInsetsCompat? insets)
@@ -121,30 +124,33 @@ public sealed class MainActivity : MauiAppCompatActivity
 
             SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
 
-            return WindowInsetsCompat.Consumed;
+            return v is not null ? ViewCompat.OnApplyWindowInsets(v, insets) : insets;
         }
     }
 
-    public static void UpdateSystemBarsTheme(Color? bgBaseColor)
-    {
-        try
+    //динамическое обновление контрастности иконок статус бара и навигации под тему оформления
+    public static void UpdateSystemBarsTheme(Color? bgBaseColor) =>
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (Platform.CurrentActivity?.Window is { } window)
+            try
             {
-                var controller = WindowCompat.GetInsetsController(window, window.DecorView);
-                if (controller is not null)
+                if (Platform.CurrentActivity?.Window is { } window)
                 {
-                    var isLight = bgBaseColor != null
-                        ? ((bgBaseColor.Red * 0.299) + (bgBaseColor.Green * 0.587) + (bgBaseColor.Blue * 0.114)) > 0.55
-                        : Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
-                    controller.AppearanceLightStatusBars = isLight;
-                    controller.AppearanceLightNavigationBars = isLight;
+                    var controller = WindowCompat.GetInsetsController(window, window.DecorView);
+                    if (controller is not null)
+                    {
+                        var isLight = bgBaseColor != null
+                            ? ((bgBaseColor.Red * 0.299) + (bgBaseColor.Green * 0.587) + (bgBaseColor.Blue * 0.114)) > 0.55
+                            : Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
+                        controller.AppearanceLightStatusBars = isLight;
+                        controller.AppearanceLightNavigationBars = isLight;
+                    }
                 }
             }
-        }
-        catch { }
-    }
+            catch { }
+        });
 
+    //запрос разрешения на отправку уведомлений android 13+
     private void RequestNotificationPermission()
     {
         try
@@ -157,10 +163,11 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[NOTIFICATION REQ ERROR] {ex.Message}");
+            AppLogger.LogError($"[NOTIFICATION REQ ERROR] {ex.Message}");
         }
     }
 
+    //запрос на отключение оптимизации батареи для стабильной работы туннеля в фоне
     private void RequestIgnoreBatteryOptimizations()
     {
         try
@@ -185,17 +192,19 @@ public sealed class MainActivity : MauiAppCompatActivity
                         .SetData(Android.Net.Uri.Parse($"package:{pkgName}"));
                     StartActivity(intent);
                 });
-                _ = builder.SetCancelable(false);
+                _ = builder.SetNegativeButton("Позже", (_, _) => { });
+                _ = builder.SetCancelable(true);
                 using var dialog = builder.Create();
                 dialog?.Show();
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[BATTERY REQ ERROR] {ex.Message}");
+            AppLogger.LogError($"[BATTERY REQ ERROR] {ex.Message}");
         }
     }
 
+    //запуск системной службы vpn
     public static void StartVpnService()
     {
         if (Platform.CurrentActivity is not MainActivity activity)
@@ -234,22 +243,40 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
         else if (requestCode == VpnCustomRequestCode)
         {
-            _ = (t_vpnPermTcs?.TrySetResult(resultCode == Result.Ok));
+            _ = s_vpnPermTcs?.TrySetResult(resultCode == Result.Ok);
         }
     }
 
     private static void StartActualService(Context context)
     {
-        var intent = new Intent(context, typeof(OctopusVpnService))
-            .SetAction("START");
+        using var intent = new Intent(context, typeof(OctopusVpnService));
+        _ = intent.SetAction("START");
         _ = context.StartForegroundService(intent);
     }
 
+    //асинхронный запрос разрешения на vpn с защитой от отсутствия активности
     public static async Task<bool> RequestVpnPermissionAsync(Intent intent)
     {
-        t_vpnPermTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var activity = Platform.CurrentActivity;
-        activity?.StartActivityForResult(intent, VpnCustomRequestCode);
-        return await t_vpnPermTcs.Task;
+        if (activity is null)
+        {
+            return false;
+        }
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        s_vpnPermTcs = tcs;
+
+        try
+        {
+            activity.StartActivityForResult(intent, VpnCustomRequestCode);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[VPN PERM ERROR] {ex.Message}");
+            s_vpnPermTcs = null;
+            return false;
+        }
+
+        return await tcs.Task.ConfigureAwait(false);
     }
 }

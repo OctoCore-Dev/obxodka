@@ -1,11 +1,12 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
     x:Class="obxodka.Pages.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:controls="clr-namespace:obxodka.Maui.Controls"
+    xmlns:controls="clr-namespace:obxodka.Dialogs"
+    xmlns:theming="clr-namespace:obxodka.Maui.Theming.Controls"
     xmlns:media="clr-namespace:CommunityToolkit.Maui.Views;assembly=CommunityToolkit.Maui.MediaElement"
-    xmlns:views="clr-namespace:obxodka.Views"
+    xmlns:views="clr-namespace:obxodka.Pages"
     BackgroundColor="{DynamicResource BgBase}"
     NavigationPage.HasNavigationBar="False"
     SafeAreaEdges="None"
@@ -68,7 +69,7 @@
                 ZIndex="2" />
         </Grid>
 
-        <controls:ThemeParticlesOverlay
+        <theming:ThemeParticlesOverlay
             x:Name="ThemeParticles"
             HorizontalOptions="Fill"
             InputTransparent="True"
@@ -85,7 +86,7 @@
             VerticalOptions="Fill"
             ZIndex="20">
 
-            <controls:ThemeFrameOverlay
+            <theming:ThemeFrameOverlay
                 x:Name="ThemeScreenFrameOverlay"
                 HorizontalOptions="Fill"
                 InputTransparent="True"

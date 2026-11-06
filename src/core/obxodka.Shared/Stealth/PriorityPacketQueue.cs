@@ -1,19 +1,40 @@
 namespace obxodka.Shared.Stealth;
 
+//приоритетная очередь сетевых пакетов для устранения bufferbloat и мгновенного пропуска пингов, dns и tcp ack
 [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "Specialized network priority packet queue")]
 public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 {
+    //высокоприоритетная очередь для управляющих кадров, пингов, dns, icmp и пустых tcp ack
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _high = new();
+
+    //низкоприоритетная очередь для тяжелых пакетных данных
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _low = new();
+
+    //семафор уведомления о наличии пакетов в очереди
     private readonly SemaphoreSlim _semaphore = new(0, 50000);
+
+    //счетчики текущего заполнения и полосы приоритета
     private int _count;
     private int _highStreak;
+    private int _disposed;
+
+    //лимиты обычных и управляющих пакетов
     private readonly int _maxCount = maxCapacity;
     private readonly int _controlHeadroom = Math.Min(maxCapacity + 64, 49900);
 
+    //текущее количество пакетов в очереди
+    public int Count => Math.Max(0, Volatile.Read(ref _count));
+
+    //добавление пакета в очередь с автоматической классификацией приоритета
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryEnqueue(byte[] buffer, int length)
     {
-        var isControl = length < 20 || (length <= 32 && buffer.Length >= 9 && buffer[8] == 0x99);
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return false;
+        }
+
+        var isControl = IsControlFrame(buffer, length);
         var limit = isControl ? _controlHeadroom : _maxCount;
 
         if (Interlocked.Increment(ref _count) > limit)
@@ -31,15 +52,27 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             _low.Enqueue((buffer, length));
         }
 
-        _ = _semaphore.Release();
+        try
+        {
+            _ = _semaphore.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+        catch (SemaphoreFullException)
+        {
+        }
+
         return true;
     }
 
+    //асинхронное извлечение следующего пакета с учетом приоритета и защиты от голодания
     public async ValueTask<(byte[] buffer, int length)> DequeueAsync(CancellationToken ct)
     {
         try
         {
-            while (!ct.IsCancellationRequested)
+            while (!ct.IsCancellationRequested && Volatile.Read(ref _disposed) == 0)
             {
                 await _semaphore.WaitAsync(ct).ConfigureAwait(false);
 
@@ -56,11 +89,12 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return ([], 0);
     }
 
+    //неблокирующее извлечение пакета из очереди
     public bool TryDequeue(out (byte[] buffer, int length) item)
     {
         try
         {
-            if (_semaphore.Wait(0))
+            if (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
             {
                 if (TryPopFair(out item))
                 {
@@ -76,6 +110,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return false;
     }
 
+    //справедливая выборка между высокоприоритетной и низкоприоритетной очередями (7:1)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryPopFair(out (byte[] buffer, int length) item)
     {
@@ -103,104 +138,118 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return false;
     }
 
+    //чистка памяти при отключении: сдать все буферы обратно в пул
     public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
     {
-        while (_semaphore.Wait(0))
+        try
         {
+            while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
+            {
+            }
         }
+        catch (ObjectDisposedException) { }
 
-        while (_high.TryDequeue(out var item))
+        while (_high.TryDequeue(out var highItem))
         {
             _ = Interlocked.Decrement(ref _count);
-            if (item.buffer is { Length: > 0 })
+            if (highItem.buffer is { Length: > 0 })
             {
-                returnBuffer?.Invoke(item.buffer);
+                returnBuffer?.Invoke(highItem.buffer);
             }
         }
 
-        while (_low.TryDequeue(out var item))
+        while (_low.TryDequeue(out var lowItem))
         {
             _ = Interlocked.Decrement(ref _count);
-            if (item.buffer is { Length: > 0 })
+            if (lowItem.buffer is { Length: > 0 })
             {
-                returnBuffer?.Invoke(item.buffer);
+                returnBuffer?.Invoke(lowItem.buffer);
             }
         }
 
-        Volatile.Write(ref _count, 0);
+        _ = Interlocked.Exchange(ref _count, 0);
     }
 
-    public int Count => Volatile.Read(ref _count);
+    //определение управляющих и зондирующих кадров протокола (ping, pong, mtu sync, burst, probes)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsControlFrame(byte[] buffer, int length)
+    {
+        if (length < 20)
+        {
+            return true;
+        }
 
+        if (buffer.Length < 2)
+        {
+            return false;
+        }
+
+        var b0 = buffer[0];
+        var b1 = buffer[1];
+        return (b0 == 0xAA && b1 == 0xBB) ||
+               (b0 == 0xCC && b1 == 0xDD) ||
+               (b0 == 0xEE && (b1 == 0x77 || b1 == 0x55)) ||
+               (length <= 32 && b0 == 0x99);
+    }
+
+    //классификация приоритетных сетевых пакетов l3/l4 (icmp, dns/ntp малые udp, чистые tcp ack/syn/fin)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsHighPriority(byte[] packet, int length)
     {
-        var offset = 0;
-        var innerLen = length;
-        if (length >= 8 && Obfuscator.TryDecodeLengths(packet.AsSpan(0, 8), out var totalLen, out var realLen) && totalLen == length && realLen <= length - 8)
-        {
-            offset = 8;
-            innerLen = realLen;
-        }
-
-        if (innerLen == 9 && packet[offset] == 0x99)
+        if (length < 20 || packet.Length < length)
         {
             return true;
         }
 
-        if (innerLen < 20)
-        {
-            return true;
-        }
-
-        var version = packet[offset] >> 4;
+        var version = packet[0] >> 4;
         if (version == 4)
         {
-            var ihl = (packet[offset] & 0x0F) * 4;
-            if (ihl < 20 || innerLen < ihl)
+            var ihl = (packet[0] & 0x0F) * 4;
+            if (ihl < 20 || length < ihl)
             {
                 return false;
             }
 
-            var protocol = packet[offset + 9];
-            if (protocol == 1 || (protocol == 17 && innerLen <= 1400))
+            var protocol = packet[9];
+            if (protocol == 1 || (protocol == 17 && length <= 320))
             {
                 return true;
             }
 
             if (protocol == 6)
             {
-                if (innerLen < ihl + 20)
+                if (length < ihl + 20)
                 {
                     return false;
                 }
 
-                var dataOffset = (packet[offset + ihl + 12] >> 4) * 4;
-                var payloadLength = innerLen - ihl - dataOffset;
+                var dataOffset = (packet[ihl + 12] >> 4) * 4;
+                var payloadLength = length - ihl - dataOffset;
                 return payloadLength <= 0;
             }
         }
         else if (version == 6)
         {
-            if (innerLen < 40)
+            if (length < 40)
             {
                 return false;
             }
 
-            var nextHeader = packet[offset + 6];
-            if (nextHeader == 58 || (nextHeader == 17 && innerLen <= 1400))
+            var nextHeader = packet[6];
+            if (nextHeader == 58 || (nextHeader == 17 && length <= 320))
             {
                 return true;
             }
 
             if (nextHeader == 6)
             {
-                if (innerLen < 60)
+                if (length < 60)
                 {
                     return false;
                 }
 
-                var dataOffset = (packet[offset + 40 + 12] >> 4) * 4;
-                var payloadLength = innerLen - 40 - dataOffset;
+                var dataOffset = (packet[40 + 12] >> 4) * 4;
+                var payloadLength = length - 40 - dataOffset;
                 return payloadLength <= 0;
             }
         }
@@ -208,7 +257,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return false;
     }
 
-    private int _disposed;
+    //освобождение ресурсов семафора
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)

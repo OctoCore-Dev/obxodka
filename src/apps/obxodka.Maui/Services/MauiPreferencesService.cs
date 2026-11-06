@@ -1,110 +1,50 @@
 namespace obxodka.Maui.Services;
 
+//адаптер настроек приложения на базе кроссплатформенного хранилища maui
 public sealed class MauiPreferencesService : IPreferencesService
 {
-    public T GetValue<T>(string key, T defaultValue = default!)
+    //получение значения настройки с поддержкой примитивов и перечислений
+    public T Get<T>(string key, T defaultValue = default!)
     {
-        try
+        if (!Preferences.Default.ContainsKey(key))
         {
-            if (Preferences.Default.ContainsKey(key))
-            {
-                return Preferences.Default.Get(key, defaultValue);
-            }
+            return defaultValue;
         }
-        catch { }
 
-#if WINDOWS
-        try
+        var targetType = typeof(T);
+        if (targetType.IsEnum)
         {
-            using var regKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\obxodka");
-            var val = regKey?.GetValue(key);
-            if (val != null)
-            {
-                if (typeof(T) == typeof(string))
-                {
-                    var strVal = (T)(object)val.ToString()!;
-                    try
-                    {
-                        Preferences.Default.Set(key, strVal);
-                    }
-                    catch { }
-                    return strVal;
-                }
-
-                var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-                var converted = (T)Convert.ChangeType(val, targetType, CultureInfo.InvariantCulture);
-                try
-                {
-                    Preferences.Default.Set(key, converted);
-                }
-                catch { }
-                return converted;
-            }
+            var rawInt = Preferences.Default.Get(key, Convert.ToInt32(defaultValue, CultureInfo.InvariantCulture));
+            return (T)Enum.ToObject(targetType, rawInt);
         }
-        catch { }
-#endif
 
-        return defaultValue;
+        return Preferences.Default.Get(key, defaultValue);
     }
 
-    public T Get<T>(string key, T defaultValue = default!) => GetValue(key, defaultValue);
-
-    public void SetValue<T>(string key, T value)
+    //сохранение значения настройки в платформенное хранилище
+    public void Set<T>(string key, T value)
     {
-        try
-        {
-            Preferences.Default.Set(key, value);
-        }
-        catch { }
-#if WINDOWS
-        try
-        {
-            using var regKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\obxodka");
-            regKey?.SetValue(key, value?.ToString() ?? string.Empty);
-        }
-        catch { }
-#endif
-    }
-
-    public void Set<T>(string key, T value) => SetValue(key, value);
-
-    public void Remove(string key)
-    {
-        try
+        if (value is null)
         {
             Preferences.Default.Remove(key);
+            return;
         }
-        catch { }
-#if WINDOWS
-        try
+
+        if (typeof(T).IsEnum)
         {
-            using var regKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\obxodka", true);
-            regKey?.DeleteValue(key, false);
+            Preferences.Default.Set(key, Convert.ToInt32(value, CultureInfo.InvariantCulture));
+            return;
         }
-        catch { }
-#endif
+
+        Preferences.Default.Set(key, value);
     }
 
-    public void Clear()
-    {
-        try
-        {
-            Preferences.Default.Clear();
-        }
-        catch { }
-#if WINDOWS
-        try
-        {
-            using var regKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\obxodka", true);
-            if (regKey != null)
-            {
-                foreach (var v in regKey.GetValueNames())
-                {
-                    regKey.DeleteValue(v, false);
-                }
-            }
-        }
-        catch { }
-#endif
-    }
+    //проверка наличия ключа в настройках
+    public bool ContainsKey(string key) => Preferences.Default.ContainsKey(key);
+
+    //удаление ключа из настроек
+    public void Remove(string key) => Preferences.Default.Remove(key);
+
+    //полная очистка всех сохраненных настроек
+    public void Clear() => Preferences.Default.Clear();
 }

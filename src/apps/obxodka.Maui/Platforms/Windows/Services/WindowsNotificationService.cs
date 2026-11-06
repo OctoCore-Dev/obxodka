@@ -1,34 +1,39 @@
-namespace obxodka.Maui.Platforms.Windows.Services;
+namespace obxodka.Platforms.Windows;
 
+//системная служба всплывающих уведомлений windows toast notification и активации окна
 [SupportedOSPlatform("windows10.0.19041.0")]
 public sealed partial class WindowsNotificationService : INotificationService
 {
     [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial int SetCurrentProcessExplicitAppUserModelID(string appID);
 
     [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetForegroundWindow(IntPtr hWnd);
 
-    private static global::Windows.UI.Notifications.ToastNotification? t_activeToast;
-    private static long t_lastNotificationTicks;
-    private static long t_lastReconnectTicks;
-    private static bool t_aumidConfigured;
+    private static global::Windows.UI.Notifications.ToastNotification? s_activeToast;
+    private static long s_lastNotificationTicks;
+    private static long s_lastReconnectTicks;
+    private static bool s_aumidConfigured;
 
     public event Action? ReconnectRequested;
 
+    //запрос переподключения с выводом главного окна на передний план
     public void RequestReconnect()
     {
         var now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref t_lastReconnectTicks) < 2000)
+        if (now - Interlocked.Read(ref s_lastReconnectTicks) < 2000)
         {
             return;
         }
-        _ = Interlocked.Exchange(ref t_lastReconnectTicks, now);
+        _ = Interlocked.Exchange(ref s_lastReconnectTicks, now);
 
         if (App.MainWindowHandle != IntPtr.Zero)
         {
@@ -55,9 +60,10 @@ public sealed partial class WindowsNotificationService : INotificationService
         }
     }
 
+    //регистрация aumid для корректной доставки уведомлений в непакетированных приложениях
     private static void EnsureAumid()
     {
-        if (t_aumidConfigured || IsPackaged())
+        if (s_aumidConfigured || IsPackaged())
         {
             return;
         }
@@ -91,19 +97,20 @@ public sealed partial class WindowsNotificationService : INotificationService
                 }
             }
 
-            t_aumidConfigured = true;
+            s_aumidConfigured = true;
         }
         catch { }
     }
 
+    //показ интерактивного уведомления о внезапном разрыве соединения с кнопкой повтора
     public void ShowUnexpectedDisconnectNotification()
     {
         var now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref t_lastNotificationTicks) < 3000)
+        if (now - Interlocked.Read(ref s_lastNotificationTicks) < 3000)
         {
             return;
         }
-        _ = Interlocked.Exchange(ref t_lastNotificationTicks, now);
+        _ = Interlocked.Exchange(ref s_lastNotificationTicks, now);
 
         try
         {
@@ -126,7 +133,7 @@ public sealed partial class WindowsNotificationService : INotificationService
             xmlDoc.LoadXml(xml);
             var toast = new global::Windows.UI.Notifications.ToastNotification(xmlDoc);
             AttachToastHandlers(toast);
-            t_activeToast = toast;
+            s_activeToast = toast;
 
             global::Windows.UI.Notifications.ToastNotifier notifier;
             if (IsPackaged())
@@ -150,7 +157,7 @@ public sealed partial class WindowsNotificationService : INotificationService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[TOAST NOTIFICATION ERROR] {ex.Message}");
+            AppLogger.LogError($"[TOAST NOTIFICATION ERROR] {ex.Message}");
         }
     }
 

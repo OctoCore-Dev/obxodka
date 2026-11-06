@@ -2,17 +2,27 @@ namespace obxodka.Shared.Stealth;
 
 public static class PacketRouter
 {
-    public const int MaxRays = 8;
+    public const int MaxRays = 3;
+
+    public const byte Ray0Mask = 0x01; //основной луч
+    public const byte Ray1Mask = 0x02; //вторичный луч (также передача и дубликация пинга)
+    public const byte Ray2Mask = 0x04; //луч инспектор для инспектирование активных лучей
+    public const byte AllRaysMask = Ray0Mask | Ray1Mask | Ray2Mask;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetRays(ReadOnlySpan<byte> packet, int activeRays, out int primaryRay, out int secondaryRay)
+    public static void GetRays(
+        ReadOnlySpan<byte> packet,
+        byte aliveMask,
+        int preferredRay,
+        out int primaryRay,
+        out int secondaryRay)
     {
         secondaryRay = -1;
         var length = packet.Length;
 
-        if (activeRays <= 1 || length < 20)
+        if (aliveMask == 0 || length < 20)
         {
-            primaryRay = 0;
+            primaryRay = preferredRay is 0 or 1 ? preferredRay : 0;
             return;
         }
 
@@ -27,7 +37,7 @@ public static class PacketRouter
             var ihl = (packet[0] & 0x0F) * 4;
             if (ihl < 20 || length < ihl)
             {
-                primaryRay = 0;
+                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
                 return;
             }
 
@@ -38,15 +48,7 @@ public static class PacketRouter
             {
                 if (protocol is 1 or 17)
                 {
-                    primaryRay = 0;
-                    secondaryRay = activeRays switch
-                    {
-                        >= 8 => 7,
-                        >= 4 => 3,
-                        >= 3 => 2,
-                        >= 2 => 1,
-                        _ => -1
-                    };
+                    SelectRaysFromHealth(isLatencyCritical: true, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
                     return;
                 }
 
@@ -61,14 +63,7 @@ public static class PacketRouter
                     hash = (hash * 31) + protocol;
                 }
 
-                primaryRay = activeRays switch
-                {
-                    >= 8 => 1 + ((hash & 0x7FFFFFFF) % 6),
-                    >= 4 => 1 + ((hash & 0x7FFFFFFF) % 2),
-                    >= 2 => hash & 1,
-                    _ => 0
-                };
-                secondaryRay = -1;
+                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash, out primaryRay, out secondaryRay);
                 return;
             }
 
@@ -98,8 +93,7 @@ public static class PacketRouter
 
             if (protocol == 17 && !isIcmpOrDns && !isGamingUdp)
             {
-                primaryRay = 0;
-                secondaryRay = -1;
+                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
                 return;
             }
         }
@@ -132,62 +126,68 @@ public static class PacketRouter
 
             if (nextHeader == 17 && !isIcmpOrDns && !isGamingUdp)
             {
-                primaryRay = 0;
-                secondaryRay = -1;
+                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
                 return;
             }
         }
 
         var isLatencyCritical = isIcmpOrDns || isGamingUdp;
+        SelectRaysFromHealth(isLatencyCritical, aliveMask, preferredRay, hash, out primaryRay, out secondaryRay);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SelectRaysFromHealth(
+        bool isLatencyCritical,
+        byte aliveMask,
+        int preferredRay,
+        int hash,
+        out int primaryRay,
+        out int secondaryRay)
+    {
+        var r0 = (aliveMask & Ray0Mask) != 0; //жив ли основной рабочий ray 0
+        var r1 = (aliveMask & Ray1Mask) != 0; //жив ли вторичный рабочий ray 1
+        //ray 2 инспектор это служебный канал зондирования control plane
+        //он тестирует порты и меряет rtt, пользовательские пакеты идут только через ray 0 и ray 1
+
         if (isLatencyCritical)
         {
-            primaryRay = 0;
-            secondaryRay = activeRays switch
-            {
-                >= 8 => 7,
-                >= 4 => 3,
-                >= 3 => 2,
-                >= 2 => 1,
-                _ => -1
-            };
+            //критичные данные игры dns пинг основной путь в живой рабочий луч
+            primaryRay = (preferredRay is 0 or 1 && (aliveMask & (1 << preferredRay)) != 0)
+                ? preferredRay
+                : (r0 ? 0 : (r1 ? 1 : 0));
+
+            //дублирование hedging строго между рабочими лучами ray 0 и ray 1
+            //если летит по ray 0 а ray 1 жив дублируем в ray 1
+            //если летит по ray 1 а ray 0 жив дублируем в ray 0
+            //если жив только один рабочий луч дублировать некуда
+            secondaryRay = (primaryRay == 0 && r1)
+                ? 1
+                : (primaryRay == 1 && r0)
+                    ? 0
+                    : -1;
         }
         else
         {
-            if (activeRays >= 8)
+            //тяжелый трафик tcp видео дублирование выключено
+            secondaryRay = -1;
+
+            //распределяем строго между рабочими лучами ray 0 и ray 1
+            primaryRay = (r0, r1) switch
             {
-                primaryRay = 1 + ((hash & 0x7FFFFFFF) % 6);
-                secondaryRay = -1;
-            }
-            else if (activeRays >= 4)
-            {
-                primaryRay = 1 + ((hash & 0x7FFFFFFF) % 2);
-                secondaryRay = -1;
-            }
-            else if (activeRays >= 2)
-            {
-                primaryRay = hash & 1;
-                secondaryRay = -1;
-            }
-            else
-            {
-                primaryRay = 0;
-                secondaryRay = -1;
-            }
+                (true, true) => hash & 1,        //оба живы: балансировка 50/50 по 5-tuple хэшу
+                (true, false) => 0,              //ray 1 упал: 100% в ray 0
+                (false, true) => 1,              //ray 0 упал: 100% в ray 1
+                _ => preferredRay is 0 or 1 ? preferredRay : 0
+            };
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetRays(byte[] packetBuffer, int length, int activeRays, out int primaryRay, out int secondaryRay) =>
-        GetRays(packetBuffer.AsSpan(0, length), activeRays, out primaryRay, out secondaryRay);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetRayIndex(ReadOnlySpan<byte> packet, int activeRays)
+    public static void GetRays(ReadOnlySpan<byte> packet, int activeRays, out int primaryRay, out int secondaryRay)
     {
-        GetRays(packet, activeRays, out var primary, out _);
-        return primary;
+        //пользовательский трафик распределяется между рабочими лучами
+        var clamped = Math.Clamp(activeRays, 1, 2);
+        var mask = (byte)((1 << clamped) - 1);
+        GetRays(packet, mask, preferredRay: -1, out primaryRay, out secondaryRay);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetRayIndex(byte[] packetBuffer, int length, int activeRays) =>
-        GetRayIndex(packetBuffer.AsSpan(0, length), activeRays);
 }

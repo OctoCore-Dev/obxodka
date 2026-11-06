@@ -34,14 +34,12 @@ public sealed partial class MainPage : ContentPage, IDisposable
         ApiService apiService,
         IAppManager appManager,
         ThemeManager themeManager,
-        IAppUpdaterService? appUpdaterService = null)
+        IAppUpdaterService? appUpdaterService = null,
+        IQrScannerService? qrScanner = null)
     {
         Current = this;
         InitializeComponent();
-        if (SeasonSchedule.IsHalloweenSeason())
-        {
-            SplashIcon.Source = "splash_logo_halloween.png";
-        }
+
         VpnService = vpnService;
         _apiService = apiService;
         _appManager = appManager;
@@ -49,7 +47,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _appUpdaterService = appUpdaterService;
         BindingContext = this;
 
-        TabContentAuth.Initialize(this, _apiService);
+        TabContentAuth.Initialize(this, _apiService, qrScanner);
 
         TabContentDelete.Initialize(this, _apiService);
         TabContentDelete.CancelRequested += OnDeleteCancelRequested;
@@ -58,6 +56,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         TabContentDevices.Initialize(this, _apiService);
         TabContentSplit.Initialize(this, _appManager);
         TabContentPayment.Initialize(this, _apiService);
+        DesktopSidebar.Initialize(_appUpdaterService);
         TabContentProfile.Initialize(this, _themeManager, _apiService);
 
         TabContentThemeStore.Initialize(_themeManager);
@@ -385,10 +384,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        if (SeasonSchedule.IsHalloweenSeason())
-        {
-            SplashIcon.Source = "splash_logo_halloween.png";
-        }
+
         _ = AnimateSplashIconAsync();
 
         _ = Task.Run(async () =>
@@ -529,7 +525,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private async Task PerformLogoutAsync()
     {
-        _vpnCts?.Cancel();
+        if (_vpnCts is { } cts)
+        {
+            await cts.CancelAsync().ConfigureAwait(false);
+        }
         TabContentVpn.UnsubscribeEvents();
         _ = Task.Run(async () =>
         {
@@ -552,7 +551,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         });
     }
 
-    private static readonly string[] t_mainMobileTabs = ["vpn", "profile", "devices", "split", "configuration"];
+    private static readonly string[] s_mainMobileTabs = ["vpn", "profile", "devices", "split", "configuration"];
 
     private void OnContentSwipedLeft(object? sender, SwipedEventArgs e)
     {
@@ -561,10 +560,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
             return;
         }
 
-        var idx = Array.IndexOf(t_mainMobileTabs, _activeTab);
-        if (idx >= 0 && idx < t_mainMobileTabs.Length - 1)
+        var idx = Array.IndexOf(s_mainMobileTabs, _activeTab);
+        if (idx >= 0 && idx < s_mainMobileTabs.Length - 1)
         {
-            _ = SwitchTabAsync(t_mainMobileTabs[idx + 1]);
+            _ = SwitchTabAsync(s_mainMobileTabs[idx + 1]);
         }
     }
 
@@ -575,10 +574,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
             return;
         }
 
-        var idx = Array.IndexOf(t_mainMobileTabs, _activeTab);
+        var idx = Array.IndexOf(s_mainMobileTabs, _activeTab);
         if (idx > 0)
         {
-            _ = SwitchTabAsync(t_mainMobileTabs[idx - 1]);
+            _ = SwitchTabAsync(s_mainMobileTabs[idx - 1]);
         }
     }
 
@@ -930,7 +929,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     e.Manifest.Vfx,
                     primary,
                     accent,
-                    _themeManager.ParticlesEnabled);
+                    _themeManager.ParticlesEnabled,
+                    e.ScreenOverlayPath);
 
                 TabContentVpn?.ApplyThemeButton(
                     e.ButtonImageIdlePath,
@@ -1193,9 +1193,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
         const double sideThreshold = 100;
 
         var isNearEdgeOrCorner = y < topThreshold
-                              || y > (height - bottomThreshold)
-                              || x < sideThreshold
-                              || x > (width - sideThreshold);
+                                || y > (height - bottomThreshold)
+                                || x < sideThreshold
+                                || x > (width - sideThreshold);
 
         if (isNearEdgeOrCorner)
         {
@@ -1297,7 +1297,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
 
         MainContentContainer.Padding = new Thickness(0);
-        MobileBottomBar.Margin = new Thickness(16, 0, 16, Math.Max(16, bottom + 8));
+        MobileBottomBar.ApplyBottomInset(bottom);
 
         var safeTop = Math.Max(0, top);
         TabContentVpn?.SetHeaderTopInset(safeTop);

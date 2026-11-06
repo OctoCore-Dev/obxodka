@@ -1,13 +1,19 @@
 namespace obxodka.Client.Platforms;
 
+//интерфейс сохранения пользовательских настроек приложения
 public interface IPreferencesService
 {
-    public T GetValue<T>(string key, T defaultValue = default!);
-    public void SetValue<T>(string key, T value);
+    public T Get<T>(string key, T defaultValue = default!);
+    public void Set<T>(string key, T value);
+    public bool ContainsKey(string key);
     public void Remove(string key);
     public void Clear();
+
+    public T GetValue<T>(string key, T defaultValue = default!) => Get(key, defaultValue);
+    public void SetValue<T>(string key, T value) => Set(key, value);
 }
 
+//интерфейс защищенного хранилища паролей и ключей
 public interface ISecureStorageService
 {
     public Task<string?> GetAsync(string key);
@@ -16,6 +22,7 @@ public interface ISecureStorageService
     public void RemoveAll();
 }
 
+//интерфейс мониторинга состояния сети и подключения к интернету
 public interface IConnectivityService
 {
     public AppNetworkAccess NetworkAccess { get; }
@@ -23,6 +30,7 @@ public interface IConnectivityService
     public Task<AppConnectionProfile> GetConnectionProfileAsync();
 }
 
+//интерфейс информации об устройстве и платформе
 public interface IDeviceInfoService
 {
     public string DeviceId { get; }
@@ -35,6 +43,7 @@ public interface IDeviceInfoService
     public AppDeviceType DeviceType { get; }
 }
 
+//интерфейс диспетчеризации вызовов в главном ui потоке
 public interface IMainThreadService
 {
     public bool IsMainThread { get; }
@@ -43,6 +52,7 @@ public interface IMainThreadService
     public Task<T> InvokeOnMainThreadAsync<T>(Func<Task<T>> func);
 }
 
+//интерфейс служб геолокации
 public interface IGeolocationService
 {
     public Task<Location?> GetLastKnownLocationAsync();
@@ -50,6 +60,7 @@ public interface IGeolocationService
     public event EventHandler<GeolocationChangedEventArgs> LocationChanged;
 }
 
+//интерфейс буфера обмена
 public interface IClipboardService
 {
     public Task<string?> GetTextAsync();
@@ -57,12 +68,14 @@ public interface IClipboardService
     public bool HasText { get; }
 }
 
+//интерфейс быстрых действий приложения
 public interface IAppActionsService
 {
     public Task SetAsync(IEnumerable<AppAction> actions);
     public event EventHandler<AppActionEventArgs> OnAction;
 }
 
+//интерфейс аудита корневых сертификатов устройства на предмет mitm перехвата
 public interface ICertificateAuditService
 {
     public Task<CertificateAuditResult> CheckCertificatesAsync();
@@ -70,6 +83,7 @@ public interface ICertificateAuditService
     public Task<bool> TryRemoveUserCertificateAsync(string thumbprint);
 }
 
+//интерфейс системных уведомлений
 public interface INotificationService
 {
     public void ShowUnexpectedDisconnectNotification();
@@ -77,14 +91,17 @@ public interface INotificationService
     public event Action? ReconnectRequested;
 }
 
+//результат проверки сертификатов
 public sealed record CertificateAuditResult(bool HasUntrustedRoot, string? CertificateName, string? Thumbprint, string? Details);
 
+//событие изменения подключения к сети
 public sealed class AppConnectivityChangedEventArgs(AppNetworkAccess networkAccess, IEnumerable<AppConnectionProfile> connectionProfiles) : EventArgs
 {
     public AppNetworkAccess NetworkAccess { get; } = networkAccess;
     public IEnumerable<AppConnectionProfile> ConnectionProfiles { get; } = connectionProfiles;
 }
 
+//профиль сетевого адаптера
 public sealed record AppConnectionProfile(NetworkConnectionType ConnectionType, AppNetworkAccess NetworkAccess);
 public enum NetworkConnectionType { Unknown, Cellular, Wifi, Bluetooth, Ethernet, Other }
 public enum AppNetworkAccess { Unknown, None, Local, ConstrainedInternet, Internet }
@@ -101,13 +118,4 @@ public sealed record AppAction(string Id, string Title, string? Subtitle, string
 public sealed class AppActionEventArgs(string actionId) : EventArgs
 {
     public string ActionId { get; } = actionId;
-}
-
-public static class PreferencesExtensions
-{
-    public static T Get<T>(this IPreferencesService preferences, string key, T defaultValue = default!) =>
-        preferences.GetValue(key, defaultValue);
-
-    public static void Set<T>(this IPreferencesService preferences, string key, T value) =>
-        preferences.SetValue(key, value);
 }

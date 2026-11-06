@@ -1,22 +1,25 @@
 #if ANDROID
-using System.Diagnostics.CodeAnalysis;
 using Android.Gms.Tasks;
 using Android.Runtime;
 using Xamarin.Google.MLKit.Vision.Barcode.Common;
 using Xamarin.Google.MLKit.Vision.CodeScanner;
 
-namespace obxodka.Platforms.Android.Services;
+namespace obxodka.Platforms.Android;
 
+//сканирование qr кодов через системный google play code scanner без запроса разрешений камеры
 [SupportedOSPlatform("android29.0")]
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
 public sealed class AndroidQrScannerService : IQrScannerService
 {
+    //поддерживается на устройствах с сервисами google play
     public bool IsSupported => true;
 
+    //запуск нативного окна сканирования qr кодов google play services
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "listeners are retained by Google Play Services Task")]
     public async Task<string?> ScanQrCodeAsync()
     {
         var activity = Platform.CurrentActivity ?? throw new InvalidOperationException("Окно приложения недоступно для запуска сканера.");
-        var tcs = new TaskCompletionSource<string?>();
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         try
         {
@@ -53,6 +56,7 @@ public sealed class AndroidQrScannerService : IQrScannerService
         }
     }
 
+    //обработчик успешного распознавания qr кода
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private sealed class SuccessListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnSuccessListener
     {
@@ -64,6 +68,7 @@ public sealed class AndroidQrScannerService : IQrScannerService
         }
     }
 
+    //обработчик ошибки или недоступности модуля сканера
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private sealed class FailureListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnFailureListener
     {
@@ -82,6 +87,7 @@ public sealed class AndroidQrScannerService : IQrScannerService
         }
     }
 
+    //обработчик закрытия окна сканера пользователем
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private sealed class CanceledListener(TaskCompletionSource<string?> tcs) : Java.Lang.Object, IOnCanceledListener
     {

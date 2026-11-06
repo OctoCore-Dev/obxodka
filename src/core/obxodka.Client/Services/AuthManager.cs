@@ -1,50 +1,53 @@
 namespace obxodka.Services;
 
+//менеджер сессии пользователя и сохраненных токенов
 public sealed class AuthManager
 {
-    private static readonly SemaphoreSlim t_fileLock = new(1, 1);
-    private static UserSession? t_cachedSession;
-    private static AuthenticationHeaderValue? t_cachedAuthHeader;
+    private static readonly SemaphoreSlim s_fileLock = new(1, 1);
+    private static UserSession? s_cachedSession;
+    private static AuthenticationHeaderValue? s_cachedAuthHeader;
 
+    //получение заголовка авторизации bearer
     public static async ValueTask<AuthenticationHeaderValue?> GetAuthHeaderAsync()
     {
-        if (t_cachedAuthHeader is not null)
+        if (s_cachedAuthHeader is not null)
         {
-            return t_cachedAuthHeader;
+            return s_cachedAuthHeader;
         }
 
         _ = await LoadSessionAsync().ConfigureAwait(false);
-        return t_cachedAuthHeader;
+        return s_cachedAuthHeader;
     }
 
+    //сохранение сессии пользователя в защищенное хранилище
     public static async Task SaveSessionAsync(UserSession session)
     {
-        await t_fileLock.WaitAsync().ConfigureAwait(false);
+        await s_fileLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            t_cachedSession = session;
-            t_cachedAuthHeader = string.IsNullOrEmpty(session.JwtToken)
+            s_cachedSession = session;
+            s_cachedAuthHeader = string.IsNullOrEmpty(session.JwtToken)
                 ? null
                 : new AuthenticationHeaderValue("Bearer", session.JwtToken);
 
-            Preferences.Default.Set("user_email", session.Email ?? string.Empty);
-            Preferences.Default.Set("user_is_logged", session.IsLoggedIn);
-            Preferences.Default.Set("user_sub_until", session.SubscriptionUntil?.Ticks ?? 0);
-            Preferences.Default.Set("user_balance_sec", session.BalanceSeconds);
+            PlatformServices.Preferences.Set(AppPreferenceKeys.UserEmail, session.Email ?? string.Empty);
+            PlatformServices.Preferences.Set(AppPreferenceKeys.UserIsLogged, session.IsLoggedIn);
+            PlatformServices.Preferences.Set(AppPreferenceKeys.UserSubUntil, session.SubscriptionUntil?.Ticks ?? 0);
+            PlatformServices.Preferences.Set(AppPreferenceKeys.UserBalanceSec, session.BalanceSeconds);
 
             if (!string.IsNullOrEmpty(session.Password))
             {
-                await SecureStorage.Default.SetAsync("user_password", session.Password).ConfigureAwait(false);
+                await PlatformServices.SecureStorage.SetAsync(AppPreferenceKeys.UserPassword, session.Password).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrEmpty(session.JwtToken))
             {
-                await SecureStorage.Default.SetAsync("user_jwt", session.JwtToken).ConfigureAwait(false);
+                await PlatformServices.SecureStorage.SetAsync(AppPreferenceKeys.UserJwt, session.JwtToken).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrEmpty(session.VpnConfig))
             {
-                await SecureStorage.Default.SetAsync("user_vpn_config", session.VpnConfig).ConfigureAwait(false);
+                await PlatformServices.SecureStorage.SetAsync(AppPreferenceKeys.UserVpnConfig, session.VpnConfig).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -53,50 +56,52 @@ public sealed class AuthManager
         }
         finally
         {
-            _ = t_fileLock.Release();
+            _ = s_fileLock.Release();
         }
     }
 
+    //загрузка сессии из защищенного хранилища
+    [SuppressMessage("Maintainability", "CA1508:Удалить неиспользуемый код", Justification = "Double-checked locking pattern")]
     public static async Task<UserSession> LoadSessionAsync()
     {
-        if (t_cachedSession is not null)
+        if (s_cachedSession is not null)
         {
-            return t_cachedSession;
+            return s_cachedSession;
         }
 
-        await t_fileLock.WaitAsync().ConfigureAwait(false);
+        await s_fileLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (t_cachedSession is not null)
+            if (s_cachedSession is not null)
             {
-                return t_cachedSession;
+                return s_cachedSession;
             }
 
-            var isLoggedIn = Preferences.Default.Get("user_is_logged", false);
+            var isLoggedIn = PlatformServices.Preferences.Get(AppPreferenceKeys.UserIsLogged, false);
             if (!isLoggedIn)
             {
-                t_cachedSession = new UserSession { IsLoggedIn = false };
-                t_cachedAuthHeader = null;
-                return t_cachedSession;
+                s_cachedSession = new UserSession { IsLoggedIn = false };
+                s_cachedAuthHeader = null;
+                return s_cachedSession;
             }
 
-            var jwt = await SecureStorage.Default.GetAsync("user_jwt").ConfigureAwait(false) ?? string.Empty;
-            var pass = await SecureStorage.Default.GetAsync("user_password").ConfigureAwait(false) ?? string.Empty;
-            var vpnConf = await SecureStorage.Default.GetAsync("user_vpn_config").ConfigureAwait(false) ?? string.Empty;
-            var subTicks = Preferences.Default.Get("user_sub_until", 0L);
-            var balanceSec = Preferences.Default.Get("user_balance_sec", 0L);
+            var jwt = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserJwt).ConfigureAwait(false) ?? string.Empty;
+            var pass = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserPassword).ConfigureAwait(false) ?? string.Empty;
+            var vpnConf = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserVpnConfig).ConfigureAwait(false) ?? string.Empty;
+            var subTicks = PlatformServices.Preferences.Get(AppPreferenceKeys.UserSubUntil, 0L);
+            var balanceSec = PlatformServices.Preferences.Get(AppPreferenceKeys.UserBalanceSec, 0L);
 
             if (string.IsNullOrEmpty(jwt))
             {
                 ClearSessionDataInternal();
-                t_cachedSession = new UserSession { IsLoggedIn = false };
-                t_cachedAuthHeader = null;
-                return t_cachedSession;
+                s_cachedSession = new UserSession { IsLoggedIn = false };
+                s_cachedAuthHeader = null;
+                return s_cachedSession;
             }
 
             var session = new UserSession
             {
-                Email = Preferences.Default.Get("user_email", string.Empty),
+                Email = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, string.Empty),
                 IsLoggedIn = true,
                 Password = pass,
                 JwtToken = jwt,
@@ -105,31 +110,32 @@ public sealed class AuthManager
                 BalanceSeconds = balanceSec
             };
 
-            t_cachedSession = session;
-            t_cachedAuthHeader = new AuthenticationHeaderValue("Bearer", jwt);
+            s_cachedSession = session;
+            s_cachedAuthHeader = new AuthenticationHeaderValue("Bearer", jwt);
             return session;
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[AUTH LOAD ERROR]: {ex.Message}");
             ClearSessionDataInternal();
-            t_cachedSession = new UserSession { IsLoggedIn = false };
-            t_cachedAuthHeader = null;
-            return t_cachedSession;
+            s_cachedSession = new UserSession { IsLoggedIn = false };
+            s_cachedAuthHeader = null;
+            return s_cachedSession;
         }
         finally
         {
-            _ = t_fileLock.Release();
+            _ = s_fileLock.Release();
         }
     }
 
+    //очистка данных сессии при выходе
     public static async Task ClearSessionAsync()
     {
-        await t_fileLock.WaitAsync().ConfigureAwait(false);
+        await s_fileLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            t_cachedSession = null;
-            t_cachedAuthHeader = null;
+            s_cachedSession = null;
+            s_cachedAuthHeader = null;
             ClearSessionDataInternal();
         }
         catch (Exception ex)
@@ -138,41 +144,19 @@ public sealed class AuthManager
         }
         finally
         {
-            _ = t_fileLock.Release();
+            _ = s_fileLock.Release();
         }
     }
 
+    //удаление сохраненных данных авторизации
     private static void ClearSessionDataInternal()
     {
-        Preferences.Default.Remove("user_email");
-        Preferences.Default.Remove("user_is_logged");
-        Preferences.Default.Remove("user_sub_until");
-        Preferences.Default.Remove("user_balance_sec");
-        _ = SecureStorage.Default.Remove("user_password");
-        _ = SecureStorage.Default.Remove("user_jwt");
-        _ = SecureStorage.Default.Remove("user_vpn_config");
-    }
-
-    public static async Task RemoveCurrentDeviceFromServerAsync()
-    {
-        try
-        {
-            var session = await LoadSessionAsync().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(session.JwtToken))
-            {
-                return;
-            }
-
-            var hwid = DeviceHelper.GetHwid();
-            using var client = new HttpClient(ApiService.CreateDefaultHandler()) { Timeout = TimeSpan.FromSeconds(5) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.JwtToken);
-            _ = client.DefaultRequestHeaders.TryAddWithoutValidation("X-Device-Hwid", hwid);
-            var fullUrl = AppConfig.ApiUrl($"api/Auth/devices/{Uri.EscapeDataString(hwid)}");
-            _ = await client.DeleteAsync(fullUrl).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[AUTH REMOVE DEVICE ERROR]: {ex.Message}");
-        }
+        PlatformServices.Preferences.Remove(AppPreferenceKeys.UserEmail);
+        PlatformServices.Preferences.Remove(AppPreferenceKeys.UserIsLogged);
+        PlatformServices.Preferences.Remove(AppPreferenceKeys.UserSubUntil);
+        PlatformServices.Preferences.Remove(AppPreferenceKeys.UserBalanceSec);
+        _ = PlatformServices.SecureStorage.Remove(AppPreferenceKeys.UserPassword);
+        _ = PlatformServices.SecureStorage.Remove(AppPreferenceKeys.UserJwt);
+        _ = PlatformServices.SecureStorage.Remove(AppPreferenceKeys.UserVpnConfig);
     }
 }

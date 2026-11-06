@@ -5,13 +5,14 @@ namespace obxodka.Client.Tests.Protocols;
 public class DisconnectProtocolTests
 {
     [Fact]
-    public void IsDisconnectPayloadIdentifiesDisconnectMarker()
+    public void ObxodkaFramingEncodesAndDecodesDisconnectCommand()
     {
-        ReadOnlySpan<byte> discMarker = [0xAA, 0xBB, 0xCC, 0xDD];
-        Assert.True(Obfuscator.IsDisconnectPayload(discMarker));
-
-        ReadOnlySpan<byte> normalPacket = [0x45, 0x00, 0x00, 0x3C];
-        Assert.False(Obfuscator.IsDisconnectPayload(normalPacket));
+        var frame = ObxodkaFraming.Pack(ObxodkaFraming.CmdDisconnect, ReadOnlySpan<byte>.Empty, out var totalLen);
+        Assert.True(ObxodkaFraming.TryDecodeHeader(frame.AsSpan(0, ObxodkaFraming.HeaderSize), out var decodedTotal, out var decodedPayload, out var cmd, out _));
+        Assert.Equal(ObxodkaFraming.CmdDisconnect, cmd);
+        Assert.Equal(0, decodedPayload);
+        Assert.Equal(totalLen, decodedTotal);
+        ArrayPool<byte>.Shared.Return(frame);
     }
 
     [Theory]

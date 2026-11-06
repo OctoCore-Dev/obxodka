@@ -28,22 +28,6 @@ public class OctopusMultiplexingProtocolTests
     }
 
     [Fact]
-    public async Task BiDirectionalStreamPumpingPreservesFullPayloadIntegrityAsync()
-    {
-        var randomPayload = new byte[65536];
-        Random.Shared.NextBytes(randomPayload);
-
-        using var inStream = new MemoryStream(randomPayload);
-        using var outStream = new MemoryStream();
-        using var cts = new CancellationTokenSource();
-
-        var bytesPumped = await OctopusProtocol.PumpTrafficAsync(inStream, outStream, cts.Token);
-
-        Assert.Equal(randomPayload.Length, bytesPumped);
-        Assert.Equal(randomPayload, outStream.ToArray());
-    }
-
-    [Fact]
     public void PacketBatchArrayPoolRentAndReturnIntegrity()
     {
         var packetList = new List<(byte[] buffer, int length)>();

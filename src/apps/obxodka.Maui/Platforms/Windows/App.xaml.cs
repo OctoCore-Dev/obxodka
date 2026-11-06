@@ -1,28 +1,25 @@
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
-using Microsoft.Maui;
-using Microsoft.Maui.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
-using obxodka.Client.Platforms;
 
 namespace obxodka.WinUI;
 
+//точка входа winui 3 приложения с поддержкой single instance и маршрутизацией активации окна
 [SupportedOSPlatform("windows10.0.19041.0")]
 public sealed partial class App : MauiWinUIApplication
 {
     [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetForegroundWindow(IntPtr hWnd);
 
     public App()
     {
+        //регистрация единственного экземпляра приложения для исключения сетевых конфликтов
         var mainInstance = AppInstance.FindOrRegisterForKey("obxodka_main_instance");
         if (!mainInstance.IsCurrent)
         {
@@ -43,6 +40,7 @@ public sealed partial class App : MauiWinUIApplication
         UnhandledException += App_UnhandledException;
     }
 
+    //восстановление и подъем окна на передний план при повторном запуске или клике на уведомление
     private static void OnAppActivated(object? sender, AppActivationArguments args)
     {
         if (obxodka.App.MainWindowHandle != IntPtr.Zero)
@@ -76,7 +74,7 @@ public sealed partial class App : MauiWinUIApplication
                 }
             }
             else if (args.Kind == ExtendedActivationKind.Launch &&
-                     args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs)
+                    args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs)
             {
                 if (launchArgs.Arguments.Contains("reconnect") || launchArgs.Arguments.Contains("ToastActivated"))
                 {
@@ -100,20 +98,12 @@ public sealed partial class App : MauiWinUIApplication
         catch { }
     }
 
+    //глобальный перехват необработанных исключений пользовательского интерфейса
     private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         try
         {
-#if DEBUG
-            var logPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Obxodka",
-                "unhandled.log");
-
-            _ = Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            var logEntry = $"[{DateTime.UtcNow:O}] {e.Exception}{Environment.NewLine}{Environment.NewLine}";
-            File.AppendAllText(logPath, logEntry);
-#endif
+            AppLogger.LogError($"[WINUI UNHANDLED] {e.Exception.Message}", e.Exception);
             e.Handled = true;
         }
         catch { }

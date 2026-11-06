@@ -1,9 +1,12 @@
 namespace obxodka.Client.Tests.Security;
 
+[Collection("DnsAdBlocker")]
 [Trait("Category", "Security")]
 [Trait("Category", "Unit")]
 public class LeakPreventionTests
 {
+    public LeakPreventionTests() => DnsAdBlocker.ResetToDefaults();
+
     private static byte[] CreateDnsQueryPacket(string domain)
     {
         var packet = new byte[20 + 8 + 12 + domain.Length + 2 + 4];

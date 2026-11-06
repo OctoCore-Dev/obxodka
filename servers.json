@@ -1,6 +1,6 @@
 [
   {
-    "Ip": "obx://AB8+XXybuqj+Fyc=",
+    "Ip": "obx://Dg0vHHeTr+nyFjBVKJm2yw==",
     "Port": 443,
     "Location": "Швеция, Стокгольм (Cloudflare)",
     "IsOnline": true,
@@ -33,16 +33,5 @@
     "Provider": "Vultr",
     "Flag": "SE",
     "Role": "main"
-  },
-  {
-    "Ip": "obx://WE1oASze6bKnV3cD",
-    "Port": 443,
-    "Location": "Польша, Варшава",
-    "IsOnline": true,
-    "LoadPercent": 8,
-    "CertHash": "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=",
-    "Provider": "Vultr",
-    "Flag": "PL",
-    "Role": "worker"
   }
 ]

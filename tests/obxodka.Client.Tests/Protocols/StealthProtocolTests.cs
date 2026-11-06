@@ -1,3 +1,4 @@
+using obxodka.Shared.Stealth.ClientHello;
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocol")]
@@ -28,7 +29,7 @@ public sealed class StealthProtocolTests
         pureTcpAck[20 + 12] = 0x50;
         pureTcpAck[20 + 13] = 0x10;
 
-        PacketRouter.GetRays(pureTcpAck, pureTcpAck.Length, activeRays, out var primaryRay, out var secondaryRay);
+        PacketRouter.GetRays(pureTcpAck.AsSpan(), activeRays, out var primaryRay, out var secondaryRay);
 
         Assert.InRange(primaryRay, 0, activeRays - 1);
         Assert.Equal(-1, secondaryRay);
@@ -37,7 +38,7 @@ public sealed class StealthProtocolTests
         Array.Copy(pureTcpAck, tcpData, 40);
         BinaryPrimitives.WriteUInt16BigEndian(tcpData.AsSpan(2, 2), 1420);
 
-        PacketRouter.GetRays(tcpData, tcpData.Length, activeRays, out var primData, out var secData);
+        PacketRouter.GetRays(tcpData.AsSpan(), activeRays, out var primData, out var secData);
         Assert.InRange(primData, 0, activeRays - 1);
         Assert.Equal(-1, secData);
     }
@@ -60,7 +61,7 @@ public sealed class StealthProtocolTests
         BinaryPrimitives.WriteUInt16BigEndian(smallUdp.AsSpan(20, 2), 53443);
         BinaryPrimitives.WriteUInt16BigEndian(smallUdp.AsSpan(22, 2), 53);
 
-        PacketRouter.GetRays(smallUdp, smallUdp.Length, 2, out var primaryRay, out var secondaryRay);
+        PacketRouter.GetRays(smallUdp.AsSpan(), 2, out var primaryRay, out var secondaryRay);
 
         Assert.InRange(primaryRay, 0, 1);
         Assert.InRange(secondaryRay, 0, 1);
@@ -79,7 +80,7 @@ public sealed class StealthProtocolTests
         icmpPkt[18] = 8;
         icmpPkt[19] = 8;
 
-        PacketRouter.GetRays(icmpPkt, icmpPkt.Length, 2, out var icmpPrim, out var icmpSec);
+        PacketRouter.GetRays(icmpPkt.AsSpan(), 2, out var icmpPrim, out var icmpSec);
         Assert.InRange(icmpPrim, 0, 1);
         Assert.InRange(icmpSec, 0, 1);
         Assert.NotEqual(icmpPrim, icmpSec);
@@ -93,7 +94,7 @@ public sealed class StealthProtocolTests
         largeUdp[9] = 17;
         BinaryPrimitives.WriteUInt16BigEndian(largeUdp.AsSpan(2, 2), 1200);
 
-        PacketRouter.GetRays(largeUdp, largeUdp.Length, 2, out var primaryRay, out var secondaryRay);
+        PacketRouter.GetRays(largeUdp.AsSpan(), 2, out var primaryRay, out var secondaryRay);
         Assert.InRange(primaryRay, 0, 1);
         Assert.Equal(-1, secondaryRay);
     }
@@ -123,8 +124,8 @@ public sealed class StealthProtocolTests
         tcpAck[20 + 12] = 0x50;
         tcpAck[20 + 13] = 0x10;
 
-        var first = deduplicator.IsDuplicate(tcpAck, tcpAck.Length);
-        var second = deduplicator.IsDuplicate(tcpAck, tcpAck.Length);
+        var first = deduplicator.IsDuplicate(tcpAck.AsSpan());
+        var second = deduplicator.IsDuplicate(tcpAck.AsSpan());
 
         Assert.False(first);
         Assert.True(second);
@@ -158,8 +159,8 @@ public sealed class StealthProtocolTests
         var tcpAck2 = (byte[])tcpAck1.Clone();
         BinaryPrimitives.WriteUInt32BigEndian(tcpAck2.AsSpan(28, 4), 2002060);
 
-        var first = deduplicator.IsDuplicate(tcpAck1, tcpAck1.Length);
-        var second = deduplicator.IsDuplicate(tcpAck2, tcpAck2.Length);
+        var first = deduplicator.IsDuplicate(tcpAck1.AsSpan());
+        var second = deduplicator.IsDuplicate(tcpAck2.AsSpan());
 
         Assert.False(first);
         Assert.False(second);
@@ -188,8 +189,8 @@ public sealed class StealthProtocolTests
         var ray1Packet = (byte[])ray0Packet.Clone();
         ray1Packet[8] = 62;
 
-        var first = deduplicator.IsDuplicate(ray0Packet, ray0Packet.Length);
-        var second = deduplicator.IsDuplicate(ray1Packet, ray1Packet.Length);
+        var first = deduplicator.IsDuplicate(ray0Packet.AsSpan());
+        var second = deduplicator.IsDuplicate(ray1Packet.AsSpan());
 
         Assert.False(first);
         Assert.True(second);
@@ -206,7 +207,6 @@ public sealed class StealthProtocolTests
         BinaryPrimitives.WriteUInt16BigEndian(bulkTcp.AsSpan(2, 2), 1400);
         bulkTcp[20 + 12] = 0x50;
         bulkTcp[20 + 13] = 0x18;
-        var obfuscatedBulk = Obfuscator.Pack(bulkTcp, bulkTcp.Length, out var bulkLen);
 
         var pureAck = new byte[40];
         pureAck[0] = 0x45;
@@ -214,32 +214,23 @@ public sealed class StealthProtocolTests
         BinaryPrimitives.WriteUInt16BigEndian(pureAck.AsSpan(2, 2), 40);
         pureAck[20 + 12] = 0x50;
         pureAck[20 + 13] = 0x10;
-        var obfuscatedAck = Obfuscator.Pack(pureAck, pureAck.Length, out var ackLen);
 
-        Span<byte> pingProbe = stackalloc byte[9];
+        var pingProbe = new byte[9];
         pingProbe[0] = 0x99;
-        BinaryPrimitives.WriteInt64LittleEndian(pingProbe.Slice(1, 8), Stopwatch.GetTimestamp());
-        var obfuscatedPing = Obfuscator.Pack(pingProbe, out var pingLen);
+        BinaryPrimitives.WriteInt64LittleEndian(pingProbe.AsSpan(1, 8), Stopwatch.GetTimestamp());
 
-        Assert.True(queue.TryEnqueue(obfuscatedBulk, bulkLen));
-        Assert.True(queue.TryEnqueue(obfuscatedAck, ackLen));
-        Assert.True(queue.TryEnqueue(obfuscatedPing, pingLen));
+        Assert.True(queue.TryEnqueue(bulkTcp, bulkTcp.Length));
+        Assert.True(queue.TryEnqueue(pureAck, pureAck.Length));
+        Assert.True(queue.TryEnqueue(pingProbe, pingProbe.Length));
 
         Assert.True(queue.TryDequeue(out var firstOut));
-        Assert.True(Obfuscator.TryDecodeLengths(firstOut.buffer.AsSpan(0, 8), out _, out var firstLen));
-        Assert.True(firstLen <= 40);
+        Assert.True(firstOut.length <= 40);
 
         Assert.True(queue.TryDequeue(out var secondOut));
-        Assert.True(Obfuscator.TryDecodeLengths(secondOut.buffer.AsSpan(0, 8), out _, out var secondLen));
-        Assert.True(secondLen <= 40);
+        Assert.True(secondOut.length <= 40);
 
         Assert.True(queue.TryDequeue(out var thirdOut));
-        Assert.True(Obfuscator.TryDecodeLengths(thirdOut.buffer.AsSpan(0, 8), out _, out var thirdLen));
-        Assert.Equal(1400, thirdLen);
-
-        ArrayPool<byte>.Shared.Return(firstOut.buffer);
-        ArrayPool<byte>.Shared.Return(secondOut.buffer);
-        ArrayPool<byte>.Shared.Return(thirdOut.buffer);
+        Assert.Equal(1400, thirdOut.length);
     }
 
     [Fact]
@@ -253,16 +244,14 @@ public sealed class StealthProtocolTests
             bulk[0] = 0x45;
             bulk[9] = 6;
             BinaryPrimitives.WriteUInt16BigEndian(bulk.AsSpan(2, 2), 1200);
-            var packed = Obfuscator.Pack(bulk, bulk.Length, out var len);
-            _ = queue.TryEnqueue(packed, len);
+            _ = queue.TryEnqueue(bulk, bulk.Length);
         }
 
         for (var i = 0; i < 30; i++)
         {
             var ping = new byte[9];
             ping[0] = 0x99;
-            var packed = Obfuscator.Pack(ping, ping.Length, out var len);
-            _ = queue.TryEnqueue(packed, len);
+            _ = queue.TryEnqueue(ping, ping.Length);
         }
 
         var lowPriorityFound = false;
@@ -270,17 +259,16 @@ public sealed class StealthProtocolTests
         {
             if (queue.TryDequeue(out var item))
             {
-                _ = Obfuscator.TryDecodeLengths(item.buffer.AsSpan(0, 8), out _, out var realLen);
-                if (realLen == 1200)
+                if (item.length == 1200)
                 {
                     lowPriorityFound = true;
                 }
-                ArrayPool<byte>.Shared.Return(item.buffer);
             }
         }
 
         Assert.True(lowPriorityFound);
     }
+
 
     [Fact]
     public void PriorityPacketQueueDrainAndReturnEmptiesAllQueuesAndResetsSemaphore()
@@ -405,15 +393,80 @@ public sealed class StealthProtocolTests
     }
 
     [Fact]
+    public void FirefoxHelloGeneratesValidTlsRecordWithoutGrease()
+    {
+        var sni = "mozilla.org"u8;
+        var hello = FirefoxHello.Build(sni);
+
+        Assert.NotNull(hello);
+        Assert.True(hello.Length >= 100);
+        Assert.Equal(0x16, hello[0]);
+        Assert.Equal(0x03, hello[1]);
+        Assert.Equal(0x01, hello[2]);
+
+        var recordLength = BinaryPrimitives.ReadUInt16BigEndian(hello.AsSpan(3, 2));
+        Assert.Equal(hello.Length - 5, recordLength);
+        Assert.Equal(0x01, hello[5]);
+    }
+
+    [Fact]
+    public void SafariHelloGeneratesValidTlsRecord()
+    {
+        var sni = "apple.com"u8;
+        var hello = SafariHello.Build(sni, isMobile: true);
+
+        Assert.NotNull(hello);
+        Assert.True(hello.Length >= 100);
+        Assert.Equal(0x16, hello[0]);
+        Assert.Equal(0x03, hello[1]);
+        Assert.Equal(0x01, hello[2]);
+
+        var recordLength = BinaryPrimitives.ReadUInt16BigEndian(hello.AsSpan(3, 2));
+        Assert.Equal(hello.Length - 5, recordLength);
+        Assert.Equal(0x01, hello[5]);
+    }
+
+    [Fact]
+    public void ChromePostQuantumGeneratesLargerClientHello()
+    {
+        var sni = "google.com"u8;
+        var classicalHello = ChromiumHello.Build(sni, isPostQuantum: false);
+        var pqHello = ChromiumHello.Build(sni, isPostQuantum: true);
+
+        Assert.True(pqHello.Length > classicalHello.Length);
+        Assert.True(pqHello.Length >= 1300);
+    }
+
+    [Fact]
+    public void RoutingHelloCyclesThroughAllProfilesCorrectly()
+    {
+        var sni = "obxodka.one"u8;
+        var profiles = new List<TlsBrowserProfile>();
+
+        for (var i = 0; i < 6; i++)
+        {
+            var hello = RoutingHello.GetNextHello(sni, i, out var usedProfile);
+            Assert.NotNull(hello);
+            Assert.Equal(0x16, hello[0]);
+            profiles.Add(usedProfile);
+        }
+
+        Assert.Contains(TlsBrowserProfile.Chrome, profiles);
+        Assert.Contains(TlsBrowserProfile.Yandex, profiles);
+        Assert.Contains(TlsBrowserProfile.Firefox, profiles);
+        Assert.Contains(TlsBrowserProfile.SafariIos, profiles);
+    }
+
+    [Fact]
     public void ObxodkaFramingCalculatePaddingLengthZeroOverheadForBulkPackets()
     {
         for (var i = 0; i < 50; i++)
         {
-            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(700));
-            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(1100));
-            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(1420));
-            Assert.InRange(ObxodkaFraming.CalculatePaddingLength(64), 8, 64);
-            Assert.InRange(ObxodkaFraming.CalculatePaddingLength(400), 8, 40);
+            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(ObxodkaFraming.CmdData, 700));
+            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(ObxodkaFraming.CmdData, 1100));
+            Assert.Equal(0, ObxodkaFraming.CalculatePaddingLength(ObxodkaFraming.CmdData, 1420));
+            Assert.InRange(ObxodkaFraming.CalculatePaddingLength(ObxodkaFraming.CmdData, 64), 8, 64);
+            Assert.InRange(ObxodkaFraming.CalculatePaddingLength(ObxodkaFraming.CmdData, 400), 8, 40);
         }
     }
     [Fact]
@@ -434,11 +487,12 @@ public sealed class StealthProtocolTests
     }
 
     [Fact]
-    public void RayInspectorFailoverMaintainsHedgingOnRay2()
+    public void RayInspectorNeverRoutesUserDataToInspectorRay2()
     {
         var inspector = new obxodka.Core.Transports.RayInspector();
         var now = Stopwatch.GetTimestamp();
 
+        // Ray 0 мертв (молчал 5 секунд), Ray 1 жив, Ray 2 (инспектор) жив
         inspector.RecordRx(0, now - (long)(Stopwatch.Frequency * 5.0));
         inspector.RecordRx(1, now - (long)(Stopwatch.Frequency * 0.1));
         inspector.RecordRx(2, now - (long)(Stopwatch.Frequency * 0.1));
@@ -452,11 +506,13 @@ public sealed class StealthProtocolTests
             out var duplicateRay);
 
         Assert.Equal(1, primaryRay);
-        Assert.Equal(2, duplicateRay);
+        // ВАЖНО: Ray 2 - это Control Plane! Он не должен принимать пользовательские данные,
+        // поэтому дублировать некуда (второй рабочий Data-луч Ray 0 мертв -> duplicateRay == -1):
+        Assert.Equal(-1, duplicateRay);
     }
 
     [Fact]
-    public void PacketRouterThreeRaysRoutesGamingUdpToRay2()
+    public void PacketRouterThreeRaysRoutesGamingUdpBetweenDataRays()
     {
         var robloxUdp = new byte[800];
         robloxUdp[0] = 0x45;
@@ -465,9 +521,10 @@ public sealed class StealthProtocolTests
         BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(20, 2), 54321);
         BinaryPrimitives.WriteUInt16BigEndian(robloxUdp.AsSpan(22, 2), 59123);
 
-        PacketRouter.GetRays(robloxUdp, robloxUdp.Length, 3, out var primaryRay, out var secondaryRay);
+        PacketRouter.GetRays(robloxUdp.AsSpan(), 3, out var primaryRay, out var secondaryRay);
         Assert.Equal(0, primaryRay);
-        Assert.Equal(2, secondaryRay);
+        // Хеджирование идет строго во второй рабочий Data-луч (Ray 1), но НИКОГДА в инспектор Ray 2:
+        Assert.Equal(1, secondaryRay);
     }
 
     [Fact]
@@ -558,8 +615,8 @@ public sealed class StealthProtocolTests
         var ray2Dup = (byte[])robloxUdp.Clone();
         ray2Dup[8] = 58;
 
-        var first = deduplicator.IsDuplicate(ray0Dup, ray0Dup.Length);
-        var second = deduplicator.IsDuplicate(ray2Dup, ray2Dup.Length);
+        var first = deduplicator.IsDuplicate(ray0Dup.AsSpan());
+        var second = deduplicator.IsDuplicate(ray2Dup.AsSpan());
 
         Assert.False(first);
         Assert.True(second);
@@ -600,10 +657,250 @@ public sealed class StealthProtocolTests
             packet2[i] = 0xBB;
         }
 
-        var first = deduplicator.IsDuplicate(packet1, packet1.Length);
-        var second = deduplicator.IsDuplicate(packet2, packet2.Length);
+        var first = deduplicator.IsDuplicate(packet1.AsSpan());
+        var second = deduplicator.IsDuplicate(packet2.AsSpan());
 
         Assert.False(first);
         Assert.False(second);
+    }
+
+    [Theory]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0", null, TlsBrowserProfile.Edge)]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 YaBrowser/25.2.0.0 Safari/537.36", null, TlsBrowserProfile.Yandex)]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/116.0.0.0", null, TlsBrowserProfile.Opera)]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0", null, TlsBrowserProfile.Firefox)]
+    [InlineData("Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1", null, TlsBrowserProfile.SafariIos)]
+    [InlineData("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15", null, TlsBrowserProfile.SafariMac)]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36", null, TlsBrowserProfile.Chrome)]
+    [InlineData("CustomAgent/1.0", "\"Microsoft Edge\";v=\"133\"", TlsBrowserProfile.Edge)]
+    [InlineData("CustomAgent/1.0", "\"Opera\";v=\"116\"", TlsBrowserProfile.Opera)]
+    public void DetectProfileIdentifiesBrowserCorrectly(string? userAgent, string? secChUa, TlsBrowserProfile expectedProfile)
+    {
+        var detected = RoutingHello.DetectProfile(userAgent, secChUa);
+        Assert.Equal(expectedProfile, detected);
+    }
+
+    [Theory]
+    [InlineData(TlsBrowserProfile.Edge, "Microsoft-IIS/10.0", "X-MSEdge-Ref")]
+    [InlineData(TlsBrowserProfile.Yandex, "nginx", "X-Yandex-Req-Id")]
+    [InlineData(TlsBrowserProfile.Opera, "cloudflare", "Alt-Svc")]
+    [InlineData(TlsBrowserProfile.Firefox, "nginx", null)]
+    [InlineData(TlsBrowserProfile.SafariIos, "Apple", "x-apple-orig-url")]
+    [InlineData(TlsBrowserProfile.SafariMac, "Apple", "x-apple-orig-url")]
+    [InlineData(TlsBrowserProfile.Chrome, "gws", "Alt-Svc")]
+    public void GetServerResponseHeadersMatchesDetectedBrowser(TlsBrowserProfile profile, string expectedServer, string? expectedCustomHeader)
+    {
+        var headers = RoutingHello.GetServerResponseHeaders(profile);
+        Assert.Contains(headers, h => h.Key == "Server" && h.Value == expectedServer);
+
+        if (expectedCustomHeader is not null)
+        {
+            Assert.Contains(headers, h => h.Key.Equals(expectedCustomHeader, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Никаких Accept-CH для Firefox и Safari!
+        if (profile is TlsBrowserProfile.Firefox or TlsBrowserProfile.SafariIos or TlsBrowserProfile.SafariMac)
+        {
+            Assert.DoesNotContain(headers, h => h.Key.Equals("Accept-CH", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    [Theory]
+    [InlineData(TlsBrowserProfile.Edge, "EdgeHTML")]
+    [InlineData(TlsBrowserProfile.Yandex, "YaBrowser")]
+    [InlineData(TlsBrowserProfile.Opera, "118.0.0.0")]
+    [InlineData(TlsBrowserProfile.Firefox, "Gecko")]
+    [InlineData(TlsBrowserProfile.SafariIos, "WebKit")]
+    [InlineData(TlsBrowserProfile.SafariMac, "WebKit")]
+    [InlineData(TlsBrowserProfile.Chrome, "133.0")]
+    public void GetDecoyJsonResponseMatchesDetectedBrowser(TlsBrowserProfile profile, string expectedSubstring)
+    {
+        var json = RoutingHello.GetDecoyJsonResponse(profile);
+        Assert.Contains(expectedSubstring, json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ApplyBrowserHeadersSetsExpectedHeadersAndClientHints()
+    {
+        using var reqChrome = new HttpRequestMessage();
+        RoutingHello.ApplyBrowserHeaders(reqChrome, TlsBrowserProfile.Chrome);
+        Assert.True(reqChrome.Headers.Contains("User-Agent"));
+        Assert.True(reqChrome.Headers.Contains("sec-ch-ua"));
+
+        using var reqFirefox = new HttpRequestMessage();
+        RoutingHello.ApplyBrowserHeaders(reqFirefox, TlsBrowserProfile.Firefox);
+        Assert.True(reqFirefox.Headers.Contains("User-Agent"));
+        Assert.False(reqFirefox.Headers.Contains("sec-ch-ua")); // Firefox не отправляет sec-ch-ua
+
+        using var reqSafari = new HttpRequestMessage();
+        RoutingHello.ApplyBrowserHeaders(reqSafari, TlsBrowserProfile.SafariMac);
+        Assert.True(reqSafari.Headers.Contains("User-Agent"));
+        Assert.False(reqSafari.Headers.Contains("sec-ch-ua")); // Safari не отправляет sec-ch-ua
+    }
+
+    [Fact]
+    public void GetProfileForAttemptRotatesProfilesSequentially()
+    {
+        var p0 = RoutingHello.GetProfileForAttempt(0);
+        var p1 = RoutingHello.GetProfileForAttempt(1);
+        var p2 = RoutingHello.GetProfileForAttempt(2);
+        var p3 = RoutingHello.GetProfileForAttempt(3);
+        var p4 = RoutingHello.GetProfileForAttempt(4);
+        var p5 = RoutingHello.GetProfileForAttempt(5);
+
+        Assert.Equal(TlsBrowserProfile.Chrome, p0);
+        Assert.Equal(TlsBrowserProfile.Yandex, p1);
+        Assert.Equal(TlsBrowserProfile.Firefox, p2);
+        Assert.Equal(TlsBrowserProfile.SafariIos, p3);
+        Assert.Equal(TlsBrowserProfile.Edge, p4);
+        Assert.Equal(TlsBrowserProfile.ChromePostQuantum, p5);
+    }
+
+    [Fact]
+    public void TryFindSniMidsldOffsetLocatesMiddleOfSecondLevelDomain()
+    {
+        var sni = Encoding.UTF8.GetBytes("vpn.obxodka.one");
+        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+
+        var found = DpiBypassStream.TryFindSniMidsldOffset(hello, out var splitOffset);
+        Assert.True(found);
+        Assert.True(splitOffset > 43);
+        Assert.True(splitOffset < hello.Length);
+
+        //проверяем что срез попадает внутрь доменного имени obxodka
+        var helloStr = Encoding.Latin1.GetString(hello);
+        var sniIndex = helloStr.IndexOf("vpn.obxodka.one", StringComparison.Ordinal);
+        Assert.True(sniIndex >= 0);
+        var obxodkaStart = sniIndex + 4;
+        var obxodkaEnd = obxodkaStart + 7;
+        Assert.True(splitOffset >= obxodkaStart && splitOffset <= obxodkaEnd);
+    }
+
+    [Fact]
+    public async Task DpiBypassStreamSplitsClientHelloAtMidsldInPureL4ModeAsync()
+    {
+        var sni = Encoding.UTF8.GetBytes("obxodka.one");
+        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+
+        var underlying = new TestRecordingStream();
+        await using var dpiStream = new DpiBypassStream(underlying, delayMs: 1)
+        {
+            Mode = DpiBypassMode.PureL4Midsld
+        };
+
+        await dpiStream.WriteAsync(hello);
+
+        Assert.Equal(2, underlying.Writes.Count);
+        var slice1 = underlying.Writes[0];
+        var slice2 = underlying.Writes[1];
+        Assert.Equal(hello.Length, slice1.Length + slice2.Length);
+
+        var reassembled = new byte[hello.Length];
+        Buffer.BlockCopy(slice1, 0, reassembled, 0, slice1.Length);
+        Buffer.BlockCopy(slice2, 0, reassembled, slice1.Length, slice2.Length);
+        Assert.Equal(hello, reassembled);
+
+        var dummy = new byte[] { 1, 2, 3, 4, 5 };
+        await dpiStream.WriteAsync(dummy);
+        Assert.Equal(3, underlying.Writes.Count);
+        Assert.Equal(dummy, underlying.Writes[2]);
+    }
+
+    [Fact]
+    public async Task DpiBypassStreamSplitsClientHelloIntoTwoValidRecordsInTlsRecordModeAsync()
+    {
+        var sni = Encoding.UTF8.GetBytes("obxodka.one");
+        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+
+        var underlying = new TestRecordingStream();
+        await using var dpiStream = new DpiBypassStream(underlying, delayMs: 1)
+        {
+            Mode = DpiBypassMode.TlsRecordMidsld
+        };
+
+        await dpiStream.WriteAsync(hello);
+
+        Assert.Equal(2, underlying.Writes.Count);
+        var rec1 = underlying.Writes[0];
+        var rec2 = underlying.Writes[1];
+
+        Assert.Equal(0x16, rec1[0]);
+        Assert.Equal(0x03, rec1[1]);
+        Assert.Equal(0x16, rec2[0]);
+        Assert.Equal(0x03, rec2[1]);
+
+        var payload1 = rec1.AsSpan(5);
+        var payload2 = rec2.AsSpan(5);
+        Assert.Equal(hello.Length - 5, payload1.Length + payload2.Length);
+
+        var reassembledPayload = new byte[payload1.Length + payload2.Length];
+        payload1.CopyTo(reassembledPayload.AsSpan(0, payload1.Length));
+        payload2.CopyTo(reassembledPayload.AsSpan(payload1.Length));
+        Assert.Equal(hello.AsSpan(5).ToArray(), reassembledPayload);
+    }
+
+    [Fact]
+    public void SniEngineFiltersInternalBrandHostAndBuildsCandidates()
+    {
+        Assert.True(SniEngine.IsInternalBrandHost("vpn.obxodka.one"));
+        Assert.True(SniEngine.IsInternalBrandHost("node.octocore.net"));
+        Assert.False(SniEngine.IsInternalBrandHost("login.live.com"));
+
+        var candidates = SniEngine.BuildStreamCandidates("70.34.201.253", 443, "vpn.obxodka.one");
+        Assert.NotEmpty(candidates);
+        Assert.All(candidates, c => Assert.False(SniEngine.IsInternalBrandHost(c.TargetHost)));
+    }
+
+    [Fact]
+    public void SniEngineStreamRouteAndSliceWindowReturnRealisticValues()
+    {
+        var route0 = SniEngine.GetStreamRoute(0, 1, out var mime0);
+        var route1 = SniEngine.GetStreamRoute(0, 2, out var mime1);
+        Assert.NotEqual(route0, route1);
+        Assert.False(string.IsNullOrWhiteSpace(mime0));
+        Assert.False(string.IsNullOrWhiteSpace(mime1));
+        Assert.NotEqual("application/octet-stream", mime0);
+        Assert.NotEqual("application/octet-stream", RoutingHello.GetStreamResponseContentType(route0));
+
+        SniEngine.CalculateStreamSliceWindow(0, out var maxTicks0, out var maxBytes0);
+        SniEngine.CalculateStreamSliceWindow(1, out var maxTicks1, out var maxBytes1);
+        Assert.True(maxTicks0 > 0);
+        Assert.True(maxTicks1 > maxTicks0 / 2);
+        Assert.InRange(maxBytes0, 24L * 1024 * 1024, 64L * 1024 * 1024);
+        Assert.InRange(maxBytes1, 32L * 1024 * 1024, 64L * 1024 * 1024);
+    }
+
+    private sealed class TestRecordingStream : Stream
+    {
+        public List<byte[]> Writes { get; } = [];
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => 0;
+        public override long Position { get; set; }
+
+        public override void Flush() { }
+
+        public override int Read(byte[] buffer, int offset, int count) => 0;
+
+        public override long Seek(long offset, SeekOrigin origin) => 0;
+
+        public override void SetLength(long value) { }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            var copy = new byte[count];
+            Buffer.BlockCopy(buffer, offset, copy, 0, count);
+            Writes.Add(copy);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer) => Writes.Add(buffer.ToArray());
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Writes.Add(buffer.ToArray());
+            return ValueTask.CompletedTask;
+        }
     }
 }

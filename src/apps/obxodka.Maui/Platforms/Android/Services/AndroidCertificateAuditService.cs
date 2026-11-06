@@ -3,11 +3,12 @@ using Android.Provider;
 using Java.Security;
 using Javax.Net.Ssl;
 
-namespace obxodka.Maui.Platforms.Android.Services;
+namespace obxodka.Platforms.Android;
 
+//аудит системного и пользовательского хранилищ сертификатов android на наличие mitm-сертификатов
 public sealed class AndroidCertificateAuditService(Context context) : ICertificateAuditService
 {
-    private static readonly string[] t_suspiciousPatterns =
+    private static readonly string[] s_suspiciousPatterns =
     [
         "Russian Trusted",
         "Минцифры",
@@ -17,6 +18,7 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         "Министерство цифрового развития"
     ];
 
+    //проверка наличия подозрительных корневых сертификатов в keystore
     public Task<CertificateAuditResult> CheckCertificatesAsync()
     {
         try
@@ -40,7 +42,7 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
                         var issuer = x509.IssuerDN?.Name ?? string.Empty;
                         var subject = x509.SubjectDN?.Name ?? string.Empty;
 
-                        foreach (var pattern in t_suspiciousPatterns)
+                        foreach (var pattern in s_suspiciousPatterns)
                         {
                             if (issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
                                 subject.Contains(pattern, StringComparison.OrdinalIgnoreCase))
@@ -78,7 +80,7 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
                             var issuer = cert.IssuerDN?.Name ?? string.Empty;
                             var subject = cert.SubjectDN?.Name ?? string.Empty;
 
-                            foreach (var pattern in t_suspiciousPatterns)
+                            foreach (var pattern in s_suspiciousPatterns)
                             {
                                 if (issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
                                     subject.Contains(pattern, StringComparison.OrdinalIgnoreCase))
@@ -94,12 +96,13 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AndroidCertificateAuditService] Check error: {ex}");
+            AppLogger.LogError($"[AndroidCertificateAuditService] Check error: {ex.Message}", ex);
         }
 
         return Task.FromResult(new CertificateAuditResult(false, null, null, null));
     }
 
+    //извлечение имени общего сертификата из строки dn
     private static string? ExtractCommonName(string dn)
     {
         var parts = dn.Split(',');
@@ -114,11 +117,12 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         return null;
     }
 
+    //открытие системных настроек безопасности и хранилища сертификатов android
     public Task OpenCertificateSettingsAsync()
     {
         try
         {
-            var intent = new Intent("android.settings.CREDENTIAL_STORAGE");
+            using var intent = new Intent("android.settings.CREDENTIAL_STORAGE");
             _ = intent.AddFlags(ActivityFlags.NewTask);
             context.StartActivity(intent);
         }
@@ -126,18 +130,19 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         {
             try
             {
-                var fallbackIntent = new Intent(Settings.ActionSecuritySettings);
+                using var fallbackIntent = new Intent(Settings.ActionSecuritySettings);
                 _ = fallbackIntent.AddFlags(ActivityFlags.NewTask);
                 context.StartActivity(fallbackIntent);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[AndroidCertificateAuditService] Failed to open settings: {ex}");
+                AppLogger.LogError($"[AndroidCertificateAuditService] Failed to open settings: {ex.Message}", ex);
             }
         }
 
         return Task.CompletedTask;
     }
 
+    //удаление пользовательского сертификата на android программно ограничено системой безопасности
     public Task<bool> TryRemoveUserCertificateAsync(string thumbprint) => Task.FromResult(false);
 }

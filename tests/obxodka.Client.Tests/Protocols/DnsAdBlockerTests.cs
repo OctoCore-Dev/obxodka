@@ -1,6 +1,7 @@
 namespace obxodka.Client.Tests;
 
 [Trait("Category", "Unit")]
+[Collection("DnsAdBlocker")]
 public class DnsAdBlockerTests
 {
     public DnsAdBlockerTests() => DnsAdBlocker.ResetToDefaults();

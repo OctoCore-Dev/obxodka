@@ -38,7 +38,7 @@ dotnet workload install maui-windows maui-android
     ```powershell
     dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
     ```
-    _Все 320 тестов должны успешно проходить без ошибок и предупреждений._
+    _Все 389 тестов должны успешно проходить без ошибок и предупреждений._
 5. Убедитесь в чистоте кода:
     - **0 предупреждений компилятора (0 warnings, 0 errors)**.
     - Соблюдение правил архитектурной изоляции и Zero-Allocation в горячих путях обработки пакетов (`ArrayPool<byte>.Shared`).

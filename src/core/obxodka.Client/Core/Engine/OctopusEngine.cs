@@ -1,0 +1,222 @@
+namespace obxodka.Core;
+
+//главный координационный движок vpn клиента obxodka
+public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
+{
+    private static readonly Lazy<OctopusEngine> s_instance = new(
+        () => new OctopusEngine(),
+        LazyThreadSafetyMode.ExecutionAndPublication
+    );
+    //одиночный экземпляр движка
+    public static OctopusEngine Current => s_instance.Value;
+
+    [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
+    private IVpnTransport? _transport;
+    private X509Certificate2? _clientCert;
+    private CancellationTokenSource? _cts;
+    private Action<Socket>? _protectAction;
+
+    //динамический хэш открытого ключа ssl pinning
+    public static string? DynamicSslPublicKeyHash { get; set; }
+
+    //число активных лучей туннеля
+    public int ActiveRays { get; private set; } = 2;
+
+    //флаг активности соединения
+    public bool IsConnected => _transport is { IsConnected: true };
+
+    //выделенный сервером ipv4 адрес клиента
+    public string AssignedIp { get; private set; } = "10.8.0.2";
+
+    //выделенный сервером ipv6 адрес клиента
+    public string AssignedIpV6 { get; private set; } = "fd00::2";
+
+    //внешний wan ip адрес
+    public string? PublicWanIp { get; set; }
+
+    //событие приема сетевого пакета из туннеля
+    public event Action<byte[], int>? OnPacketReceived;
+    private event Action<byte[], int>? OnProbePacketInspect;
+
+    //событие обрыва соединения
+    public event Action? OnConnectionDropped;
+
+    //событие обнаружения зависшего блэкхол соединения
+    public event Action? OnDeadConnectionDetected;
+
+    //событие обновления статистики трафика
+    public event Action<long, long>? OnTrafficUpdated;
+
+    //событие обновления пинга
+    public event Action<long>? OnPingUpdated;
+
+    //событие отправки текстового статуса в ui
+    public event Action<string>? OnStatusMessage;
+
+    //событие изменения согласованного mtu
+    public event Action<int>? OnMtuUpdated;
+
+    //событие отзыва или устаревания клиентского сертификата
+    public static event Action<string>? OnCertificateRevoked;
+
+    //отправка статусного сообщения в ui и логгер
+    public void EmitStatus(string message)
+    {
+        OnStatusMessage?.Invoke(message);
+        AppLogger.Log(message);
+    }
+
+    private long _totalBytesSent;
+    private long _totalBytesReceived;
+
+    //всего отправлено байт через туннель
+    public long TotalBytesSent => Interlocked.Read(ref _totalBytesSent);
+
+    //всего принято байт через туннель
+    public long TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
+
+    //название текущего активного протокола
+    public string ActiveProtocol { get; private set; } = "AUTO";
+
+    //активное имя sni маскировки
+    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
+
+    //активный браузерный профиль маскировки tls (ssot)
+    public TlsBrowserProfile ActiveBrowserProfile =>
+        (_transport as ObxodkaStreamTransport)?.ActiveBrowserProfile ??
+        (_transport as ObxodkaWebSocketTransport)?.ActiveBrowserProfile ??
+        TlsBrowserProfile.Chrome;
+
+    //активный ip-адрес подключенного сервера (ssot)
+    public string? ConnectedServerIp { get; private set; }
+
+    //активный порт подключенного сервера (ssot)
+    public int ConnectedServerPort { get; private set; }
+
+    //активный целевой sni для маскировки tls
+    public string? ActiveTargetSni { get; private set; }
+
+    private long _largeTxPackets;
+    private long _largeRxPackets;
+    private double _smoothedPing;
+
+    //сброс счетчиков трафика и состояния монитора
+    public void ResetTrafficCounters()
+    {
+        _ = Interlocked.Exchange(ref _totalBytesSent, 0);
+        _ = Interlocked.Exchange(ref _totalBytesReceived, 0);
+        _ = Interlocked.Exchange(ref _largeTxPackets, 0);
+        _ = Interlocked.Exchange(ref _largeRxPackets, 0);
+        Volatile.Write(ref _watchdogArmedTicks, 0);
+        _smoothedPing = 0;
+    }
+
+    //обработка и сглаживание замера rtt пинга через фильтр экспоненциального скользящего среднего
+    private void ReportPing(long rawRtt)
+    {
+        if (rawRtt <= 0)
+        {
+            return;
+        }
+        _ = Interlocked.Add(ref _totalBytesReceived, 9);
+        if (_smoothedPing <= 0)
+        {
+            _smoothedPing = rawRtt;
+        }
+        else if (rawRtt < _smoothedPing)
+        {
+            var alpha = 0.55;
+            _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
+        }
+        else
+        {
+            var alpha = rawRtt > _smoothedPing * 1.5 ? 0.05 : 0.20;
+            _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
+        }
+        OnPingUpdated?.Invoke((long)Math.Round(_smoothedPing));
+    }
+
+    //отправка синтезированного управляющего l3 пакета (icmp pmtud) обратно в локальный tun адаптер ос
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void DeliverLocalPacket(byte[] packet, int length)
+    {
+        var handler = OnPacketReceived;
+        if (handler is not null)
+        {
+            handler.Invoke(packet, length);
+        }
+        else
+        {
+            ArrayPool<byte>.Shared.Return(packet);
+        }
+    }
+
+    //отправка пакета напрямую из пула памяти с контролем tcp mss, pmtud и фрагментацией под динамический mtu
+    public void SendPacketFromPool(byte[] inputBuf, int length)
+    {
+        var transport = _transport;
+        if (!IsConnected || transport is null || length < 20 || IsServerDestination(inputBuf.AsSpan(0, length), length))
+        {
+            ArrayPool<byte>.Shared.Return(inputBuf);
+            return;
+        }
+
+        var currentMtu = SmartMtuEngine.CurrentMtu;
+        var span = inputBuf.AsSpan(0, length);
+        SmartMtuEngine.ClampTcpMss(span, currentMtu);
+        _ = Interlocked.Add(ref _totalBytesSent, length);
+        if (length > SmartMtuEngine.DefaultMtu)
+        {
+            _ = Interlocked.Increment(ref _largeTxPackets);
+        }
+
+        //если исходящий пакет превышает согласованный mtu туннеля — уведомляем ос по icmp pmtud и нарезаем ipv4
+        if (length > currentMtu)
+        {
+            var version = inputBuf[0] >> 4;
+            if (version == 4)
+            {
+                var isDf = (inputBuf[6] & 0x40) != 0;
+                if (isDf && SmartMtuEngine.TryBuildIcmpFragmentationNeeded(span, length, currentMtu, out var icmpPkt, out var icmpLen))
+                {
+                    DeliverLocalPacket(icmpPkt, icmpLen);
+                }
+
+                if (SmartMtuEngine.TryFragmentIpv4(span, length, currentMtu, transport.SendPacketFromPool))
+                {
+                    ArrayPool<byte>.Shared.Return(inputBuf);
+                    return;
+                }
+            }
+            else if (version == 6)
+            {
+                if (SmartMtuEngine.TryBuildIcmpPacketTooBig(span, length, currentMtu, out var icmp6Pkt, out var icmp6Len))
+                {
+                    DeliverLocalPacket(icmp6Pkt, icmp6Len);
+                }
+            }
+        }
+
+        transport.SendPacketFromPool(inputBuf, length);
+    }
+
+    //асинхронная обертка отправки пакета из пула для совместимости
+    public Task SendPacketFromPoolAsync(byte[] inputBuf, int length)
+    {
+        SendPacketFromPool(inputBuf, length);
+        return Task.CompletedTask;
+    }
+
+    //асинхронная отправка пакета в туннель из массива
+    public Task SendPacketAsync(byte[] packet)
+    {
+        if (!IsConnected || _transport is null || packet.Length < 20 || IsServerDestination(packet.AsSpan(0, packet.Length), packet.Length))
+        {
+            return Task.CompletedTask;
+        }
+
+        var poolBuf = ArrayPool<byte>.Shared.Rent(packet.Length);
+        Buffer.BlockCopy(packet, 0, poolBuf, 0, packet.Length);
+        return SendPacketFromPoolAsync(poolBuf, packet.Length);
+    }
+}

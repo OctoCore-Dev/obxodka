@@ -2,13 +2,15 @@ namespace obxodka.Shared.Stealth;
 
 public sealed class PacketDeduplicator
 {
+    //массив для хранения хешей пакетов и их временных меток, используемый для обнаружения дубликатов пакетов. Размер кольца фиксирован и равен 32768, что позволяет эффективно использовать память и обеспечивать быстрый доступ к элементам.
     private const int RingSize = 32768;
     private const int RingMask = RingSize - 1;
-    private const ulong TimeMask = 0xFFFFFUL;
-    private const ulong MaxDuplicateAgeMs = 80UL;
+    private const ulong TimeMask = 0xFFFFFUL; //маска для извлечения временной метки из хеша пакета, которая позволяет хранить только младшие 20 битов времени, что обеспечивает достаточную точность для обнаружения дубликатов в пределах 80 миллисекунд.
+    private const ulong MaxDuplicateAgeMs = 80UL; //окно дедупликации в мл сек
 
     private readonly ulong[] _entries = new ulong[RingSize];
 
+    // IsDuplicate проверяет, является ли данный пакет дубликатом, используя хеширование и временные метки. Метод сначала проверяет длину пакета и его версию (IPv4 или IPv6), затем вычисляет хеш пакета с учетом определенных полей заголовка, которые могут изменяться между фрагментами. После этого метод проверяет, был ли пакет уже обработан в пределах окна дедупликации (80 миллисекунд) и возвращает true, если пакет является дубликатом, или false в противном случае.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsDuplicate(ReadOnlySpan<byte> packet)
     {
@@ -71,9 +73,7 @@ public sealed class PacketDeduplicator
         return false;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool IsDuplicate(byte[] packet, int length) => IsDuplicate(packet.AsSpan(0, length));
-
+    //читает память пачками по 8 байт и вычисляет хеш пакета, используя алгоритм FNV-1a. Метод также учитывает определенные поля заголовка IPv4 и IPv6, которые могут изменяться между фрагментами, чтобы обеспечить корректное сравнение пакетов. Хеширование выполняется быстро и эффективно, что позволяет обрабатывать большое количество пакетов в реальном времени.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong FastHash64(ReadOnlySpan<byte> packet, int version)
     {

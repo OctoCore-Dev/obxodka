@@ -1,5 +1,5 @@
-namespace obxodka.Maui.Platforms.Windows.Services;
-
+namespace obxodka.Platforms.Windows;
+//мониторинг состояния сетевого подключения windows и определение типа канала связи
 public sealed class WindowsConnectivityService : IConnectivityService
 {
     private EventHandler<AppConnectivityChangedEventArgs>? _connectivityChanged;
@@ -16,6 +16,7 @@ public sealed class WindowsConnectivityService : IConnectivityService
     private void RaiseConnectivityChanged() =>
         _connectivityChanged?.Invoke(this, new AppConnectivityChangedEventArgs(NetworkAccess, []));
 
+    //проверка наличия активного подключения к интернету исключая петлевые интерфейсы
     public AppNetworkAccess NetworkAccess
     {
         get
@@ -27,14 +28,14 @@ public sealed class WindowsConnectivityService : IConnectivityService
                     return AppNetworkAccess.None;
                 }
 
-                var profiles = NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(n => n.OperationalStatus == OperationalStatus.Up)
-                    .Select(n => new AppConnectionProfile(
-                        MapNetworkType(n.NetworkInterfaceType),
-                        AppNetworkAccess.Internet
-                    ));
+                var hasInternetUplink = NetworkInterface.GetAllNetworkInterfaces().Any(n =>
+                    n.OperationalStatus == OperationalStatus.Up &&
+                    n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                    n.NetworkInterfaceType != NetworkInterfaceType.Tunnel &&
+                    !n.Description.Contains("wintun", StringComparison.OrdinalIgnoreCase) &&
+                    !n.Description.Contains("obxodka", StringComparison.OrdinalIgnoreCase));
 
-                return profiles.Any() ? AppNetworkAccess.Internet : AppNetworkAccess.Local;
+                return hasInternetUplink ? AppNetworkAccess.Internet : AppNetworkAccess.Local;
             }
             catch
             {
@@ -49,54 +50,52 @@ public sealed class WindowsConnectivityService : IConnectivityService
         remove => _connectivityChanged -= value;
     }
 
+    //определение профиля активного физического адаптера ethernet wifi сотовая связь
     public Task<AppConnectionProfile> GetConnectionProfileAsync()
     {
-        var interfaces = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up)
-            .ToList();
-
-        if (interfaces.Count == 0)
+        try
         {
-            return Task.FromResult(new AppConnectionProfile(NetworkConnectionType.Unknown, AppNetworkAccess.None));
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up &&
+                            n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                            n.NetworkInterfaceType != NetworkInterfaceType.Tunnel &&
+                            !n.Description.Contains("wintun", StringComparison.OrdinalIgnoreCase) &&
+                            !n.Description.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (interfaces.Count == 0)
+            {
+                return Task.FromResult(new AppConnectionProfile(NetworkConnectionType.Unknown, AppNetworkAccess.None));
+            }
+
+            var primary = interfaces[0];
+            var connectionType = MapNetworkType(primary.NetworkInterfaceType);
+
+            return Task.FromResult(new AppConnectionProfile(connectionType, AppNetworkAccess.Internet));
         }
-
-        var primary = interfaces.First();
-        var connectionType = MapNetworkType(primary.NetworkInterfaceType);
-
-        return Task.FromResult(new AppConnectionProfile(connectionType, AppNetworkAccess.Internet));
+        catch
+        {
+            return Task.FromResult(new AppConnectionProfile(NetworkConnectionType.Unknown, AppNetworkAccess.Unknown));
+        }
     }
 
-    private static NetworkConnectionType MapNetworkType(NetworkInterfaceType type) =>
-        type switch
+    private static NetworkConnectionType MapNetworkType(NetworkInterfaceType type)
+    {
+#pragma warning disable IDE0072 // Add missing cases to switch expression
+        return type switch
         {
             NetworkInterfaceType.Wireless80211 => NetworkConnectionType.Wifi,
-            NetworkInterfaceType.Ethernet => NetworkConnectionType.Ethernet,
-            NetworkInterfaceType.GigabitEthernet => NetworkConnectionType.Ethernet,
-            NetworkInterfaceType.FastEthernetT => NetworkConnectionType.Ethernet,
-            NetworkInterfaceType.FastEthernetFx => NetworkConnectionType.Ethernet,
+            NetworkInterfaceType.Ethernet or
+            NetworkInterfaceType.GigabitEthernet or
+            NetworkInterfaceType.FastEthernetT or
+            NetworkInterfaceType.FastEthernetFx or
             NetworkInterfaceType.Ethernet3Megabit => NetworkConnectionType.Ethernet,
-            NetworkInterfaceType.Ppp => NetworkConnectionType.Cellular,
-            NetworkInterfaceType.Wwanpp => NetworkConnectionType.Cellular,
+            NetworkInterfaceType.Ppp or
+            NetworkInterfaceType.Wwanpp or
             NetworkInterfaceType.Wwanpp2 => NetworkConnectionType.Cellular,
             NetworkInterfaceType.Unknown => NetworkConnectionType.Unknown,
-            NetworkInterfaceType.TokenRing => NetworkConnectionType.Other,
-            NetworkInterfaceType.Fddi => NetworkConnectionType.Other,
-            NetworkInterfaceType.BasicIsdn => NetworkConnectionType.Other,
-            NetworkInterfaceType.PrimaryIsdn => NetworkConnectionType.Other,
-            NetworkInterfaceType.Loopback => NetworkConnectionType.Other,
-            NetworkInterfaceType.Slip => NetworkConnectionType.Other,
-            NetworkInterfaceType.Atm => NetworkConnectionType.Other,
-            NetworkInterfaceType.GenericModem => NetworkConnectionType.Other,
-            NetworkInterfaceType.Isdn => NetworkConnectionType.Other,
-            NetworkInterfaceType.AsymmetricDsl => NetworkConnectionType.Other,
-            NetworkInterfaceType.RateAdaptDsl => NetworkConnectionType.Other,
-            NetworkInterfaceType.SymmetricDsl => NetworkConnectionType.Other,
-            NetworkInterfaceType.VeryHighSpeedDsl => NetworkConnectionType.Other,
-            NetworkInterfaceType.IPOverAtm => NetworkConnectionType.Other,
-            NetworkInterfaceType.Tunnel => NetworkConnectionType.Other,
-            NetworkInterfaceType.MultiRateSymmetricDsl => NetworkConnectionType.Other,
-            NetworkInterfaceType.HighPerformanceSerialBus => NetworkConnectionType.Other,
-            NetworkInterfaceType.Wman => NetworkConnectionType.Other,
             _ => NetworkConnectionType.Other
         };
+#pragma warning restore IDE0072
+    }
 }

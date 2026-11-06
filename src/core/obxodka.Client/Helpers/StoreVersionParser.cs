@@ -1,5 +1,6 @@
 namespace obxodka.Helpers;
 
+//парсинг версий обновлений из google play github releases и microsoft store
 public static partial class StoreVersionParser
 {
     [GeneratedRegex(@"\[\[\[""(\d+\.\d+\.\d+)""\]\]")]
@@ -8,6 +9,10 @@ public static partial class StoreVersionParser
     [GeneratedRegex(@"\[\[\[""(\d+\.\d+\.\d+)""\]\].*?""145"":\[null,\[null,""([^""]+)""\]\]", RegexOptions.Singleline)]
     private static partial Regex GooglePlayWhatsNewRegex();
 
+    [GeneratedRegex(@"\b([a-fA-F0-9]{64})\s+(\S+)")]
+    private static partial Regex Sha256ChecksumLineRegex();
+
+    //извлечение версии и описания релиза из html страницы google play
     public static (string? Version, string? WhatsNew) ParseGooglePlayHtml(string? html)
     {
         if (string.IsNullOrWhiteSpace(html))
@@ -33,11 +38,50 @@ public static partial class StoreVersionParser
         return (version, whatsNew);
     }
 
-    public static (string? Version, string? WhatsNew, string? DownloadUrl) ParseGitHubReleaseJson(string? json)
+    //извлечение ожидаемого sha256 хеша для указанного файла из описания релиза
+    public static string? ExtractSha256FromReleaseBody(string? body, string? targetFileName)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        var lines = body.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var line in lines)
+        {
+            var match = Sha256ChecksumLineRegex().Match(line);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var hash = match.Groups[1].Value.ToLowerInvariant();
+            var file = match.Groups[2].Value;
+
+            if (!string.IsNullOrWhiteSpace(targetFileName) &&
+                (file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
+                 targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)))
+            {
+                return hash;
+            }
+
+            if (string.IsNullOrWhiteSpace(targetFileName) &&
+                (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                 file.Contains("Setup", StringComparison.OrdinalIgnoreCase)))
+            {
+                return hash;
+            }
+        }
+
+        return null;
+    }
+
+    //извлечение версии списка изменений ссылки на установщик и хеша sha256 из json github releases
+    public static (string? Version, string? WhatsNew, string? DownloadUrl, string? ExpectedSha256) ParseGitHubReleaseJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            return (null, null, null);
+            return (null, null, null, null);
         }
 
         try
@@ -46,18 +90,19 @@ public static partial class StoreVersionParser
             var root = doc.RootElement;
             if (!root.TryGetProperty("tag_name", out var tagProp))
             {
-                return (null, null, null);
+                return (null, null, null, null);
             }
 
             var tagName = tagProp.GetString();
             if (string.IsNullOrWhiteSpace(tagName))
             {
-                return (null, null, null);
+                return (null, null, null, null);
             }
 
             var version = tagName.TrimStart('v', 'V');
             var whatsNew = root.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() : null;
             string? downloadUrl = null;
+            string? installerFileName = null;
 
             if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
             {
@@ -70,6 +115,7 @@ public static partial class StoreVersionParser
                         if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) || name.Contains("Installer", StringComparison.OrdinalIgnoreCase))
                         {
                             downloadUrl = url;
+                            installerFileName = name;
                             break;
                         }
                         if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
@@ -77,6 +123,7 @@ public static partial class StoreVersionParser
                             name.EndsWith(".msix", StringComparison.OrdinalIgnoreCase))
                         {
                             downloadUrl = url;
+                            installerFileName = name;
                         }
                     }
                 }
@@ -87,14 +134,17 @@ public static partial class StoreVersionParser
                 downloadUrl = htmlUrlProp.GetString();
             }
 
-            return (version, whatsNew, downloadUrl);
+            var expectedSha256 = ExtractSha256FromReleaseBody(whatsNew, installerFileName);
+
+            return (version, whatsNew, downloadUrl, expectedSha256);
         }
         catch
         {
-            return (null, null, null);
+            return (null, null, null, null);
         }
     }
 
+    //извлечение версии пакета из каталога microsoft store
     public static string? ParseMicrosoftStoreCatalogJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -147,6 +197,7 @@ public static partial class StoreVersionParser
         return null;
     }
 
+    //проверка наличия более новой версии
     public static bool IsNewerVersion(string? currentVersion, string? latestVersion)
     {
         if (string.IsNullOrWhiteSpace(latestVersion))
@@ -193,6 +244,7 @@ public static partial class StoreVersionParser
         return string.Compare(cleanLatest, cleanCurrent, StringComparison.OrdinalIgnoreCase) > 0;
     }
 
+    //очистка строки версии от префиксов и суффиксов
     private static string CleanVersionString(string ver)
     {
         var trimmed = ver.Trim().TrimStart('v', 'V');

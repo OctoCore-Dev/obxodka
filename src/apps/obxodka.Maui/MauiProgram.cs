@@ -2,11 +2,10 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
-using obxodka.Maui.Platforms.Windows.Services;
 using obxodka.Platforms.Windows;
 using WinRT.Interop;
 #elif ANDROID
-using obxodka.Maui.Platforms.Android.Services;
+using obxodka.Platforms.Android;
 #endif
 
 namespace obxodka;
@@ -15,9 +14,11 @@ internal static partial class MauiProgram
 {
 #if WINDOWS
     [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial uint GetDpiForWindow(IntPtr hwnd);
 
     [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
 #endif
@@ -65,6 +66,8 @@ internal static partial class MauiProgram
 
         builder.Services.AddSingleton<AuthManager>();
         builder.Services.AddSingleton<ThemeManager>();
+        builder.Services.AddSingleton<IPreferencesService, MauiPreferencesService>();
+        builder.Services.AddSingleton<IMainThreadService, MauiMainThreadService>();
 
 #if WINDOWS
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
@@ -81,7 +84,6 @@ internal static partial class MauiProgram
             builder.Services.AddSingleton<IVpnService, WindowsVpnService>();
             builder.Services.AddSingleton<IAppManager, AppManager>();
             builder.Services.AddSingleton<IAppUpdaterService, WindowsAppUpdaterService>();
-            builder.Services.AddSingleton<Services.IQrScannerService, Services.DummyQrScannerService>();
         }
 #elif ANDROID
         if (OperatingSystem.IsAndroidVersionAtLeast(29))
@@ -146,6 +148,13 @@ internal static partial class MauiProgram
 #if WINDOWS
             handler.PlatformView.OnContent = null;
             handler.PlatformView.OffContent = null;
+#elif ANDROID
+            handler.PlatformView.Background = null;
+            handler.PlatformView.BackgroundTintList = null;
+            if (handler.PlatformView is Google.Android.Material.MaterialSwitch.MaterialSwitch matSwitch)
+            {
+                matSwitch.ThumbIconDrawable = null;
+            }
 #endif
         });
 
@@ -165,10 +174,10 @@ internal static partial class MauiProgram
     [SupportedOSPlatform("android29.0")]
     private static void RegisterAndroidServices(IServiceCollection services)
     {
-        _ = services.AddSingleton<IVpnService>(_ => Platforms.Android.AndroidVpnService.Instance);
-        _ = services.AddSingleton<IAppManager, Platforms.Android.AppManager>();
+        _ = services.AddSingleton<IVpnService>(_ => AndroidVpnService.Instance);
+        _ = services.AddSingleton<IAppManager, AppManager>();
         _ = services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();
-        _ = services.AddSingleton<Services.IQrScannerService, Platforms.Android.Services.AndroidQrScannerService>();
+        _ = services.AddSingleton<IQrScannerService, AndroidQrScannerService>();
     }
 #endif
 

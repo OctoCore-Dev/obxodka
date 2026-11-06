@@ -1,24 +1,46 @@
 namespace obxodka.Shared.Themes;
 
+//валидатор манифестов тем оформления, цветов, путей и сигнатур файлов
 public static partial class ThemeValidator
 {
+    //регулярное выражение для проверки 6- и 8-значных hex цветов
     [GeneratedRegex("^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")]
     private static partial Regex HexColorRegex();
 
-    public static bool IsValidHexColor(string? hex) => !string.IsNullOrWhiteSpace(hex) && HexColorRegex().IsMatch(hex.Trim());
+    //проверка валидности hex формата цвета
+    public static bool IsValidHexColor(string? hex) =>
+        !string.IsNullOrWhiteSpace(hex) && HexColorRegex().IsMatch(hex.Trim());
 
+    //регулярное выражение для безопасного идентификатора темы
     [GeneratedRegex("^[a-z0-9\\-_]+$")]
     private static partial Regex SafeIdRegex();
 
-    public static bool IsSafeId(string? id) => !string.IsNullOrWhiteSpace(id) && SafeIdRegex().IsMatch(id.Trim());
+    //проверка безопасности идентификатора темы
+    public static bool IsSafeId(string? id) =>
+        !string.IsNullOrWhiteSpace(id) && SafeIdRegex().IsMatch(id.Trim());
 
-    private static readonly HashSet<string> t_reservedDeviceNames = new(
-    [
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-    ], StringComparer.OrdinalIgnoreCase);
+    //зарезервированные системные имена устройств dos/windows для защиты от спецфайлов
+    private static readonly FrozenSet<string> s_reservedDeviceNames =
+        ((string[])[
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        ]).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    //проверка, совпадает ли сегмент с зарезервированным именем устройства без аллокаций
+    private static bool IsReservedDeviceName(ReadOnlySpan<char> name)
+    {
+        foreach (var reserved in s_reservedDeviceNames)
+        {
+            if (name.Equals(reserved.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    //проверка безопасности относительного пути внутри каталога темы
     public static bool IsSafeRelativePath(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath))
@@ -35,11 +57,22 @@ public static partial class ThemeValidator
             return false;
         }
 
-        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var segment in segments)
+        //разбор сегментов пути без аллокаций массива
+        var span = normalized.AsSpan();
+        while (!span.IsEmpty)
         {
-            var nameWithoutExt = Path.GetFileNameWithoutExtension(segment);
-            if (t_reservedDeviceNames.Contains(nameWithoutExt) || t_reservedDeviceNames.Contains(segment))
+            var idx = span.IndexOf('/');
+            var segment = idx >= 0 ? span[..idx] : span;
+            span = idx >= 0 ? span[(idx + 1)..] : default;
+
+            if (segment.IsEmpty)
+            {
+                continue;
+            }
+
+            var dotIdx = segment.IndexOf('.');
+            var nameWithoutExt = dotIdx >= 0 ? segment[..dotIdx] : segment;
+            if (IsReservedDeviceName(nameWithoutExt) || IsReservedDeviceName(segment))
             {
                 return false;
             }
@@ -49,6 +82,7 @@ public static partial class ThemeValidator
         return SafeThemeExtractor.IsAllowedExtension(ext);
     }
 
+    //валидация отдельного файла ресурса на диске
     public static bool ValidateAssetFile(string fullPath, [NotNullWhen(false)] out string? errorMessage)
     {
         if (!File.Exists(fullPath))
@@ -108,6 +142,7 @@ public static partial class ThemeValidator
         }
     }
 
+    //валидация байтового массива ресурса в памяти
     public static bool ValidateAssetData(string extension, byte[] data, [NotNullWhen(false)] out string? errorMessage)
     {
         if (!SafeThemeExtractor.IsAllowedExtension(extension))
@@ -139,6 +174,7 @@ public static partial class ThemeValidator
         return true;
     }
 
+    //семантическое сравнение версий для обнаружения обновлений
     public static bool IsVersionNewer(string? currentVersion, string? remoteVersion)
     {
         if (string.IsNullOrWhiteSpace(remoteVersion))
@@ -182,6 +218,7 @@ public static partial class ThemeValidator
         return false;
     }
 
+    //проверка строковых полей на xss, html и внедренные скрипты
     public static bool ContainsDangerousText(string? value, int maxLength = 200)
     {
         if (string.IsNullOrEmpty(value))
@@ -203,12 +240,13 @@ public static partial class ThemeValidator
         }
 
         return value.Contains('<', StringComparison.Ordinal) ||
-               value.Contains('>', StringComparison.Ordinal) ||
-               value.Contains("javascript:", StringComparison.OrdinalIgnoreCase) ||
-               value.Contains("vbscript:", StringComparison.OrdinalIgnoreCase) ||
-               value.Contains("data:text/html", StringComparison.OrdinalIgnoreCase);
+                value.Contains('>', StringComparison.Ordinal) ||
+                value.Contains("javascript:", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("vbscript:", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("data:text/html", StringComparison.OrdinalIgnoreCase);
     }
 
+    //полная проверка целостности и безопасности манифеста темы оформления
     public static bool ValidateManifest(ThemeManifest manifest, [NotNullWhen(false)] out string? errorMessage)
     {
         if (manifest == null)
@@ -436,6 +474,7 @@ public static partial class ThemeValidator
         return true;
     }
 
+    //синтез гармоничного парного цвета для градиента без аллокаций строк
     public static (string startHex, string endHex) SynthesizeGradient(string baseHex)
     {
         if (!IsValidHexColor(baseHex))
@@ -445,15 +484,15 @@ public static partial class ThemeValidator
 
         try
         {
-            var hex = baseHex.TrimStart('#');
+            var hex = baseHex.AsSpan().TrimStart('#');
             if (hex.Length == 8)
             {
                 hex = hex[2..];
             }
 
-            var r = Convert.ToInt32(hex[..2], 16);
-            var g = Convert.ToInt32(hex.Substring(2, 2), 16);
-            var b = Convert.ToInt32(hex.Substring(4, 2), 16);
+            var r = int.Parse(hex[..2], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            var g = int.Parse(hex.Slice(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            var b = int.Parse(hex.Slice(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
             var r2 = Math.Clamp((int)(r * 0.75), 0, 255);
             var g2 = Math.Clamp((int)(g * 0.70), 0, 255);

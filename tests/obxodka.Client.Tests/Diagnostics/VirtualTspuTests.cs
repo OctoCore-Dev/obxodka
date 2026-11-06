@@ -20,24 +20,26 @@ public class VirtualTspuTests
     public void VirtualTspuDetectsObfuscatorStaticLengthHeader()
     {
         var tspu = new VirtualTspuEngine();
-        var rawPacket = new byte[256];
-        Random.Shared.NextBytes(rawPacket);
+        var packet = new byte[8 + 256];
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(0, 4), packet.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), 256);
+        Random.Shared.NextBytes(packet.AsSpan(8));
 
-        var packed = Obfuscator.Pack(rawPacket, rawPacket.Length, out var totalLen, maskHeaders: false);
-        var audit = tspu.InspectPacket(0, packed.AsSpan(0, totalLen), isUdp: false);
+        var audit = tspu.InspectPacket(0, packet, isUdp: false);
 
         Assert.True(audit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
     }
 
     [Fact]
-    public void MaskedObfuscatorEvadesVirtualTspuDpi()
+    public void ObxodkaFramingEvadesVirtualTspuDpi()
     {
         var tspu = new VirtualTspuEngine();
         var rawData = new byte[256];
         Random.Shared.NextBytes(rawData);
-        var maskedObfs = Obfuscator.Pack(rawData, rawData.Length, out var obfsLen, maskHeaders: true);
-        var obfsAudit = tspu.InspectPacket(0, maskedObfs.AsSpan(0, obfsLen), isUdp: false);
-        Assert.False(obfsAudit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
+        var frame = ObxodkaFraming.Pack(ObxodkaFraming.CmdData, rawData, out var frameLen);
+        var audit = tspu.InspectPacket(0, frame.AsSpan(0, frameLen), isUdp: false);
+        Assert.False(audit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
+        ArrayPool<byte>.Shared.Return(frame);
     }
 
     [Fact]

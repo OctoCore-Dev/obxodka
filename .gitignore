@@ -397,4 +397,6 @@ deploy_android.ps1
 Directory.Build.props
 Directory.Build.props.local
 3D_Scope/
-
+AGENTS.md
+RULES.md
+CODEBASE_MAP.md
