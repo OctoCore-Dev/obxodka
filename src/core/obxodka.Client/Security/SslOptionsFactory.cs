@@ -20,7 +20,7 @@ public static class SslOptionsFactory
                 CertificateValidator.ValidateServerCertificate(cert, chain, errors, dynamicPinningHash)
         };
 
-        if (OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
+        if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
         {
             try
             {

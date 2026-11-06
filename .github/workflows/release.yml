@@ -523,6 +523,7 @@ jobs:
             --service-account "$PLAY_CONFIG_JSON" \
             --track "$ANDROID_TRACK" \
             --notes-dir "packaging/whatsnew" \
+            --desc-dir "packaging/store/android" \
             --release-name "v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }})"
 
       - name: "[TELEMETRY] Google Play Deployment Telemetry"
