@@ -52,10 +52,10 @@ public sealed class ApiService(HttpClient client)
         DefaultRequestVersion = new Version(2, 0)
     });
 
-    //кэш адресов doh резолвера
-    private static readonly ConcurrentDictionary<string, IPAddress> s_dohCache = new(StringComparer.OrdinalIgnoreCase);
+    //кэш списков адресов doh резолвера с временем жизни
+    private static readonly ConcurrentDictionary<string, (IPAddress[] Addresses, long ExpiresAtTicks)> s_dohCache = new(StringComparer.OrdinalIgnoreCase);
 
-    //клиент для doh запросов
+    //клиент для doh запросов с привязкой к физическому адаптеру мимо туннеля
     private static readonly Lazy<HttpClient> s_dohClient = new(() => new HttpClient(
         OperatingSystem.IsAndroid()
             ? new HttpClientHandler { UseProxy = false }
@@ -63,11 +63,66 @@ public sealed class ApiService(HttpClient client)
             {
                 UseProxy = false,
                 ConnectTimeout = TimeSpan.FromSeconds(2),
-                SslOptions = SslOptionsFactory.CreatePublicDoh()
+                SslOptions = SslOptionsFactory.CreatePublicDoh(),
+                ConnectCallback = async (context, cToken) =>
+                {
+                    var host = context.DnsEndPoint.Host;
+                    IPAddress? targetIp = null;
+                    if (IPAddress.TryParse(host, out var parsedIp))
+                    {
+                        targetIp = parsedIp;
+                    }
+                    else if (host.Equals("cloudflare-dns.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetIp = IPAddress.Parse("1.1.1.1");
+                    }
+                    else if (host.Equals("dns.adguard.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetIp = IPAddress.Parse("94.140.14.14");
+                    }
+                    else
+                    {
+                        var resolved = await Dns.GetHostAddressesAsync(host, cToken).ConfigureAwait(false);
+                        foreach (var a in resolved)
+                        {
+                            if (a.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(a))
+                            {
+                                targetIp = a;
+                                break;
+                            }
+                        }
+                    }
+
+                    targetIp ??= IPAddress.Parse("1.1.1.1");
+                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+                    try
+                    {
+                        await socket.ConnectAsync(new IPEndPoint(targetIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
             })
     {
         Timeout = TimeSpan.FromSeconds(2)
     });
+
+    //сброс кэша резолвинга при смене сети или недоступности узла
+    public static void InvalidateHostCache(string? host = null)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            s_dohCache.Clear();
+            return;
+        }
+
+        _ = s_dohCache.TryRemove(host, out _);
+    }
 
     //проверка не является ли ip локальным или заглушкой
     private static bool IsBogonOrSinkholeIpv4(IPAddress ip)
@@ -87,42 +142,27 @@ public sealed class ApiService(HttpClient client)
                (b[0] == 100 && b[1] is >= 64 and <= 127);
     }
 
-    //защищенный резолвинг домена через doh против спуфинга
-    public static async ValueTask<IPAddress> ResolveHostAntiPoisonAsync(string host, CancellationToken ct = default)
+    //защищенный резолвинг всех a записей домена с приоритетом doh против спуфинга провайдера
+    public static async ValueTask<IPAddress[]> ResolveAllHostsAntiPoisonAsync(string host, CancellationToken ct = default)
     {
         if (IPAddress.TryParse(host, out var literalIp))
         {
-            return literalIp;
+            return [literalIp];
         }
 
-        if (s_dohCache.TryGetValue(host, out var cachedIp))
+        var nowTicks = Stopwatch.GetTimestamp();
+        if (s_dohCache.TryGetValue(host, out var cached) && cached.Addresses.Length > 0 && nowTicks < cached.ExpiresAtTicks)
         {
-            return cachedIp;
+            return cached.Addresses;
         }
 
-        try
-        {
-            var sysAddrs = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
-            foreach (var addr in sysAddrs)
-            {
-                if (addr.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(addr))
-                {
-                    s_dohCache[host] = addr;
-                    return addr;
-                }
-            }
-        }
-        catch { }
-
+        //сначала опрашиваем шифрованный doh чтобы исключить публичные заглушки провайдера на udp 53
         var dohResolvers = DnsDefaults.DohResolvers;
-        var dohEndpoints = new string[dohResolvers.Length];
+        var results = new List<IPAddress>(4);
+
         for (var i = 0; i < dohResolvers.Length; i++)
         {
-            dohEndpoints[i] = DnsDefaults.BuildDohQueryUrl(dohResolvers[i], host);
-        }
-
-        foreach (var dohUrl in dohEndpoints)
-        {
+            var dohUrl = DnsDefaults.BuildDohQueryUrl(dohResolvers[i], host);
             try
             {
                 using var dohCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -158,25 +198,63 @@ public sealed class ApiService(HttpClient client)
                     var candidate = json.Substring(quoteStart + 1, quoteEnd - quoteStart - 1).Trim();
                     searchIdx = quoteEnd + 1;
 
-                    if (IPAddress.TryParse(candidate, out var dohIp) && !IsBogonOrSinkholeIpv4(dohIp))
+                    if (IPAddress.TryParse(candidate, out var dohIp) &&
+                        !IsBogonOrSinkholeIpv4(dohIp) &&
+                        !results.Contains(dohIp))
                     {
-                        s_dohCache[host] = dohIp;
-                        return dohIp;
+                        results.Add(dohIp);
                     }
+                }
+
+                if (results.Count > 0)
+                {
+                    var resolvedArr = results.ToArray();
+                    s_dohCache[host] = (resolvedArr, Stopwatch.GetTimestamp() + (Stopwatch.Frequency * 600));
+                    return resolvedArr;
                 }
             }
             catch { }
         }
 
+        //резервный системный днс только если все doh серверы заблокированы сетью
+        try
+        {
+            var sysAddrs = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
+            foreach (var addr in sysAddrs)
+            {
+                if (addr.AddressFamily == AddressFamily.InterNetwork &&
+                    !IsBogonOrSinkholeIpv4(addr) &&
+                    !results.Contains(addr))
+                {
+                    results.Add(addr);
+                }
+            }
+
+            if (results.Count > 0)
+            {
+                var sysArr = results.ToArray();
+                s_dohCache[host] = (sysArr, Stopwatch.GetTimestamp() + (Stopwatch.Frequency * 60));
+                return sysArr;
+            }
+        }
+        catch { }
+
         if (host.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
             host.Contains("octocore", StringComparison.OrdinalIgnoreCase))
         {
-            var fallbackIp = IPAddress.Parse(AppConfig.DirectServerIp);
-            s_dohCache[host] = fallbackIp;
-            return fallbackIp;
+            IPAddress[] fallbackArr = [IPAddress.Parse(AppConfig.DirectServerIp)];
+            s_dohCache[host] = (fallbackArr, Stopwatch.GetTimestamp() + (Stopwatch.Frequency * 30));
+            return fallbackArr;
         }
 
         throw new SocketException((int)SocketError.HostNotFound);
+    }
+
+    //защищенный резолвинг основного адреса домена через doh
+    public static async ValueTask<IPAddress> ResolveHostAntiPoisonAsync(string host, CancellationToken ct = default)
+    {
+        var all = await ResolveAllHostsAntiPoisonAsync(host, ct).ConfigureAwait(false);
+        return all[0];
     }
 
     //резервный клиент с обходом dpi через сырой поток

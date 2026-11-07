@@ -170,6 +170,12 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
     //прямая отправка отчета по http
     private async Task<bool> SendToServerDirectAsync(TelemetryDto dto, CancellationToken ct)
     {
+        //блокируем сетевую отправку телеметрии на боевой сервер из юнит тестов
+        if (TelemetryFilter.IsTestEnvironment)
+        {
+            return false;
+        }
+
         await _sendLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {

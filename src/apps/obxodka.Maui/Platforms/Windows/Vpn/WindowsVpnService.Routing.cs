@@ -186,13 +186,30 @@ internal sealed partial class WindowsVpnService
         return ("", 0);
     }
 
-    //привязка сокета к физическому интерфейсу в обход туннеля
+    //привязка сокета к физическому интерфейсу на уровне ядра tcpip.sys в обход маршрутов туннеля
     private static void BindSocketToPhysicalAdapter(Socket socket)
     {
         try
         {
+            const int ipUnicastIf = 31;
+            var ifIndex = s_savedPhysicalIfIndex;
+            if (ifIndex > 0)
+            {
+                if (socket.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)ipUnicastIf, IPAddress.HostToNetworkOrder(ifIndex));
+                }
+                else if (socket.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    socket.SetSocketOption(SocketOptionLevel.IPv6, (SocketOptionName)ipUnicastIf, ifIndex);
+                }
+            }
+
             var localIp = s_savedPhysicalLocalIp;
-            if (localIp is not null && localIp.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(localIp))
+            if (socket.AddressFamily == AddressFamily.InterNetwork &&
+                localIp is not null &&
+                localIp.AddressFamily == AddressFamily.InterNetwork &&
+                !IPAddress.IsLoopback(localIp))
             {
                 socket.Bind(new IPEndPoint(localIp, 0));
             }

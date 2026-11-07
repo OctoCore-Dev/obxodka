@@ -6,10 +6,44 @@ public static class TelemetryFilter
     private static readonly ConcurrentDictionary<int, long> s_recentErrorSignatures = new();
     private static readonly TimeSpan s_deduplicationWindow = TimeSpan.FromMinutes(5);
 
+    //определение запуска внутри тестового раннера для блокировки отправки моков в продакшен
+    public static bool IsTestEnvironment { get; } = DetectTestEnvironment();
+
+    private static bool DetectTestEnvironment()
+    {
+        try
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var name = asm.GetName().Name;
+                if (name is not null &&
+                    (name.StartsWith("xunit.", StringComparison.OrdinalIgnoreCase) ||
+                     name.StartsWith("testhost", StringComparison.OrdinalIgnoreCase) ||
+                     name.StartsWith("Microsoft.TestPlatform", StringComparison.OrdinalIgnoreCase) ||
+                     name.StartsWith("Microsoft.VisualStudio.TestPlatform", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+        }
+        catch { }
+
+        return false;
+    }
+
     //проверка нужно ли отправлять ошибку на сервер
     public static bool ShouldSendToServer(string message, Exception? ex = null)
     {
         if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        //отсеиваем синтетические маркеры негативных тестов безопасности
+        if (message.Contains("FORGED_HASH", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("FAKE_PIN", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("MOCK_CERT_PIN", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("[TEST-ONLY]", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

@@ -170,6 +170,18 @@ public sealed class MainActivity : MauiAppCompatActivity
     //запрос на отключение оптимизации батареи для стабильной работы туннеля в фоне
     private void RequestIgnoreBatteryOptimizations()
     {
+        //маршалинг диалога на главный поток андроид для защиты от looper исключения
+        if (!MainThread.IsMainThread)
+        {
+            MainThread.BeginInvokeOnMainThread(RequestIgnoreBatteryOptimizations);
+            return;
+        }
+
+        if (IsFinishing || IsDestroyed)
+        {
+            return;
+        }
+
         try
         {
             if (PackageName is { Length: > 0 } pkgName &&
@@ -194,8 +206,12 @@ public sealed class MainActivity : MauiAppCompatActivity
                 });
                 _ = builder.SetNegativeButton("Позже", (_, _) => { });
                 _ = builder.SetCancelable(true);
-                using var dialog = builder.Create();
-                dialog?.Show();
+                var dialog = builder.Create();
+                if (dialog is not null)
+                {
+                    dialog.DismissEvent += (_, _) => dialog.Dispose();
+                    dialog.Show();
+                }
             }
         }
         catch (Exception ex)
@@ -207,7 +223,13 @@ public sealed class MainActivity : MauiAppCompatActivity
     //запуск системной службы vpn
     public static void StartVpnService()
     {
-        if (Platform.CurrentActivity is not MainActivity activity)
+        if (!MainThread.IsMainThread)
+        {
+            MainThread.BeginInvokeOnMainThread(StartVpnService);
+            return;
+        }
+
+        if (Platform.CurrentActivity is not MainActivity activity || activity.IsFinishing || activity.IsDestroyed)
         {
             StartActualService(Platform.AppContext);
             return;
@@ -258,7 +280,7 @@ public sealed class MainActivity : MauiAppCompatActivity
     public static async Task<bool> RequestVpnPermissionAsync(Intent intent)
     {
         var activity = Platform.CurrentActivity;
-        if (activity is null)
+        if (activity is null || activity.IsFinishing || activity.IsDestroyed)
         {
             return false;
         }
@@ -266,13 +288,28 @@ public sealed class MainActivity : MauiAppCompatActivity
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         s_vpnPermTcs = tcs;
 
-        try
+        var launched = await MainThread.InvokeOnMainThreadAsync(() =>
         {
-            activity.StartActivityForResult(intent, VpnCustomRequestCode);
-        }
-        catch (Exception ex)
+            var current = Platform.CurrentActivity;
+            if (current is null || current.IsFinishing || current.IsDestroyed)
+            {
+                return false;
+            }
+
+            try
+            {
+                current.StartActivityForResult(intent, VpnCustomRequestCode);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogError($"[VPN PERM ERROR] {ex.Message}");
+                return false;
+            }
+        }).ConfigureAwait(false);
+
+        if (!launched)
         {
-            AppLogger.LogError($"[VPN PERM ERROR] {ex.Message}");
             s_vpnPermTcs = null;
             return false;
         }

@@ -13,8 +13,8 @@ public sealed partial class ObxodkaStreamTransport
             var lastActivityTicks = Math.Max(Volatile.Read(ref _lastTxTicks), Math.Max(rx0, rx1));
             var idleSec = lastActivityTicks > 0 ? (nowTs - lastActivityTicks) / (double)Stopwatch.Frequency : 0;
             var delayMs = idleSec < 3.0
-                ? RandomNumberGenerator.GetInt32(1100, 2300) + RandomNumberGenerator.GetInt32(0, 850)
-                : RandomNumberGenerator.GetInt32(2400, 4800) + RandomNumberGenerator.GetInt32(0, 1400);
+                ? RandomNumberGenerator.GetInt32(950, 1450)
+                : RandomNumberGenerator.GetInt32(1600, 2400);
 
             try
             {
@@ -53,7 +53,7 @@ public sealed partial class ObxodkaStreamTransport
                 }
                 else
                 {
-                    _inspector.RecordStep($"MTU blackhole persisted at minimum MTU {currentMtu}");
+                    _inspector.TryRecordMinMtuPersistence(currentMtu, nowTs);
                     _ = _inspector.ReportIncidentIfExhaustedAsync(
                         reason: "MtuBlackholeAtMinMtu",
                         targetHost: ActiveSni,
@@ -207,7 +207,7 @@ public sealed partial class ObxodkaStreamTransport
 
                 var rxRay = _inspector.GetLastRxTicks(r);
                 var rttRay = _inspector.GetRayRtt(r);
-                if (rxRay > 0 && rttRay > 0 && ((nowTs - rxRay) * 1000.0 / Stopwatch.Frequency) < 400 && RandomNumberGenerator.GetInt32(2) == 0)
+                if (rxRay > 0 && rttRay > 0 && ((nowTs - rxRay) * 1000.0 / Stopwatch.Frequency) < 250)
                 {
                     continue;
                 }
@@ -225,7 +225,6 @@ public sealed partial class ObxodkaStreamTransport
                     RandomNumberGenerator.Fill(pingBuf.AsSpan(12, jitterPadding));
                 }
 
-                _inspector.RecordTx(r, nowTs);
                 if (!_txChannels[r].TryEnqueue(pingBuf, pingLen))
                 {
                     ArrayPool<byte>.Shared.Return(pingBuf);
@@ -243,7 +242,7 @@ public sealed partial class ObxodkaStreamTransport
             return;
         }
 
-        _inspector.RecordDataTx();
+        _inspector.RecordDataTx(packet.AsSpan(0, length));
         var nowTs = Stopwatch.GetTimestamp();
         Volatile.Write(ref _lastTxTicks, nowTs);
 

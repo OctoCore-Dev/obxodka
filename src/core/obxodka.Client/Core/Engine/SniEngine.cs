@@ -128,48 +128,77 @@ public static class SniEngine
     //формирование списка кандидатов зеркал и sni для websocket транспорта
     public static List<SniWebSocketCandidate> BuildWebSocketCandidates(string serverIp, int serverPort, string? configuredSni)
     {
-        var activeServerHost = !string.IsNullOrWhiteSpace(configuredSni)
-            ? configuredSni
-            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : AppConfig.PrimaryDomain);
-        var isDirectIp = IPAddress.TryParse(serverIp, out _);
+        var serverIsIp = IPAddress.TryParse(serverIp, out _);
+        var sniIsDomain = !string.IsNullOrWhiteSpace(configuredSni) && !IPAddress.TryParse(configuredSni, out _);
+        var isLocalLoopback = serverIp.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                              serverIp.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                              serverIp.Equals("::1", StringComparison.OrdinalIgnoreCase);
+        var isDomainShieldMode = !isLocalLoopback && (!serverIsIp || sniIsDomain);
 
-        int[] portCandidates = serverPort == 443
-            ? [443, 8443, 2053, 443, 443]
-            : [serverPort, 443, 8443, 2053, 443];
+        var activeServerHost = sniIsDomain
+            ? configuredSni!
+            : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain);
 
-        var mirrors = AppConfig.MirrorDomains;
-        var result = new List<SniWebSocketCandidate>(portCandidates.Length);
+        var result = new List<SniWebSocketCandidate>(10);
+        var attemptIdx = 0;
 
-        for (var pIdx = 0; pIdx < portCandidates.Length; pIdx++)
+        void AddCandidate(string serverHost, string targetSni, int port)
         {
-            var candidatePort = portCandidates[pIdx];
-            var mirrorHost = (!isDirectIp && pIdx is 1 or 2 && mirrors.Length > pIdx) ? mirrors[pIdx] : serverIp;
-            var candidateServerIp = (!isDirectIp && pIdx is 3 or 4)
-                ? AppConfig.DirectServerIp
-                : mirrorHost;
-            var candidateSni = (!isDirectIp && pIdx is 3 or 4)
-                ? AppSecrets.GetRandomSni()
-                : (!isDirectIp && pIdx is 1 or 2 ? mirrorHost : activeServerHost);
-
-            if (!isDirectIp && pIdx is 3 or 4)
-            {
-                candidatePort = 443;
-            }
-
-            var candidateIsDirectIp = IPAddress.TryParse(candidateServerIp, out _);
-            var targetHostHeader = candidateIsDirectIp ? candidateSni : candidateServerIp;
-            var connectHost = candidateIsDirectIp ? candidateSni : candidateServerIp;
-            var wsPath = s_wsPaths[pIdx % s_wsPaths.Length];
-            var profile = RoutingHello.GetProfileForAttempt(pIdx);
-
+            var hostIsIp = IPAddress.TryParse(serverHost, out _);
+            var hostHeader = hostIsIp ? targetSni : serverHost;
+            var wsPath = s_wsPaths[attemptIdx % s_wsPaths.Length];
+            var profile = RoutingHello.GetProfileForAttempt(attemptIdx++);
             result.Add(new SniWebSocketCandidate(
-                ServerHost: candidateServerIp,
-                TargetSni: candidateSni,
-                HostHeader: targetHostHeader,
-                ConnectHost: connectHost,
-                Port: candidatePort,
+                ServerHost: serverHost,
+                TargetSni: targetSni,
+                HostHeader: hostHeader,
+                ConnectHost: hostHeader,
+                Port: port,
                 Path: wsPath,
                 BrowserProfile: profile));
+        }
+
+        if (isDomainShieldMode)
+        {
+            //сначала основной домен щита затем чистые облачные зеркала на стандартном порту 443
+            AddCandidate(activeServerHost, activeServerHost, serverPort);
+
+            var mirrors = AppConfig.MirrorDomains;
+            var addedMirrorsOn443 = 0;
+            for (var mIdx = 0; mIdx < mirrors.Length && addedMirrorsOn443 < 5; mIdx++)
+            {
+                var mirror = mirrors[mIdx];
+                if (string.IsNullOrWhiteSpace(mirror) ||
+                    mirror.Equals(activeServerHost, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                AddCandidate(mirror, mirror, 443);
+                addedMirrorsOn443++;
+            }
+
+            //альтернативные облачные порты cloudflare на случай фильтрации апгрейда на 443
+            var altHost8443 = mirrors.Length > 0 ? mirrors[0] : activeServerHost;
+            var altHost2053 = mirrors.Length > 1 ? mirrors[1] : activeServerHost;
+            AddCandidate(altHost8443, altHost8443, 8443);
+            AddCandidate(altHost2053, altHost2053, 2053);
+
+            //аварийный прямой выход с маскировочным sni если заблокирована сама сеть cdn
+            var fallbackSni = AppSecrets.GetRandomSni();
+            AddCandidate(AppConfig.DirectServerIp, fallbackSni, 443);
+            return result;
+        }
+
+        //режим прямого ip или локального тестового стенда
+        int[] directPorts = serverPort == 443
+            ? [443, 8443, 2053]
+            : [serverPort, 443, 8443, 2053];
+
+        for (var pIdx = 0; pIdx < directPorts.Length; pIdx++)
+        {
+            var sni = isLocalLoopback ? activeServerHost : AppSecrets.GetRandomSni();
+            AddCandidate(serverIp, sni, directPorts[pIdx]);
         }
 
         return result;

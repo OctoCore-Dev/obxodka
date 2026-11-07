@@ -1,7 +1,7 @@
 namespace obxodka.Core.Transports;
 
 //транспорт туннеля поверх защищенного websocket соединения
-public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, string? configuredSni = null) : IVpnTransport
+public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport
 {
     //элемент очереди исходящих фреймов websocket
     private readonly struct WsTxItem(byte command, byte[] buffer, int length)
@@ -78,7 +78,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
     private string _activeServerHost = AppConfig.PrimaryDomain;
 
     //назначенный клиенту виртуальный ip адрес
-    private volatile string? _assignedIp;
+    private volatile string? _assignedIp = preferredAssignedIp;
 
     //сессионный ключ маскировки фреймов
     private uint _sessionKey;
@@ -115,31 +115,59 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 browserProfile: browserProfile),
             ConnectCallback = async (context, cToken) =>
             {
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
-                {
-                    NoDelay = true,
-                    SendBufferSize = 4194304,
-                    ReceiveBufferSize = 4194304
-                };
-                OnSocketCreated?.Invoke(socket);
-                ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-                _protectAction?.Invoke(socket);
+                var candidateIps = isDirectIp && literalIp is not null
+                    ? [literalIp]
+                    : await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken).ConfigureAwait(false);
 
-                var endPoint = isDirectIp && literalIp is not null
-                    ? (EndPoint)new IPEndPoint(literalIp, port)
-                    : new IPEndPoint(await ApiService.ResolveHostAntiPoisonAsync(targetSni, cToken).ConfigureAwait(false), port);
+                Socket? connectedSocket = null;
+                Exception? lastSocketEx = null;
 
-                try
+                for (var ipIdx = 0; ipIdx < candidateIps.Length; ipIdx++)
                 {
-                    await socket.ConnectAsync(endPoint, cToken).ConfigureAwait(false);
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+                    {
+                        NoDelay = true,
+                        SendBufferSize = 4194304,
+                        ReceiveBufferSize = 4194304
+                    };
+                    OnSocketCreated?.Invoke(socket);
+                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+                    _protectAction?.Invoke(socket);
+
+                    try
+                    {
+                        if (candidateIps.Length > 1 && ipIdx + 1 < candidateIps.Length)
+                        {
+                            using var perIpCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
+                            perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
+                            await socket.ConnectAsync(new IPEndPoint(candidateIps[ipIdx], port), perIpCts.Token).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            await socket.ConnectAsync(new IPEndPoint(candidateIps[ipIdx], port), cToken).ConfigureAwait(false);
+                        }
+
+                        connectedSocket = socket;
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        lastSocketEx = ex;
+                        socket.Dispose();
+                        if (cToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                    }
                 }
-                catch
+
+                if (connectedSocket is null)
                 {
-                    socket.Dispose();
-                    throw;
+                    ApiService.InvalidateHostCache(targetSni);
+                    throw lastSocketEx ?? new SocketException((int)SocketError.HostUnreachable);
                 }
 
-                var netStream = new NetworkStream(socket, ownsSocket: true);
+                var netStream = new NetworkStream(connectedSocket, ownsSocket: true);
                 return (!isDirectIp || (literalIp is not null && !IPAddress.IsLoopback(literalIp)))
                     ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
                     : netStream;
@@ -209,9 +237,10 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             RoutingHello.ApplyWebSocketHeaders(ws.Options, ActiveBrowserProfile);
 
             var cid = RandomNumberGenerator.GetInt32(10000000, 100000000);
+            var nowQuerySec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var uriBuilder = new UriBuilder("wss", connectHost, candidatePort, wsPath)
             {
-                Query = $"ray=0&mtu={SmartMtuEngine.CurrentMtu}&cid={cid}&v=133.0"
+                Query = $"cid={cid}&_t={nowQuerySec}&v=133.0"
             };
 
             var invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
@@ -263,6 +292,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 using (linkedCts.Token.Register(() => _ipTcs.TrySetCanceled()))
                 {
                     var result = await _ipTcs.Task.ConfigureAwait(false);
+                    _ = SendPingProbeAsync();
                     AppLogger.Log($"[OBXODKA-WS] Connected on port {candidatePort} (Browser: {ActiveBrowserProfile})! Assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
                 }

@@ -1,7 +1,7 @@
 namespace obxodka.Core.Transports;
 
 //транспорт туннеля поверх многолучевого дуплексного http2 потока
-public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string? configuredSni = null) : IVpnTransport
+public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport
 {
     //имя активного протокола
     public string ProtocolName => "OBXODKA-STREAM";
@@ -120,7 +120,7 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
     private readonly List<int> _receivedBurstMtus = [];
 
     //назначенный виртуальный ip адрес
-    private volatile string? _assignedIp;
+    private volatile string? _assignedIp = preferredAssignedIp;
 
     //установка действия защиты сокетов
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;

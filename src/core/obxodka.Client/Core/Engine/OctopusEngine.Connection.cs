@@ -111,6 +111,18 @@ public sealed partial class OctopusEngine
         {
             return;
         }
+
+        //автоматический уход на облачный щит если прямой ip ранее завис на пороге байт тспу
+        if (IPAddress.TryParse(serverIp, out var directCandidateIp) &&
+            !IPAddress.IsLoopback(directCandidateIp) &&
+            IsNodeByteCapped(serverIp))
+        {
+            AppLogger.LogWarning($"[OCTOPUS-SHIELD] Direct node {serverIp} is penalized by TSPU byte-cap detector. Routing via Shield '{AppConfig.PrimaryDomain}'.");
+            serverIp = AppConfig.PrimaryDomain;
+            serverPort = 443;
+            targetSni = AppConfig.PrimaryDomain;
+        }
+
         ConnectedServerIp = serverIp;
         ConnectedServerPort = serverPort;
 
@@ -171,6 +183,19 @@ public sealed partial class OctopusEngine
         }
         _transport = transport;
         ActiveProtocol = transport.ProtocolName;
+        ActiveRays = strategy.UseWebSocket ? 1 : 2;
+        WireTransportEvents(transport);
+
+        var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
+        AssignedIp = ip;
+        AssignedIpV6 = ip6;
+        AppLogger.Log($"[OCTOPUS] Handshake complete with {serverIp}:{serverPort}! Assigned IPv4: {ip}, IPv6: {ip6}");
+        StartTrafficMonitor();
+    }
+
+    //привязка событий конкретного экземпляра транспорта с защитой от гонок при горячей замене
+    private void WireTransportEvents(IVpnTransport transport)
+    {
         transport.OnPacketReceived += (pkt, len) =>
         {
             _ = Interlocked.Add(ref _totalBytesReceived, len);
@@ -191,14 +216,107 @@ public sealed partial class OctopusEngine
             }
         };
         transport.OnPingUpdated += ReportPing;
-        transport.OnConnectionDropped += () => OnConnectionDropped?.Invoke();
-        transport.OnMtuUpdated += mtu => OnMtuUpdated?.Invoke(mtu);
+        transport.OnConnectionDropped += () =>
+        {
+            if (ReferenceEquals(_transport, transport) && Volatile.Read(ref _isEscalatingToShield) == 0)
+            {
+                OnConnectionDropped?.Invoke();
+            }
+        };
+        transport.OnMtuUpdated += mtu =>
+        {
+            if (ReferenceEquals(_transport, transport))
+            {
+                OnMtuUpdated?.Invoke(mtu);
+            }
+        };
+    }
 
-        var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
-        AssignedIp = ip;
-        AssignedIpV6 = ip6;
-        AppLogger.Log($"[OCTOPUS] Handshake complete with {serverIp}:{serverPort}! Assigned IPv4: {ip}, IPv6: {ip6}");
-        StartTrafficMonitor();
+    //бесшовная горячая замена прямого h2 транспорта на облачный websocket щит без пересоздания tun интерфейса
+    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области", Justification = "Владение передается в _transport через Interlocked.Exchange либо освобождается через DisposeAsync в finally")]
+    public async Task<bool> TryEscalateToShieldAsync(string reason, CancellationToken ct = default)
+    {
+        if (_transport is not ObxodkaStreamTransport || _clientCert is null || _cts is null || _cts.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        var currentIp = ConnectedServerIp;
+        if (!string.IsNullOrWhiteSpace(currentIp) &&
+            IPAddress.TryParse(currentIp, out var parsedCurIp) &&
+            IPAddress.IsLoopback(parsedCurIp))
+        {
+            return false;
+        }
+
+        if (Interlocked.CompareExchange(ref _isEscalatingToShield, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        ObxodkaWebSocketTransport? wsTransport = null;
+        try
+        {
+            MarkNodeByteCapped(currentIp);
+            DynamicSslPublicKeyHash = null;
+
+            var shieldDomain = AppConfig.PrimaryDomain;
+            AppLogger.LogWarning($"[OCTOPUS-SHIELD] TSPU freeze detected ({reason}) on {currentIp}:{ConnectedServerPort}. Escalating seamlessly to Shield '{shieldDomain}'...");
+
+            wsTransport = new ObxodkaWebSocketTransport(443, shieldDomain, AssignedIp);
+            if (_protectAction is not null)
+            {
+                wsTransport.ProtectSockets(_protectAction);
+            }
+            WireTransportEvents(wsTransport);
+
+            using var escalateTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct, escalateTimeoutCts.Token);
+
+            var (newIp, newIp6) = await wsTransport.ConnectAsync(shieldDomain, _clientCert.Thumbprint, linkedCts.Token).ConfigureAwait(false);
+
+            var oldTransport = Interlocked.Exchange(ref _transport, wsTransport);
+            wsTransport = null;
+
+            ActiveProtocol = "OBXODKA-WS";
+            ActiveRays = 1;
+            ConnectedServerIp = shieldDomain;
+            ConnectedServerPort = 443;
+            ActiveTargetSni = shieldDomain;
+            AssignedIp = newIp;
+            AssignedIpV6 = newIp6;
+            Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
+
+            if (oldTransport is not null)
+            {
+                try
+                {
+                    await oldTransport.DisposeAsync().ConfigureAwait(false);
+                }
+                catch { }
+            }
+
+            AppLogger.Log($"[OCTOPUS-SHIELD] Seamless escalation complete! Tunnel preserved on {AssignedIp} via WebSocket Shield.");
+            ScheduleSmartMtuScan(1500);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[OCTOPUS-SHIELD] Seamless escalation failed ({reason}): {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            if (wsTransport is not null)
+            {
+                try
+                {
+                    await wsTransport.DisposeAsync().ConfigureAwait(false);
+                }
+                catch { }
+            }
+            Volatile.Write(ref _isEscalatingToShield, 0);
+        }
     }
 
     //реконнект с использованием сохраненных параметров активного соединения (ssot)

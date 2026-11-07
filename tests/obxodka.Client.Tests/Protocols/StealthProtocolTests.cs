@@ -870,6 +870,81 @@ public sealed class StealthProtocolTests
         Assert.InRange(maxBytes1, 32L * 1024 * 1024, 64L * 1024 * 1024);
     }
 
+    [Fact]
+    public void RayInspectorIgnoresIdleSilenceAndMulticastForMtuBlackhole()
+    {
+        var inspector = new obxodka.Core.Transports.RayInspector();
+        var now = Stopwatch.GetTimestamp();
+        inspector.RecordRx(0, now);
+
+        //активный обмен трафиком с успешным приемом
+        for (var i = 0; i < 30; i++)
+        {
+            inspector.RecordDataTx();
+        }
+        inspector.RecordDataRx(1200);
+
+        //простой 5 секунд + фоновые мультикаст пакеты ос и мелкие ack не должны вызывать ложный mtu блэкхол
+        var idleTs = now + (Stopwatch.Frequency * 5);
+        inspector.RecordRx(0, idleTs);
+
+        var mdnsIpv4 = new byte[700];
+        mdnsIpv4[0] = 0x45;
+        mdnsIpv4[16] = 224;
+        mdnsIpv4[19] = 251;
+
+        var smallAck = new byte[52];
+        smallAck[0] = 0x45;
+        smallAck[16] = 8;
+
+        for (var i = 0; i < 20; i++)
+        {
+            inspector.RecordDataTx(mdnsIpv4);
+            inspector.RecordDataTx(smallAck);
+        }
+
+        Assert.False(inspector.DetectMtuBlackhole(idleTs));
+        Assert.False(inspector.DetectMtuBlackhole(idleTs));
+        Assert.False(inspector.DetectMtuBlackhole(idleTs));
+    }
+
+    [Fact]
+    public void SniEngineWebSocketCandidatesPreserveCloudflareMirrorsWhenIpPreResolved()
+    {
+        var candidates = SniEngine.BuildWebSocketCandidates("104.21.44.10", 443, AppConfig.PrimaryDomain);
+        Assert.True(candidates.Count >= 4);
+        Assert.Equal(AppConfig.PrimaryDomain, candidates[0].TargetSni);
+        Assert.Equal(443, candidates[0].Port);
+
+        if (AppConfig.MirrorDomains.Length > 0)
+        {
+            Assert.Contains(candidates, c =>
+                c.Port == 443 &&
+                AppConfig.MirrorDomains.Contains(c.TargetSni, StringComparer.OrdinalIgnoreCase));
+        }
+    }
+
+    [Fact]
+    public void OctopusEngineByteCapPenaltyTracksAndClearsDirectNodes()
+    {
+        try
+        {
+            OctopusEngine.ClearByteCappedNodes();
+            OctopusEngine.MarkNodeByteCapped("127.0.0.1");
+            Assert.False(OctopusEngine.IsNodeByteCapped("127.0.0.1"));
+
+            OctopusEngine.MarkNodeByteCapped("70.34.201.253");
+            Assert.True(OctopusEngine.IsNodeByteCapped("70.34.201.253"));
+
+            OctopusEngine.ClearByteCappedNodes();
+            Assert.False(OctopusEngine.IsNodeByteCapped("70.34.201.253"));
+        }
+        finally
+        {
+            OctopusEngine.ClearByteCappedNodes();
+        }
+    }
+
     private sealed class TestRecordingStream : Stream
     {
         public List<byte[]> Writes { get; } = [];

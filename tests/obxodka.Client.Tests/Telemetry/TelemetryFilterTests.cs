@@ -64,4 +64,19 @@ public sealed class TelemetryFilterTests
         var second = TelemetryFilter.ShouldSendToServer(message, ex);
         Assert.False(second);
     }
+
+    [Theory]
+    [InlineData("[SECURITY] CERT PINNING MISMATCH! Expected: FORGED_HASH_THAT_DOES_NOT_MATCH_THE_SERVER_KEY")]
+    [InlineData("Pinned validation failed: FAKE_PIN")]
+    [InlineData("[TEST-ONLY] Simulated ray desync")]
+    public void ShouldSendToServer_FiltersOutSyntheticSecurityTestMarkers(string message)
+    {
+        Assert.False(TelemetryFilter.ShouldSendToServer(message));
+    }
+
+    [Fact]
+    public void IsTestEnvironment_DetectsXunitRunner()
+    {
+        Assert.True(TelemetryFilter.IsTestEnvironment);
+    }
 }

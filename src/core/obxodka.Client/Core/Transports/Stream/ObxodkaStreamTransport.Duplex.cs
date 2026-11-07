@@ -9,19 +9,22 @@ public sealed partial class ObxodkaStreamTransport
         var portIdx = 0;
         var currentClientPort = initialPort;
         var consecutiveDrops = 0;
+        var forceNewSocket = false;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = primaryPorts[portIdx % primaryPorts.Length];
-            var client = (activePort == currentClientPort && _httpClient0 != null)
+            var client = (!forceNewSocket && activePort == currentClientPort && _httpClient0 != null)
                 ? _httpClient0
                 : ResetRayHttpClient(0, channelHost, activePort, enableDpi);
+            forceNewSocket = false;
             currentClientPort = activePort;
             var rxBefore = Volatile.Read(ref _lastRxTicks0);
             var rotatedCleanly = false;
             try
             {
                 rotatedCleanly = await RunStreamAsync(0, client, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);
+                forceNewSocket = rotatedCleanly;
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -90,18 +93,21 @@ public sealed partial class ObxodkaStreamTransport
         int[] secondaryPorts = initialPort == 8443 ? [8443, 443] : [initialPort, 8443, 443];
         var portIdx = 0;
         var currentClientPort = initialPort;
+        var forceNewSocket = false;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = secondaryPorts[portIdx % secondaryPorts.Length];
-            var client = (activePort == currentClientPort && _httpClient1 != null)
+            var client = (!forceNewSocket && activePort == currentClientPort && _httpClient1 != null)
                 ? _httpClient1
                 : ResetRayHttpClient(1, channelHost, activePort, enableDpi);
+            forceNewSocket = false;
             currentClientPort = activePort;
             var rotatedCleanly = false;
             try
             {
                 rotatedCleanly = await RunStreamAsync(1, client, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);
+                forceNewSocket = rotatedCleanly;
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -142,18 +148,21 @@ public sealed partial class ObxodkaStreamTransport
         int[] tertiaryPorts = [initialPort, 2053, 8443, 443];
         var portIdx = 0;
         var currentClientPort = initialPort;
+        var forceNewSocket = false;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = tertiaryPorts[portIdx % tertiaryPorts.Length];
-            var client = (activePort == currentClientPort && _httpClient2 != null)
+            var client = (!forceNewSocket && activePort == currentClientPort && _httpClient2 != null)
                 ? _httpClient2
                 : ResetRayHttpClient(2, channelHost, activePort, enableDpi);
+            forceNewSocket = false;
             currentClientPort = activePort;
             var rotatedCleanly = false;
             try
             {
                 rotatedCleanly = await RunStreamAsync(2, client, channelHost, activePort, thumbprint, ct).ConfigureAwait(false);
+                forceNewSocket = rotatedCleanly;
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -206,7 +215,7 @@ public sealed partial class ObxodkaStreamTransport
             var candidateSessionKey = ObxodkaFraming.DeriveSessionKey(thumbprint, ray, sessionSeed);
             var activeSessionKey = 0u;
             var cid = RandomNumberGenerator.GetInt32(10000000, 99999999);
-            var requestUri = $"https://{channelHost}:{port}{streamPath}?ray={ray}&mtu={SmartMtuEngine.CurrentMtu}&cid={cid}&_t={nowSec}&v=133.0";
+            var requestUri = $"https://{channelHost}:{port}{streamPath}?cid={cid}&_t={nowSec}&v=133.0";
             using var request = new HttpRequestMessage(HttpMethod.Post, requestUri)
             {
                 Version = HttpVersion.Version20,

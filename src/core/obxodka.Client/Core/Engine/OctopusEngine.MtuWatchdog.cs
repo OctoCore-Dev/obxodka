@@ -97,9 +97,28 @@ public sealed partial class OctopusEngine
             }
             else
             {
-                optimalMtu = await transport.ProbeMtuAsync(SmartMtuEngine.DefaultMtu, ct).ConfigureAwait(false)
-                    ? SmartMtuEngine.DefaultMtu
-                    : SmartMtuEngine.MinMtu;
+                if (await transport.ProbeMtuAsync(SmartMtuEngine.DefaultMtu, ct).ConfigureAwait(false))
+                {
+                    optimalMtu = SmartMtuEngine.DefaultMtu;
+                }
+                else if (await transport.ProbeMtuAsync(SmartMtuEngine.MinMtu, ct).ConfigureAwait(false))
+                {
+                    optimalMtu = SmartMtuEngine.MinMtu;
+                }
+                else
+                {
+                    //даже минимальный зонд 1200 байт завис после прокачки окна — признак блокировки тспу по объему байт
+                    if (transport is ObxodkaStreamTransport && !ct.IsCancellationRequested)
+                    {
+                        Volatile.Write(ref _isScanningMtu, 0);
+                        if (await TryEscalateToShieldAsync("PostHandshakeMtuBurstFreeze", ct).ConfigureAwait(false))
+                        {
+                            return SmartMtuEngine.CurrentMtu;
+                        }
+                    }
+
+                    optimalMtu = SmartMtuEngine.MinMtu;
+                }
             }
 
             SmartMtuEngine.CurrentMtu = optimalMtu;
@@ -128,13 +147,18 @@ public sealed partial class OctopusEngine
         {
             long lastSent = 0;
             long lastReceived = 0;
+            long rxStallStartSent = 0;
             long windowLargeTx = 0;
             long windowLargeRx = 0;
             var windowTicks = 0;
             var mtuBlackholeWindows = 0;
             var deadTicks = 0;
 
-            void OnPing(long _) => deadTicks = 0;
+            void OnPing(long _)
+            {
+                deadTicks = 0;
+                rxStallStartSent = TotalBytesSent;
+            }
             OnPingUpdated += OnPing;
 
             try
@@ -153,6 +177,7 @@ public sealed partial class OctopusEngine
                         mtuBlackholeWindows = 0;
                         lastSent = currentSent;
                         lastReceived = currentReceived;
+                        rxStallStartSent = currentSent;
                         windowLargeTx = Volatile.Read(ref _largeTxPackets);
                         windowLargeRx = Volatile.Read(ref _largeRxPackets);
                         await Task.Delay(200, token).ConfigureAwait(false);
@@ -163,15 +188,35 @@ public sealed partial class OctopusEngine
                     {
                         deadTicks++;
                         var elapsedMs = Environment.TickCount64 - armedTicks;
-                        var isInitialBlackhole = elapsedMs is >= 15000 and < 60000 && currentSent > 25000 && currentReceived == 0;
+                        var bytesSentDuringStall = currentSent - rxStallStartSent;
 
-                        var isDead = (isInitialBlackhole && deadTicks >= 50) ||
-                                     (currentSent > 50000 && currentReceived == 0 && deadTicks >= 60) ||
-                                     deadTicks >= 90;
+                        //раннее обнаружение заморозки прямого h2 соединения тспу на пороге 16-32 кб с бесшовным уходом на щит
+                        if (_transport is ObxodkaStreamTransport &&
+                            deadTicks >= 25 &&
+                            (currentSent >= 16384 || bytesSentDuringStall >= 8192))
+                        {
+                            var escalated = await TryEscalateToShieldAsync("DirectStreamByteCapFreeze", token).ConfigureAwait(false);
+                            if (escalated)
+                            {
+                                deadTicks = 0;
+                                lastSent = TotalBytesSent;
+                                lastReceived = TotalBytesReceived;
+                                rxStallStartSent = lastSent;
+                                continue;
+                            }
+                        }
+
+                        var isInitialBlackhole = elapsedMs is >= 12000 and < 60000 &&
+                                                 (currentSent > 20000 || bytesSentDuringStall > 16384) &&
+                                                 deadTicks >= 45;
+
+                        var isDead = isInitialBlackhole ||
+                                     (bytesSentDuringStall > 32768 && deadTicks >= 55) ||
+                                     deadTicks >= 80;
 
                         if (isDead)
                         {
-                            Debug.WriteLine($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, DeadTicks={deadTicks}");
+                            Debug.WriteLine($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
                             OnDeadConnectionDetected?.Invoke();
                             break;
                         }
@@ -179,6 +224,7 @@ public sealed partial class OctopusEngine
                     else if (currentReceived > lastReceived)
                     {
                         deadTicks = 0;
+                        rxStallStartSent = currentSent;
                     }
 
                     windowTicks++;

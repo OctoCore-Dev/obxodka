@@ -56,28 +56,33 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketBlockDetected);
                 ChangeState(AppVpnState.Reconnecting);
 
-                try
-                {
-                    await OctopusEngine.Current.ReconnectAsync();
-                    _ = OctopusVpnService.Instance?.EstablishTun();
-                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
-                    if (_isExplicitlyStopped)
-                    {
-                        return;
-                    }
+                OctopusEngine.MarkNodeByteCapped(_currentServerIp);
 
-                    if (verified || OctopusEngine.Current.IsConnected)
-                    {
-                        OctopusEngine.Current.ResetTrafficCounters();
-                        OctopusEngine.Current.ArmTrafficWatchdog();
-                        ChangeState(AppVpnState.Connected);
-                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestoredTls);
-                        return;
-                    }
-                }
-                catch (Exception ex)
+                if (_fallbackServers.Count <= 1 || !OctopusEngine.IsNodeByteCapped(_currentServerIp))
                 {
-                    AppLogger.LogWarning($"[SMART CONNECT] Reconnect failed on {_currentServerIp}: {ex.Message}");
+                    try
+                    {
+                        await OctopusEngine.Current.ReconnectAsync();
+                        _ = OctopusVpnService.Instance?.EstablishTun();
+                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                        if (_isExplicitlyStopped)
+                        {
+                            return;
+                        }
+
+                        if (verified || OctopusEngine.Current.IsConnected)
+                        {
+                            OctopusEngine.Current.ResetTrafficCounters();
+                            OctopusEngine.Current.ArmTrafficWatchdog();
+                            ChangeState(AppVpnState.Connected);
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestoredTls);
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.LogWarning($"[SMART CONNECT] Reconnect failed on {_currentServerIp}: {ex.Message}");
+                    }
                 }
 
                 if (_fallbackServers.Count > 1)
@@ -280,6 +285,10 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         {
             return;
         }
+
+        //сброс штрафов прямых узлов и кэша днс при смене физической сети wi-fi или lte
+        OctopusEngine.ClearByteCappedNodes();
+        ApiService.InvalidateHostCache();
 
         CancellationToken ct;
         lock (_roamingLock)

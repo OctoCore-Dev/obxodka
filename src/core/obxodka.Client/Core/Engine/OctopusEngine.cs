@@ -15,6 +15,41 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     private X509Certificate2? _clientCert;
     private CancellationTokenSource? _cts;
     private Action<Socket>? _protectAction;
+    private int _isEscalatingToShield;
+
+    //реестр прямых узлов попавших под лимит объема трафика тспу с временным штрафом 30 минут
+    private static readonly ConcurrentDictionary<string, long> s_cappedDirectNodes = new(StringComparer.OrdinalIgnoreCase);
+
+    //пометка прямого узла как заблокированного по порогу трафика тспу
+    public static void MarkNodeByteCapped(string? serverIp)
+    {
+        if (string.IsNullOrWhiteSpace(serverIp) || !IPAddress.TryParse(serverIp, out var ip) || IPAddress.IsLoopback(ip))
+        {
+            return;
+        }
+
+        s_cappedDirectNodes[serverIp] = Stopwatch.GetTimestamp() + (Stopwatch.Frequency * 1800);
+    }
+
+    //проверка действует ли штраф лимита трафика тспу для прямого узла
+    public static bool IsNodeByteCapped(string? serverIp)
+    {
+        if (string.IsNullOrWhiteSpace(serverIp) || !s_cappedDirectNodes.TryGetValue(serverIp, out var expiresAt))
+        {
+            return false;
+        }
+
+        if (Stopwatch.GetTimestamp() < expiresAt)
+        {
+            return true;
+        }
+
+        _ = s_cappedDirectNodes.TryRemove(serverIp, out _);
+        return false;
+    }
+
+    //сброс штрафов прямых узлов при смене физической сети
+    public static void ClearByteCappedNodes() => s_cappedDirectNodes.Clear();
 
     //динамический хэш открытого ключа ssl pinning
     public static string? DynamicSslPublicKeyHash { get; set; }

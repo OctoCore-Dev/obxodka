@@ -57,28 +57,34 @@ internal sealed partial class WindowsVpnService
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketLossDetected);
                 UpdateState(AppVpnState.Reconnecting);
 
-                try
+                //помечаем прямой узел как заблокированный по трафику и сразу идем на резервный щит если он доступен
+                OctopusEngine.MarkNodeByteCapped(_currentServerIp);
+
+                if (_fallbackServers.Count <= 1 || !OctopusEngine.IsNodeByteCapped(_currentServerIp))
                 {
-                    await EnsureHostRouteAsync(_currentServerIp);
-                    OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
-                    await OctopusEngine.Current.ReconnectAsync();
-                    var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
-                    if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
+                    try
                     {
-                        if (_adapter is not null)
+                        await EnsureHostRouteAsync(_currentServerIp);
+                        OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
+                        await OctopusEngine.Current.ReconnectAsync();
+                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
+                        if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
                         {
-                            await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
+                            if (_adapter is not null)
+                            {
+                                await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
+                            }
+                            OctopusEngine.Current.ResetTrafficCounters();
+                            OctopusEngine.Current.ArmTrafficWatchdog();
+                            UpdateState(AppVpnState.Connected);
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
+                            return;
                         }
-                        OctopusEngine.Current.ResetTrafficCounters();
-                        OctopusEngine.Current.ArmTrafficWatchdog();
-                        UpdateState(AppVpnState.Connected);
-                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
-                        return;
                     }
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.LogWarning($"[SMART CONNECT] Reconnect failed on {_currentServerIp}:{OctopusEngine.Current.ConnectedServerPort}: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        AppLogger.LogWarning($"[SMART CONNECT] Reconnect failed on {_currentServerIp}:{OctopusEngine.Current.ConnectedServerPort}: {ex.Message}");
+                    }
                 }
 
                 if (_fallbackServers.Count > 1)
@@ -380,7 +386,7 @@ internal sealed partial class WindowsVpnService
                     {
                         try
                         {
-                            var ips = new[] { await ApiService.ResolveHostAntiPoisonAsync(candidateIp).ConfigureAwait(false) };
+                            var ips = await ApiService.ResolveAllHostsAntiPoisonAsync(candidateIp).ConfigureAwait(false);
                             foreach (var ipAddr in ips.Where(a => a.AddressFamily == AddressFamily.InterNetwork))
                             {
                                 candidateIpsToRoute.Add(ipAddr.ToString());
