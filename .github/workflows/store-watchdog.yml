@@ -21,7 +21,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   DOTNET_NOLOGO: "true"
@@ -224,3 +224,42 @@ jobs:
           *Executed in ~20 seconds. Zero runner waste.*
           "@
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: "[BADGES] Sync Store Badges from Watchdog"
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          $mstate = "${{ steps.drain-mstore.outputs.state }}"
+          $pstate = "${{ steps.drain-playstore.outputs.state }}"
+          $tag = "${{ steps.gh-release.outputs.latest_tag }}"
+          $ver = if ($tag -match 'v?([\d\.]+)') { $matches[1] } else { $tag }
+
+          New-Item -ItemType Directory -Force -Path ".github/badges" | Out-Null
+          $changed = $false
+
+          if ($pstate -eq "deployed") {
+            @{ schemaVersion = 1; label = "Google Play"; message = "Deployed v$ver"; color = "00C853" } | ConvertTo-Json | Out-File -FilePath ".github/badges/playstore.json" -Encoding utf8
+            $changed = $true
+          } elseif ($pstate -eq "busy_review" -or $pstate -eq "queued") {
+            @{ schemaVersion = 1; label = "Google Play"; message = "Queued (In Review)"; color = "e3b341" } | ConvertTo-Json | Out-File -FilePath ".github/badges/playstore.json" -Encoding utf8
+            $changed = $true
+          }
+
+          if ($mstate -eq "deployed") {
+            @{ schemaVersion = 1; label = "Microsoft Store"; message = "Deployed v$ver"; color = "0078D4" } | ConvertTo-Json | Out-File -FilePath ".github/badges/mstore.json" -Encoding utf8
+            $changed = $true
+          } elseif ($mstate -eq "busy_review" -or $mstate -eq "queued") {
+            @{ schemaVersion = 1; label = "Microsoft Store"; message = "Queued (In Review)"; color = "e3b341" } | ConvertTo-Json | Out-File -FilePath ".github/badges/mstore.json" -Encoding utf8
+            $changed = $true
+          }
+
+          if ($changed) {
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .github/badges/
+            $diff = git diff --cached --name-only
+            if ($diff) {
+              git commit -m "chore(badges): sync store watchdog status badges [skip ci]"
+              git push origin main
+            }
+          }

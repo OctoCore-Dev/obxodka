@@ -20,10 +20,10 @@
 
 <!-- Store & Action Badges -->
 <a href="https://github.com/OctoCore-Dev/obxodka/releases"><img src="https://img.shields.io/github/v/release/OctoCore-Dev/obxodka?style=for-the-badge&logo=github&color=00e5ff&label=Latest%20Version" alt="Latest Version" /></a>
-<a href="https://github.com/OctoCore-Dev/obxodka/actions"><img src="https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=Build%20%26%20Deploy" alt="Build Status" /></a>
-<a href="https://play.google.com/store/apps/details?id=com.octocore.obxodka"><img src="https://img.shields.io/badge/Google_Play-Available-00C853?style=for-the-badge&logo=googleplay&logoColor=white" alt="Google Play" /></a>
-<a href="https://apps.microsoft.com/store/detail/9NZXP5WR803J"><img src="https://img.shields.io/badge/Microsoft_Store-Available-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Microsoft Store" /></a>
-<a href="https://github.com/OctoCore-Dev/obxodka/discussions"><img src="https://img.shields.io/badge/Rating-5.0_%E2%98%85%E2%98%85%E2%98%85%E2%98%85%E2%98%85-FFD700?style=for-the-badge&logo=star&logoColor=black" alt="Rating" /></a>
+<a href="https://github.com/OctoCore-Dev/obxodka/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/release.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Central%20Pipeline" alt="Central Pipeline" /></a>
+<a href="https://play.google.com/store/apps/details?id=com.octocore.obxodka"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/playstore.json&style=for-the-badge&logo=googleplay" alt="Google Play Deploy" /></a>
+<a href="https://apps.microsoft.com/store/detail/9NZXP5WR803J"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/mstore.json&style=for-the-badge&logo=windows" alt="Microsoft Store Deploy" /></a>
+<a href="https://github.com/OctoCore-Dev/obxodka/actions/workflows/store-watchdog.yml"><img src="https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/store-watchdog.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Store%20Watchdog" alt="Store Watchdog" /></a>
 <a href="https://github.com/OctoCore-Dev/obxodka"><img src="https://img.shields.io/badge/Stealth-Octopus_v7.0-8B5CF6?style=for-the-badge&logo=shield&logoColor=white" alt="Stealth Engine" /></a>
 
 <br/><br/>
@@ -202,6 +202,19 @@ dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
 ```
 
 </details>
+
+---
+
+## <img src=".github/assets/icons/octo_server.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Статус умного деплоя (Smart Multi-Store Pipeline)
+
+Система релизов Obxodka использует двухконтурный механизм умного деплоя (**Smart Store Deployer & Watchdog**), предотвращающий сбои сборки при нахождении приложения на проверке:
+
+| Контур / Магазин | Пайплайн | Текущий статус | Механика работы |
+|:---|:---|:---:|:---|
+| **Центральный релиз** | [`release.yml`](.github/workflows/release.yml) | [![Central Pipeline](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/release.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Central%20Pipeline)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/release.yml) | Сборка Windows MSIX, Android AAB, прогон xUnit тестов (505 тестов) и публикация в GitHub Releases. |
+| **Google Play Store** | `OctoPublisher (Android)` | [![Google Play Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/playstore.json&style=flat-square&logo=googleplay)](https://play.google.com/store/apps/details?id=com.octocore.obxodka) | Автопубликация AAB в Google Play Console (Production). При модерации переводится в очередь `[QUEUED]`. |
+| **Microsoft Store** | `OctoPublisher (Windows)` | [![Microsoft Store Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/mstore.json&style=flat-square&logo=windows)](https://apps.microsoft.com/store/detail/9NZXP5WR803J) | Автопубликация MSIX в Partner Center API. Если магазин на ревью (код 3) — не ломает сборку, а ставит в очередь `[QUEUED]`. |
+| **Smart Store Watchdog** | [`store-watchdog.yml`](.github/workflows/store-watchdog.yml) | [![Store Watchdog](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/store-watchdog.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Store%20Watchdog)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/store-watchdog.yml) | Автономный фоновый сторож: циклически проверяет окончание проверки сторами и автоматически допушивает релиз из очереди. |
 
 ---
 

@@ -5,6 +5,12 @@ on:
     branches:
       - main
       - master
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/assets/**'
+      - '.github/badges/**'
+      - 'docs/**'
     tags:
       - "v*"
   workflow_dispatch:
@@ -761,6 +767,11 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: "[SUMMARY] Generate Executive Telemetry Dashboard"
         run: |
           cat << 'EOF' >> $GITHUB_STEP_SUMMARY
@@ -779,3 +790,77 @@ jobs:
           ---
           *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) v1.0.2 on .NET 10.*
           EOF
+
+      - name: "[BADGES] Update Store Deployment Badges"
+        if: github.ref == 'refs/heads/main' && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped')
+        run: |
+          mkdir -p .github/badges
+          VERSION="${{ needs.check-version.outputs.version }}"
+
+          ANDROID_STATE="${{ needs.deploy-android.outputs.deploy_state }}"
+          if [ "$ANDROID_STATE" = "deployed" ]; then
+            cat << JSON > .github/badges/playstore.json
+          {
+            "schemaVersion": 1,
+            "label": "Google Play",
+            "message": "Deployed v${VERSION}",
+            "color": "00C853"
+          }
+          JSON
+          elif [ "$ANDROID_STATE" = "queued" ]; then
+            cat << JSON > .github/badges/playstore.json
+          {
+            "schemaVersion": 1,
+            "label": "Google Play",
+            "message": "Queued (In Review)",
+            "color": "e3b341"
+          }
+          JSON
+          elif [ "${{ needs.deploy-android.result }}" = "failure" ]; then
+            cat << JSON > .github/badges/playstore.json
+          {
+            "schemaVersion": 1,
+            "label": "Google Play",
+            "message": "Failed",
+            "color": "cb2431"
+          }
+          JSON
+          fi
+
+          WINDOWS_STATE="${{ needs.deploy-windows.outputs.deploy_state }}"
+          if [ "$WINDOWS_STATE" = "deployed" ]; then
+            cat << JSON > .github/badges/mstore.json
+          {
+            "schemaVersion": 1,
+            "label": "Microsoft Store",
+            "message": "Deployed v${VERSION}",
+            "color": "0078D4"
+          }
+          JSON
+          elif [ "$WINDOWS_STATE" = "queued" ]; then
+            cat << JSON > .github/badges/mstore.json
+          {
+            "schemaVersion": 1,
+            "label": "Microsoft Store",
+            "message": "Queued (In Review)",
+            "color": "e3b341"
+          }
+          JSON
+          elif [ "${{ needs.deploy-windows.result }}" = "failure" ]; then
+            cat << JSON > .github/badges/mstore.json
+          {
+            "schemaVersion": 1,
+            "label": "Microsoft Store",
+            "message": "Failed",
+            "color": "cb2431"
+          }
+          JSON
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(badges): update store deployment status badges [skip ci]"
+            git push origin main
+          fi

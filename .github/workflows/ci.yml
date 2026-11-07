@@ -5,10 +5,22 @@ on:
     branches:
       - main
       - develop
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/assets/**'
+      - '.github/badges/**'
+      - 'docs/**'
   pull_request:
     branches:
       - develop
       - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/assets/**'
+      - '.github/badges/**'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
