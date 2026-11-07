@@ -39,6 +39,7 @@
 		<RunAOTCompilation>false</RunAOTCompilation>
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
 		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+		<UseNativeHttpHandler>true</UseNativeHttpHandler>
 		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' != 'true'">8G</JavaMaximumHeapSize>
 		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' == 'true'">4G</JavaMaximumHeapSize>
 		<AndroidLinkTool Condition="'$(Configuration)' == 'Release'">r8</AndroidLinkTool>

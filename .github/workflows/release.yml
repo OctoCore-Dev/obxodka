@@ -461,6 +461,8 @@ jobs:
     name: "[PUBLISH-ANDROID] Google Play Console (OctoPublisher)"
     needs: [check-version, build-android]
     runs-on: ubuntu-latest
+    outputs:
+      deploy_state: ${{ steps.publish-play.outputs.deploy_state }}
     if: |
       always() &&
       (needs.build-android.result == 'success') &&
@@ -517,6 +519,7 @@ jobs:
           echo -e "${CYAN}  [OCTOPUBLISHER] DEPLOYING TO GOOGLE PLAY STORE${RESET}"
           echo -e "${CYAN}============================================================${RESET}"
 
+          EXIT_CODE=0
           octopublish playstore publish \
             --bundle "${{ steps.find-aab.outputs.aab_path }}" \
             --package-name "$PLAY_PACKAGE_NAME" \
@@ -524,14 +527,28 @@ jobs:
             --track "$ANDROID_TRACK" \
             --notes-dir "packaging/whatsnew" \
             --desc-dir "packaging/store/android" \
-            --release-name "v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }})"
+            --release-name "v${{ needs.check-version.outputs.version }} (Build ${{ needs.check-version.outputs.build_number }})" || EXIT_CODE=$?
+
+          if [ "$EXIT_CODE" -eq 3 ]; then
+            echo "::warning::[STORE BUSY] Google Play track is currently pending review. Queued for watchdog auto-deploy."
+            echo "deploy_state=queued" >> $GITHUB_OUTPUT
+            exit 0
+          elif [ "$EXIT_CODE" -ne 0 ]; then
+            echo "deploy_state=failed" >> $GITHUB_OUTPUT
+            exit $EXIT_CODE
+          else
+            echo "deploy_state=deployed" >> $GITHUB_OUTPUT
+          fi
 
       - name: "[TELEMETRY] Google Play Deployment Telemetry"
         if: always()
         run: |
+          DEPLOY_STATE="${{ steps.publish-play.outputs.deploy_state }}"
           STATUS="${{ steps.publish-play.outcome }}"
           STATUS_TAG="[PASS] DEPLOYED"
-          if [ "$STATUS" != "success" ]; then
+          if [ "$DEPLOY_STATE" = "queued" ]; then
+            STATUS_TAG="[QUEUED] PENDING STORE REVIEW"
+          elif [ "$STATUS" != "success" ]; then
             STATUS_TAG="[FAIL] ERROR"
             if [ -z "$PLAY_CONFIG_JSON" ]; then
               STATUS_TAG="[SKIP] SKIPPED (PLAY_CONFIG_JSON secret not configured)"
@@ -557,6 +574,8 @@ jobs:
     name: "[PUBLISH-WINDOWS] Microsoft Partner Center (OctoPublisher)"
     needs: [check-version, build-windows]
     runs-on: windows-latest
+    outputs:
+      deploy_state: ${{ steps.publish-mstore.outputs.deploy_state }}
     if: |
       always() &&
       (needs.build-windows.result == 'success') &&
@@ -617,23 +636,43 @@ jobs:
           Write-Host "  [OCTOPUBLISHER] DEPLOYING TO MICROSOFT STORE" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
 
-          octopublish mstore publish `
-            --package "${{ steps.find-windows-pkg.outputs.pkg_path }}" `
-            --app-id "$env:STORE_APP_ID" `
-            --tenant-id "$env:STORE_TENANT_ID" `
-            --client-id "$env:STORE_CLIENT_ID" `
-            --client-secret "$env:STORE_CLIENT_SECRET" `
-            --seller-id "$env:SELLER_ID" `
-            --notes-dir "packaging/whatsnew" `
-            --desc-dir "packaging/store/windows"
+          $exitCode = 0
+          try {
+            octopublish mstore publish `
+              --package "${{ steps.find-windows-pkg.outputs.pkg_path }}" `
+              --app-id "$env:STORE_APP_ID" `
+              --tenant-id "$env:STORE_TENANT_ID" `
+              --client-id "$env:STORE_CLIENT_ID" `
+              --client-secret "$env:STORE_CLIENT_SECRET" `
+              --seller-id "$env:SELLER_ID" `
+              --notes-dir "packaging/whatsnew" `
+              --desc-dir "packaging/store/windows"
+            $exitCode = $LASTEXITCODE
+          } catch {
+            $exitCode = 1
+          }
+
+          if ($exitCode -eq 3) {
+            Write-Host "::warning::[STORE BUSY] Microsoft Store submission is currently in review/processing. Queued for autonomous deployment."
+            "deploy_state=queued" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          } elseif ($exitCode -ne 0) {
+            "deploy_state=failed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit $exitCode
+          } else {
+            "deploy_state=deployed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
 
       - name: "[TELEMETRY] Microsoft Store Deployment Telemetry"
         if: always()
         shell: pwsh
         run: |
+          $deployState = "${{ steps.publish-mstore.outputs.deploy_state }}"
           $status = "${{ steps.publish-mstore.outcome }}"
           $statusTag = "[PASS] COMMITTED TO CERTIFICATION"
-          if ($status -ne "success") {
+          if ($deployState -eq "queued") {
+            $statusTag = "[QUEUED] PENDING STORE REVIEW"
+          } elseif ($status -ne "success") {
             $statusTag = "[FAIL] ERROR"
             if (-not $env:STORE_CLIENT_ID) {
               $statusTag = "[SKIP] SKIPPED (STORE_CLIENT_ID secret not configured)"
@@ -733,8 +772,8 @@ jobs:
           | 1 | `[TESTS]` | ${{ needs.run-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | xUnit Client Test Suite |
           | 2 | `[BUILD-ANDROID]` | ${{ needs.build-android.result == 'success' && '`[PASS]`' || (needs.build-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | AAB & APK Bundles |
           | 3 | `[BUILD-WINDOWS]` | ${{ needs.build-windows.result == 'success' && '`[PASS]`' || (needs.build-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | MSIX & Inno Setup EXE |
-          | 4 | `[PUBLISH-ANDROID]` | ${{ needs.deploy-android.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | Google Play Console (OctoPublisher) |
-          | 5 | `[PUBLISH-WINDOWS]` | ${{ needs.deploy-windows.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | Microsoft Partner Center (OctoPublisher) |
+          | 4 | `[PUBLISH-ANDROID]` | ${{ needs.deploy-android.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-android.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Google Play Console (OctoPublisher) |
+          | 5 | `[PUBLISH-WINDOWS]` | ${{ needs.deploy-windows.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-windows.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Microsoft Partner Center (OctoPublisher) |
           | 6 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} |
 
           ---

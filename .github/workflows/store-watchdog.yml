@@ -1,0 +1,226 @@
+name: Obxodka Smart Store Watchdog
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      target_platform:
+        description: "Target platform to check and deploy"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - windows
+          - android
+      force_deploy:
+        description: "Force deploy even if already queued"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
+  PLAY_PACKAGE_NAME: ${{ secrets.PLAY_PACKAGE_NAME || 'com.octocore.obxodka' }}
+  STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+  STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+  STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+  STORE_APP_ID: ${{ secrets.STORE_APP_ID || '9NZXP5WR803J' }}
+  SELLER_ID: ${{ secrets.SELLER_ID || '94042650' }}
+
+jobs:
+  store-watchdog:
+    name: "[WATCHDOG] Autonomous Store Drain & Dispatcher"
+    runs-on: windows-latest
+    steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v4
+
+      - name: "[SETUP] .NET 10 SDK"
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: "[TOOL] Install OctoPublisher Global Tool"
+        run: |
+          dotnet tool install -g octopublisher || dotnet tool update -g octopublisher
+          echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          octopublish --version
+
+      - name: "[INSPECT] Resolve Latest GitHub Release Artifacts"
+        id: gh-release
+        shell: pwsh
+        run: |
+          Write-Host "Resolving latest stable GitHub release from OctoCore-Dev/obxodka..." -ForegroundColor Cyan
+          $releaseJson = gh release view --repo OctoCore-Dev/obxodka --json tagName,name,assets | ConvertFrom-Json
+          $tagName = $releaseJson.tagName
+          Write-Host "Found latest release tag: $tagName" -ForegroundColor Green
+
+          $msixAsset = $releaseJson.assets | Where-Object { $_.name -like "*.msix" } | Select-Object -First 1
+          $aabAsset = $releaseJson.assets | Where-Object { $_.name -like "*.aab" } | Select-Object -First 1
+
+          "latest_tag=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if ($msixAsset) {
+            "msix_name=$($msixAsset.name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+          if ($aabAsset) {
+            "aab_name=$($aabAsset.name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+      - name: "[MSTORE] Check & Drain Microsoft Store Queue"
+        if: ${{ env.STORE_CLIENT_ID != '' && (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android') }}
+        id: drain-mstore
+        shell: pwsh
+        run: |
+          Write-Host "============================================================" -ForegroundColor Cyan
+          Write-Host "  [WATCHDOG] MICROSOFT STORE INSPECTION & QUEUE DRAIN" -ForegroundColor Cyan
+          Write-Host "============================================================" -ForegroundColor Cyan
+
+          $statusRaw = octopublish mstore status `
+            --app-id "$env:STORE_APP_ID" `
+            --tenant-id "$env:STORE_TENANT_ID" `
+            --client-id "$env:STORE_CLIENT_ID" `
+            --client-secret "$env:STORE_CLIENT_SECRET" `
+            --json
+          $exitCode = $LASTEXITCODE
+
+          $mstoreState = "idle"
+          $statusObj = $null
+          try {
+            $statusObj = $statusRaw | ConvertFrom-Json
+          } catch {
+            Write-Host "Could not parse JSON output, falling back to exit code..."
+          }
+
+          $isBusy = ($exitCode -eq 3) -or ($statusObj -and $statusObj.isBusy -eq $true)
+
+          if ($isBusy) {
+            $pendingStatus = if ($statusObj) { $statusObj.pendingStatus } else { "Review/Certification" }
+            Write-Host "[BUSY] Microsoft Store submission is currently in '$pendingStatus' stage. Sleeping until next cycle." -ForegroundColor Yellow
+            $mstoreState = "busy_review"
+          } else {
+            Write-Host "[FREE] Microsoft Store has no pending submissions. Ready for release!" -ForegroundColor Green
+            $targetTag = "${{ steps.gh-release.outputs.latest_tag }}"
+            $msixName = "${{ steps.gh-release.outputs.msix_name }}"
+
+            if ($msixName) {
+              Write-Host "Downloading $msixName from GitHub release $targetTag..." -ForegroundColor Cyan
+              New-Item -ItemType Directory -Force -Path "./downloads/windows" | Out-Null
+              gh release download $targetTag --repo OctoCore-Dev/obxodka --pattern "*.msix" --dir "./downloads/windows" --clobber
+              $pkgPath = (Get-ChildItem ./downloads/windows/*.msix | Select-Object -First 1).FullName
+
+              Write-Host "Triggering autonomous deploy of $pkgPath..." -ForegroundColor Green
+              octopublish mstore publish `
+                --package "$pkgPath" `
+                --app-id "$env:STORE_APP_ID" `
+                --tenant-id "$env:STORE_TENANT_ID" `
+                --client-id "$env:STORE_CLIENT_ID" `
+                --client-secret "$env:STORE_CLIENT_SECRET" `
+                --seller-id "$env:SELLER_ID" `
+                --notes-dir "packaging/whatsnew" `
+                --desc-dir "packaging/store/windows"
+
+              if ($LASTEXITCODE -eq 0) {
+                $mstoreState = "deployed"
+                Write-Host "Successfully deployed $targetTag to Microsoft Store!" -ForegroundColor Green
+              } elseif ($LASTEXITCODE -eq 3) {
+                $mstoreState = "queued"
+              } else {
+                $mstoreState = "failed"
+              }
+            } else {
+              Write-Host "No MSIX asset found in release $targetTag." -ForegroundColor Yellow
+            }
+          }
+          "state=$mstoreState" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: "[PLAYSTORE] Check & Drain Google Play Queue"
+        if: ${{ env.PLAY_CONFIG_JSON != '' && (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows') }}
+        id: drain-playstore
+        shell: pwsh
+        run: |
+          Write-Host "============================================================" -ForegroundColor Cyan
+          Write-Host "  [WATCHDOG] GOOGLE PLAY STORE INSPECTION & QUEUE DRAIN" -ForegroundColor Cyan
+          Write-Host "============================================================" -ForegroundColor Cyan
+
+          $statusRaw = octopublish playstore status `
+            --package-name "$env:PLAY_PACKAGE_NAME" `
+            --service-account "$env:PLAY_CONFIG_JSON" `
+            --track "production" `
+            --json
+          $exitCode = $LASTEXITCODE
+
+          $playState = "idle"
+          $statusObj = $null
+          try {
+            $statusObj = $statusRaw | ConvertFrom-Json
+          } catch {
+            Write-Host "Could not parse JSON output, falling back to exit code..."
+          }
+
+          $isBusy = ($exitCode -eq 3) -or ($statusObj -and $statusObj.isBusy -eq $true)
+
+          if ($isBusy) {
+            Write-Host "[BUSY] Google Play track has changes currently pending review. Sleeping until next cycle." -ForegroundColor Yellow
+            $playState = "busy_review"
+          } else {
+            Write-Host "[FREE] Google Play Console is open for new releases!" -ForegroundColor Green
+            $targetTag = "${{ steps.gh-release.outputs.latest_tag }}"
+            $aabName = "${{ steps.gh-release.outputs.aab_name }}"
+
+            if ($aabName) {
+              Write-Host "Downloading $aabName from GitHub release $targetTag..." -ForegroundColor Cyan
+              New-Item -ItemType Directory -Force -Path "./downloads/android" | Out-Null
+              gh release download $targetTag --repo OctoCore-Dev/obxodka --pattern "*.aab" --dir "./downloads/android" --clobber
+              $aabPath = (Get-ChildItem ./downloads/android/*.aab | Select-Object -First 1).FullName
+
+              Write-Host "Triggering autonomous deploy of $aabPath..." -ForegroundColor Green
+              octopublish playstore publish `
+                --bundle "$aabPath" `
+                --package-name "$env:PLAY_PACKAGE_NAME" `
+                --service-account "$env:PLAY_CONFIG_JSON" `
+                --track "production" `
+                --notes-dir "packaging/whatsnew" `
+                --desc-dir "packaging/store/android" `
+                --release-name "$targetTag"
+
+              if ($LASTEXITCODE -eq 0) {
+                $playState = "deployed"
+                Write-Host "Successfully deployed $targetTag to Google Play Store!" -ForegroundColor Green
+              } elseif ($LASTEXITCODE -eq 3) {
+                $playState = "queued"
+              } else {
+                $playState = "failed"
+              }
+            } else {
+              Write-Host "No AAB asset found in release $targetTag." -ForegroundColor Yellow
+            }
+          }
+          "state=$playState" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: "[SUMMARY] Watchdog Execution Telemetry"
+        if: always()
+        shell: pwsh
+        run: |
+          $mstate = "${{ steps.drain-mstore.outputs.state }}"
+          $pstate = "${{ steps.drain-playstore.outputs.state }}"
+          $tag = "${{ steps.gh-release.outputs.latest_tag }}"
+
+          $summary = @"
+          # [WATCHDOG] Obxodka Autonomous Store Drain Report
+
+          | Channel | Status | Latest Target | Action Taken |
+          |---|---|---|---|
+          | **Microsoft Store** | ``$mstate`` | ``$tag`` | $(if ($mstate -eq "deployed") { "Auto-deployed to Partner Center" } elseif ($mstate -eq "busy_review") { "Review in progress. Waiting for next cycle." } else { "Idle / Up to date" }) |
+          | **Google Play Store** | ``$pstate`` | ``$tag`` | $(if ($pstate -eq "deployed") { "Auto-deployed to Google Play" } elseif ($pstate -eq "busy_review") { "Review in progress. Waiting for next cycle." } else { "Idle / Up to date" }) |
+
+          *Executed in ~20 seconds. Zero runner waste.*
+          "@
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

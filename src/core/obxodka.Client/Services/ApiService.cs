@@ -6,8 +6,19 @@ public sealed class ApiService(HttpClient client)
     //событие сброса авторизации при 401
     public static event Action? OnUnauthorized;
 
+    //создание обработчика для android с валидацией сертификатов
+    private static HttpClientHandler CreateAndroidHandler() => new()
+    {
+        UseProxy = false,
+        ServerCertificateCustomValidationCallback = (req, cert, chain, errors) =>
+            CertificateValidator.ValidateServerCertificate(cert, chain, errors)
+    };
+
     //клиент с дефолтным обработчиком
-    private static readonly Lazy<HttpClient> s_fallbackNative = new(() => new HttpClient(new HttpClientHandler())
+    private static readonly Lazy<HttpClient> s_fallbackNative = new(() => new HttpClient(
+        OperatingSystem.IsAndroid()
+            ? CreateAndroidHandler()
+            : new HttpClientHandler())
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
@@ -16,7 +27,7 @@ public sealed class ApiService(HttpClient client)
     //клиент tls 1.2 с проверкой сертификата
     private static readonly Lazy<HttpClient> s_fallbackTls12 = new(() => new HttpClient(
         OperatingSystem.IsAndroid()
-            ? new HttpClientHandler { UseProxy = false }
+            ? CreateAndroidHandler()
             : new SocketsHttpHandler
             {
                 SslOptions = SslOptionsFactory.Create(),
@@ -30,7 +41,7 @@ public sealed class ApiService(HttpClient client)
     //клиент http 2.0
     private static readonly Lazy<HttpClient> s_fallbackHttp2 = new(() => new HttpClient(
         OperatingSystem.IsAndroid()
-            ? new HttpClientHandler { UseProxy = false }
+            ? CreateAndroidHandler()
             : new SocketsHttpHandler
             {
                 SslOptions = SslOptionsFactory.Create(),
@@ -173,7 +184,7 @@ public sealed class ApiService(HttpClient client)
     {
         if (OperatingSystem.IsAndroid())
         {
-            return new HttpClient(new HttpClientHandler { UseProxy = false })
+            return new HttpClient(CreateAndroidHandler())
             {
                 Timeout = TimeSpan.FromSeconds(8),
                 DefaultRequestVersion = new Version(1, 1)
@@ -253,7 +264,7 @@ public sealed class ApiService(HttpClient client)
     //создание базового http обработчика с проверкой сертификата
     public static HttpMessageHandler CreateDefaultHandler() =>
         OperatingSystem.IsAndroid()
-            ? new HttpClientHandler { UseProxy = false }
+            ? CreateAndroidHandler()
             : new SocketsHttpHandler
             {
                 UseProxy = false,
