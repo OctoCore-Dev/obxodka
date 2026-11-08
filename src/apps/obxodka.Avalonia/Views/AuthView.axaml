@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             x:Class="obxodka.Avalonia.Views.AuthView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+        <StackPanel Spacing="24" Width="400" HorizontalAlignment="Center">
+            <!-- App Logo + Title -->
+            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <Image Source="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png"
+                       Width="88" Height="88"
+                       HorizontalAlignment="Center" />
+                <TextBlock Text="ОБХОДКА VPN"
+                           FontWeight="Bold"
+                           FontSize="26"
+                           LetterSpacing="2"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Auth Form Card -->
+            <Border Classes="neo-card" Padding="28,24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Быстрый вход и регистрация без паролей. Один клик — и вы в безопасности."
+                               Classes="label-muted"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               FontSize="13" />
+
+                    <!-- Email Field -->
+                    <TextBox Classes="neo-input"
+                             Text="{Binding UserEmail}"
+                             PlaceholderText="Ваш Email" />
+
+                    <!-- Submit Button -->
+                    <Button Classes="neo-primary"
+                            Height="46"
+                            Content="ВОЙТИ"
+                            Command="{Binding SelectTabCommand}"
+                            CommandParameter="vpn" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+
+</UserControl>

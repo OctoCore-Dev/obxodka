@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             x:Class="obxodka.Avalonia.Controls.NeoDialog"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding IsDialogOpen}">
+
+    <Grid Background="{DynamicResource BgOverlayBrush}">
+        <!-- Dismiss on backdrop click -->
+        <Border Background="Transparent"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                PointerPressed="OnBackdropPointerPressed" />
+
+        <!-- Dialog Card (Matches MAUI NeoDialog) -->
+        <Border Classes="neo-card"
+                Width="420"
+                Padding="28,26,28,24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource BgSurfaceBrush}"
+                BorderBrush="{DynamicResource BorderMediumBrush}"
+                BorderThickness="1.2"
+                CornerRadius="16"
+                BoxShadow="0 12 36 0 #77000000">
+
+            <StackPanel Spacing="0">
+                <!-- Circular Icon Badge (54x54) -->
+                <Border Width="54"
+                        Height="54"
+                        CornerRadius="27"
+                        HorizontalAlignment="Center"
+                        Background="{Binding DialogIconBgBrush}"
+                        BorderBrush="{Binding DialogIconBrush}"
+                        BorderThickness="1.5"
+                        Margin="0,0,0,16">
+                    <PathIcon Data="{Binding DialogIconGeometry}"
+                              Width="24"
+                              Height="24"
+                              Foreground="{Binding DialogIconBrush}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Border>
+
+                <!-- Centered Title -->
+                <TextBlock Text="{Binding DialogTitle}"
+                           FontWeight="Bold"
+                           FontSize="18"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Margin="0,0,0,8" />
+
+                <!-- Centered Subtitle / Message -->
+                <TextBlock Text="{Binding DialogMessage}"
+                           TextWrapping="Wrap"
+                           FontSize="13.5"
+                           LineHeight="20"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Margin="0,0,0,24" />
+
+                <!-- Buttons Grid: Equal 50/50 Columns with 12px Spacing -->
+                <Grid ColumnDefinitions="*, *" ColumnSpacing="12">
+                    <!-- Cancel Button (Отмена) -->
+                    <Button Grid.Column="0"
+                            Classes="neo-secondary"
+                            Height="44"
+                            CornerRadius="10"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Content="{Binding DialogCancelText}"
+                            Command="{Binding CancelDialogCommand}"
+                            IsVisible="{Binding IsDialogCancelVisible}" />
+
+                    <!-- Confirm Button (Да) - When Cancel button is present -->
+                    <Button Grid.Column="1"
+                            Classes="neo-primary"
+                            Height="44"
+                            CornerRadius="10"
+                            FontWeight="Bold"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Content="{Binding DialogConfirmText}"
+                            Command="{Binding ConfirmDialogCommand}"
+                            IsVisible="{Binding IsDialogCancelVisible}" />
+
+                    <!-- Confirm Button - Single OK button mode -->
+                    <Button Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Classes="neo-primary"
+                            Height="44"
+                            CornerRadius="10"
+                            FontWeight="Bold"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Content="{Binding DialogConfirmText}"
+                            Command="{Binding ConfirmDialogCommand}"
+                            IsVisible="{Binding !IsDialogCancelVisible}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+
+</UserControl>

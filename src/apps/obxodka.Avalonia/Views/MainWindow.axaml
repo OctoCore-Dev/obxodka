@@ -1,28 +1,40 @@
-﻿<Window
-    x:Class="obxodka.Avalonia.Views.MainWindow"
-    xmlns="https://github.com/avaloniaui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:views="using:obxodka.Avalonia.Views"
-    Title="Obxodka"
-    d:DesignHeight="500"
-    d:DesignWidth="300"
-    CanResize="false"
-    mc:Ignorable="d">
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:obxodka.Avalonia.ViewModels"
+        xmlns:views="using:obxodka.Avalonia.Views"
+        xmlns:controls="using:obxodka.Avalonia.Controls"
+        xmlns:conv="using:obxodka.Avalonia.Converters"
+        x:Class="obxodka.Avalonia.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="obxodka"
+        Width="1150"
+        Height="750"
+        MinWidth="950"
+        MinHeight="620"
+        CanResize="True"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgBaseBrush}"
+        Icon="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png">
 
-    <!--  Главная сетка: колонка 150px под сайдбар и '*' под основной контент  -->
-    <Grid Background="{DynamicResource PrimaryBackground}" ColumnDefinitions="150, *">
+    <Grid>
+        <!-- App Grid: Sidebar + Main Content -->
+        <Grid ColumnDefinitions="Auto, *">
+            <!-- Sidebar (visible unless on auth tab) -->
+            <views:DesktopSidebarView Grid.Column="0"
+                                      IsVisible="{Binding IsSidebarVisible}" />
 
-        <!--  Вызываем наш отдельный сайдбар  -->
-        <views:Sidebar Grid.Column="0" />
+            <!-- Main Content Container -->
+            <Grid Grid.Column="1">
+                <views:VpnView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=vpn}" />
+                <views:ProfileView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=profile}" />
+                <views:ConfigurationView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=configuration}" />
+                <views:DevicesView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=devices}" />
+                <views:AuthView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=auth}" />
+            </Grid>
+        </Grid>
 
-        <!--  Основной контент: кнопка подключения  -->
-        <views:ConnectButton
-            Grid.Column="1"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Center" />
-
+        <!-- NeoDialog Overlay (Alerts, confirmations) -->
+        <controls:NeoDialog />
     </Grid>
 
 </Window>

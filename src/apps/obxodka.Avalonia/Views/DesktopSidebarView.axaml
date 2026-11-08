@@ -1,0 +1,150 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             xmlns:conv="using:obxodka.Avalonia.Converters"
+             x:Class="obxodka.Avalonia.Views.DesktopSidebarView"
+             x:DataType="vm:MainViewModel">
+
+    <Border Width="76"
+            Margin="16,16,0,16"
+            Padding="0,20"
+            Classes="neo-card"
+            CornerRadius="10">
+
+        <Grid RowDefinitions="Auto, *, Auto">
+            <!-- Header: Logo -->
+            <Button Grid.Row="0"
+                    Background="Transparent"
+                    Padding="0"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Margin="0,4,0,24"
+                    HorizontalAlignment="Center"
+                    Tag="vpn"
+                    Click="OnNavClick"
+                    Command="{Binding SelectTabCommand}"
+                    CommandParameter="vpn">
+                <Image Source="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png"
+                       Width="32"
+                       Height="32"
+                       HorizontalAlignment="Center" />
+            </Button>
+
+            <!-- Navigation Items -->
+            <StackPanel Grid.Row="1" Spacing="10" HorizontalAlignment="Center">
+                <!-- VPN -->
+                <Button Classes="side-nav-item"
+                        Classes.active="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=vpn}"
+                        Tag="vpn"
+                        Click="OnNavClick"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="vpn">
+                    <PathIcon Data="{StaticResource IconShield24}"
+                              Width="20"
+                              Height="20"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Button>
+
+                <!-- Profile -->
+                <Button Classes="side-nav-item"
+                        Classes.active="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=profile}"
+                        Tag="profile"
+                        Click="OnNavClick"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="profile">
+                    <PathIcon Data="{StaticResource IconPerson24}"
+                              Width="20"
+                              Height="20"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Button>
+
+                <!-- Configuration -->
+                <Button Classes="side-nav-item"
+                        Classes.active="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=configuration}"
+                        Tag="configuration"
+                        Click="OnNavClick"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="configuration">
+                    <PathIcon Data="{StaticResource IconSettings24}"
+                              Width="20"
+                              Height="20"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Button>
+
+                <!-- Devices -->
+                <Button Classes="side-nav-item"
+                        Classes.active="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=devices}"
+                        Tag="devices"
+                        Click="OnNavClick"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="devices">
+                    <PathIcon Data="{StaticResource IconDevices24}"
+                              Width="20"
+                              Height="20"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Button>
+
+                <!-- Separator line -->
+                <Rectangle Width="36"
+                           Height="1"
+                           Margin="0,4"
+                           Fill="{DynamicResource BorderSubtleBrush}"
+                           HorizontalAlignment="Center" />
+
+                <!-- Bug report -->
+                <Button Classes="side-nav-item"
+                        Command="{Binding OpenBugTrackerCommand}">
+                    <PathIcon Data="{StaticResource IconBug24}"
+                              Width="18"
+                              Height="18"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Button>
+
+                <!-- Reviews -->
+                <Button Classes="side-nav-item"
+                        Command="{Binding OpenReviewsCommand}">
+                    <PathIcon Data="{StaticResource IconStar24}"
+                              Width="18"
+                              Height="18"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Button>
+            </StackPanel>
+
+            <!-- Bottom: Status dot & Logout -->
+            <StackPanel Grid.Row="2" Spacing="20" HorizontalAlignment="Center" Margin="0,0,0,4">
+                <!-- Status Dot -->
+                <Ellipse Width="8"
+                         Height="8"
+                         Fill="{Binding VpnStatusDotBrush}"
+                         HorizontalAlignment="Center" />
+
+                <!-- Logout Button -->
+                <Button Background="Transparent"
+                        Padding="0"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="OnLogoutClick"
+                        Command="{Binding LogoutCommand}">
+                    <Border Width="44"
+                            Height="44"
+                            CornerRadius="8"
+                            Classes="neo-btn-danger">
+                        <PathIcon Data="{StaticResource IconExit20}"
+                                  Width="18"
+                                  Height="18"
+                                  Foreground="{DynamicResource ErrorBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+                    </Border>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+
+</UserControl>
