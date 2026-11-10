@@ -1,0 +1,247 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             x:Class="obxodka.Avalonia.Views.ProfileView"
+             x:DataType="vm:MainViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <!-- Centered Main Column -->
+        <StackPanel Margin="32,24,32,32"
+                    Spacing="18"
+                    Width="640"
+                    HorizontalAlignment="Center">
+
+            <!-- Title Header -->
+            <Grid ColumnDefinitions="*, Auto" Margin="4,0,4,4">
+                <TextBlock Grid.Column="0"
+                           Text="Профиль"
+                           FontWeight="Bold"
+                           FontSize="22"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           VerticalAlignment="Center" />
+
+                <!-- Status Badge -->
+                <Border Grid.Column="1"
+                        Background="{DynamicResource SuccessDimBrush}"
+                        BorderBrush="{DynamicResource SuccessBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="10,4"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessBrush}" />
+                        <TextBlock Text="Активен"
+                                   FontWeight="Bold"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SuccessBrush}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 1. Hero User Info Card (Large Centered Avatar with Glow Rings) -->
+            <Border Classes="neo-card"
+                    Padding="32,28"
+                    CornerRadius="14"
+                    BoxShadow="0 8 28 0 #33000000">
+                <StackPanel Spacing="16" HorizontalAlignment="Center">
+                    <!-- Concentric Glowing Avatar Container -->
+                    <Grid Width="128" Height="128" HorizontalAlignment="Center">
+                        <!-- Outer Decorative Glow Ring -->
+                        <Border Width="128"
+                                Height="128"
+                                CornerRadius="64"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource PrimaryGlowBrush}"
+                                BorderThickness="1.2"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+
+                        <!-- Inner Avatar Circle -->
+                        <Border Width="108"
+                                Height="108"
+                                CornerRadius="54"
+                                Background="{DynamicResource BgElevatedBrush}"
+                                BorderBrush="{DynamicResource PrimaryDimBrush}"
+                                BorderThickness="1.5"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <PathIcon Data="{StaticResource IconPerson24}"
+                                      Width="54"
+                                      Height="54"
+                                      Foreground="{DynamicResource AccentBrush}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+
+                    <!-- User Email and Status Pill -->
+                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding UserEmail}"
+                                   FontWeight="Bold"
+                                   FontSize="20"
+                                   LetterSpacing="0.4"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                        <!-- Status & Tier Pill -->
+                        <Border Background="{DynamicResource BgElevatedBrush}"
+                                BorderBrush="{DynamicResource BorderMediumBrush}"
+                                BorderThickness="1"
+                                CornerRadius="16"
+                                Padding="12,5"
+                                HorizontalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <PathIcon Data="{StaticResource IconStar24}"
+                                          Width="12" Height="12"
+                                          Foreground="{DynamicResource AccentBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="Тариф: Премиум"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+
+                                <Rectangle Width="1" Height="12" Fill="{DynamicResource BorderSubtleBrush}" />
+
+                                <Ellipse Width="5" Height="5"
+                                         Fill="{DynamicResource SuccessBrush}"
+                                         VerticalAlignment="Center" />
+                                <TextBlock Text="Защита включена"
+                                           FontWeight="Medium"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SuccessBrush}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 2. Subscription Card -->
+            <Border Classes="neo-card"
+                    Padding="22"
+                    CornerRadius="12">
+                <Grid ColumnDefinitions="*, Auto" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="{StaticResource IconClock24}"
+                                      Width="13" Height="13"
+                                      Foreground="{DynamicResource PrimaryBrush}"
+                                      VerticalAlignment="Center" />
+                            <TextBlock Text="ПОДПИСКА И БАЛАНС"
+                                       Classes="label-muted"
+                                       FontWeight="Medium"
+                                       FontSize="11"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding RemainingTimeText}"
+                                   FontWeight="Bold"
+                                   FontSize="22"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   Margin="0,2" />
+
+                        <TextBlock Text="Безлимитный высокоскоростной трафик • Неограниченная скорость"
+                                   Classes="label-muted"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Classes="neo-primary"
+                            Height="44"
+                            Padding="18,10"
+                            Content="Продлить подписку"
+                            Command="{Binding ExtendSubscriptionCommand}"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- 3. Security and Preferences Card -->
+            <Border Classes="neo-card"
+                    Padding="22"
+                    CornerRadius="12">
+                <StackPanel Spacing="16">
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,2">
+                        <PathIcon Data="{StaticResource IconShield24}"
+                                  Width="14" Height="14"
+                                  Foreground="{DynamicResource AccentBrush}"
+                                  VerticalAlignment="Center" />
+                        <TextBlock Text="БЕЗОПАСНОСТЬ И НАСТРОЙКИ"
+                                   FontWeight="Bold"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Auto-connect toggle -->
+                    <Grid ColumnDefinitions="*, Auto" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="Автоподключение"
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Автоматически защищать соединение при запуске системы"
+                                       Classes="label-muted"
+                                       FontSize="12" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      IsChecked="{Binding IsAutoConnectEnabled}"
+                                      OnContent=""
+                                      OffContent=""
+                                      VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Rectangle Height="1" Fill="{DynamicResource BorderSubtleBrush}" />
+
+                    <!-- Kill Switch toggle -->
+                    <Grid ColumnDefinitions="*, Auto" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="Экстренная блокировка (Kill Switch)"
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Блокировать сетевой трафик при внезапном разрыве VPN"
+                                       Classes="label-muted"
+                                       FontSize="12" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      IsChecked="{Binding IsKillSwitchEnabled}"
+                                      OnContent=""
+                                      OffContent=""
+                                      VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 4. Logout / Danger Section -->
+            <Grid ColumnDefinitions="*, Auto" Margin="2,4,2,0">
+                <Button Grid.Column="0"
+                        Classes="neo-secondary"
+                        Height="42"
+                        HorizontalAlignment="Left"
+                        Padding="16,8"
+                        Command="{Binding LogoutCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <PathIcon Data="{StaticResource IconExit20}"
+                                  Width="14" Height="14"
+                                  Foreground="{DynamicResource ErrorBrush}"
+                                  VerticalAlignment="Center" />
+                        <TextBlock Text="Выйти из аккаунта"
+                                   FontWeight="SemiBold"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource ErrorBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- App Version Label -->
+                <TextBlock Grid.Column="1"
+                           Text="obxodka Client • v5.0.0"
+                           Classes="label-muted"
+                           FontSize="11"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

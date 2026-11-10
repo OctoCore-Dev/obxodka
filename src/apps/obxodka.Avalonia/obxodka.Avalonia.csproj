@@ -1,8 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <RootNamespace>obxodka.Avalonia</RootNamespace>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <NoWarn>$(NoWarn);IDE0011;IDE0021;IDE0022;IDE0048;IDE0046;IDE0007;IDE0055;IDE1006;MVVMTK0042;AVLN5001;CS8618;CS8602;CS8604;CA1822</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

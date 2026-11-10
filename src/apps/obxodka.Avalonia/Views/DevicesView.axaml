@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             x:Class="obxodka.Avalonia.Views.DevicesView"
+             x:DataType="vm:MainViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="32,28" Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
+            <!-- Header -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Устройства"
+                           FontWeight="Bold"
+                           FontSize="22"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="Активные подключения и авторизованные устройства вашей учетной записи"
+                           Classes="label-muted"
+                           FontSize="13" />
+            </StackPanel>
+
+            <!-- Device 1: This PC -->
+            <Border Classes="neo-card" Padding="18">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <Border Grid.Column="0"
+                            Width="44" Height="44"
+                            CornerRadius="8"
+                            Background="{DynamicResource AccentDimBrush}">
+                        <PathIcon Data="{StaticResource IconDevices24}"
+                                  Width="20" Height="20"
+                                  Foreground="{DynamicResource AccentBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center" Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Windows PC (Это устройство)"
+                                       FontWeight="Bold"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Border Background="{DynamicResource SuccessDimBrush}"
+                                    BorderBrush="{DynamicResource SuccessBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="6,1">
+                                <TextBlock Text="Текущее"
+                                           FontWeight="Bold"
+                                           FontSize="9"
+                                           Foreground="{DynamicResource SuccessBrush}" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="Клиент v5.0.0 • Активно сейчас"
+                                   Classes="label-muted"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2"
+                               Text="В сети"
+                               FontWeight="Bold"
+                               FontSize="12"
+                               Foreground="{DynamicResource SuccessBrush}"
+                               VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Device 2: Android -->
+            <Border Classes="neo-card" Padding="18">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <Border Grid.Column="0"
+                            Width="44" Height="44"
+                            CornerRadius="8"
+                            Background="{DynamicResource BgElevatedBrush}">
+                        <PathIcon Data="{StaticResource IconDevices24}"
+                                  Width="20" Height="20"
+                                  Foreground="{DynamicResource TextSecondaryBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Text="Samsung Galaxy S24"
+                                   FontWeight="Bold"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Android 14 • Был в сети 2 ч. назад"
+                                   Classes="label-muted"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <Button Grid.Column="2"
+                            Classes="neo-secondary"
+                            Content="Отключить"
+                            Height="36"
+                            Padding="12,6"
+                            Command="{Binding DisconnectDeviceCommand}"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

@@ -1,0 +1,556 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             xmlns:controls="using:obxodka.Avalonia.Controls"
+             x:Class="obxodka.Avalonia.Views.VpnView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid>
+        <!-- Main 2-column layout: Left column 5*, Right column 4* (proportional scaling matching MAUI) -->
+        <Grid ColumnDefinitions="5*, 4*"
+              Margin="24, 20">
+
+            <!-- LEFT COLUMN: Main Connect Card -->
+            <Border Grid.Column="0"
+                    Margin="0,0,10,0"
+                    Classes="neo-card"
+                    CornerRadius="10">
+                <Grid RowDefinitions="Auto, *, Auto"
+                      Margin="24,20">
+
+                    <!-- Server Selector Button (Pill) -->
+                    <Border Grid.Row="0"
+                            Classes="interactive-pill"
+                            HorizontalAlignment="Center"
+                            Background="{DynamicResource BgElevatedBrush}"
+                            BorderBrush="{DynamicResource BorderMediumBrush}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="12,6">
+                        <Button Background="Transparent"
+                                Padding="0"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Command="{Binding OpenServerModalCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <!-- Country code badge (SE) -->
+                                <Border Width="28"
+                                        Height="18"
+                                        Background="{DynamicResource BgSurfaceBrush}"
+                                        BorderBrush="{DynamicResource BorderMediumBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding SelectedServer.CountryCode}"
+                                               FontWeight="Bold"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+
+                                <!-- Server location & provider -->
+                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{Binding SelectedServer.Country, StringFormat='{}{0},'}"
+                                               FontWeight="Bold"
+                                               FontSize="13"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource AccentDimBrush}"
+                                                BorderBrush="{DynamicResource AccentBrush}"
+                                                BorderThickness="0.6"
+                                                CornerRadius="3"
+                                                Padding="4,1">
+                                            <TextBlock Text="{Binding SelectedServer.Provider}"
+                                                       FontSize="9"
+                                                       FontWeight="Bold"
+                                                       Foreground="{DynamicResource AccentBrush}" />
+                                        </Border>
+
+                                        <Ellipse Width="4" Height="4"
+                                                 Fill="{DynamicResource SuccessBrush}"
+                                                 VerticalAlignment="Center" />
+
+                                        <TextBlock Text="Online"
+                                                   FontSize="9"
+                                                   FontWeight="Medium"
+                                                   Foreground="{DynamicResource SuccessBrush}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <PathIcon Data="{StaticResource IconChevronDown16}"
+                                          Width="10" Height="10"
+                                          Foreground="{DynamicResource TextMutedBrush}"
+                                          VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Border>
+
+                    <!-- CONNECT BUTTON CONTAINER (320x320) -->
+                    <Grid Grid.Row="1"
+                          Width="320"
+                          Height="320"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+
+                        <!-- Outer decorative ring -->
+                        <Border Width="278"
+                                Height="278"
+                                CornerRadius="139"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource PrimaryGlowBrush}"
+                                BorderThickness="1.2"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+
+                        <!-- Middle ring -->
+                        <Border Width="240"
+                                Height="240"
+                                CornerRadius="120"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource PrimaryDimBrush}"
+                                BorderThickness="1.2"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+
+                        <!-- Core Button -->
+                        <Button Width="196"
+                                Height="196"
+                                CornerRadius="98"
+                                Padding="0"
+                                Cursor="Hand"
+                                Command="{Binding ToggleConnectCommand}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="Background" Value="{DynamicResource BgElevatedBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderMediumBrush}" />
+                                    <Setter Property="BorderThickness" Value="1.2" />
+                                    <Setter Property="Transitions">
+                                        <Transitions>
+                                            <BrushTransition Property="Background" Duration="0:0:0.18" />
+                                            <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
+                                            <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
+                                        </Transitions>
+                                    </Setter>
+                                </Style>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="#262638" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrightBrush}" />
+                                    <Setter Property="RenderTransform" Value="scale(1.02)" />
+                                </Style>
+                                <Style Selector="Button:pressed">
+                                    <Setter Property="RenderTransform" Value="scale(0.98)" />
+                                </Style>
+                            </Button.Styles>
+
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Spacing="8">
+                                <PathIcon Data="{StaticResource IconPower24}"
+                                          Width="44"
+                                          Height="44"
+                                          Foreground="#1E2838"
+                                          HorizontalAlignment="Center" />
+
+                                <TextBlock Text="{Binding ConnectButtonText}"
+                                           FontWeight="Bold"
+                                           FontSize="16"
+                                           LetterSpacing="1"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- Status Label -->
+                    <TextBlock Grid.Row="2"
+                               Margin="0,0,0,8"
+                               Text="{Binding VpnStatusText}"
+                               FontWeight="Medium"
+                               FontSize="15"
+                               Foreground="{DynamicResource PrimaryBrightBrush}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- RIGHT COLUMN: Stats & Graph Cards -->
+            <Grid Grid.Column="1"
+                  Margin="10,0,0,0"
+                  RowDefinitions="Auto, 2*, *"
+                  RowSpacing="14">
+
+                <!-- ROW 0: Network Info (CardIp) -->
+                <Border Grid.Row="0"
+                        Classes="neo-card"
+                        Padding="14,8">
+                    <Grid ColumnDefinitions="Auto, *" VerticalAlignment="Center">
+                        <!-- Left: NET tag -->
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal"
+                                    Spacing="6"
+                                    VerticalAlignment="Center">
+                            <PathIcon Data="{StaticResource IconEarth24}"
+                                      Width="13" Height="13"
+                                      Foreground="{DynamicResource PrimaryBrush}"
+                                      VerticalAlignment="Center" />
+                            <TextBlock Text="NET"
+                                       Classes="label-muted"
+                                       FontWeight="Medium"
+                                       FontSize="11"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- Right: IP, Node, Ping Badges -->
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="6"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+
+                            <!-- IP Badge (Click to copy) -->
+                            <Button Background="{DynamicResource BgElevatedBrush}"
+                                    BorderBrush="{DynamicResource BorderMediumBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="7,2"
+                                    Cursor="Hand"
+                                    Command="{Binding CopyIpAddressCommand}"
+                                    VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <PathIcon Data="{StaticResource IconShieldCheckmark24}"
+                                              Width="11" Height="11"
+                                              Foreground="{DynamicResource AccentBrush}"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding IpAddress}"
+                                               FontWeight="Bold"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               VerticalAlignment="Center" />
+                                    <Border Background="{DynamicResource AccentDimBrush}"
+                                            BorderBrush="{DynamicResource AccentBrush}"
+                                            BorderThickness="0.6"
+                                            CornerRadius="3"
+                                            Padding="4,1"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="v4"
+                                                   FontWeight="Bold"
+                                                   FontSize="8"
+                                                   Foreground="{DynamicResource AccentBrush}" />
+                                    </Border>
+                                    <PathIcon Data="{StaticResource IconCopy20}"
+                                              Width="11" Height="11"
+                                              Foreground="{DynamicResource TextSecondaryBrush}"
+                                              VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Node Badge -->
+                            <Border Background="{DynamicResource BgElevatedBrush}"
+                                    BorderBrush="{DynamicResource BorderMediumBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="7,2"
+                                    VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                    <PathIcon Data="{StaticResource IconServer24}"
+                                              Width="11" Height="11"
+                                              Foreground="{DynamicResource AccentBrush}"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding NodeHost}"
+                                               FontWeight="Medium"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               MaxWidth="130"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Ping Badge -->
+                            <Border Background="{DynamicResource SuccessDimBrush}"
+                                    BorderBrush="{DynamicResource SuccessBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="7,2"
+                                    VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                    <Ellipse Width="5" Height="5"
+                                             Fill="{DynamicResource SuccessBrush}"
+                                             VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding PingText}"
+                                               FontWeight="Bold"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SuccessBrush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ROW 1: Real-time Traffic Graph (Card2) -->
+                <Border Grid.Row="1"
+                        Classes="neo-card"
+                        Padding="16">
+                    <Grid RowDefinitions="Auto, *">
+                        <!-- Speeds Header -->
+                        <Grid Grid.Row="0"
+                              ColumnDefinitions="*, *"
+                              Margin="0,0,0,8">
+                            <!-- Sent -->
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <PathIcon Data="{StaticResource IconArrowUp24}"
+                                              Width="11" Height="11"
+                                              Foreground="{DynamicResource PrimaryBrush}" />
+                                    <TextBlock Text="Отправлено"
+                                               Classes="label-muted"
+                                               FontSize="10" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding TrafficUpText}"
+                                           FontWeight="Bold"
+                                           FontSize="16"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+
+                            <!-- Received -->
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <PathIcon Data="{StaticResource IconArrowDown24}"
+                                              Width="11" Height="11"
+                                              Foreground="{DynamicResource AccentBrush}" />
+                                    <TextBlock Text="Получено"
+                                               Classes="label-muted"
+                                               FontSize="10" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding TrafficDownText}"
+                                           FontWeight="Bold"
+                                           FontSize="16"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Canvas / Waveform Graph with Streaming Packets Animation -->
+                        <controls:TrafficGraphControl Grid.Row="1"
+                                                      IsActive="{Binding IsConnected}"
+                                                      MinHeight="160"
+                                                      HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Stretch" />
+                    </Grid>
+                </Border>
+
+                <!-- ROW 2: Time & Traffic Total (Card5 & Card6) -->
+                <Grid Grid.Row="2"
+                      ColumnDefinitions="*, *"
+                      ColumnSpacing="14">
+
+                    <!-- Time Card (Card5) -->
+                    <Border Grid.Column="0"
+                            Classes="neo-card"
+                            Padding="14,12">
+                        <Grid RowDefinitions="Auto, *">
+                            <StackPanel Grid.Row="0"
+                                        Orientation="Horizontal"
+                                        Spacing="5"
+                                        Margin="0,0,0,4">
+                                <PathIcon Data="{StaticResource IconClock24}"
+                                          Width="13" Height="13"
+                                          Foreground="{DynamicResource PrimaryBrush}" />
+                                <TextBlock Text="Время"
+                                           Classes="label-muted"
+                                           FontWeight="Medium"
+                                           FontSize="11" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        VerticalAlignment="Center">
+                                <PathIcon Data="{StaticResource IconTimer24}"
+                                          Width="20" Height="20"
+                                          Foreground="{DynamicResource AccentBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding RemainingTimeText}"
+                                           FontWeight="Bold"
+                                           FontSize="18"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Traffic Card (Card6) -->
+                    <Border Grid.Column="1"
+                            Classes="neo-card"
+                            Padding="14,12">
+                        <Grid RowDefinitions="Auto, *">
+                            <StackPanel Grid.Row="0"
+                                        Orientation="Horizontal"
+                                        Spacing="5"
+                                        Margin="0,0,0,4">
+                                <PathIcon Data="{StaticResource IconDataArea24}"
+                                          Width="13" Height="13"
+                                          Foreground="{DynamicResource PrimaryBrush}" />
+                                <TextBlock Text="Трафик"
+                                           Classes="label-muted"
+                                           FontWeight="Medium"
+                                           FontSize="11" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        VerticalAlignment="Center">
+                                <PathIcon Data="{StaticResource IconArrowDown24}"
+                                          Width="20" Height="20"
+                                          Foreground="{DynamicResource AccentBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding TotalTrafficText}"
+                                           FontWeight="Bold"
+                                           FontSize="18"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+            </Grid>
+
+        </Grid>
+
+        <!-- SERVER SELECTION MODAL OVERLAY -->
+        <Grid Background="{DynamicResource BgOverlayBrush}"
+              IsVisible="{Binding IsServerModalOpen}">
+            <Border Classes="neo-card"
+                    Width="440"
+                    MaxHeight="540"
+                    Padding="22"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    CornerRadius="20"
+                    BorderBrush="{DynamicResource BorderMediumBrush}"
+                    BorderThickness="1.2">
+                <Grid RowDefinitions="Auto, Auto, *, Auto" RowSpacing="14">
+                    <!-- Title & Close -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <PathIcon Data="{StaticResource IconServer24}"
+                                      Width="20" Height="20"
+                                      Foreground="{DynamicResource AccentBrush}"
+                                      VerticalAlignment="Center" />
+                            <TextBlock Text="Выбор сервера"
+                                       FontWeight="Bold"
+                                       FontSize="17"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1"
+                                Background="{DynamicResource BgElevatedBrush}"
+                                BorderBrush="{DynamicResource BorderMediumBrush}"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="6"
+                                Cursor="Hand"
+                                Command="{Binding CloseServerModalCommand}">
+                            <PathIcon Data="{StaticResource IconDismiss16}"
+                                      Width="12" Height="12"
+                                      Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Subtitle -->
+                    <TextBlock Grid.Row="1"
+                               Classes="label-muted"
+                               Text="Выберите оптимальную локацию для подключения:" />
+
+                    <!-- Server List -->
+                    <ScrollViewer Grid.Row="2" MaxHeight="300">
+                        <ItemsControl ItemsSource="{Binding Servers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ServerLocation">
+                                    <Button Background="Transparent"
+                                            Padding="0"
+                                            BorderThickness="0"
+                                            Margin="0,0,0,8"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch"
+                                            Cursor="Hand"
+                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectServerCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Border Classes="neo-card"
+                                                Background="{DynamicResource BgElevatedBrush}"
+                                                BorderBrush="{DynamicResource BorderMediumBrush}"
+                                                CornerRadius="10"
+                                                Padding="14,10">
+                                            <Grid ColumnDefinitions="Auto, *, Auto" VerticalAlignment="Center">
+                                                <Border Grid.Column="0"
+                                                        Width="28" Height="18"
+                                                        Background="{DynamicResource BgSurfaceBrush}"
+                                                        BorderBrush="{DynamicResource BorderMediumBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Margin="0,0,12,0"
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding CountryCode}"
+                                                               FontWeight="Bold"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Country, StringFormat='{}{0},'}"
+                                                               FontWeight="Bold"
+                                                               FontSize="13"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}">
+                                                        <TextBlock.Inlines>
+                                                            <Run Text="{Binding City}" />
+                                                        </TextBlock.Inlines>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding Provider}"
+                                                               Classes="label-muted"
+                                                               FontSize="11" />
+                                                </StackPanel>
+
+                                                <Border Grid.Column="2"
+                                                        Background="{DynamicResource SuccessDimBrush}"
+                                                        BorderBrush="{DynamicResource SuccessBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6"
+                                                        Padding="6,2"
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Ping, StringFormat='{}{0} ms'}"
+                                                               FontWeight="Bold"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource SuccessBrush}" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Refresh Button -->
+                    <Button Grid.Row="3"
+                            Classes="neo-secondary"
+                            Height="40"
+                            CornerRadius="10"
+                            Content="Обновить список"
+                            Command="{Binding RefreshServersCommand}" />
+                </Grid>
+            </Border>
+        </Grid>
+
+    </Grid>
+
+</UserControl>

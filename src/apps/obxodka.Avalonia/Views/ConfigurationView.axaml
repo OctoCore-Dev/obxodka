@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             x:Class="obxodka.Avalonia.Views.ConfigurationView"
+             x:DataType="vm:MainViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="32,28" Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
+            <!-- Header -->
+            <Grid ColumnDefinitions="Auto, *">
+                <TextBlock Grid.Column="0"
+                           Text="Конфигурация"
+                           FontWeight="Bold"
+                           FontSize="22"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Grid.Column="1"
+                           Margin="16,0,0,0"
+                           Text="[ obxodka Stream • HTTP/2 ]"
+                           FontWeight="Bold"
+                           FontSize="14"
+                           Foreground="{DynamicResource AccentBrush}"
+                           VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- Description -->
+            <TextBlock Text="Оптимизированный транспорт: obxodka Stream через HTTP/2 на 443 порту с обфускацией и защитой от цензуры."
+                       Classes="label-muted"
+                       TextWrapping="Wrap"
+                       FontSize="13" />
+
+            <!-- Protocol Card -->
+            <Border Classes="neo-card" Padding="18">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <Border Grid.Column="0"
+                            Width="44" Height="44"
+                            CornerRadius="8"
+                            Background="{DynamicResource AccentDimBrush}">
+                        <PathIcon Data="{StaticResource IconSettings24}"
+                                  Width="20" Height="20"
+                                  Foreground="{DynamicResource AccentBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Text="obxodka Stream Engine"
+                                   FontWeight="Bold"
+                                   FontSize="15"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Камуфляж трафика под легитимный HTTPS / TLS 1.3"
+                                   Classes="label-muted"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <Border Grid.Column="2"
+                            Background="{DynamicResource SuccessDimBrush}"
+                            BorderBrush="{DynamicResource SuccessBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="8,3"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="Активен"
+                                   FontWeight="Bold"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SuccessBrush}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- AdBlock / DNS Security Card -->
+            <Border Classes="neo-card" Padding="18">
+                <Grid ColumnDefinitions="*, Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Блокировка рекламы и трекеров (DNS Shield)"
+                                   FontWeight="Bold"
+                                   FontSize="15"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Фильтрует вредоносные домены, спам и трекеры на уровне сетевого стека"
+                                   Classes="label-muted"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding IsAdBlockEnabled}"
+                                  OnContent=""
+                                  OffContent=""
+                                  VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Split Tunneling Card -->
+            <Border Classes="neo-card" Padding="18">
+                <Grid ColumnDefinitions="*, Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Раздельное туннелирование (Split Tunneling)"
+                                   FontWeight="Bold"
+                                   FontSize="15"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Возможность исключать локальные сервисы, банки и игры из VPN-канала"
+                                   Classes="label-muted"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Classes="neo-secondary"
+                            Content="Настроить"
+                            Command="{Binding ConfigureSplitTunnelingCommand}"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>
