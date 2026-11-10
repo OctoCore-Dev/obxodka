@@ -22,6 +22,7 @@ public sealed partial class OctopusVpnService : VpnService
     public static OctopusVpnService? Instance { get; private set; }
     public bool IsActive { get; private set; }
     public static TaskCompletionSource<OctopusVpnService>? ServiceReadyTcs { get; set; }
+    public static string? LastEstablishError { get; private set; }
 
     static OctopusVpnService() => HookProtection();
 
@@ -484,7 +485,7 @@ public sealed partial class OctopusVpnService : VpnService
                 _ = builder
                     .SetSession("Obxodka")
                     .AddAddress(ip, 32)
-                    .SetMtu(1500)
+                    .SetMtu(Math.Min(SmartMtuEngine.CurrentMtu, 1400))
                     .SetBlocking(true)
                     .AddRoute("0.0.0.0", 0);
 
@@ -574,17 +575,22 @@ public sealed partial class OctopusVpnService : VpnService
                     };
                     _rxThread.Start();
 
-                    AppLogger.Log($"[VPN ESTABLISH] TUN successfully established for {ip}/32 (MTU {SmartMtuEngine.CurrentMtu})");
+                    AppLogger.Log($"[VPN ESTABLISH] TUN successfully established for {ip}/32 (MTU {Math.Min(SmartMtuEngine.CurrentMtu, 1400)})");
+                    LastEstablishError = null;
                     return true;
                 }
 
+                var prepareNeeded = Prepare(this) != null;
+                AppLogger.LogError($"[VPN ESTABLISH ERROR] builder.Establish() returned null! Prepare needed: {prepareNeeded}");
+                LastEstablishError = prepareNeeded
+                    ? "VPN разрешение отозвано системой или занято другим приложением."
+                    : "Система Android не смогла выделить дескриптор TUN интерфейса.";
                 return false;
             }
             catch (Exception ex)
             {
                 AppLogger.LogError($"[VPN ESTABLISH ERROR] {ex.Message}");
-                AndroidVpnService.Instance.SetError("Не удалось создать туннель");
-                StopSelf();
+                LastEstablishError = $"Ошибка инициализации TUN: {ex.Message}";
                 return false;
             }
         }
@@ -741,10 +747,6 @@ public sealed partial class OctopusVpnService : VpnService
     public void StopNativeVpn()
     {
         IsActive = false;
-        if (Instance == this)
-        {
-            Instance = null;
-        }
         _currentTunIp = null;
         _isTunRunning = false;
 

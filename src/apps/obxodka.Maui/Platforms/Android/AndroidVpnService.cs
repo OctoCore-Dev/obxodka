@@ -561,10 +561,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: targetSni);
                         AppLogger.Log($"[ANDROID-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {OctopusEngine.Current.AssignedIp}");
 
-                        var tunOk = OctopusVpnService.Instance?.EstablishTun() ?? false;
+                        var vpnService = OctopusVpnService.Instance ?? await OctopusVpnService.WaitForServiceReadyAsync(2000).ConfigureAwait(false);
+                        var tunOk = vpnService?.EstablishTun() ?? false;
                         if (!tunOk)
                         {
-                            throw new InvalidOperationException("Не удалось инициализировать TUN интерфейс.");
+                            var err = OctopusVpnService.LastEstablishError ?? "Не удалось инициализировать TUN интерфейс.";
+                            throw new InvalidOperationException(err);
                         }
 
                         OctopusEngine.Current.ResetTrafficCounters();
