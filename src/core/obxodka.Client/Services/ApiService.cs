@@ -518,7 +518,7 @@ public sealed class ApiService(HttpClient client)
 
                         if (response.IsSuccessStatusCode)
                         {
-                            Debug.WriteLine($"[API-DPI] Request {method} {pathVariant} succeeded via DPI bypass stream (IP {relayIp}, Host {directHost})");
+                            AppLogger.LogDebug($"[API-DPI] Request {method} {pathVariant} succeeded via DPI bypass stream (IP {relayIp}, Host {directHost})");
                             if (responseInfo is not null)
                             {
                                 return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);

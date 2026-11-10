@@ -10,6 +10,8 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     //одиночный экземпляр движка
     public static OctopusEngine Current => s_instance.Value;
 
+    private OctopusEngine() => EnsureUplinkMonitoringInitialized();
+
     [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
     private IVpnTransport? _transport;
     private X509Certificate2? _clientCert;

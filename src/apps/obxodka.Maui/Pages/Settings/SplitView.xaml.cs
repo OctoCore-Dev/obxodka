@@ -228,6 +228,18 @@ public sealed partial class SplitView : ContentView
 
     private void OnUnloaded(object? sender, EventArgs e)
     {
+        if (_saveDebounceCts is not null)
+        {
+            _saveDebounceCts.Cancel();
+            _saveDebounceCts = null;
+            try
+            {
+                var bypassed = _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName).ToList();
+                _appManager.SaveBypassedPackages(bypassed);
+            }
+            catch { }
+        }
+
         _headerAnimCts?.Cancel();
         RootLayout.SizeChanged -= OnRootLayoutSizeChanged;
         HeaderContainer.SizeChanged -= OnHeaderContainerSizeChanged;

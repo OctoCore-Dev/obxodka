@@ -216,7 +216,7 @@ public sealed partial class OctopusEngine
 
                         if (isDead)
                         {
-                            Debug.WriteLine($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
+                            AppLogger.LogWarning($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
                             OnDeadConnectionDetected?.Invoke();
                             break;
                         }

@@ -1,4 +1,5 @@
-- Upgraded AdBlock engine: zero-allocation L3 DNS sinkhole, cloud filters auto-sync, and tracker protection.
-- DNS-over-HTTPS bypass protection via DoH Canary domain enforcement.
-- Live blocked ads and telemetry counter on the profile dashboard.
-- Network stack optimization and reduced connection latency.
+- Uplink Guard: Wintun route cleanup on Wi-Fi drop to prevent network freeze.
+- Protection against false positive connectivity status from Windows DNS cache.
+- Safe automatic reconnection upon network restore without redundant retry loops.
+- Refined NeoDialog popups and always-interactive tunnel controls.
+- Updater service: clean and readable "What's New" notes without raw checksums.

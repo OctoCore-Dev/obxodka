@@ -4,6 +4,7 @@ using Android.Content.PM;
 using Android.Net;
 using Android.OS;
 using AndroidX.Core.View;
+using obxodka.Helpers;
 using obxodka.Platforms.Android;
 
 namespace obxodka;
@@ -75,6 +76,8 @@ public sealed class MainActivity : MauiAppCompatActivity
         {
             if (Window is { } window)
             {
+                WindowCompat.SetDecorFitsSystemWindows(window, false);
+
                 if (!OperatingSystem.IsAndroidVersionAtLeast(35))
                 {
 #pragma warning disable CA1422
@@ -124,7 +127,7 @@ public sealed class MainActivity : MauiAppCompatActivity
 
             SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
 
-            return v is not null ? ViewCompat.OnApplyWindowInsets(v, insets) : insets;
+            return WindowInsetsCompat.Consumed;
         }
     }
 
@@ -167,57 +170,53 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
-    //запрос на отключение оптимизации батареи для стабильной работы туннеля в фоне
+    //запрос на отключение оптимизации батареи для стабильной работы туннеля в фоне через neo-диалог
     private void RequestIgnoreBatteryOptimizations()
     {
-        //маршалинг диалога на главный поток андроид для защиты от looper исключения
-        if (!MainThread.IsMainThread)
-        {
-            MainThread.BeginInvokeOnMainThread(RequestIgnoreBatteryOptimizations);
-            return;
-        }
-
         if (IsFinishing || IsDestroyed)
         {
             return;
         }
 
-        try
+        MainThread.BeginInvokeOnMainThread(async () =>
         {
-            if (PackageName is { Length: > 0 } pkgName &&
-                GetSystemService(PowerService) is PowerManager pm &&
-                !pm.IsIgnoringBatteryOptimizations(pkgName))
+            if (IsFinishing || IsDestroyed)
             {
-                if (Preferences.Default.Get("HasRequestedBatteryOpt", false))
-                {
-                    return;
-                }
+                return;
+            }
 
-                Preferences.Default.Set("HasRequestedBatteryOpt", true);
+            try
+            {
+                if (PackageName is { Length: > 0 } pkgName &&
+                    GetSystemService(PowerService) is PowerManager pm &&
+                    !pm.IsIgnoringBatteryOptimizations(pkgName))
+                {
+                    if (Preferences.Default.Get("HasRequestedBatteryOpt", false))
+                    {
+                        return;
+                    }
 
-                using var builder = new AlertDialog.Builder(this);
-                _ = builder.SetTitle("Внимание: Батарея");
-                _ = builder.SetMessage("Для стабильной работы VPN-соединения необходимо отключить экономию заряда батареи для нашего приложения. Иначе система может прервать работу VPN в фоновом режиме.\n\nПожалуйста, нажмите «ОК», чтобы перейти в настройки и разрешить фоновую работу.");
-                _ = builder.SetPositiveButton("ОК", (_, _) =>
-                {
-                    var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations)
-                        .SetData(Android.Net.Uri.Parse($"package:{pkgName}"));
-                    StartActivity(intent);
-                });
-                _ = builder.SetNegativeButton("Позже", (_, _) => { });
-                _ = builder.SetCancelable(true);
-                var dialog = builder.Create();
-                if (dialog is not null)
-                {
-                    dialog.DismissEvent += (_, _) => dialog.Dispose();
-                    dialog.Show();
+                    Preferences.Default.Set("HasRequestedBatteryOpt", true);
+
+                    var accepted = await NeoAlert.ShowConfirmAsync(
+                        "Фоновая работа и батарея",
+                        "Для стабильной работы VPN-соединения и защиты от разрывов при выключенном экране необходимо разрешить работу приложения без ограничений расхода батареи.\n\nРазрешить сейчас?",
+                        "Разрешить",
+                        "Позже");
+
+                    if (accepted && !IsFinishing && !IsDestroyed)
+                    {
+                        using var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations)
+                            .SetData(Android.Net.Uri.Parse($"package:{pkgName}"));
+                        StartActivity(intent);
+                    }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[BATTERY REQ ERROR] {ex.Message}");
-        }
+            catch (Exception ex)
+            {
+                AppLogger.LogError($"[BATTERY REQ ERROR] {ex.Message}");
+            }
+        });
     }
 
     //запуск системной службы vpn

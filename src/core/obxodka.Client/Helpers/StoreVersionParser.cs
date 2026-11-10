@@ -12,6 +12,15 @@ public static partial class StoreVersionParser
     [GeneratedRegex(@"\b([a-fA-F0-9]{64})\s+(\S+)")]
     private static partial Regex Sha256ChecksumLineRegex();
 
+    [GeneratedRegex(@"^\s*#+\s*(\[CHANGELOG\]|Release Notes|Что нового|What's Changed).*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex ChangelogHeaderRegex();
+
+    [GeneratedRegex(@"^\s*#+\s*(\[CHECKSUMS\]|Checksums|SHA256).*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex ChecksumsHeaderRegex();
+
+    [GeneratedRegex(@"^[a-fA-F0-9]{64}\b")]
+    private static partial Regex RawSha256HexRegex();
+
     //извлечение версии и описания релиза из html страницы google play
     public static (string? Version, string? WhatsNew) ParseGooglePlayHtml(string? html)
     {
@@ -76,6 +85,59 @@ public static partial class StoreVersionParser
         return null;
     }
 
+    //очистка текста релиза от технических хешей sha256 и служебных секций
+    public static string? CleanReleaseNotes(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        //если есть выделенная секция списка изменений — берем содержимое после нее
+        var changelogMatch = ChangelogHeaderRegex().Match(body);
+        var sourceText = changelogMatch.Success
+            ? body[(changelogMatch.Index + changelogMatch.Length)..]
+            : body;
+
+        var lines = sourceText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var cleanedLines = new List<string>(lines.Length);
+        var insideCodeBlock = false;
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("```", StringComparison.Ordinal))
+            {
+                insideCodeBlock = !insideCodeBlock;
+                continue;
+            }
+
+            if (insideCodeBlock)
+            {
+                if (Sha256ChecksumLineRegex().IsMatch(line) || RawSha256HexRegex().IsMatch(line))
+                {
+                    continue;
+                }
+            }
+
+            if (ChecksumsHeaderRegex().IsMatch(line) ||
+                Sha256ChecksumLineRegex().IsMatch(line) ||
+                RawSha256HexRegex().IsMatch(line))
+            {
+                continue;
+            }
+
+            if (ChangelogHeaderRegex().IsMatch(line))
+            {
+                continue;
+            }
+
+            cleanedLines.Add(line);
+        }
+
+        var result = string.Join("\n", cleanedLines).Trim();
+        return string.IsNullOrWhiteSpace(result) ? null : result;
+    }
+
     //извлечение версии списка изменений ссылки на установщик и хеша sha256 из json github releases
     public static (string? Version, string? WhatsNew, string? DownloadUrl, string? ExpectedSha256) ParseGitHubReleaseJson(string? json)
     {
@@ -100,7 +162,7 @@ public static partial class StoreVersionParser
             }
 
             var version = tagName.TrimStart('v', 'V');
-            var whatsNew = root.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() : null;
+            var rawBody = root.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() : null;
             string? downloadUrl = null;
             string? installerFileName = null;
 
@@ -134,7 +196,8 @@ public static partial class StoreVersionParser
                 downloadUrl = htmlUrlProp.GetString();
             }
 
-            var expectedSha256 = ExtractSha256FromReleaseBody(whatsNew, installerFileName);
+            var expectedSha256 = ExtractSha256FromReleaseBody(rawBody, installerFileName);
+            var whatsNew = CleanReleaseNotes(rawBody);
 
             return (version, whatsNew, downloadUrl, expectedSha256);
         }

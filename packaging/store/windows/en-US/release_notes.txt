@@ -1,3 +1,4 @@
-- Network tunnel driver performance improvements and latency reduction
-- Refined Fluent 2 adaptive UI layout
-- Enhanced reconnection resilience
+- Uplink Guard system: instant Wintun route cleanup upon Wi-Fi disconnection to prevent packet blackhole
+- Direct socket reachability verification bypassing Windows local DNS cache
+- Enhanced automatic reconnection resilience without redundant failover cycles
+- Refined NeoDialog popups and interactive tunnel connection controls

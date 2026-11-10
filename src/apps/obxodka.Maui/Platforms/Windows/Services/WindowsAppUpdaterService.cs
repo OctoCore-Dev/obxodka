@@ -71,12 +71,19 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
                     if (!string.IsNullOrWhiteSpace(storeVersion))
                     {
                         var hasUpdate = StoreVersionParser.IsNewerVersion(currentVersion, storeVersion);
+                        string? whatsNew = null;
+                        if (hasUpdate)
+                        {
+                            whatsNew = await FetchReleaseNotesForVersionAsync(storeVersion).ConfigureAwait(false);
+                        }
+
                         return new StoreUpdateInfo(
                             HasUpdate: hasUpdate,
                             CurrentVersion: currentVersion,
                             LatestVersion: storeVersion,
                             StoreName: "Microsoft Store",
-                            StoreUrl: storeUrl);
+                            StoreUrl: storeUrl,
+                            ReleaseNotes: whatsNew);
                     }
                 }
             }
@@ -152,7 +159,12 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
                 {
                     if (IsInstalledFromStore())
                     {
-                        var msg = $"В Microsoft Store доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).\n\nЖелаете открыть страницу в Microsoft Store?";
+                        var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes) ? string.Empty : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
+                        if (notes.Length > 450)
+                        {
+                            notes = notes[..450] + "...";
+                        }
+                        var msg = $"В Microsoft Store доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете открыть страницу в Microsoft Store?";
                         var update = await NeoAlert.ShowConfirmAsync("Доступно обновление", msg, "Обновить", "Позже");
                         if (update)
                         {
@@ -162,9 +174,9 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
                     else
                     {
                         var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes) ? string.Empty : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
-                        if (notes.Length > 280)
+                        if (notes.Length > 450)
                         {
-                            notes = notes[..280] + "...";
+                            notes = notes[..450] + "...";
                         }
                         var msg = $"Доступна новая версия Obxodka v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете скачать и установить обновление сейчас?";
                         var update = await NeoAlert.ShowConfirmAsync("Обновление Obxodka", msg, "Обновить", "Позже");
@@ -200,6 +212,47 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
                 }
             }
         }
+    }
+
+    //получение описания изменений версии из github releases
+    private static async Task<string?> FetchReleaseNotesForVersionAsync(string version)
+    {
+        try
+        {
+            var tagUrl = $"https://api.github.com/repos/{GitHubRepo}/releases/tags/v{version}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, tagUrl);
+            req.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
+            using var resp = await s_httpClient.SendAsync(req).ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var (_, whatsNew, _, _) = StoreVersionParser.ParseGitHubReleaseJson(json);
+                if (!string.IsNullOrWhiteSpace(whatsNew))
+                {
+                    return whatsNew;
+                }
+            }
+
+            var latestUrl = $"https://api.github.com/repos/{GitHubRepo}/releases/latest";
+            using var latestReq = new HttpRequestMessage(HttpMethod.Get, latestUrl);
+            latestReq.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
+            using var latestResp = await s_httpClient.SendAsync(latestReq).ConfigureAwait(false);
+            if (latestResp.IsSuccessStatusCode)
+            {
+                var json = await latestResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var (latestVer, whatsNew, _, _) = StoreVersionParser.ParseGitHubReleaseJson(json);
+                if (latestVer == version && !string.IsNullOrWhiteSpace(whatsNew))
+                {
+                    return whatsNew;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"[RELEASE NOTES FETCH ERROR] {ex.Message}");
+        }
+
+        return null;
     }
 
     //вычисление sha256 хеша файла

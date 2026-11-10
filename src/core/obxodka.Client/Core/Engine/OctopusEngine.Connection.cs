@@ -112,6 +112,12 @@ public sealed partial class OctopusEngine
             return;
         }
 
+        //проверка физической доступности сети перед попыткой подключения
+        if (!IsUplinkAvailable)
+        {
+            throw new PhysicalNetworkUnavailableException("Отсутствует подключение к сети (Wi-Fi или сетевой кабель отключены).");
+        }
+
         //автоматический уход на облачный щит если прямой ip ранее завис на пороге байт тспу
         if (IPAddress.TryParse(serverIp, out var directCandidateIp) &&
             !IPAddress.IsLoopback(directCandidateIp) &&
@@ -144,11 +150,11 @@ public sealed partial class OctopusEngine
         {
             _clientCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
         }
-        catch
+        catch (Exception ex)
         {
-            Debug.WriteLine("[VPN] Обнаружен устаревший сертификат. Требуется повторная авторизация.");
+            AppLogger.LogWarning($"[VPN] Обнаружен устаревший сертификат: {ex.Message}. Требуется повторная авторизация.");
             OnCertificateRevoked?.Invoke("Обнаружен устаревший сертификат. Пожалуйста, войдите снова.");
-            throw new UnauthorizedAccessException("Old certificate");
+            throw new UnauthorizedAccessException("Old certificate", ex);
         }
 
         _cts = new CancellationTokenSource();

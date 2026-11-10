@@ -206,7 +206,7 @@ public sealed class DefaultMainThreadService : IMainThreadService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[DefaultMainThreadService] Unhandled action error: {ex}");
+            AppLogger.LogError("[DefaultMainThreadService] Unhandled action error", ex);
         }
     }
 

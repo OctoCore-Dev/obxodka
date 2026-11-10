@@ -53,6 +53,10 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
+        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
+        OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
+        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
+        OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
     }
 
     //обновление внутреннего состояния vpn сервиса
@@ -124,6 +128,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     {
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
+        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
+        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
         _ = StopVpnAsync();
         _cts?.Dispose();
         _vpnGate.Dispose();

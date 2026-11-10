@@ -5,9 +5,33 @@ namespace obxodka.Platforms.Android;
 
 //проверка доступности сети и типа интернет-соединения через системный connectivitymanager android
 [SupportedOSPlatform("android29.0")]
-public sealed class AndroidConnectivityService(Context context) : IConnectivityService
+[SuppressMessage("Usage", "CA1001:Types that own disposable fields should be disposable", Justification = "Process-lifetime singleton service")]
+public sealed class AndroidConnectivityService : IConnectivityService
 {
-    private readonly ConnectivityManager? _connectivityManager = context.GetSystemService(Context.ConnectivityService) as ConnectivityManager;
+    private readonly ConnectivityManager? _connectivityManager;
+    private readonly NetworkChangeCallback? _networkCallback;
+    private EventHandler<AppConnectivityChangedEventArgs>? _connectivityChanged;
+
+    public AndroidConnectivityService(Context context)
+    {
+        _connectivityManager = context.GetSystemService(Context.ConnectivityService) as ConnectivityManager;
+        try
+        {
+            _networkCallback = new NetworkChangeCallback(this);
+            _connectivityManager?.RegisterDefaultNetworkCallback(_networkCallback);
+        }
+        catch { }
+    }
+
+    private void RaiseConnectivityChanged() =>
+        _connectivityChanged?.Invoke(this, new AppConnectivityChangedEventArgs(NetworkAccess, []));
+
+    private sealed class NetworkChangeCallback(AndroidConnectivityService owner) : ConnectivityManager.NetworkCallback
+    {
+        public override void OnAvailable(Network network) => owner.RaiseConnectivityChanged();
+        public override void OnLost(Network network) => owner.RaiseConnectivityChanged();
+        public override void OnCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) => owner.RaiseConnectivityChanged();
+    }
 
     //текущий статус доступа в интернет с учетом vpn, wifi и сотовой сети
     public AppNetworkAccess NetworkAccess
@@ -41,8 +65,8 @@ public sealed class AndroidConnectivityService(Context context) : IConnectivityS
     //событие смены статуса сети
     public event EventHandler<AppConnectivityChangedEventArgs>? ConnectivityChanged
     {
-        add { }
-        remove { }
+        add => _connectivityChanged += value;
+        remove => _connectivityChanged -= value;
     }
 
     //получение профиля активного сетевого подключения (wifi, сотовая связь, ethernet)

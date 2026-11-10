@@ -274,7 +274,7 @@ public sealed partial class ThemeManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ThemeManager] Ошибка восстановления темы '{activeId}': {ex.Message}");
+            AppLogger.LogWarning($"[ThemeManager] Ошибка восстановления темы '{activeId}': {ex.Message}");
             Preferences.Default.Remove(ActiveThemeKey);
             ResetToDefault();
         }

@@ -33,6 +33,47 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         OctopusEngine.OnCertificateRevoked += msg => OnForceLogoutRequested?.Invoke(msg);
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
+        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
+        OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
+        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
+        OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
+    }
+
+    //обработка потери физической сети на android
+    private void HandleUplinkLost()
+    {
+        if (!IsRunning || _isExplicitlyStopped)
+        {
+            return;
+        }
+
+        AppLogger.LogWarning("[ANDROID-VPN] Uplink lost during active VPN session. Pausing tunnel...");
+        OnLogUpdated?.Invoke("Физическая сеть отключена. Ожидание сети...");
+        ChangeState(AppVpnState.Reconnecting);
+    }
+
+    //обработка восстановления физической сети на android
+    private void HandleUplinkRestored()
+    {
+        if (CurrentState != AppVpnState.Reconnecting || _isExplicitlyStopped)
+        {
+            return;
+        }
+
+        AppLogger.Log("[ANDROID-VPN] Uplink restored on Android. Resuming connection...");
+        OnLogUpdated?.Invoke("Сеть восстановлена. Подключение к узлу...");
+        _ = Task.Run(async () =>
+        {
+            if (Preferences.Get(AppPreferenceKeys.AutoReconnect, true))
+            {
+                var targetPort = OctopusEngine.Current.ConnectedServerPort > 0 ? OctopusEngine.Current.ConnectedServerPort : 443;
+                await StartVpnAsync(_currentServerIp, targetPort, _fallbackServers).ConfigureAwait(false);
+            }
+            else
+            {
+                await StopVpnAsync().ConfigureAwait(false);
+            }
+        });
     }
 
     //обработка мертвого соединения (блэкхол пакетов) и интеллектуальный failover
@@ -52,6 +93,15 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
         {
             try
             {
+                //если физическая сеть отключена — не крутим циклы перебора серверов
+                if (!OctopusEngine.IsUplinkAvailable)
+                {
+                    AppLogger.LogWarning("[DEAD CONNECTION] Physical network is down on Android. Suspending failover loops.");
+                    OnLogUpdated?.Invoke("Физическая сеть отключена. Ожидание подключения...");
+                    ChangeState(AppVpnState.Reconnecting);
+                    return;
+                }
+
                 AppLogger.LogWarning("[DEAD CONNECTION] Packet blackhole detected. Initiating smart failover...");
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketBlockDetected);
                 ChangeState(AppVpnState.Reconnecting);
@@ -481,9 +531,15 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     continue;
                 }
 
+                var isShield = string.Equals(s.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(s.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(s.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
+                               s.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
+
                 _currentServerIp = candidateIp;
                 _currentServerIndex = idx;
-                OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null;
+                OctopusEngine.DynamicSslPublicKeyHash = isShield ? null : (!string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null);
+                var targetSni = isShield ? (Uri.CheckHostName(s.Ip) == UriHostNameType.Dns ? s.Ip : AppConfig.PrimaryDomain) : s.Ip;
 
                 for (var attempt = 1; attempt <= 2; attempt++)
                 {
@@ -502,7 +558,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         var nodeRole = s.Role ?? "worker";
                         AppLogger.Log($"[ANDROID-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                         OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToServer(candidateIp, candidatePort));
-                        await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: s.Ip);
+                        await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: targetSni);
                         AppLogger.Log($"[ANDROID-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {OctopusEngine.Current.AssignedIp}");
 
                         var tunOk = OctopusVpnService.Instance?.EstablishTun() ?? false;

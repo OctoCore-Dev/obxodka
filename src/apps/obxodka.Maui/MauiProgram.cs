@@ -109,18 +109,14 @@ internal static partial class MauiProgram
         }
         catch (Exception ex)
         {
-#if DEBUG
             try
             {
-                Debug.WriteLine($"[MAUI STARTUP ERROR] {ex}");
+                obxodka.Shared.Logging.AppLogger.LogError("[MAUI STARTUP ERROR]", ex);
                 var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
                 Directory.CreateDirectory(dir);
                 File.AppendAllText(Path.Combine(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
             }
             catch { }
-#else
-            _ = ex;
-#endif
 
             throw;
         }

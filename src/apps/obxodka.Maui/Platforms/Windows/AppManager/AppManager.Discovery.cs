@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Microsoft.Win32;
 
 namespace obxodka.Platforms.Windows;
@@ -226,7 +227,30 @@ public sealed partial class AppManager
                         continue;
                     }
 
-                    var path = proc.MainModule?.FileName;
+                    var procName = proc.ProcessName;
+                    if (string.Equals(procName, "system", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "registry", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "smss", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "csrss", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "wininit", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "services", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "lsass", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "svchost", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "fontdrvhost", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "dwm", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(procName, "sihost", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string? path = null;
+                    try
+                    {
+                        path = proc.MainModule?.FileName;
+                    }
+                    catch (Win32Exception) { }
+                    catch (InvalidOperationException) { }
+
                     if (!string.IsNullOrWhiteSpace(path))
                     {
                         TryRegisterCandidate(discovered, path, null);
@@ -262,7 +286,14 @@ public sealed partial class AppManager
 
             try
             {
-                foreach (var lnkFile in Directory.EnumerateFiles(root, "*.lnk", SearchOption.AllDirectories))
+                var enumOptions = new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true,
+                    AttributesToSkip = FileAttributes.ReparsePoint
+                };
+
+                foreach (var lnkFile in Directory.EnumerateFiles(root, "*.lnk", enumOptions))
                 {
                     var shortcutName = Path.GetFileNameWithoutExtension(lnkFile);
                     if (shortcutName.Contains("Uninstall", StringComparison.OrdinalIgnoreCase) ||

@@ -28,6 +28,11 @@ public sealed partial class VpnView
     //учет отступа статусбара для мобильных экранов
     public void SetHeaderTopInset(double top)
     {
+        if (Math.Abs(_currentTopInset - top) < 0.5)
+        {
+            return;
+        }
+
         _currentTopInset = top;
         if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
         {

@@ -172,10 +172,7 @@ public sealed partial class VpnView
             StatusLabel.TextColor = GetAppColor("Error", s_redDot);
             try
             {
-                if (ParentPage is not null)
-                {
-                    await ParentPage.DisplayAlertAsync("Сбой сети", friendlyMessage, "OK");
-                }
+                await NeoAlert.ShowAsync("Сбой сети", friendlyMessage, "OK");
             }
             catch { }
         });
@@ -369,7 +366,7 @@ public sealed partial class VpnView
                     _reactorTransitionFactor = 0f;
                     ResetPingIndicators();
                     StartLoaderAnimation(animateEntrance: true);
-                    ConnectButtonCore.IsEnabled = false;
+                    ConnectButtonCore.IsEnabled = true;
                     UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, accent, accent);
                     UpdateActiveNode();
                     await SetNeonStateAsync(
@@ -537,12 +534,23 @@ public sealed partial class VpnView
             }
 #endif
 
-            if (Connectivity.Current.NetworkAccess == NetworkAccess.None)
+            if (!OctopusEngine.IsUplinkAvailable)
             {
-                if (ParentPage is not null)
-                {
-                    await ParentPage.DisplayAlertAsync("Нет интернета", "Отсутствует подключение к интернету. Проверьте сеть и повторите попытку.", "OK");
-                }
+                await NeoAlert.ShowAsync(
+                    "Нет подключения к сети",
+                    "На устройстве отсутствует доступ в интернет (Wi-Fi или сетевой кабель отключены).\n\nПожалуйста, проверьте подключение к сети и повторите попытку.",
+                    "Понятно");
+                return;
+            }
+
+            //быстрая проверка реального выхода в интернет (баланс тарифа, авторизация в wi-fi)
+            var hasInternet = await OctopusEngine.VerifyPhysicalUplinkAsync(1200).ConfigureAwait(true);
+            if (!hasInternet)
+            {
+                await NeoAlert.ShowAsync(
+                    "Нет доступа в интернет",
+                    "Устройство подключено к сети, но выход в интернет отсутствует.\n\nВозможно, закончился баланс тарифа, требуется авторизация в сети (Wi-Fi) или на линии провайдера сбой.\n\nПроверьте соединение и повторите попытку.",
+                    "Понятно");
                 return;
             }
 
@@ -598,7 +606,7 @@ public sealed partial class VpnView
             }
 
             StartLoaderAnimation();
-            ConnectButtonCore.IsEnabled = false;
+            ConnectButtonCore.IsEnabled = true;
             var accent = GetAppColor("Accent", s_cyanAccent);
             UpdateIpStatusDisplay("Получение...", accent, accent);
             await SetNeonStateAsync(
@@ -649,10 +657,21 @@ public sealed partial class VpnView
             var orderedCandidates = new List<VpnServerDto> { targetServer };
             orderedCandidates.AddRange(servers.Where(s => s.Ip != targetServer.Ip));
 
-            UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
-            if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
+            var isShieldNode = string.Equals(targetServer.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(targetServer.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(targetServer.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
+                               targetServer.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
+
+            if (isShieldNode)
+            {
+                //для cloudflare shield узлов ssl-пиннинг отключается так как cloudflare использует веб-сертификаты с регулярной ротацией
+                OctopusEngine.DynamicSslPublicKeyHash = null;
+                UpdateActiveNode(targetServer.Ip);
+            }
+            else if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
             {
                 OctopusEngine.DynamicSslPublicKeyHash = targetServer.CertHash;
+                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
             }
             else
             {
@@ -661,6 +680,7 @@ public sealed partial class VpnView
                 {
                     OctopusEngine.DynamicSslPublicKeyHash = hashData.Hash;
                 }
+                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
             }
 
             AppLogger.Log($"[VPN-TARGET] User initiated connect to: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port}) | Role: {targetServer.Role ?? "worker"} | Provider: {targetServer.Provider} | Flag: {targetServer.Flag}");
@@ -680,13 +700,10 @@ public sealed partial class VpnView
             var friendlyMsg = ex is SocketException or InvalidOperationException
                 ? ex.Message
                 : "Произошла ошибка при подключении/отключении";
-            if (ParentPage is not null)
-            {
-                var logHint = !string.IsNullOrEmpty(AppLogger.LogFilePath)
-                    ? $"\n\nПодробный лог сохранен в:\n{AppLogger.LogFilePath}"
-                    : "";
-                await ParentPage.DisplayAlertAsync("Ошибка подключения", $"{friendlyMsg}{logHint}", "OK");
-            }
+            var logHint = !string.IsNullOrEmpty(AppLogger.LogFilePath)
+                ? $"\n\nПодробный лог сохранен в:\n{AppLogger.LogFilePath}"
+                : "";
+            await NeoAlert.ShowAsync("Ошибка подключения", $"{friendlyMsg}{logHint}", "OK");
         }
         finally
         {

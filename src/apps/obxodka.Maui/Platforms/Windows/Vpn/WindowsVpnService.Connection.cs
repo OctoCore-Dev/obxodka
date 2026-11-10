@@ -36,6 +36,44 @@ internal sealed partial class WindowsVpnService
         }
     }
 
+    //обработка потери физической сети: снятие маршрутов wintun для исключения блэкхола интернета
+    private void HandleUplinkLost()
+    {
+        if (!IsRunning || _isExplicitlyStopped)
+        {
+            return;
+        }
+
+        AppLogger.LogWarning("[WINDOWS-VPN] Physical uplink lost during active VPN. Removing Wintun routes to avoid blackhole...");
+        OnLogUpdated?.Invoke("Физическая сеть отключена. Маршруты сброшены.");
+        UpdateState(AppVpnState.Reconnecting);
+        _ = Task.Run(CleanupStaleRoutesAsync);
+    }
+
+    //обработка восстановления физической сети: автоматическое переподключение
+    private void HandleUplinkRestored()
+    {
+        if (CurrentState != AppVpnState.Reconnecting || _isExplicitlyStopped)
+        {
+            return;
+        }
+
+        AppLogger.Log("[WINDOWS-VPN] Physical uplink restored. Re-establishing connection...");
+        OnLogUpdated?.Invoke("Сеть восстановлена. Подключение к узлу...");
+        _ = Task.Run(async () =>
+        {
+            if (Preferences.Get(AppPreferenceKeys.AutoReconnect, true))
+            {
+                var targetPort = OctopusEngine.Current.ConnectedServerPort > 0 ? OctopusEngine.Current.ConnectedServerPort : 443;
+                await StartVpnAsync(_currentServerIp, targetPort, _fallbackServers).ConfigureAwait(false);
+            }
+            else
+            {
+                await StopVpnAsync().ConfigureAwait(false);
+            }
+        });
+    }
+
     //обработка потери связи при отсутствии ответа от сервера
     private void HandleDeadConnection()
     {
@@ -53,6 +91,15 @@ internal sealed partial class WindowsVpnService
         {
             try
             {
+                //если физическая сеть отключена — не крутим циклы перебора серверов
+                if (!OctopusEngine.IsUplinkAvailable)
+                {
+                    AppLogger.LogWarning("[DEAD CONNECTION] Physical network is down. Dropping tunnel routes without fallback loops.");
+                    OnLogUpdated?.Invoke("Физическая сеть отключена. Ожидание подключения...");
+                    UpdateState(AppVpnState.Reconnecting);
+                    await CleanupStaleRoutesAsync().ConfigureAwait(false);
+                    return;
+                }
                 AppLogger.LogWarning($"[DEAD CONNECTION] Packet blackhole detected on Windows. Initiating failover for {_currentServerIp}:{OctopusEngine.Current.ConnectedServerPort}...");
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketLossDetected);
                 UpdateState(AppVpnState.Reconnecting);
@@ -193,6 +240,15 @@ internal sealed partial class WindowsVpnService
 
                 try
                 {
+                    if (!OctopusEngine.IsUplinkAvailable)
+                    {
+                        AppLogger.LogWarning("[ENGINE DROP] Physical network is down. Dropping routes without retry loops.");
+                        OnLogUpdated?.Invoke("Физическая сеть отключена. Ожидание подключения...");
+                        UpdateState(AppVpnState.Reconnecting);
+                        await CleanupStaleRoutesAsync().ConfigureAwait(false);
+                        return;
+                    }
+
                     for (var i = 0; i < 5; i++)
                     {
                         await Task.Delay(1500).ConfigureAwait(false);
@@ -432,11 +488,13 @@ internal sealed partial class WindowsVpnService
                     _currentServerIpsToRoute.AddRange(candidateIpsToRoute);
                     targetIp = candidateIp;
 
-                    OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null;
-                    if (!string.IsNullOrWhiteSpace(s.CertHash))
-                    {
-                        OctopusEngine.DynamicSslPublicKeyHash = s.CertHash;
-                    }
+                    var isShield = string.Equals(s.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(s.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(s.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
+                                   s.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
+
+                    OctopusEngine.DynamicSslPublicKeyHash = isShield ? null : (!string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null);
+                    var targetSni = isShield ? (Uri.CheckHostName(s.Ip) == UriHostNameType.Dns ? s.Ip : AppConfig.PrimaryDomain) : s.Ip;
 
                     for (var attempt = 1; attempt <= 2; attempt++)
                     {
@@ -461,7 +519,7 @@ internal sealed partial class WindowsVpnService
                             var nodeRole = s.Role ?? "worker";
                             AppLogger.Log($"[WINDOWS-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
                             OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(candidateIp, candidatePort));
-                            await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: s.Ip);
+                            await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: targetSni);
 
                             if (_cts != null)
                             {

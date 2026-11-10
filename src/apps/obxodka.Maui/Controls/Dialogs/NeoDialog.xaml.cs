@@ -56,7 +56,7 @@ public partial class NeoDialog : ContentView
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[NEO DIALOG ERROR] {ex.Message}");
+                obxodka.Shared.Logging.AppLogger.LogWarning($"[NEO DIALOG ERROR] {ex.Message}");
                 _ = tcs.TrySetResult(false);
             }
         });

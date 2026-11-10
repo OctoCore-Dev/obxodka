@@ -396,7 +396,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[AUTH LOAD ERROR] {ex.Message}");
+                AppLogger.LogError("[AUTH LOAD ERROR]", ex);
             }
 
             MainThread.BeginInvokeOnMainThread(async () =>
@@ -428,7 +428,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[AUTO UPDATE CHECK] {ex.Message}");
+                        AppLogger.LogWarning($"[AUTO UPDATE CHECK] {ex.Message}");
                     }
                 });
 
@@ -736,7 +736,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MainPage] Error loading local image '{path}': {ex.Message}");
+            AppLogger.LogWarning($"[MainPage] Error loading local image '{path}': {ex.Message}");
             return null;
         }
     }
@@ -982,7 +982,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[MainPage] Video playback error: {ex.Message}");
+                        AppLogger.LogWarning($"[MainPage] Video playback error: {ex.Message}");
                     }
                 }
                 else
@@ -1016,7 +1016,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MainPage] HandleThemeApplied error: {ex.Message}");
+                AppLogger.LogWarning($"[MainPage] HandleThemeApplied error: {ex.Message}");
             }
             finally
             {
@@ -1098,7 +1098,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MainPage] HandleThemeReset error: {ex.Message}");
+                AppLogger.LogWarning($"[MainPage] HandleThemeReset error: {ex.Message}");
             }
             finally
             {
@@ -1286,8 +1286,11 @@ public sealed partial class MainPage : ContentPage, IDisposable
         RestoreDecorationsOpacity();
     }
 
+    private double _lastAppliedTopInset = -1;
+    private double _lastAppliedBottomInset = -1;
+
     private void OnSafeAreaInsetsChanged(double top, double bottom) =>
-        MainThread.BeginInvokeOnMainThread(() => ApplySafeArea(top, bottom));
+        ApplySafeArea(top, bottom);
 
     private void ApplySafeArea(double top, double bottom)
     {
@@ -1295,6 +1298,14 @@ public sealed partial class MainPage : ContentPage, IDisposable
         {
             return;
         }
+
+        if (Math.Abs(_lastAppliedTopInset - top) < 0.5 && Math.Abs(_lastAppliedBottomInset - bottom) < 0.5)
+        {
+            return;
+        }
+
+        _lastAppliedTopInset = top;
+        _lastAppliedBottomInset = bottom;
 
         MainContentContainer.Padding = new Thickness(0);
         MobileBottomBar.ApplyBottomInset(bottom);
@@ -1340,7 +1351,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[MainPage] Error resuming video on activation: {ex.Message}");
+                    AppLogger.LogWarning($"[MainPage] Error resuming video on activation: {ex.Message}");
                 }
             }
 
@@ -1377,7 +1388,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[MainPage] Error pausing video on deactivation: {ex.Message}");
+                        AppLogger.LogWarning($"[MainPage] Error pausing video on deactivation: {ex.Message}");
                     }
                 }
 
@@ -1578,7 +1589,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             }
             else
             {
-                Debug.WriteLine($"[SYNC ERROR] {error}");
+                AppLogger.LogWarning($"[SYNC ERROR] {error}");
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     var fallbackSec = session.BalanceSeconds > 0
@@ -1698,7 +1709,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MainPage] Error configuring native video player: {ex.Message}");
+            AppLogger.LogWarning($"[MainPage] Error configuring native video player: {ex.Message}");
         }
 #pragma warning restore CA1416
     }

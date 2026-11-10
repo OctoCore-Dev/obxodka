@@ -79,7 +79,7 @@ public static class AppLogger
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AppLogger] Ошибка инициализации логгера: {ex.Message}");
+            Console.Error.WriteLine($"[AppLogger] Ошибка инициализации логгера: {ex.Message}");
         }
     }
 

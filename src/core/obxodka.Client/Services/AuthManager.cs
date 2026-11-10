@@ -52,7 +52,7 @@ public sealed class AuthManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AUTH SAVE ERROR]: {ex.Message}");
+            AppLogger.LogError("[AUTH SAVE ERROR]", ex);
         }
         finally
         {
@@ -116,7 +116,7 @@ public sealed class AuthManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AUTH LOAD ERROR]: {ex.Message}");
+            AppLogger.LogError("[AUTH LOAD ERROR]", ex);
             ClearSessionDataInternal();
             s_cachedSession = new UserSession { IsLoggedIn = false };
             s_cachedAuthHeader = null;
@@ -140,7 +140,7 @@ public sealed class AuthManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AUTH CLEAR ERROR]: {ex.Message}");
+            AppLogger.LogError("[AUTH CLEAR ERROR]", ex);
         }
         finally
         {

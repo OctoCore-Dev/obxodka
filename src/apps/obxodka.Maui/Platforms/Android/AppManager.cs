@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Android.Content;
 using Android.Content.PM;
 using Application = Android.App.Application;
@@ -237,21 +238,89 @@ public sealed class AppManager : IAppManager
         "ru.x5.app"
     ], StringComparer.OrdinalIgnoreCase);
 
+    private const string SplitInitializedKey = "obxodka_split_initialized";
+    private static string PersistentFilePath => Path.Combine(FileSystem.AppDataDirectory, "split_tunnel_apps.json");
+
     //получение списка пакетов приложений исключенных из маршрутизации vpn
     public List<string> GetBypassedPackages()
     {
+        //проверяем постоянный json файл во внутренней памяти устройства
+        try
+        {
+            if (File.Exists(PersistentFilePath))
+            {
+                var json = File.ReadAllText(PersistentFilePath);
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    var list = JsonSerializer.Deserialize<List<string>>(json);
+                    if (list is not null)
+                    {
+                        return [.. list.Where(p => !string.IsNullOrWhiteSpace(p) && !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
+                    }
+                }
+            }
+        }
+        catch { }
+
+        //проверяем сохраненные настройки в preferences для обратной совместимости
         if (Preferences.ContainsKey(BypassedAppsKey))
         {
             var saved = Preferences.Get(BypassedAppsKey, string.Empty);
-            return string.IsNullOrWhiteSpace(saved)
+            List<string> list = string.IsNullOrWhiteSpace(saved)
                 ? []
-                : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
+                : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                       .Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
+
+            try
+            {
+                File.WriteAllText(PersistentFilePath, JsonSerializer.Serialize(list));
+                Preferences.Set(SplitInitializedKey, true);
+            }
+            catch { }
+
+            return list;
         }
 
-        return [.. s_defaultCloakedPackages];
+        //если приложение запущено впервые и сплит еще не инициализирован
+        if (!Preferences.Get(SplitInitializedKey, false))
+        {
+            List<string> defaultList = [.. s_defaultCloakedPackages];
+            SaveBypassedPackages(defaultList);
+            return defaultList;
+        }
+
+        return [];
     }
 
     //сохранение обновленного списка пакетов приложений исключенных из vpn
-    public void SaveBypassedPackages(List<string> packages) =>
-        Preferences.Set(BypassedAppsKey, string.Join(",", packages.Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))));
+    public void SaveBypassedPackages(List<string> packages)
+    {
+        List<string> cleaned =
+        [
+            .. packages
+                .Where(p => !string.IsNullOrWhiteSpace(p) && !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+        ];
+
+        //запись в постоянный json файл
+        try
+        {
+            File.WriteAllText(PersistentFilePath, JsonSerializer.Serialize(cleaned));
+        }
+        catch { }
+
+        //дублирование в preferences и фиксация флага инициализации
+        Preferences.Set(BypassedAppsKey, string.Join(",", cleaned));
+        Preferences.Set(SplitInitializedKey, true);
+
+        //обновление кэша в памяти
+        if (s_cachedApps is not null)
+        {
+            var set = cleaned.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var app in s_cachedApps)
+            {
+                app.IsBypassed = set.Contains(app.PackageName);
+            }
+        }
+    }
 }

@@ -218,7 +218,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[ThemeParticles] Error decoding sprite '{path}': {ex.Message}");
+                        AppLogger.LogWarning($"[ThemeParticles] Error decoding sprite '{path}': {ex.Message}");
                     }
                 }
 
@@ -242,7 +242,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ThemeParticles] Ошибка декодирования оверлея '{screenOverlayImagePath}': {ex.Message}");
+                    AppLogger.LogWarning($"[ThemeParticles] Ошибка декодирования оверлея '{screenOverlayImagePath}': {ex.Message}");
                 }
             }
 

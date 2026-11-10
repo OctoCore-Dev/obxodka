@@ -89,10 +89,20 @@ public static class CertificateValidator
             if (isTrustedDomain)
             {
                 var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
-                if (nonNameErrors == SslPolicyErrors.None)
+                if (nonNameErrors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors)
                 {
                     using var verifyChain = new X509Chain();
                     verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    verifyChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
+                                                               X509VerificationFlags.IgnoreInvalidBasicConstraints;
+                    if (chain is not null)
+                    {
+                        foreach (var elem in chain.ChainElements)
+                        {
+                            _ = verifyChain.ChainPolicy.ExtraStore.Add(elem.Certificate);
+                        }
+                    }
+
                     if (verifyChain.Build(cert2))
                     {
                         AppLogger.Log("[CERT OK] Trusted domain chain verified successfully.");
@@ -102,9 +112,22 @@ public static class CertificateValidator
                     if (chain is not null)
                     {
                         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
+                                                              X509VerificationFlags.IgnoreInvalidBasicConstraints;
                         if (chain.Build(cert2))
                         {
                             AppLogger.Log("[CERT OK] Trusted domain passed via outer chain.");
+                            return true;
+                        }
+
+                        //толерантность к устаревшим кросс-подписанным корням на мобильных платформах
+                        var onlyLegacyRootStatus = chain.ChainStatus.All(s =>
+                            s.Status is X509ChainStatusFlags.NoError or
+                                        X509ChainStatusFlags.NotTimeValid or
+                                        X509ChainStatusFlags.UntrustedRoot);
+                        if (onlyLegacyRootStatus && chain.ChainElements.Count > 1)
+                        {
+                            AppLogger.Log("[CERT OK] Trusted domain passed with tolerated legacy root chain status.");
                             return true;
                         }
                     }

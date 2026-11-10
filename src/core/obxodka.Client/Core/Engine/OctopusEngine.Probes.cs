@@ -11,6 +11,13 @@ public sealed partial class OctopusEngine
             return false;
         }
 
+        //если физическая сеть отключена — мгновенно прекращаем зондирование
+        if (!IsUplinkAvailable)
+        {
+            AppLogger.LogWarning("[PROBE FAIL] Physical uplink is unavailable (Wi-Fi/Ethernet down).");
+            return false;
+        }
+
         var initialReceived = TotalBytesReceived;
         var initialSent = TotalBytesSent;
 

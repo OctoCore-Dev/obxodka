@@ -65,7 +65,12 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
             {
                 MainThread.BeginInvokeOnMainThread(async () =>
                 {
-                    var msg = $"В Google Play доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).\n\nЖелаете обновить приложение сейчас?";
+                    var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes) ? string.Empty : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
+                    if (notes.Length > 450)
+                    {
+                        notes = notes[..450] + "...";
+                    }
+                    var msg = $"В Google Play доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете обновить приложение сейчас?";
                     var update = await NeoAlert.ShowConfirmAsync("Доступно обновление", msg, "Обновить", "Позже");
 
                     if (update)

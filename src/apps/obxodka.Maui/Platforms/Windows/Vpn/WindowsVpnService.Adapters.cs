@@ -11,6 +11,13 @@ internal sealed partial class WindowsVpnService
     //предстартовая проверка сети и dns
     public async Task<string?> RunNetworkPreflightAsync()
     {
+        //проверка физической доступности сети без лишних задержек
+        if (!OctopusEngine.IsUplinkAvailable)
+        {
+            return "Отсутствует подключение к сети (Wi-Fi или сетевой кабель отключены).\n\n" +
+                   "Проверьте физическое сетевое подключение и повторите попытку.";
+        }
+
         OnLogUpdated?.Invoke(VpnStatusMessages.CheckingInternetAndDns);
 
         string[] referenceIps = ["77.88.55.242", "1.1.1.1", "8.8.8.8"];
@@ -59,7 +66,7 @@ internal sealed partial class WindowsVpnService
                 OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToAutonomousDns);
             }
         }
-        else
+        else if (internetOk || serverOk)
         {
             OnLogUpdated?.Invoke(VpnStatusMessages.InternetAndDnsHealthy);
         }
