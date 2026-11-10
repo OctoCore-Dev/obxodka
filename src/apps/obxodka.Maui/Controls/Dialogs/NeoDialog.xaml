@@ -12,7 +12,7 @@
 
     <Grid
         x:Name="DialogOverlay"
-        BackgroundColor="#E6000000"
+        BackgroundColor="{DynamicResource BgOverlay}"
         HorizontalOptions="Fill"
         VerticalOptions="Fill">
 

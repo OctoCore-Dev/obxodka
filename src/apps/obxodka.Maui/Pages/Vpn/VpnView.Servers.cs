@@ -513,10 +513,24 @@ public sealed partial class VpnView
             var orderedCandidates = new List<VpnServerDto> { newServer };
             orderedCandidates.AddRange(_cachedServers.Where(s => s.Ip != newServer.Ip));
 
-            UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
-            if (!string.IsNullOrWhiteSpace(newServer.CertHash))
+            var isShieldNode = string.Equals(newServer.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(newServer.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(newServer.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
+                               newServer.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
+
+            if (isShieldNode)
+            {
+                OctopusEngine.DynamicSslPublicKeyHash = null;
+                UpdateActiveNode(newServer.Ip);
+            }
+            else if (!string.IsNullOrWhiteSpace(newServer.CertHash))
             {
                 OctopusEngine.DynamicSslPublicKeyHash = newServer.CertHash;
+                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
+            }
+            else
+            {
+                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
             }
 
             AppLogger.Log($"[HOT-SWAP] Seamlessly switching to server: {newServer.Location} ({newServer.Ip}:{newServer.Port})");
@@ -544,6 +558,9 @@ public sealed partial class VpnView
         }
     }
 
+    //флаг активности модального окна выбора серверов
+    public bool IsServerModalOpen => ServerModalOverlay?.IsVisible == true;
+
     //открытие модального окна выбора локации
     private async Task OpenServerModalAsync()
     {
@@ -561,6 +578,7 @@ public sealed partial class VpnView
             _ = Task.Run(PingCachedServersAsync);
         }
 
+        _ = ParentPage?.SetSidebarDimmedAsync(true);
         ServerModalOverlay.IsVisible = true;
         ServerModalOverlay.InputTransparent = false;
         ServerModalCard.Scale = 0.95;
@@ -572,9 +590,10 @@ public sealed partial class VpnView
     }
 
     //закрытие модального окна выбора локации
-    private async Task CloseServerModalAsync()
+    public async Task CloseServerModalAsync()
     {
         ServerModalOverlay.InputTransparent = true;
+        _ = ParentPage?.SetSidebarDimmedAsync(false);
         _ = ServerModalCard.ScaleToAsync(0.95, 180, Easing.CubicIn);
         _ = ServerModalCard.FadeToAsync(0.0, 180, Easing.CubicIn);
         _ = await ServerModalOverlay.FadeToAsync(0.0, 180, Easing.CubicIn);

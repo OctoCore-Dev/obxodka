@@ -662,6 +662,10 @@
 
         <Grid
             x:Name="ServerModalOverlay"
+            Margin="{OnIdiom Desktop='-32,-28',
+                             Tablet='-32,-28',
+                             Phone='-8,0,-8,0',
+                             Default='-24,-24'}"
             BackgroundColor="{DynamicResource BgOverlay}"
             HorizontalOptions="Fill"
             InputTransparent="True"
@@ -691,13 +695,6 @@
                 WidthRequest="{OnIdiom Desktop=440,
                                        Phone=340,
                                        Default=400}">
-                <Border.Shadow>
-                    <Shadow
-                        Brush="{DynamicResource Accent}"
-                        Opacity="0.4"
-                        Radius="24"
-                        Offset="0, 6" />
-                </Border.Shadow>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer />
                 </Border.GestureRecognizers>

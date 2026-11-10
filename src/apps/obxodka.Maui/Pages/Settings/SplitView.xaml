@@ -10,7 +10,9 @@
 
     <Grid
         x:Name="RootLayout"
-        Padding="{OnIdiom Desktop='32,0', Phone='0', Default='16,0'}"
+        Padding="{OnIdiom Desktop='32,0',
+                          Phone='0',
+                          Default='16,0'}"
         IsClippedToBounds="True"
         SafeAreaEdges="None">
 
@@ -143,15 +145,15 @@
                                                     </DataTrigger>
                                                 </Border.Triggers>
                                                 <Border
-                                                    StrokeShape="RoundRectangle 9"
-                                                    StrokeThickness="0"
+                                                    BackgroundColor="{DynamicResource TextMuted}"
                                                     HeightRequest="18"
                                                     HorizontalOptions="Start"
                                                     InputTransparent="True"
+                                                    StrokeShape="RoundRectangle 9"
+                                                    StrokeThickness="0"
                                                     TranslationX="0"
                                                     VerticalOptions="Center"
-                                                    WidthRequest="18"
-                                                    BackgroundColor="{DynamicResource TextMuted}">
+                                                    WidthRequest="18">
                                                     <Border.Triggers>
                                                         <DataTrigger
                                                             Binding="{Binding IsBypassed}"

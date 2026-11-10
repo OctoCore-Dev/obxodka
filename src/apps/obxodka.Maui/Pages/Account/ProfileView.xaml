@@ -124,10 +124,10 @@
                                     FontSize="15"
                                     Text="Блокировка рекламы" />
                                 <Label
+                                    x:Name="AdBlockSubtitleLabel"
                                     Grid.Row="1"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
-                                    x:Name="AdBlockSubtitleLabel"
                                     Text="L3 фильтрация рекламы и трекеров" />
                             </Grid>
                             <Switch

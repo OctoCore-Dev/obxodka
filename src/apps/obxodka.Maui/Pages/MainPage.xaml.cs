@@ -1717,6 +1717,42 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     #region Custom NeoCard Dialog
 
+    //управление затемнением сайдбара при открытии модальных окон
+    public async Task SetSidebarDimmedAsync(bool dimmed)
+    {
+        if (SidebarDimmer is null)
+        {
+            return;
+        }
+
+        if (dimmed)
+        {
+            SidebarDimmer.IsVisible = true;
+            SidebarDimmer.InputTransparent = false;
+            _ = await SidebarDimmer.FadeToAsync(1.0, 180, Easing.CubicOut);
+        }
+        else
+        {
+            SidebarDimmer.InputTransparent = true;
+            _ = await SidebarDimmer.FadeToAsync(0.0, 150, Easing.CubicIn);
+            SidebarDimmer.IsVisible = false;
+        }
+    }
+
+    //клик по затемненному сайдбару для закрытия активной модалки
+    private void OnSidebarDimmerTapped(object? sender, EventArgs e)
+    {
+        ThemeAudioService.PlayClick();
+        if (TabContentVpn?.IsServerModalOpen == true)
+        {
+            _ = TabContentVpn.CloseServerModalAsync();
+        }
+        if (TabContentThemeStore?.IsPreviewModalOpen == true)
+        {
+            _ = TabContentThemeStore.ClosePreviewModalAsync();
+        }
+    }
+
     public Task<bool> ShowCustomDialogAsync(
         string title,
         string message,

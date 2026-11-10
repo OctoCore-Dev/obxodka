@@ -68,6 +68,7 @@ public sealed partial class ThemeStoreView
                 : "Скачать и применить";
         BtnPreviewModalAction.Opacity = model.IsActive ? 0.6 : 1.0;
 
+        _ = MainPage.Current?.SetSidebarDimmedAsync(true);
         ThemePreviewModalOverlay.IsVisible = true;
         ThemePreviewModalOverlay.InputTransparent = false;
         ThemePreviewModalCard.Scale = 0.92;
@@ -77,6 +78,9 @@ public sealed partial class ThemeStoreView
         _ = ThemePreviewModalCard.FadeToAsync(1.0, 180, Easing.CubicOut);
         _ = ThemePreviewModalCard.ScaleToAsync(1.0, 220, Easing.SpringOut);
     }
+
+    //флаг открытого состояния превью темы
+    public bool IsPreviewModalOpen => ThemePreviewModalOverlay?.IsVisible == true;
 
     private void OnClosePreviewModalClicked(object? sender, EventArgs e)
     {
@@ -104,9 +108,10 @@ public sealed partial class ThemeStoreView
             _ => "splash_logo.png"
         };
 
-    private async Task ClosePreviewModalAsync()
+    public async Task ClosePreviewModalAsync()
     {
         ThemePreviewModalOverlay.InputTransparent = true;
+        _ = MainPage.Current?.SetSidebarDimmedAsync(false);
         _ = ThemePreviewModalCard.ScaleToAsync(0.92, 150, Easing.CubicIn);
         _ = ThemePreviewModalCard.FadeToAsync(0, 150, Easing.CubicIn);
         _ = await ThemePreviewModalOverlay.FadeToAsync(0, 150, Easing.CubicIn);

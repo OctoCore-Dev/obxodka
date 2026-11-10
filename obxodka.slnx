@@ -13,4 +13,40 @@
     <Project Path="tests/obxodka.Benchmarks/obxodka.Benchmarks.csproj" />
     <Project Path="tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj" />
   </Folder>
+  <Folder Name="/.build/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path=".runsettings" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.rsp" />
+    <File Path="Directory.Build.targets" />
+    <File Path="nuget.config" />
+    <File Path="servers.json" />
+    <File Path="version.props" />
+  </Folder>
+  <Folder Name="/.docs/">
+    <File Path="README.md" />
+    <File Path="LICENSE" />
+    <File Path="RULES.md" />
+    <File Path="AGENTS.md" />
+    <File Path="CODEBASE_MAP.md" />
+    <File Path="CORE_PROTOCOL_GRAPH_AND_SECURITY_AUDIT.md" />
+    <File Path="PRIVACY_POLICY.md" />
+    <File Path="TERMS_OF_SERVICE.md" />
+  </Folder>
+  <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/release.yml" />
+    <File Path=".github/workflows/seasonal_banner.yml" />
+    <File Path=".github/workflows/store-watchdog.yml" />
+  </Folder>
+  <Folder Name="/.github/community/">
+    <File Path=".github/CODE_OF_CONDUCT.md" />
+    <File Path=".github/CONTRIBUTING.md" />
+    <File Path=".github/SECURITY.md" />
+    <File Path=".github/PULL_REQUEST_TEMPLATE.md" />
+    <File Path=".github/ISSUE_TEMPLATE/bug_report.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/feature_request.yml" />
+  </Folder>
 </Solution>
