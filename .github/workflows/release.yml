@@ -279,6 +279,10 @@ jobs:
             EXTRA_ARGS="-p:ApplicationDisplayVersion=$VERSION_NAME -p:Version=$VERSION_NAME"
           fi
 
+          if [ "${{ needs.check-version.outputs.is_prerelease }}" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS -p:DefineConstants=TESTING_BUILD"
+          fi
+
           SIGNING_ARGS=""
           if [ -f "$HOME/keystore/release.keystore" ] && [ -n "$KEY_PASS" ] && [ -n "$STORE_PASS" ]; then
             SIGNING_ARGS="-p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$HOME/keystore/release.keystore -p:AndroidSigningKeyAlias=${KEY_ALIAS:-octocore} -p:AndroidSigningKeyPass=$KEY_PASS -p:AndroidSigningStorePass=$STORE_PASS"
@@ -390,6 +394,10 @@ jobs:
           if ($env:VERSION_NAME) {
             $extraArgs += "-p:ApplicationDisplayVersion=$env:VERSION_NAME"
             $extraArgs += "-p:Version=$env:VERSION_NAME"
+          }
+
+          if ("${{ needs.check-version.outputs.is_prerelease }}" -eq "true") {
+            $extraArgs += "-p:DefineConstants=TESTING_BUILD"
           }
 
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `

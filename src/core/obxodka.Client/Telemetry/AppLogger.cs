@@ -202,7 +202,7 @@ public static class AppLogger
         _ = s_channel.Writer.TryWrite(item);
     }
 
-    //запись ошибок и сохранение в crash.log
+    //запись ошибок в журнал логов
     public static void LogError(string message, Exception? ex = null)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -217,10 +217,18 @@ public static class AppLogger
         var item = new LogItem(DateTime.Now, "ERROR", fullMessage);
         AddToRecentLogs($"[{item.Timestamp:HH:mm:ss.fff}] [ERROR] {fullMessage}");
         _ = s_channel.Writer.TryWrite(item);
+    }
 
+    //запись фатального падения процесса в crash.log
+    public static void LogCrash(string message, Exception? ex = null)
+    {
+        LogError(message, ex);
         try
         {
-            var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [ERROR] {fullMessage}\n";
+            var fullMessage = ex != null
+                ? $"{message} | Exception: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}"
+                : message;
+            var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH] {fullMessage}\n";
             File.AppendAllText(CrashLogFilePath, crashEntry);
         }
         catch { }
@@ -260,11 +268,11 @@ public static class AppLogger
             AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             {
                 var ex = e.ExceptionObject as Exception;
-                LogError($"[UNHANDLED DOMAIN EXCEPTION] {ex?.Message ?? e.ExceptionObject?.ToString()}", ex);
+                LogCrash($"[UNHANDLED DOMAIN EXCEPTION] {ex?.Message ?? e.ExceptionObject?.ToString()}", ex);
             };
 
             TaskScheduler.UnobservedTaskException += (_, e) =>
-                LogError($"[UNOBSERVED TASK EXCEPTION] {e.Exception.Message}", e.Exception);
+                LogCrash($"[UNOBSERVED TASK EXCEPTION] {e.Exception.Message}", e.Exception);
         }
         catch { }
     }

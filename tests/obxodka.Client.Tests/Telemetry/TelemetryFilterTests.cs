@@ -42,6 +42,16 @@ public sealed class TelemetryFilterTests
         Assert.False(TelemetryFilter.ShouldSendToServer("Socket closed", socketEx));
     }
 
+    [Theory]
+    [InlineData("[2026-11-07 06:20:58.805 UTC] [ERROR] [PLAY STORE VERSION CHECK ERROR] Connection failure | Exception: HttpRequestException: Connection failure")]
+    [InlineData("[WINDOWS STORE CATALOG CHECK] Failed to fetch catalog")]
+    [InlineData("[ANDROID UPDATE CHECK] Network timeout")]
+    public void ShouldSendToServer_FiltersOutStoreUpdateCheckNoise(string message)
+    {
+        var result = TelemetryFilter.ShouldSendToServer(message);
+        Assert.False(result);
+    }
+
     [Fact]
     public void ShouldSendToServer_AllowsGenuineErrors()
     {

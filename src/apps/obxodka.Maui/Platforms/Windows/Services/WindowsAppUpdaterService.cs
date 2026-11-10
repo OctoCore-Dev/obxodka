@@ -5,7 +5,7 @@ namespace obxodka.Platforms.Windows;
 
 //служба автоматического обновления приложения windows через microsoft store и github releases
 [SupportedOSPlatform("windows10.0.19041.0")]
-public sealed class WindowsAppUpdaterService : IAppUpdaterService
+public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
 {
     public const string StoreProductId = "9NZXP5WR803J";
     public const string GitHubRepo = "OctoCore-Dev/obxodka";
@@ -15,9 +15,21 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
         Timeout = TimeSpan.FromSeconds(15)
     };
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, nint packageFullName);
+
     //проверка запущено ли приложение из microsoft store
     public static bool IsInstalledFromStore()
     {
+        var len = 0;
+        var rc = GetCurrentPackageFullName(ref len, 0);
+        //15700 = APPMODEL_ERROR_NO_PACKAGE (непакетированное приложение, исключает InvalidOperationException в WinRT)
+        if (rc == 15700)
+        {
+            return false;
+        }
+
         try
         {
             var package = global::Windows.ApplicationModel.Package.Current;
@@ -89,7 +101,7 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
             }
             catch (Exception ex)
             {
-                AppLogger.LogError($"[WINDOWS STORE CATALOG CHECK ERROR] {ex.Message}", ex);
+                AppLogger.LogWarning($"[WINDOWS STORE CATALOG CHECK] {ex.Message}");
             }
 
             return new StoreUpdateInfo(
@@ -130,7 +142,7 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
             }
             catch (Exception ex)
             {
-                AppLogger.LogError($"[GITHUB RELEASE CHECK ERROR] {ex.Message}", ex);
+                AppLogger.LogWarning($"[GITHUB RELEASE CHECK] {ex.Message}");
             }
 
             return new StoreUpdateInfo(
@@ -199,7 +211,7 @@ public sealed class WindowsAppUpdaterService : IAppUpdaterService
         }
         catch (Exception ex)
         {
-            AppLogger.LogError($"[WINDOWS UPDATE ERROR] {ex.Message}", ex);
+            AppLogger.LogWarning($"[WINDOWS UPDATE ERROR] {ex.Message}");
             if (manualCheck)
             {
                 if (IsInstalledFromStore())

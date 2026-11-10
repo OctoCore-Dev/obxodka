@@ -14,11 +14,15 @@ public sealed class ApiService(HttpClient client)
             CertificateValidator.ValidateServerCertificate(cert, chain, errors)
     };
 
-    //клиент с дефолтным обработчиком
+    //клиент с дефолтным обработчиком и строгим ssl pinning
     private static readonly Lazy<HttpClient> s_fallbackNative = new(() => new HttpClient(
         OperatingSystem.IsAndroid()
             ? CreateAndroidHandler()
-            : new HttpClientHandler())
+            : new SocketsHttpHandler
+            {
+                SslOptions = SslOptionsFactory.Create(),
+                UseProxy = false
+            })
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
@@ -327,6 +331,9 @@ public sealed class ApiService(HttpClient client)
         var hwid = DeviceHelper.Hwid;
         _ = request.Headers.Remove("X-Device-Hwid");
         _ = request.Headers.TryAddWithoutValidation("X-Device-Hwid", hwid);
+
+        _ = request.Headers.Remove("X-Telemetry-Token");
+        _ = request.Headers.TryAddWithoutValidation("X-Telemetry-Token", AppConfig.TelemetryAuthToken);
 
         var pathAndQuery = request.RequestUri?.PathAndQuery ?? "/api";
         var sig = AppSecrets.GenerateStealthSignature(pathAndQuery, out var ts);

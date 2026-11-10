@@ -69,7 +69,7 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
             var appVersion = typeof(TelemetryService).Assembly.GetName().Version?.ToString(3) ?? "2.0.0";
             var email = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, string.Empty);
 
-            var dto = new TelemetryDto(hwid, appVersion, message, stackTrace, string.IsNullOrWhiteSpace(email) ? null : email);
+            var dto = new TelemetryDto(hwid, appVersion, message, stackTrace, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
 
             var sent = await SendToServerDirectAsync(dto, ct).ConfigureAwait(false);
             if (sent)
@@ -99,7 +99,7 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         var stack = ex?.ToString() ?? string.Empty;
         var safeStack = stack.Length > 4096 ? stack[..4096] : stack;
 
-        var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email);
+        var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
         _ = _channel.Writer.TryWrite(dto);
         await ValueTask.CompletedTask;
     }
@@ -127,7 +127,7 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
                     safeStack = safeStack[..4096];
                 }
 
-                var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email);
+                var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 var sent = await SendToServerDirectAsync(dto, cts.Token).ConfigureAwait(false);
                 if (sent && File.Exists(AppLogger.CrashLogFilePath))

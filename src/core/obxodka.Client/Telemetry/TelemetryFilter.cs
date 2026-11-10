@@ -82,6 +82,15 @@ public static class TelemetryFilter
             return false;
         }
 
+        //отсеиваем штатные сетевые сбои фоновой проверки обновлений в магазинах
+        if (message.Contains("VERSION CHECK", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("UPDATE CHECK", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("PLAY STORE", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("WINDOWS STORE", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         //не шлем одну и ту же ошибку чаще раза в 5 минут
         var signature = ComputeErrorSignature(message, ex);
         var nowTicks = Stopwatch.GetTimestamp();

@@ -52,6 +52,30 @@ public static class AppConfig
         set => field = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    //секретный токен авторизации телеметрии для защиты шлюза
+    public const string TelemetryAuthToken = "obx_telemetry_secure_gate_2026";
+
+    //окружение клиента для телеметрии и мониторинга ошибок (testing, production, development)
+    public static string EnvironmentName
+    {
+        get
+        {
+            var env = Environment.GetEnvironmentVariable("OBXODKA_ENVIRONMENT");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env.ToLowerInvariant();
+            }
+
+#if DEBUG
+            return "development";
+#elif TESTING_BUILD
+            return "testing";
+#else
+            return "production";
+#endif
+        }
+    }
+
     //собирает полный url для api запроса из строки
     public static string ApiUrl(string endpoint)
     {

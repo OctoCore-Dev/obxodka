@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace obxodka.Platforms.Windows;
@@ -243,14 +244,7 @@ public sealed partial class AppManager
                         continue;
                     }
 
-                    string? path = null;
-                    try
-                    {
-                        path = proc.MainModule?.FileName;
-                    }
-                    catch (Win32Exception) { }
-                    catch (InvalidOperationException) { }
-
+                    var path = GetProcessExecutablePath(proc.Id);
                     if (!string.IsNullOrWhiteSpace(path))
                     {
                         TryRegisterCandidate(discovered, path, null);
@@ -264,6 +258,48 @@ public sealed partial class AppManager
             }
         }
         catch { }
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial nint OpenProcess(uint processAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, int processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint hObject);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool QueryFullProcessImageName(nint hProcess, int flags, [Out] char[] lpExeName, ref int lpdwSize);
+
+    //получение полного пути к процессу через limited query без чтения памяти и без исключений
+    private static string? GetProcessExecutablePath(int processId)
+    {
+        //0x1000 = PROCESS_QUERY_LIMITED_INFORMATION
+        var handle = OpenProcess(0x1000, false, processId);
+        if (handle == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var buffer = new char[1024];
+            var size = buffer.Length;
+            if (QueryFullProcessImageName(handle, 0, buffer, ref size) && size > 0)
+            {
+                return new string(buffer, 0, size);
+            }
+        }
+        catch { }
+        finally
+        {
+            _ = CloseHandle(handle);
+        }
+
+        return null;
     }
 
     //сканирование ярлыков в меню пуск и на рабочем столе

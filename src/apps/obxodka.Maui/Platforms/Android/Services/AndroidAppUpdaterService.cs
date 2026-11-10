@@ -42,9 +42,17 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
                 }
             }
         }
+        catch (HttpRequestException ex)
+        {
+            AppLogger.LogWarning($"[PLAY STORE VERSION CHECK] Network unavailable or connection failed: {ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            //таймаут или отмена проверки обновлений
+        }
         catch (Exception ex)
         {
-            AppLogger.LogError($"[PLAY STORE VERSION CHECK ERROR] {ex.Message}", ex);
+            AppLogger.LogWarning($"[PLAY STORE VERSION CHECK] Check failed: {ex.Message}");
         }
 
         return new StoreUpdateInfo(
@@ -90,7 +98,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
         catch (Exception ex)
         {
-            AppLogger.LogError($"[ANDROID UPDATE ERROR] {ex.Message}", ex);
+            AppLogger.LogWarning($"[ANDROID UPDATE CHECK] {ex.Message}");
             if (manualCheck)
             {
                 await OpenPlayStoreAsync();

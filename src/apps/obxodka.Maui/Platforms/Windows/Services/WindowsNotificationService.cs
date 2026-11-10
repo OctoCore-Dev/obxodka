@@ -48,16 +48,15 @@ public sealed partial class WindowsNotificationService : INotificationService
         PlatformServices.MainThread.BeginInvokeOnMainThread(() => ReconnectRequested?.Invoke());
     }
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, nint packageFullName);
+
     private static bool IsPackaged()
     {
-        try
-        {
-            return global::Windows.ApplicationModel.Package.Current?.Id != null;
-        }
-        catch
-        {
-            return false;
-        }
+        var len = 0;
+        var rc = GetCurrentPackageFullName(ref len, 0);
+        return rc != 15700;
     }
 
     //регистрация aumid для корректной доставки уведомлений в непакетированных приложениях

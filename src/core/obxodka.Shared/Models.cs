@@ -139,7 +139,8 @@ public sealed record TelemetryDto(
     string AppVersion,
     string Message,
     string StackTrace,
-    string? Email = null);
+    string? Email = null,
+    string? Environment = "production");
 
 // сообщение
 public sealed record MessageResponse([property: JsonPropertyName("message")] string Message);
