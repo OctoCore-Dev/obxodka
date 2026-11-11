@@ -13,7 +13,7 @@ internal sealed partial class WindowsVpnService
 
         var txThread = new Thread(() =>
         {
-            Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
             Thread.CurrentThread.Name = "Wintun-UploadReader";
             var batch = new PacketBatch();
             try

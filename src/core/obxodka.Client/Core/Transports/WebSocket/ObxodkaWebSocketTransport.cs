@@ -40,7 +40,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
     //очередь исходящих пакетов для строго однопоточной отправки
     private readonly Channel<WsTxItem> _txChannel =
-        Channel.CreateBounded<WsTxItem>(new BoundedChannelOptions(8192)
+        Channel.CreateBounded<WsTxItem>(new BoundedChannelOptions(16384)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -230,6 +230,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
             var ws = new ClientWebSocket();
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            ws.Options.SetBuffer(65536, 65536);
             try
             {
                 ws.Options.SetRequestHeader("Host", targetHostHeader);

@@ -7,8 +7,14 @@ namespace obxodka.Platforms.Windows;
 internal sealed partial class WindowsVpnService
 {
     //обработка обновления mtu ядра octopus
-    private void HandleMtuUpdated(int optimalMtu) =>
-        AppLogger.Log($"[SMART MTU] In-flight MSS clamping adjusted to {optimalMtu}B (Wintun adapter maintained at 1500B).");
+    private void HandleMtuUpdated(int optimalMtu)
+    {
+        AppLogger.Log($"[SMART MTU] Optimal MTU updated to {optimalMtu}B. Syncing Wintun adapter...");
+        if (_adapter is not null)
+        {
+            _ = UpdateAdapterMtuAsync(_adapter.Name, optimalMtu);
+        }
+    }
 
     //синхронизация назначенного ip адреса туннеля с адаптером wintun
     private async Task SyncAdapterAssignedIpAsync()
@@ -104,8 +110,11 @@ internal sealed partial class WindowsVpnService
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketLossDetected);
                 UpdateState(AppVpnState.Reconnecting);
 
-                //помечаем прямой узел как заблокированный по трафику и сразу идем на резервный щит если он доступен
-                OctopusEngine.MarkNodeByteCapped(_currentServerIp);
+                //помечаем прямой узел как заблокированный по трафику только если это начальный блэкхол без реального трафика
+                if (OctopusEngine.Current.TotalBytesReceived < 100_000)
+                {
+                    OctopusEngine.MarkNodeByteCapped(_currentServerIp);
+                }
 
                 if (_fallbackServers.Count <= 1 || !OctopusEngine.IsNodeByteCapped(_currentServerIp))
                 {
@@ -562,22 +571,24 @@ internal sealed partial class WindowsVpnService
 
                             if ((verified || curRx > 0) && curTx > 0)
                             {
-                                AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu})! Activating routes and elevating adapter priority.");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
+                                var currentMtu = SmartMtuEngine.CurrentMtu;
+                                AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={currentMtu})! Activating routes and elevating adapter priority.");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
                                 if (hasValidIpv6)
                                 {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else if (curTx > 0)
                             {
-                                AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
+                                var currentMtu = SmartMtuEngine.CurrentMtu;
+                                AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Tunnel online, MTU={currentMtu}! Proceeding with route activation...");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
                                 if (hasValidIpv6)
                                 {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
