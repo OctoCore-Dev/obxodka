@@ -466,15 +466,8 @@ internal sealed partial class WindowsVpnService
 
             if (!string.IsNullOrEmpty(ifIndex))
             {
-                var tunGateway = "100.64.0.1";
-                if (IPAddress.TryParse(assignedIp, out var parsedAssigned))
-                {
-                    var bytes = parsedAssigned.GetAddressBytes();
-                    if (bytes.Length == 4)
-                    {
-                        tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
-                    }
-                }
+                //шлюз vpn сервера в подсети 100.64.0.0/10
+                const string tunGateway = "100.64.0.1";
 
                 var r2Task = RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}", timeoutMs: 1500);
                 var r3Task = RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}", timeoutMs: 1500);

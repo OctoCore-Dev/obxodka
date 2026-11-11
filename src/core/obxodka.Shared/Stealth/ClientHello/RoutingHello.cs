@@ -126,17 +126,12 @@ public static class RoutingHello
     //быстрая 1-rtt проверка проходимости sni и браузерного отпечатка через тспу до запуска полного стека
     public static async Task<bool> ProbeRawClientHelloAsync(
         EndPoint endPoint,
-        string sni,
+        string? sni,
         TlsBrowserProfile profile,
         Action<Socket>? protectAction = null,
         int timeoutMs = 1200,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(sni))
-        {
-            return false;
-        }
-
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeoutMs);
         var token = timeoutCts.Token;
@@ -150,7 +145,9 @@ public static class RoutingHello
         try
         {
             await socket.ConnectAsync(endPoint, token).ConfigureAwait(false);
-            var sniBytes = Encoding.ASCII.GetBytes(sni);
+            var sniBytes = (!string.IsNullOrWhiteSpace(sni) && !IPAddress.TryParse(sni, out _))
+                ? Encoding.ASCII.GetBytes(sni)
+                : [];
             var hello = BuildHello(profile, sniBytes);
             var splitIndex = Math.Clamp(hello.Length / 2, 24, Math.Max(24, hello.Length - 16));
 

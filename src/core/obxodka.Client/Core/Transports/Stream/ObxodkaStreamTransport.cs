@@ -259,7 +259,7 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                 }
             }
 
-            var attemptTimeoutSeconds = (i == 0 && endpointCandidates.Count > 1) ? 3 : 4;
+            var attemptTimeoutSeconds = 8;
             var dpiModeStr = enableDpi ? "Clean-Split DPI" : "Direct Stream";
             _inspector.IncrementAttempts();
             _inspector.RecordStep($"Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' [{dpiModeStr}] Profile: {activeProfile}");

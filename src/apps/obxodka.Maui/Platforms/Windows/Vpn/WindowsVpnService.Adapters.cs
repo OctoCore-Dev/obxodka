@@ -338,15 +338,8 @@ internal sealed partial class WindowsVpnService
         {
             var ifIndex = GetWintunInterfaceIndex(adapterName);
             var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
-            var tunGateway = "100.64.0.1";
-            if (IPAddress.TryParse(assignedIp, out var parsedAssigned))
-            {
-                var bytes = parsedAssigned.GetAddressBytes();
-                if (bytes.Length == 4)
-                {
-                    tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
-                }
-            }
+            //шлюз vpn сервера в подсети 100.64.0.0/10
+            const string tunGateway = "100.64.0.1";
             var addTasks = new List<Task>();
             foreach (var dns in DnsDefaults.TrustedDnsServers)
             {

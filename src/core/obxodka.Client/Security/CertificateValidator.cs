@@ -76,13 +76,6 @@ public static class CertificateValidator
                 }
             }
 
-            //если пиннинг был включен но ни один ключ не совпал отклоняем соединение
-            if (!string.IsNullOrWhiteSpace(expectedPin))
-            {
-                AppLogger.LogError($"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
-                return false;
-            }
-
             //проверка принадлежности сертификата доверенным доменам обходки
             var isTrustedDomain = IsTrustedObxodkaCertificate(cert2);
 
@@ -132,6 +125,13 @@ public static class CertificateValidator
                         }
                     }
                 }
+            }
+
+            //если пиннинг был включен но ни один ключ не совпал отклоняем соединение
+            if (!string.IsNullOrWhiteSpace(expectedPin))
+            {
+                AppLogger.LogError($"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
+                return false;
             }
 
             //базовая проверка системного корневого центра сертификации для внешних запросов
@@ -195,9 +195,32 @@ public static class CertificateValidator
     private static bool IsTrustedHostName(string host)
     {
         var trimmed = host.Trim();
-        return trimmed.Equals(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-               trimmed.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase) ||
-               trimmed.Equals(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase) ||
-               trimmed.EndsWith($".{AppConfig.MirrorDomain}", StringComparison.OrdinalIgnoreCase);
+        var primary = AppConfig.PrimaryDomain;
+        var mirrorDomain = AppConfig.MirrorDomain;
+
+        if (!string.IsNullOrWhiteSpace(primary) &&
+            (trimmed.Equals(primary, StringComparison.OrdinalIgnoreCase) ||
+             trimmed.EndsWith($".{primary}", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(mirrorDomain) &&
+            (trimmed.Equals(mirrorDomain, StringComparison.OrdinalIgnoreCase) ||
+             trimmed.EndsWith($".{mirrorDomain}", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        foreach (var m in BootstrapConfig.Mirrors)
+        {
+            if (trimmed.Equals(m, StringComparison.OrdinalIgnoreCase) ||
+                trimmed.EndsWith($".{m}", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

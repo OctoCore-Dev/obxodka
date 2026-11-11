@@ -168,7 +168,8 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 }
 
                 var netStream = new NetworkStream(connectedSocket, ownsSocket: true);
-                return (!isDirectIp || (literalIp is not null && !IPAddress.IsLoopback(literalIp)))
+                var isShield = SniEngine.IsShieldEndpoint(serverIp, targetSni);
+                return (!isShield && isDirectIp && literalIp is not null && !IPAddress.IsLoopback(literalIp))
                     ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
                     : netStream;
             }
@@ -244,7 +245,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             };
 
             var invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
-            using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(3500));
+            using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
 
             try

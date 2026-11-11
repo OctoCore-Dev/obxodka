@@ -48,29 +48,131 @@ public static class SniEngine
         "/api/v1/ws"
     ];
 
-    //проверка содержит ли хост внутренние маркеры проекта которые нельзя светить в открытом sni
-    public static bool IsInternalBrandHost(string? host) =>
-        !string.IsNullOrWhiteSpace(host) &&
-        (host.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
-         host.Contains("octocore", StringComparison.OrdinalIgnoreCase));
+    private static readonly Lazy<string[]> s_internalBrandStems = new(BuildInternalBrandStems);
+
+    private static string[] BuildInternalBrandStems()
+    {
+        var stems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void ExtractStem(string domain)
+        {
+            if (string.IsNullOrWhiteSpace(domain))
+            {
+                return;
+            }
+
+            var parts = domain.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2)
+            {
+                var sld = parts[^2];
+                if (sld.Length >= 4)
+                {
+                    _ = stems.Add(sld);
+                }
+            }
+        }
+
+        ExtractStem(AppConfig.PrimaryDomain);
+        ExtractStem(AppConfig.MirrorDomain);
+        foreach (var m in BootstrapConfig.Mirrors)
+        {
+            ExtractStem(m);
+        }
+
+        //резервные xor маскированные токены на случай пустого bootstrap конфига
+        Span<byte> b1 = [0x45, 0x48, 0x52, 0x45, 0x4E, 0x41, 0x4B];
+        Span<byte> b2 = [0x45, 0x49, 0x5E, 0x45, 0x49, 0x45, 0x58, 0x4F];
+        Span<char> c1 = stackalloc char[b1.Length];
+        Span<char> c2 = stackalloc char[b2.Length];
+        for (var i = 0; i < b1.Length; i++)
+        {
+            c1[i] = (char)(b1[i] ^ 0x2A);
+        }
+
+        for (var i = 0; i < b2.Length; i++)
+        {
+            c2[i] = (char)(b2[i] ^ 0x2A);
+        }
+        _ = stems.Add(new string(c1));
+        _ = stems.Add(new string(c2));
+
+        return [.. stems];
+    }
+
+    //проверка содержит ли хост внутренние адреса проекта которые нельзя светить в открытом sni
+    public static bool IsInternalBrandHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        var trimmed = host.Trim();
+        foreach (var stem in s_internalBrandStems.Value)
+        {
+            if (trimmed.Contains(stem, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    //проверка является ли эндпоинт облачным щитом cloudflare
+    public static bool IsShieldEndpoint(string? serverIp, string? targetSni)
+    {
+        ReadOnlySpan<string?> candidates = [targetSni, serverIp];
+        var primary = AppConfig.PrimaryDomain;
+        var mirrorDomain = AppConfig.MirrorDomain;
+
+        foreach (var c in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(c))
+            {
+                continue;
+            }
+
+            var trimmed = c.Trim();
+            if (!string.IsNullOrWhiteSpace(primary) &&
+                (trimmed.Equals(primary, StringComparison.OrdinalIgnoreCase) ||
+                 trimmed.EndsWith($".{primary}", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(mirrorDomain) &&
+                (trimmed.Equals(mirrorDomain, StringComparison.OrdinalIgnoreCase) ||
+                 trimmed.EndsWith($".{mirrorDomain}", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            foreach (var mirror in BootstrapConfig.Mirrors)
+            {
+                if (trimmed.Equals(mirror, StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.EndsWith($".{mirror}", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
     //определение режима транспорта и целевого sni перед запуском туннеля
     public static SniTransportStrategy ResolveTransportStrategy(string serverIp, string? targetSni, bool forceWebSocket)
     {
-        var isWebSocketMode = serverIp.Equals(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                              serverIp.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase) ||
-                              (targetSni != null && targetSni.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase)) ||
-                              forceWebSocket;
+        var isShield = IsShieldEndpoint(serverIp, targetSni);
+        var isWebSocketMode = isShield || forceWebSocket;
 
-        var effectiveSni = !string.IsNullOrWhiteSpace(targetSni)
-            ? targetSni
-            : (isWebSocketMode
-                ? AppConfig.PrimaryDomain
-                : (IPAddress.TryParse(serverIp, out _) ? AppSecrets.GetRandomSni() : null));
+        //для щита cloudflare sni обязателен и совпадает с доменом зоны
+        //для прямого подключения к ip сервера отправка sni отключена (zero-sni без ложных sni)
+        var effectiveSni = isShield
+            ? (!string.IsNullOrWhiteSpace(targetSni) && !IPAddress.TryParse(targetSni, out _) ? targetSni : AppConfig.PrimaryDomain)
+            : (isWebSocketMode ? (!string.IsNullOrWhiteSpace(targetSni) ? targetSni : serverIp) : null);
 
-        var clearPinning = isWebSocketMode &&
-                           (serverIp.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                            (targetSni != null && targetSni.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase)));
+        var clearPinning = isShield;
 
         return new SniTransportStrategy(isWebSocketMode, effectiveSni, clearPinning);
     }
@@ -78,48 +180,24 @@ public static class SniEngine
     //формирование списка кандидатов sni и портов для http2 транспорта
     public static List<SniStreamCandidate> BuildStreamCandidates(string serverIp, int serverPort, string? configuredSni)
     {
-        var sniCandidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(configuredSni) &&
-            !IPAddress.TryParse(configuredSni, out _) &&
-            !IsInternalBrandHost(configuredSni))
-        {
-            sniCandidates.Add(configuredSni);
-        }
-        else if (!IPAddress.TryParse(serverIp, out _) && !IsInternalBrandHost(serverIp))
-        {
-            sniCandidates.Add(serverIp);
-        }
-        else
-        {
-            sniCandidates.Add(AppSecrets.AllowedSniPool[0]);
-        }
-
-        foreach (var candidate in AppSecrets.GetCandidateSniList(8))
-        {
-            if (!sniCandidates.Contains(candidate, StringComparer.OrdinalIgnoreCase))
-            {
-                sniCandidates.Add(candidate);
-            }
-        }
+        //для прямого подключения zero-sni: целевой хост равен ip сервера (без отправки sni в tls)
+        var targetHost = !string.IsNullOrWhiteSpace(configuredSni) && !IsInternalBrandHost(configuredSni)
+            ? configuredSni
+            : serverIp;
 
         int[] portCandidates = serverPort == 443
-            ? [443, 8443]
-            : [serverPort, 443, 8443];
+            ? [443, 8443, 2053]
+            : [serverPort, 443, 8443, 2053];
 
-        var result = new List<SniStreamCandidate>(portCandidates.Length * (sniCandidates.Count + 2));
+        var result = new List<SniStreamCandidate>(portCandidates.Length * 2);
         var attemptIndex = 0;
 
         foreach (var port in portCandidates)
         {
-            for (var sIdx = 0; sIdx < sniCandidates.Count; sIdx++)
-            {
-                var sni = sniCandidates[sIdx];
-                result.Add(new SniStreamCandidate(sni, port, true, RoutingHello.GetProfileForAttempt(attemptIndex++)));
-                if (sIdx < 2 && port == 443)
-                {
-                    result.Add(new SniStreamCandidate(sni, port, false, RoutingHello.GetProfileForAttempt(attemptIndex++)));
-                }
-            }
+            //прямой поток без dpi вмешательства
+            result.Add(new SniStreamCandidate(targetHost, port, false, RoutingHello.GetProfileForAttempt(attemptIndex++)));
+            //поток с l4 сегментацией
+            result.Add(new SniStreamCandidate(targetHost, port, true, RoutingHello.GetProfileForAttempt(attemptIndex++)));
         }
 
         return result;
@@ -128,16 +206,17 @@ public static class SniEngine
     //формирование списка кандидатов зеркал и sni для websocket транспорта
     public static List<SniWebSocketCandidate> BuildWebSocketCandidates(string serverIp, int serverPort, string? configuredSni)
     {
+        var isShield = IsShieldEndpoint(serverIp, configuredSni);
         var serverIsIp = IPAddress.TryParse(serverIp, out _);
         var sniIsDomain = !string.IsNullOrWhiteSpace(configuredSni) && !IPAddress.TryParse(configuredSni, out _);
         var isLocalLoopback = serverIp.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
                               serverIp.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
                               serverIp.Equals("::1", StringComparison.OrdinalIgnoreCase);
-        var isDomainShieldMode = !isLocalLoopback && (!serverIsIp || sniIsDomain);
+        var isDomainShieldMode = !isLocalLoopback && (isShield || !serverIsIp || sniIsDomain);
 
-        var activeServerHost = sniIsDomain
-            ? configuredSni!
-            : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain);
+        var activeServerHost = isShield
+            ? (sniIsDomain ? configuredSni! : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain))
+            : (sniIsDomain ? configuredSni! : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain));
 
         var result = new List<SniWebSocketCandidate>(10);
         var attemptIdx = 0;
@@ -184,9 +263,8 @@ public static class SniEngine
             AddCandidate(altHost8443, altHost8443, 8443);
             AddCandidate(altHost2053, altHost2053, 2053);
 
-            //аварийный прямой выход с маскировочным sni если заблокирована сама сеть cdn
-            var fallbackSni = AppSecrets.GetRandomSni();
-            AddCandidate(AppConfig.DirectServerIp, fallbackSni, 443);
+            //аварийный прямой выход с zero-sni если заблокирована сама сеть cdn
+            AddCandidate(AppConfig.DirectServerIp, AppConfig.DirectServerIp, 443);
             return result;
         }
 
@@ -197,7 +275,7 @@ public static class SniEngine
 
         for (var pIdx = 0; pIdx < directPorts.Length; pIdx++)
         {
-            var sni = isLocalLoopback ? activeServerHost : AppSecrets.GetRandomSni();
+            var sni = isLocalLoopback ? activeServerHost : serverIp;
             AddCandidate(serverIp, sni, directPorts[pIdx]);
         }
 
