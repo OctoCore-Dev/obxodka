@@ -93,9 +93,9 @@ public sealed partial class AppManager : IAppManager
         policy.Enabled = true;
         policy.BypassRuGov = Preferences.Get(PresetGovKey, true);
         policy.BypassRuBanks = Preferences.Get(PresetBanksKey, true);
-        policy.BypassRuMedia = Preferences.Get(PresetMediaKey, false);
-        policy.BypassRuMarketplaces = Preferences.Get(PresetMarketKey, false);
-        policy.BypassAllRuTlds = Preferences.Get(PresetRuTldsKey, false);
+        policy.BypassRuMedia = Preferences.Get(PresetMediaKey, true);
+        policy.BypassRuMarketplaces = Preferences.Get(PresetMarketKey, true);
+        policy.BypassAllRuTlds = Preferences.Get(PresetRuTldsKey, true);
 
         var bypassedPackages = LoadBypassedPackagesList();
         policy.SetBypassedExecutables(bypassedPackages);

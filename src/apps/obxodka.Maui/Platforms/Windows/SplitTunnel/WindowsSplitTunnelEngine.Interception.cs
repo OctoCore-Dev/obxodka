@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using obxodka.Shared.Geo;
 
 namespace obxodka.Platforms.Windows;
 
@@ -191,16 +192,25 @@ internal static partial class WindowsSplitTunnelEngine
                 }
                 return false;
             }
-            else if (hasApps)
+            else
             {
-                var flowKey = ((ulong)dstIpUint << 32) | ((uint)srcPort << 16) | dstPort;
-                if (!s_checkedUdpFlows.ContainsKey(flowKey))
+                if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
                 {
-                    s_checkedUdpFlows[flowKey] = 1;
-                    if (IsPortOwnedByBypassedProcess(false, srcPort, out var exeName))
+                    PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
+                    return true;
+                }
+
+                if (hasApps)
+                {
+                    var flowKey = ((ulong)dstIpUint << 32) | ((uint)srcPort << 16) | dstPort;
+                    if (!s_checkedUdpFlows.ContainsKey(flowKey))
                     {
-                        PinPhysicalHostRoute(dstIpUint, exeName);
-                        return true;
+                        s_checkedUdpFlows[flowKey] = 1;
+                        if (IsPortOwnedByBypassedProcess(false, srcPort, out var exeName))
+                        {
+                            PinPhysicalHostRoute(dstIpUint, exeName);
+                            return true;
+                        }
                     }
                 }
             }
@@ -219,9 +229,16 @@ internal static partial class WindowsSplitTunnelEngine
             var tcpFlags = packet[tcpOffset + 13];
             var isSyn = (tcpFlags & 0x02) != 0 && (tcpFlags & 0x10) == 0;
 
-            if (isSyn && hasApps)
+            if (isSyn)
             {
-                if (IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
+                if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
+                {
+                    PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
+                    SendTcpReset(packet, ihl, adapter);
+                    return true;
+                }
+
+                if (hasApps && IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
                 {
                     PinPhysicalHostRoute(dstIpUint, exeName);
                     SendTcpReset(packet, ihl, adapter);

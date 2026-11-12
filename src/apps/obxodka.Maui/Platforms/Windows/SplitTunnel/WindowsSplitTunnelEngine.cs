@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using obxodka.Core.Models;
+using obxodka.Shared.Geo;
 
 namespace obxodka.Platforms.Windows;
 
@@ -124,6 +126,17 @@ internal static partial class WindowsSplitTunnelEngine
                 if (seeds.Count > 0)
                 {
                     await PreResolveSeedDomainsOnPhysicalAsync(seeds).ConfigureAwait(false);
+                }
+            }
+
+            if (policy.BypassAllRuTlds)
+            {
+                var supernets = RuSubnetRegistry.GetTier1Supernets(16);
+                foreach (var (netHost, maskHost) in supernets)
+                {
+                    var netNet = BinaryPrimitives.ReverseEndianness(netHost);
+                    var maskNet = BinaryPrimitives.ReverseEndianness(maskHost);
+                    PinPhysicalSubnetRoute(netNet, maskNet, "Tier-1 RU Supernet");
                 }
             }
 
