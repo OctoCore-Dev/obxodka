@@ -571,24 +571,22 @@ internal sealed partial class WindowsVpnService
 
                             if ((verified || curRx > 0) && curTx > 0)
                             {
-                                var currentMtu = SmartMtuEngine.CurrentMtu;
-                                AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={currentMtu})! Activating routes and elevating adapter priority.");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
+                                AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu})! Activating routes and elevating adapter priority.");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 if (hasValidIpv6)
                                 {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else if (curTx > 0)
                             {
-                                var currentMtu = SmartMtuEngine.CurrentMtu;
-                                AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Tunnel online, MTU={currentMtu}! Proceeding with route activation...");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
+                                AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Tunnel online, MTU={SmartMtuEngine.CurrentMtu}! Proceeding with route activation...");
+                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 if (hasValidIpv6)
                                 {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu={currentMtu} store=active");
+                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
                                 }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));

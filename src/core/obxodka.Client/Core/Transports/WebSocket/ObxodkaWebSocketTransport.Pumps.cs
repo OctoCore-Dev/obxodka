@@ -177,7 +177,7 @@ public sealed partial class ObxodkaWebSocketTransport
     //фоновый цикл отправки исходящих пакетов через единую очередь сокета
     private async Task WriterLoopAsync(ClientWebSocket ws, CancellationToken ct)
     {
-        var coalesceBuf = ArrayPool<byte>.Shared.Rent(65536);
+        var coalesceBuf = ArrayPool<byte>.Shared.Rent(131072);
         var reader = _txChannel.Reader;
 
         try

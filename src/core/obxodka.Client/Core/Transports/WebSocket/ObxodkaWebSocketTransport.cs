@@ -230,7 +230,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
             var ws = new ClientWebSocket();
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-            ws.Options.SetBuffer(65536, 65536);
+            ws.Options.SetBuffer(131072, 131072);
             try
             {
                 ws.Options.SetRequestHeader("Host", targetHostHeader);

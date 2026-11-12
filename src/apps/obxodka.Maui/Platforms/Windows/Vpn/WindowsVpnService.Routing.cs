@@ -92,18 +92,17 @@ internal sealed partial class WindowsVpnService
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                var effectiveMtu = SmartMtuEngine.CurrentMtu;
-                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={effectiveMtu} store=active");
+                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active");
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {DnsDefaults.PrimaryDns} primary validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {DnsDefaults.SecondaryDns} index=2 validate=no");
                 _ = DnsFlushResolverCache();
-                AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}, mtu={effectiveMtu}");
+                AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}, wintunMtu=1500 (tunnelMtu={SmartMtuEngine.CurrentMtu})");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
                 {
                     var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={effectiveMtu} store=active");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 add dnsservers name=\"{adapterName}\" 2001:4860:4860::8888 index=2 validate=no");
@@ -128,15 +127,14 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    //обновление mtu адаптера
+    //обновление mtu адаптера (поддержание 1500 в ос для приема пакетов приложений и нарезки в ядре)
     private static async Task UpdateAdapterMtuAsync(string adapterName, int mtu)
     {
         try
         {
-            var clamped = SmartMtuEngine.ClampMtu(mtu);
-            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={clamped} store=active").ConfigureAwait(false);
-            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={clamped} store=active").ConfigureAwait(false);
-            AppLogger.Log($"[MTU ADAPTER] Wintun adapter '{adapterName}' MTU updated to {clamped}B");
+            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
+            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
+            AppLogger.Log($"[MTU ADAPTER] Maintaining Wintun adapter '{adapterName}' at 1500B (tunnel effective MTU: {mtu}B, TCP MSS: {mtu - 40}B)");
         }
         catch (Exception ex)
         {

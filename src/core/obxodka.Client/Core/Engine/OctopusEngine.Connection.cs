@@ -132,7 +132,7 @@ public sealed partial class OctopusEngine
         ConnectedServerIp = serverIp;
         ConnectedServerPort = serverPort;
 
-        SmartMtuEngine.CurrentMtu = SmartMtuEngine.DefaultMtu;
+        SmartMtuEngine.CurrentMtu = SmartMtuEngine.InitialMtu;
         RegisterServerEndpoint(serverIp);
         foreach (var relayIp in AppConfig.DirectRelayIps)
         {

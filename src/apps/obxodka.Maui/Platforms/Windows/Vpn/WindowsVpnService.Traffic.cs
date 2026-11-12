@@ -7,6 +7,13 @@ internal sealed partial class WindowsVpnService
     //цикл обработки входящего и исходящего трафика wintun
     private async Task ProcessTrafficAsync(CancellationToken ct)
     {
+        //конфигурация сквозного конвейера обработки пакетов
+        var pipeline = OctopusEngine.Current.Pipeline;
+        pipeline.SplitTunnelInterceptor = (buf, len) => _adapter is { } ad && WindowsSplitTunnelEngine.TryInterceptOutgoingPacket(buf, len, ad);
+        pipeline.IngressInspector = (span, len) => WindowsSplitTunnelEngine.InspectIncomingPacketFromVpn(span, len);
+        pipeline.AdBlockFilter = (buf, len) => DnsAdBlocker.ProcessPacket(buf, len);
+        pipeline.LocalDelivery = (buf, len) => _adapter?.SendPacket(buf, len);
+
         OctopusEngine.Current.OnPacketReceived -= HandlePacketFromVpn;
         OctopusEngine.Current.OnPacketReceived += HandlePacketFromVpn;
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -34,26 +41,6 @@ internal sealed partial class WindowsVpnService
                         {
                             processed = i;
                             var (buf, len) = batch[i];
-                            if (OctopusEngine.Current.IsServerDestination(buf.AsSpan(0, len), len))
-                            {
-                                ArrayPool<byte>.Shared.Return(buf);
-                                continue;
-                            }
-
-                            var sinkholeResp = DnsAdBlocker.ProcessPacket(buf, len);
-                            if (sinkholeResp is not null)
-                            {
-                                adapter.SendPacket(sinkholeResp);
-                                ArrayPool<byte>.Shared.Return(buf);
-                                continue;
-                            }
-
-                            if (WindowsSplitTunnelEngine.TryInterceptOutgoingPacket(buf, len, adapter))
-                            {
-                                ArrayPool<byte>.Shared.Return(buf);
-                                continue;
-                            }
-
                             OctopusEngine.Current.SendPacketFromPool(buf, len);
                         }
                         processed = count;
@@ -92,17 +79,9 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    //обработка пакета полученного из туннеля vpn
+    //обработка пакета полученного из туннеля vpn через сквозной конвейер
     private void HandlePacketFromVpn(byte[] data, int length)
     {
-        try
-        {
-            WindowsSplitTunnelEngine.InspectIncomingPacketFromVpn(data.AsSpan(0, length), length);
-            _adapter?.SendPacket(data, length);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(data);
-        }
+        OctopusEngine.Current.Pipeline.ProcessIncomingPacket(data, length, (buf, len) => _adapter?.SendPacket(buf, len));
     }
 }
