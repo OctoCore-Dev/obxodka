@@ -80,8 +80,6 @@ internal sealed partial class WindowsVpnService
     }
 
     //обработка пакета полученного из туннеля vpn через сквозной конвейер
-    private void HandlePacketFromVpn(byte[] data, int length)
-    {
+    private void HandlePacketFromVpn(byte[] data, int length) =>
         OctopusEngine.Current.Pipeline.ProcessIncomingPacket(data, length, (buf, len) => _adapter?.SendPacket(buf, len));
-    }
 }
