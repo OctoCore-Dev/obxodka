@@ -23,7 +23,7 @@ internal static partial class WindowsSplitTunnelEngine
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private unsafe struct MIB_TCP6ROW_OWNER_PID
+    private struct MIB_TCP6ROW_OWNER_PID
     {
         public fixed byte LocalAddr[16];
         public uint LocalScopeId;
@@ -44,7 +44,7 @@ internal static partial class WindowsSplitTunnelEngine
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private unsafe struct MIB_UDP6ROW_OWNER_PID
+    private struct MIB_UDP6ROW_OWNER_PID
     {
         public fixed byte LocalAddr[16];
         public uint LocalScopeId;
@@ -102,18 +102,22 @@ internal static partial class WindowsSplitTunnelEngine
             return;
         }
 
-        var buffer = Marshal.AllocHGlobal(size);
+        var allocatedSize = size + 4096;
+        var buffer = Marshal.AllocHGlobal(allocatedSize);
         try
         {
-            if (GetExtendedTcpTable(buffer, ref size, false, AfInet, TcpTableOwnerPidAll, 0) != 0)
+            var querySize = allocatedSize;
+            if (GetExtendedTcpTable(buffer, ref querySize, false, AfInet, TcpTableOwnerPidAll, 0) != 0)
             {
                 return;
             }
 
             var numEntries = *(uint*)buffer;
+            var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_TCPROW_OWNER_PID));
+            var safeCount = Math.Min(numEntries, maxEntries);
             var rowPtr = (MIB_TCPROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
 
-            for (uint i = 0; i < numEntries; i++)
+            for (uint i = 0; i < safeCount; i++)
             {
                 var row = rowPtr[i];
                 if (row.RemoteAddr is 0 or 0x0100007Fu)
@@ -169,16 +173,17 @@ internal static partial class WindowsSplitTunnelEngine
                 _ = GetExtendedTcpTable(IntPtr.Zero, ref size, false, af, TcpTableOwnerPidAll, 0);
                 if (size > 0)
                 {
-                    size += 4096;
-                    var buffer = Marshal.AllocHGlobal(size);
+                    var allocatedSize = size + 4096;
+                    var buffer = Marshal.AllocHGlobal(allocatedSize);
                     try
                     {
-                        if (GetExtendedTcpTable(buffer, ref size, false, af, TcpTableOwnerPidAll, 0) == 0)
+                        var querySize = allocatedSize;
+                        if (GetExtendedTcpTable(buffer, ref querySize, false, af, TcpTableOwnerPidAll, 0) == 0)
                         {
                             var numEntries = *(uint*)buffer;
                             if (!isIpv6)
                             {
-                                var maxEntries = (uint)Math.Max(0, (size - sizeof(uint)) / sizeof(MIB_TCPROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_TCPROW_OWNER_PID));
                                 var safeCount = Math.Min(numEntries, maxEntries);
                                 var rowPtr = (MIB_TCPROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
@@ -199,7 +204,7 @@ internal static partial class WindowsSplitTunnelEngine
                             }
                             else
                             {
-                                var maxEntries = (uint)Math.Max(0, (size - sizeof(uint)) / sizeof(MIB_TCP6ROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_TCP6ROW_OWNER_PID));
                                 var safeCount = Math.Min(numEntries, maxEntries);
                                 var rowPtr6 = (MIB_TCP6ROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
@@ -233,16 +238,17 @@ internal static partial class WindowsSplitTunnelEngine
                 _ = GetExtendedUdpTable(IntPtr.Zero, ref size, false, af, UdpTableOwnerPid, 0);
                 if (size > 0)
                 {
-                    size += 4096;
-                    var buffer = Marshal.AllocHGlobal(size);
+                    var allocatedSize = size + 4096;
+                    var buffer = Marshal.AllocHGlobal(allocatedSize);
                     try
                     {
-                        if (GetExtendedUdpTable(buffer, ref size, false, af, UdpTableOwnerPid, 0) == 0)
+                        var querySize = allocatedSize;
+                        if (GetExtendedUdpTable(buffer, ref querySize, false, af, UdpTableOwnerPid, 0) == 0)
                         {
                             var numEntries = *(uint*)buffer;
                             if (!isIpv6)
                             {
-                                var maxEntries = (uint)Math.Max(0, (size - sizeof(uint)) / sizeof(MIB_UDPROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_UDPROW_OWNER_PID));
                                 var safeCount = Math.Min(numEntries, maxEntries);
                                 var rowPtr = (MIB_UDPROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
@@ -263,7 +269,7 @@ internal static partial class WindowsSplitTunnelEngine
                             }
                             else
                             {
-                                var maxEntries = (uint)Math.Max(0, (size - sizeof(uint)) / sizeof(MIB_UDP6ROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_UDP6ROW_OWNER_PID));
                                 var safeCount = Math.Min(numEntries, maxEntries);
                                 var rowPtr6 = (MIB_UDP6ROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
