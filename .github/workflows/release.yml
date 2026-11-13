@@ -566,8 +566,9 @@ jobs:
             echo "deploy_state=queued" >> $GITHUB_OUTPUT
             exit 0
           elif [ "$EXIT_CODE" -ne 0 ]; then
+            echo "::warning::[STORE ERROR] Google Play publication returned exit code $EXIT_CODE. Queued for autonomous store watchdog."
             echo "deploy_state=failed" >> $GITHUB_OUTPUT
-            exit $EXIT_CODE
+            exit 0
           else
             echo "deploy_state=deployed" >> $GITHUB_OUTPUT
           fi
@@ -580,7 +581,7 @@ jobs:
           STATUS_TAG="[PASS] DEPLOYED"
           if [ "$DEPLOY_STATE" = "queued" ]; then
             STATUS_TAG="[QUEUED] PENDING STORE REVIEW"
-          elif [ "$STATUS" != "success" ]; then
+          elif [ "$DEPLOY_STATE" = "failed" ] || [ "$STATUS" != "success" ]; then
             STATUS_TAG="[FAIL] ERROR"
             if [ -z "$PLAY_CONFIG_JSON" ]; then
               STATUS_TAG="[SKIP] SKIPPED (PLAY_CONFIG_JSON secret not configured)"
@@ -667,6 +668,17 @@ jobs:
 
           $exitCode = 0
           try {
+            # Пробуем очистить зависший черновик перед публикацией на случай предыдущего CommitFailed
+            try {
+              octopublish mstore delete-draft `
+                --app-id "$env:STORE_APP_ID" `
+                --tenant-id "$env:STORE_TENANT_ID" `
+                --client-id "$env:STORE_CLIENT_ID" `
+                --client-secret "$env:STORE_CLIENT_SECRET"
+            } catch {
+              Write-Host "[INFO] No dangling drafts found to clean." -ForegroundColor Gray
+            }
+
             octopublish mstore publish `
               --package "${{ steps.find-windows-pkg.outputs.pkg_path }}" `
               --app-id "$env:STORE_APP_ID" `
@@ -677,6 +689,28 @@ jobs:
               --notes-dir "packaging/whatsnew" `
               --desc-dir "packaging/store/windows"
             $exitCode = $LASTEXITCODE
+
+            if ($exitCode -ne 0 -and $exitCode -ne 3) {
+              Write-Host "::warning::[STORE RETRY] Initial publish returned exit code $exitCode. Deleting draft and retrying..." -ForegroundColor Yellow
+              try {
+                octopublish mstore delete-draft `
+                  --app-id "$env:STORE_APP_ID" `
+                  --tenant-id "$env:STORE_TENANT_ID" `
+                  --client-id "$env:STORE_CLIENT_ID" `
+                  --client-secret "$env:STORE_CLIENT_SECRET"
+
+                octopublish mstore publish `
+                  --package "${{ steps.find-windows-pkg.outputs.pkg_path }}" `
+                  --app-id "$env:STORE_APP_ID" `
+                  --tenant-id "$env:STORE_TENANT_ID" `
+                  --client-id "$env:STORE_CLIENT_ID" `
+                  --client-secret "$env:STORE_CLIENT_SECRET" `
+                  --seller-id "$env:SELLER_ID" `
+                  --notes-dir "packaging/whatsnew" `
+                  --desc-dir "packaging/store/windows"
+                $exitCode = $LASTEXITCODE
+              } catch { }
+            }
           } catch {
             $exitCode = 1
           }
@@ -684,10 +718,9 @@ jobs:
           if ($exitCode -eq 3) {
             Write-Host "::warning::[STORE BUSY] Microsoft Store submission is currently in review/processing. Queued for autonomous deployment."
             "deploy_state=queued" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            exit 0
           } elseif ($exitCode -ne 0) {
+            Write-Host "::warning::[STORE ERROR] Microsoft Store publication returned exit code $exitCode. Queued for autonomous store watchdog."
             "deploy_state=failed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            exit $exitCode
           } else {
             "deploy_state=deployed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
@@ -701,7 +734,7 @@ jobs:
           $statusTag = "[PASS] COMMITTED TO CERTIFICATION"
           if ($deployState -eq "queued") {
             $statusTag = "[QUEUED] PENDING STORE REVIEW"
-          } elseif ($status -ne "success") {
+          } elseif ($deployState -eq "failed" -or $status -ne "success") {
             $statusTag = "[FAIL] ERROR"
             if (-not $env:STORE_CLIENT_ID) {
               $statusTag = "[SKIP] SKIPPED (STORE_CLIENT_ID secret not configured)"
