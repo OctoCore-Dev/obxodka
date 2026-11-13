@@ -1,4 +1,4 @@
-- Uplink Guard system: instant Wintun route cleanup upon Wi-Fi disconnection to prevent packet blackhole
-- Direct socket reachability verification bypassing Windows local DNS cache
-- Enhanced automatic reconnection resilience without redundant failover cycles
-- Refined NeoDialog popups and interactive tunnel connection controls
+- RuSubnetRegistry: zero-allocation auto-bypass for all 11,467 Russian subnets (banking and domestic services bypass VPN seamlessly)
+- Fixed potential buffer overflow in port mapping tables (eliminated AccessViolationException)
+- Smart MTU clamping and zero-loss packet fragmentation for gaming and voice calls
+- Resilient Uplink Guard and seamless Cloudflare Anycast shield failover against DPI filtering
