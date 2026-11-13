@@ -4,6 +4,7 @@ namespace obxodka.Shared.MtuEngine;
 public static class SmartMtuEngine
 {
     public const int DefaultMtu = 1280;
+    public const int InitialMtu = 1420;
     public const int MinMtu = 1200;
     public const int MaxMtu = 1500;
 
@@ -14,7 +15,7 @@ public static class SmartMtuEngine
         get => Volatile.Read(ref field);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set => Volatile.Write(ref field, ClampMtu(value));
-    } = DefaultMtu;
+    } = InitialMtu;
 
     //шаги эскалации для залповой проверки проходимости канала (burst probing)
     public static readonly int[] MtuEscalationSteps = [1200, 1240, 1280, 1300, 1320, 1360, 1400, 1420];

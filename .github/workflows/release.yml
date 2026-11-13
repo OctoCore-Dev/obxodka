@@ -633,10 +633,7 @@ jobs:
       - name: "[TOOL] Install OctoPublisher Global Tool"
         shell: pwsh
         run: |
-          dotnet tool install -g octopublisher
-          if ($LASTEXITCODE -ne 0) {
-            dotnet tool update -g octopublisher
-          }
+          dotnet tool install -g octopublisher || dotnet tool update -g octopublisher
           octopublish --version
 
       - name: "[DOWNLOAD] Download Windows Dist Artifacts"
@@ -814,7 +811,7 @@ jobs:
           | 6 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} (${{ needs.check-version.outputs.is_prerelease == 'true' && 'Pre-Release' || 'Production' }}) |
 
           ---
-          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) v1.0.2 on .NET 10.*
+          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 10.*
           EOF
 
       - name: "[BADGES] Update Store Deployment Badges"

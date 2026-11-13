@@ -1,7 +1,14 @@
+using System.Buffers;
+using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+
 namespace obxodka.Shared.MtuEngine;
 
 public static class Ipv4MtuHandler
 {
+    private static int s_fragIdSequence = RandomNumberGenerator.GetInt32(1, 65535);
+
     //математически перечитываем и уменьшаем контрольную сумму заголовка IPv4, чтобы она соответствовала измененному внешнему заголовку
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RecalculateHeaderChecksum(Span<byte> header)
@@ -78,6 +85,14 @@ public static class Ipv4MtuHandler
         var baseFragOffset = (ushort)(origFlagsAndOffset & 0x1FFF);
         var payload = packet.Slice(ihl, totalPayload);
 
+        //если исходный идентификатор равен 0 (типично для пакетов с DF=1), генерируем уникальный ненулевой ID для корректной сборки стеком ОС
+        var origId = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(4, 2));
+        var fragId = origId != 0 ? origId : (ushort)(Interlocked.Increment(ref s_fragIdSequence) & 0xFFFF);
+        if (fragId == 0)
+        {
+            fragId = (ushort)(Interlocked.Increment(ref s_fragIdSequence) & 0xFFFF);
+        }
+
         var offset = 0;
         while (offset < totalPayload)
         {
@@ -91,6 +106,7 @@ public static class Ipv4MtuHandler
             var fragBuf = ArrayPool<byte>.Shared.Rent(fragTotalLen);
             packet[..ihl].CopyTo(fragBuf);
             BinaryPrimitives.WriteUInt16BigEndian(fragBuf.AsSpan(2, 2), (ushort)fragTotalLen);
+            BinaryPrimitives.WriteUInt16BigEndian(fragBuf.AsSpan(4, 2), fragId);
             BinaryPrimitives.WriteUInt16BigEndian(fragBuf.AsSpan(6, 2), fragFlagsAndOffset);
             RecalculateHeaderChecksum(fragBuf.AsSpan(0, ihl));
             payload.Slice(offset, chunk).CopyTo(fragBuf.AsSpan(ihl));

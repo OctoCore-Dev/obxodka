@@ -45,10 +45,16 @@ public static class VpnStatusMessages
     public const string SwitchedToBackupNodeSuccess = "[SMART CONNECT] Подключение успешно переведено на новый узел!";
     public const string SwitchedToBackupServerSuccess = "[SMART CONNECT] Подключение успешно переведено на новый сервер!";
 
+    public const string ConnectingViaVoileStream = "Подключение через многолучевой Voile Stream (прямой канал)...";
+    public const string ConnectingViaCloudflareShield = "Подключение через Cloudflare Shield (облачная маскировка)...";
+    public const string SwitchingToCloudflareShield = "[FAILOVER] Прямой канал недоступен. Переход под защиту Cloudflare Shield...";
+    public const string SwitchingToDirectStream = "[FAILOVER] Облачный щит недоступен. Переход на прямой Voile Stream...";
+
     public static string BuildingRoute(string host) => $"Построение маршрута через {host}...";
     public static string DomainRoute(string domain) => $"[DOMAINS] Маршрутизация через: {domain}";
     public static string ConnectingToNode(string host, int port) => $"Подключение к {host}:{port}...";
     public static string ConnectingToServer(string host, int port) => $"Подключение к серверу {host}:{port}...";
+    public static string ConnectingWithProtocol(string host, int port, string protocolName) => $"Подключение к {host}:{port} ({protocolName})...";
     public static string IpAssigned(string ip) => $"Получен IP: {ip}";
     public static string InitializingAdapter(string adapterName) => $"Инициализация адаптера ({adapterName})...";
     public static string StartingAdapter(string adapterName) => $"Запуск адаптера ({adapterName})...";

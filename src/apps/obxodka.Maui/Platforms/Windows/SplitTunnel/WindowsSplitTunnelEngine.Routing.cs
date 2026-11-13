@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using obxodka.Core.Models;
+using obxodka.Shared.Geo;
 
 namespace obxodka.Platforms.Windows;
 
@@ -172,6 +174,50 @@ internal static partial class WindowsSplitTunnelEngine
                 }
                 catch { }
             });
+        }
+    }
+
+    //закрепление агрегированного диапазона подсети в физический адаптер
+    public static void PinPhysicalSubnetRoute(uint netNetworkOrder, uint maskNetworkOrder, string reason)
+    {
+        if (s_physicalGatewayUint == 0)
+        {
+            return;
+        }
+
+        if (s_pinnedRoutes.ContainsKey(netNetworkOrder))
+        {
+            return;
+        }
+
+        var row = new MIB_IPFORWARDROW
+        {
+            DwForwardDest = netNetworkOrder,
+            DwForwardMask = maskNetworkOrder,
+            DwForwardPolicy = 0,
+            DwForwardNextHop = s_physicalGatewayUint,
+            DwForwardIfIndex = (uint)Math.Max(s_physicalIfIndex, 0),
+            DwForwardType = 4,
+            DwForwardProto = 3,
+            DwForwardAge = 0,
+            DwForwardNextHopAS = 0,
+            DwForwardMetric1 = Math.Max(s_baseMetric, 1u),
+            DwForwardMetric2 = uint.MaxValue,
+            DwForwardMetric3 = uint.MaxValue,
+            DwForwardMetric4 = uint.MaxValue,
+            DwForwardMetric5 = uint.MaxValue
+        };
+
+        var status = CreateIpForwardEntry(ref row);
+        if (status == 5010)
+        {
+            status = SetIpForwardEntry(ref row);
+        }
+
+        if (status == 0)
+        {
+            s_pinnedRoutes[netNetworkOrder] = row;
+            s_routeReasons[netNetworkOrder] = reason;
         }
     }
 

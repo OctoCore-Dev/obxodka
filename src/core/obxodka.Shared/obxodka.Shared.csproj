@@ -11,4 +11,8 @@
     <PackageReference Include="PacketDotNet" Version="1.4.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Geo\ru_subnets.bin" />
+  </ItemGroup>
+
 </Project>

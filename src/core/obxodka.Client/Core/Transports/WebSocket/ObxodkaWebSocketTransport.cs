@@ -40,7 +40,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
     //очередь исходящих пакетов для строго однопоточной отправки
     private readonly Channel<WsTxItem> _txChannel =
-        Channel.CreateBounded<WsTxItem>(new BoundedChannelOptions(8192)
+        Channel.CreateBounded<WsTxItem>(new BoundedChannelOptions(16384)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -168,7 +168,8 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 }
 
                 var netStream = new NetworkStream(connectedSocket, ownsSocket: true);
-                return (!isDirectIp || (literalIp is not null && !IPAddress.IsLoopback(literalIp)))
+                var isShield = SniEngine.IsShieldEndpoint(serverIp, targetSni);
+                return (!isShield && isDirectIp && literalIp is not null && !IPAddress.IsLoopback(literalIp))
                     ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
                     : netStream;
             }
@@ -229,6 +230,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
             var ws = new ClientWebSocket();
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            ws.Options.SetBuffer(131072, 131072);
             try
             {
                 ws.Options.SetRequestHeader("Host", targetHostHeader);
@@ -244,7 +246,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             };
 
             var invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
-            using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(3500));
+            using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
 
             try

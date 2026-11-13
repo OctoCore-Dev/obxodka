@@ -10,7 +10,17 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     //одиночный экземпляр движка
     public static OctopusEngine Current => s_instance.Value;
 
-    private OctopusEngine() => EnsureUplinkMonitoringInitialized();
+    //сквозной конвейер обработки сетевых пакетов (ssot pipeline)
+    public obxodka.Core.Pipeline.PacketPipeline Pipeline { get; }
+
+    private OctopusEngine()
+    {
+        Pipeline = new obxodka.Core.Pipeline.PacketPipeline(this)
+        {
+            LocalDelivery = DeliverLocalPacket
+        };
+        EnsureUplinkMonitoringInitialized();
+    }
 
     [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
     private IVpnTransport? _transport;
@@ -188,53 +198,16 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         }
     }
 
-    //отправка пакета напрямую из пула памяти с контролем tcp mss, pmtud и фрагментацией под динамический mtu
+    //отправка пакета напрямую из пула памяти через центральный конвейер обработки
     public void SendPacketFromPool(byte[] inputBuf, int length)
     {
-        var transport = _transport;
-        if (!IsConnected || transport is null || length < 20 || IsServerDestination(inputBuf.AsSpan(0, length), length))
-        {
-            ArrayPool<byte>.Shared.Return(inputBuf);
-            return;
-        }
-
-        var currentMtu = SmartMtuEngine.CurrentMtu;
-        var span = inputBuf.AsSpan(0, length);
-        SmartMtuEngine.ClampTcpMss(span, currentMtu);
         _ = Interlocked.Add(ref _totalBytesSent, length);
         if (length > SmartMtuEngine.DefaultMtu)
         {
             _ = Interlocked.Increment(ref _largeTxPackets);
         }
 
-        //если исходящий пакет превышает согласованный mtu туннеля — уведомляем ос по icmp pmtud и нарезаем ipv4
-        if (length > currentMtu)
-        {
-            var version = inputBuf[0] >> 4;
-            if (version == 4)
-            {
-                var isDf = (inputBuf[6] & 0x40) != 0;
-                if (isDf && SmartMtuEngine.TryBuildIcmpFragmentationNeeded(span, length, currentMtu, out var icmpPkt, out var icmpLen))
-                {
-                    DeliverLocalPacket(icmpPkt, icmpLen);
-                }
-
-                if (SmartMtuEngine.TryFragmentIpv4(span, length, currentMtu, transport.SendPacketFromPool))
-                {
-                    ArrayPool<byte>.Shared.Return(inputBuf);
-                    return;
-                }
-            }
-            else if (version == 6)
-            {
-                if (SmartMtuEngine.TryBuildIcmpPacketTooBig(span, length, currentMtu, out var icmp6Pkt, out var icmp6Len))
-                {
-                    DeliverLocalPacket(icmp6Pkt, icmp6Len);
-                }
-            }
-        }
-
-        transport.SendPacketFromPool(inputBuf, length);
+        Pipeline.ProcessOutgoingPacket(inputBuf, length, _transport);
     }
 
     //асинхронная обертка отправки пакета из пула для совместимости

@@ -97,7 +97,7 @@ internal sealed partial class WindowsVpnService
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {DnsDefaults.PrimaryDns} primary validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {DnsDefaults.SecondaryDns} index=2 validate=no");
                 _ = DnsFlushResolverCache();
-                AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}");
+                AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}, wintunMtu=1500 (tunnelMtu={SmartMtuEngine.CurrentMtu})");
 
                 if (!string.IsNullOrWhiteSpace(ipv6))
                 {
@@ -127,14 +127,14 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    //обновление mtu адаптера
+    //обновление mtu адаптера (поддержание 1500 в ос для приема пакетов приложений и нарезки в ядре)
     private static async Task UpdateAdapterMtuAsync(string adapterName, int mtu)
     {
         try
         {
             _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
             _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
-            AppLogger.Log($"[MTU ADAPTER] Maintaining Wintun adapter '{adapterName}' at 1500B (effective MSS MTU: {mtu}B)");
+            AppLogger.Log($"[MTU ADAPTER] Maintaining Wintun adapter '{adapterName}' at 1500B (tunnel effective MTU: {mtu}B, TCP MSS: {mtu - 40}B)");
         }
         catch (Exception ex)
         {
@@ -466,15 +466,8 @@ internal sealed partial class WindowsVpnService
 
             if (!string.IsNullOrEmpty(ifIndex))
             {
-                var tunGateway = "100.64.0.1";
-                if (IPAddress.TryParse(assignedIp, out var parsedAssigned))
-                {
-                    var bytes = parsedAssigned.GetAddressBytes();
-                    if (bytes.Length == 4)
-                    {
-                        tunGateway = $"{bytes[0]}.{bytes[1]}.0.1";
-                    }
-                }
+                //шлюз vpn сервера в подсети 100.64.0.0/10
+                const string tunGateway = "100.64.0.1";
 
                 var r2Task = RunCmdAsync("route", $"add 0.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}", timeoutMs: 1500);
                 var r3Task = RunCmdAsync("route", $"add 128.0.0.0 mask 128.0.0.0 {tunGateway} metric 1 if {ifIndex}", timeoutMs: 1500);

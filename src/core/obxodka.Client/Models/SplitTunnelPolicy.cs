@@ -175,6 +175,28 @@ public sealed class SplitTunnelPolicy
         "eapteka.ru"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    //список серверов измерения скорости и телеком-провайдеров рф для замера на полной скорости провайдера
+    private static readonly FrozenSet<string> s_ruSpeedtestDomains = new[]
+    {
+        "speedtest.ru",
+        "spb.speedtest.ru",
+        "speedtest.net",
+        "spb.speedtest.net",
+        "fast.com",
+        "selectel.ru",
+        "selectel.net",
+        "rostelecom.ru",
+        "megafon.ru",
+        "mts.ru",
+        "beeline.ru",
+        "t2.ru",
+        "tele2.ru",
+        "dom.ru",
+        "ertelecom.ru",
+        "speedtest.customs.ru",
+        "speedtest.yandex.ru"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     //объект синхронизации для потокобезопасного доступа к изменяемым коллекциям
     private readonly Lock _sync = new();
     private HashSet<string> _bypassedExeNames = new(StringComparer.OrdinalIgnoreCase);
@@ -189,19 +211,22 @@ public sealed class SplitTunnelPolicy
     public bool BypassRemoteManagement { get; set; } = true;
 
     //направлять ли российские государственные сервисы в обход туннеля
-    public bool BypassRuGov { get; set; }
+    public bool BypassRuGov { get; set; } = true;
 
     //направлять ли российские банки и платежные системы в обход туннеля
-    public bool BypassRuBanks { get; set; }
+    public bool BypassRuBanks { get; set; } = true;
 
     //направлять ли российские медиа-сервисы, ТВ и социальные сети в обход туннеля
-    public bool BypassRuMedia { get; set; }
+    public bool BypassRuMedia { get; set; } = true;
 
     //направлять ли маркетплейсы и службы доставки в обход туннеля
-    public bool BypassRuMarketplaces { get; set; }
+    public bool BypassRuMarketplaces { get; set; } = true;
 
     //направлять ли абсолютно все сайты в зонах .ru, .su, .рф в обход туннеля
-    public bool BypassAllRuTlds { get; set; }
+    public bool BypassAllRuTlds { get; set; } = true;
+
+    //направлять ли серверы замера скорости и телеком-провайдеров в обход туннеля
+    public bool BypassRuSpeedtest { get; set; } = true;
 
     //пользовательские IP-адреса и подсети для прямого подключения
     public List<string> CustomBypassIps { get; set; } = [];
@@ -248,7 +273,7 @@ public sealed class SplitTunnelPolicy
                 return false;
             }
 
-            if (BypassRuGov || BypassRuBanks || BypassRuMedia || BypassRuMarketplaces || BypassAllRuTlds)
+            if (BypassRuGov || BypassRuBanks || BypassRuMedia || BypassRuMarketplaces || BypassAllRuTlds || BypassRuSpeedtest)
             {
                 return true;
             }
@@ -491,6 +516,11 @@ public sealed class SplitTunnelPolicy
                 return true;
             }
 
+            if (BypassRuSpeedtest && s_ruSpeedtestDomains.Contains(current))
+            {
+                return true;
+            }
+
             lock (_sync)
             {
                 if (_customDomains.Contains(current))
@@ -570,6 +600,14 @@ public sealed class SplitTunnelPolicy
             _ = result.Add("www.avito.ru");
             _ = result.Add("dns-shop.ru");
             _ = result.Add("kuper.ru");
+        }
+
+        if (BypassRuSpeedtest)
+        {
+            _ = result.Add("speedtest.ru");
+            _ = result.Add("spb.speedtest.ru");
+            _ = result.Add("rostelecom.ru");
+            _ = result.Add("selectel.ru");
         }
 
         lock (_sync)

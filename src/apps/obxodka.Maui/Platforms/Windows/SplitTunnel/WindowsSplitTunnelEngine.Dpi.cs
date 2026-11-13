@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using obxodka.Core.Models;
+using obxodka.Shared.Geo;
 
 namespace obxodka.Platforms.Windows;
 
@@ -213,7 +214,7 @@ internal static partial class WindowsSplitTunnelEngine
         }
 
         var shouldPin = forcePinAllAnswers || policy.IsDomainBypassed(queriedDomain);
-        if (!shouldPin)
+        if (!shouldPin && !policy.BypassAllRuTlds)
         {
             return;
         }
@@ -245,8 +246,12 @@ internal static partial class WindowsSplitTunnelEngine
 
             if (type == 1 && rdLength == 4)
             {
-                var ipUint = BinaryPrimitives.ReadUInt32LittleEndian(dnsSpan.Slice(offset, 4));
-                PinPhysicalHostRoute(ipUint, reason, notify);
+                var isRuIp = policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(dnsSpan.Slice(offset, 4));
+                if (shouldPin || isRuIp)
+                {
+                    var ipUint = BinaryPrimitives.ReadUInt32LittleEndian(dnsSpan.Slice(offset, 4));
+                    PinPhysicalHostRoute(ipUint, shouldPin ? reason : "Auto-Bypass RU (DNS)", notify);
+                }
             }
 
             offset += rdLength;

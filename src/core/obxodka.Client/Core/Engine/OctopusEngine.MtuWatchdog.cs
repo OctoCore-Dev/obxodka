@@ -190,6 +190,12 @@ public sealed partial class OctopusEngine
                         var elapsedMs = Environment.TickCount64 - armedTicks;
                         var bytesSentDuringStall = currentSent - rxStallStartSent;
 
+                        //периодическая проверка живучести канала эхо-зондом при накоплении задержки
+                        if (deadTicks >= 35 && deadTicks % 25 == 0)
+                        {
+                            _ = _transport?.SendPingProbeAsync();
+                        }
+
                         //раннее обнаружение заморозки прямого h2 соединения тспу на пороге 16-32 кб с бесшовным уходом на щит
                         if (_transport is ObxodkaStreamTransport &&
                             deadTicks >= 25 &&
@@ -206,13 +212,15 @@ public sealed partial class OctopusEngine
                             }
                         }
 
-                        var isInitialBlackhole = elapsedMs is >= 12000 and < 60000 &&
+                        var isInitialBlackhole = currentReceived < 5000 &&
+                                                 elapsedMs is >= 12000 and < 60000 &&
                                                  (currentSent > 20000 || bytesSentDuringStall > 16384) &&
                                                  deadTicks >= 45;
 
                         var isDead = isInitialBlackhole ||
-                                     (bytesSentDuringStall > 32768 && deadTicks >= 55) ||
-                                     deadTicks >= 80;
+                                     (_transport is ObxodkaStreamTransport && bytesSentDuringStall > 32768 && deadTicks >= 55) ||
+                                     (currentReceived < 5000 && deadTicks >= 70) ||
+                                     deadTicks >= 150;
 
                         if (isDead)
                         {
@@ -240,21 +248,21 @@ public sealed partial class OctopusEngine
 
                         if (SmartMtuEngine.CurrentMtu > SmartMtuEngine.MinMtu && Volatile.Read(ref _isScanningMtu) == 0)
                         {
-                            if (deltaLargeTx >= 10 && deltaLargeRx == 0)
+                            if (deltaLargeTx >= 10 && deltaLargeRx == 0 && currentReceived == lastReceived)
                             {
                                 mtuBlackholeWindows++;
-                                if (mtuBlackholeWindows >= 2)
+                                if (mtuBlackholeWindows >= 3)
                                 {
                                     mtuBlackholeWindows = 0;
                                     var fallbackMtu = SmartMtuEngine.CurrentMtu > 1300 ? 1280 : SmartMtuEngine.MinMtu;
                                     SmartMtuEngine.CurrentMtu = fallbackMtu;
                                     _ = _transport?.SendMtuSyncAsync(fallbackMtu);
                                     OnMtuUpdated?.Invoke(fallbackMtu);
-                                    AppLogger.LogWarning($"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, LargeRX=0). Stepped down to {fallbackMtu}B and rescheduling scan.");
+                                    AppLogger.LogWarning($"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, RX=0). Stepped down to {fallbackMtu}B and rescheduling scan.");
                                     ScheduleSmartMtuScan(4000);
                                 }
                             }
-                            else if (deltaLargeRx > 0)
+                            else
                             {
                                 mtuBlackholeWindows = 0;
                             }

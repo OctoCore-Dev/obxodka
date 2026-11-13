@@ -630,9 +630,9 @@ public sealed partial class SplitView : ContentView
         {
             PresetGovSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetGovKey, true);
             PresetBanksSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetBanksKey, true);
-            PresetMediaSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetMediaKey, false);
-            PresetMarketSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetMarketKey, false);
-            PresetRuTldsSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetRuTldsKey, false);
+            PresetMediaSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetMediaKey, true);
+            PresetMarketSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetMarketKey, true);
+            PresetRuTldsSwitch.IsToggled = Preferences.Get(Platforms.Windows.AppManager.PresetRuTldsKey, true);
         }
         finally
         {
