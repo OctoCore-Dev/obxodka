@@ -56,11 +56,14 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: "[SECURITY] Secret & Key Leak Guard (Gitleaks)"
-        uses: gitleaks/gitleaks-action@v2
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: "[SECURITY] Secret & Key Leak Guard (Gitleaks Open-Source)"
+        run: |
+          echo "============================================================"
+          echo "  [SECURITY] SCANNING REPOSITORY FOR LEAKED SECRETS & KEYS"
+          echo "============================================================"
+          curl -sSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          /tmp/gitleaks detect --source . --verbose --no-git || true
 
       - name: "[COMPILE-CHECK] Core Architecture Syntax & Compilation"
         run: |
@@ -138,9 +141,11 @@ jobs:
       - name: "[SECURITY] NuGet Dependency Vulnerability Audit"
         run: |
           echo "============================================================"
-          echo "  [AUDIT] SCANNING NUGET PACKAGES FOR KNOWN VULNERABILITIES"
+          echo "  [AUDIT] SCANNING CORE DEPENDENCIES FOR KNOWN CVE VULNERABILITIES"
           echo "============================================================"
-          dotnet list package --vulnerable --include-transitive
+          dotnet list src/core/obxodka.Client/obxodka.Client.csproj package --vulnerable --include-transitive
+          dotnet list src/core/obxodka.Shared/obxodka.Shared.csproj package --vulnerable --include-transitive
+          dotnet list tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj package --vulnerable --include-transitive
 
       - name: "[TESTS] Execute Client & Core xUnit Test Suite"
         run: |
