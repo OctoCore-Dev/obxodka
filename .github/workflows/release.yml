@@ -71,6 +71,7 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
       release_title: ${{ steps.check.outputs.release_title }}
       is_prerelease: ${{ steps.check.outputs.is_prerelease }}
+      should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v4
@@ -114,6 +115,12 @@ jobs:
             if [ -n "$PREV_PROPS" ]; then
               PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
               if [ -n "$PREV_BUILD" ] && [ "$CUR_BUILD" -le "$PREV_BUILD" ] 2>/dev/null; then
+                if [ "${{ github.ref_name }}" = "develop" ]; then
+                  echo -e "${CYAN}[INFO] Build number ($CUR_BUILD) <= previous commit ($PREV_BUILD) on develop.${RESET}"
+                  echo -e "${CYAN}[INFO] Regular code push: skipping automated release pipeline.${RESET}"
+                  echo "should_release=false" >> $GITHUB_OUTPUT
+                  exit 0
+                fi
                 echo -e "${RED}============================================================${RESET}"
                 echo -e "${RED}  [BUILD CONFLICT] Build number $CUR_BUILD <= previous commit $PREV_BUILD!${RESET}"
                 echo -e "${RED}  Google Play and Microsoft Store will reject duplicate build codes.${RESET}"
@@ -143,6 +150,7 @@ jobs:
           echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "release_title=$REL_TITLE" >> $GITHUB_OUTPUT
           echo "is_prerelease=$IS_DEV" >> $GITHUB_OUTPUT
+          echo "should_release=true" >> $GITHUB_OUTPUT
 
           cat << EOF >> $GITHUB_STEP_SUMMARY
           ### [PREFLIGHT] Inspection Report
@@ -162,6 +170,7 @@ jobs:
   run-tests:
     name: "[TESTS] Automated Client xUnit Suite"
     needs: [check-version]
+    if: needs.check-version.outputs.should_release != 'false'
     runs-on: windows-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
@@ -210,7 +219,9 @@ jobs:
     name: "[BUILD-ANDROID] MAUI AAB & APK Packages"
     needs: [check-version, run-tests]
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows' }}
+    if: |
+      (needs.check-version.outputs.should_release != 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows')
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v4
@@ -351,7 +362,9 @@ jobs:
     name: "[BUILD-WINDOWS] MAUI MSIX & Setup EXE"
     needs: [check-version, run-tests]
     runs-on: windows-latest
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android' }}
+    if: |
+      (needs.check-version.outputs.should_release != 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android')
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v4
@@ -497,6 +510,7 @@ jobs:
       deploy_state: ${{ steps.publish-play.outputs.deploy_state }}
     if: |
       always() &&
+      (needs.check-version.outputs.should_release != 'false') &&
       (needs.build-android.result == 'success') &&
       (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows') &&
       (github.event_name == 'push' || inputs.publish_to_stores == true) &&
@@ -566,9 +580,9 @@ jobs:
             echo "deploy_state=queued" >> $GITHUB_OUTPUT
             exit 0
           elif [ "$EXIT_CODE" -ne 0 ]; then
-            echo "::warning::[STORE ERROR] Google Play publication returned exit code $EXIT_CODE. Queued for autonomous store watchdog."
+            echo "::error::[STORE ERROR] Google Play publication failed with exit code $EXIT_CODE."
             echo "deploy_state=failed" >> $GITHUB_OUTPUT
-            exit 0
+            exit $EXIT_CODE
           else
             echo "deploy_state=deployed" >> $GITHUB_OUTPUT
           fi
@@ -611,6 +625,7 @@ jobs:
       deploy_state: ${{ steps.publish-mstore.outputs.deploy_state }}
     if: |
       always() &&
+      (needs.check-version.outputs.should_release != 'false') &&
       (needs.build-windows.result == 'success') &&
       (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android') &&
       (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores == true)) &&
@@ -718,11 +733,14 @@ jobs:
           if ($exitCode -eq 3) {
             Write-Host "::warning::[STORE BUSY] Microsoft Store submission is currently in review/processing. Queued for autonomous deployment."
             "deploy_state=queued" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
           } elseif ($exitCode -ne 0) {
-            Write-Host "::warning::[STORE ERROR] Microsoft Store publication returned exit code $exitCode. Queued for autonomous store watchdog."
+            Write-Host "::error::[STORE ERROR] Microsoft Store publication failed with exit code $exitCode."
             "deploy_state=failed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit $exitCode
           } else {
             "deploy_state=deployed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
           }
 
       - name: "[TELEMETRY] Microsoft Store Deployment Telemetry"
@@ -762,6 +780,7 @@ jobs:
     needs: [check-version, build-android, build-windows, deploy-android, deploy-windows]
     if: |
       always() &&
+      (needs.check-version.outputs.should_release != 'false') &&
       (needs.build-android.result == 'success' || needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     steps:
@@ -830,6 +849,17 @@ jobs:
 
       - name: "[SUMMARY] Generate Executive Telemetry Dashboard"
         run: |
+          if [ "${{ needs.check-version.outputs.should_release }}" = "false" ]; then
+            cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+          # ℹ️ [PREFLIGHT] Obxodka Release Pipeline Skipped
+
+          > **Notice**: Regular code push detected on branch \`${{ github.ref_name }}\` without a build number increment.
+          > Automated store release stages were gracefully skipped.
+          > Continuous integration and test verification ran via **CI (Develop Tests & Cross-Platform Validation)**.
+          EOF
+            exit 0
+          fi
+
           cat << 'EOF' >> $GITHUB_STEP_SUMMARY
           # [TELEMETRY] Obxodka Multi-Store Release Pipeline Dashboard
 
@@ -848,7 +878,7 @@ jobs:
           EOF
 
       - name: "[BADGES] Update Store Deployment Badges"
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped')
         run: |
           mkdir -p .github/badges
           VERSION="${{ needs.check-version.outputs.version }}"
