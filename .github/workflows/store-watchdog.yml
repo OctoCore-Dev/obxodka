@@ -117,22 +117,35 @@ jobs:
               $pkgPath = (Get-ChildItem ./downloads/windows/*.msix | Select-Object -First 1).FullName
 
               Write-Host "Triggering autonomous deploy of $pkgPath..." -ForegroundColor Green
-              octopublish mstore publish `
-                --package "$pkgPath" `
-                --app-id "$env:STORE_APP_ID" `
-                --tenant-id "$env:STORE_TENANT_ID" `
-                --client-id "$env:STORE_CLIENT_ID" `
-                --client-secret "$env:STORE_CLIENT_SECRET" `
-                --seller-id "$env:SELLER_ID" `
-                --notes-dir "packaging/whatsnew" `
-                --desc-dir "packaging/store/windows"
+              try {
+                # Очищаем зависший черновик перед публикацией на случай CommitFailed
+                try {
+                  octopublish mstore delete-draft `
+                    --app-id "$env:STORE_APP_ID" `
+                    --tenant-id "$env:STORE_TENANT_ID" `
+                    --client-id "$env:STORE_CLIENT_ID" `
+                    --client-secret "$env:STORE_CLIENT_SECRET"
+                } catch { }
 
-              if ($LASTEXITCODE -eq 0) {
-                $mstoreState = "deployed"
-                Write-Host "Successfully deployed $targetTag to Microsoft Store!" -ForegroundColor Green
-              } elseif ($LASTEXITCODE -eq 3) {
-                $mstoreState = "queued"
-              } else {
+                octopublish mstore publish `
+                  --package "$pkgPath" `
+                  --app-id "$env:STORE_APP_ID" `
+                  --tenant-id "$env:STORE_TENANT_ID" `
+                  --client-id "$env:STORE_CLIENT_ID" `
+                  --client-secret "$env:STORE_CLIENT_SECRET" `
+                  --seller-id "$env:SELLER_ID" `
+                  --notes-dir "packaging/whatsnew" `
+                  --desc-dir "packaging/store/windows"
+
+                if ($LASTEXITCODE -eq 0) {
+                  $mstoreState = "deployed"
+                  Write-Host "Successfully deployed $targetTag to Microsoft Store!" -ForegroundColor Green
+                } elseif ($LASTEXITCODE -eq 3) {
+                  $mstoreState = "queued"
+                } else {
+                  $mstoreState = "failed"
+                }
+              } catch {
                 $mstoreState = "failed"
               }
             } else {
