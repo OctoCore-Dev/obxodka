@@ -1,0 +1,71 @@
+name: "Security: CodeQL C# Deep Scan"
+
+on:
+  push:
+    branches: [ develop, main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/codeql.yml'
+  pull_request:
+    branches: [ develop, main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: "CodeQL Analysis (.NET 10 / C#)"
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: "[SETUP] .NET 10 SDK"
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: "[WORKLOAD] Install MAUI Windows Workload"
+        run: dotnet workload install maui-windows --skip-manifest-update
+
+      - name: "[AUDIT] NuGet Dependency Security Vulnerability Audit"
+        shell: pwsh
+        run: |
+          Write-Host "============================================================" -ForegroundColor Cyan
+          Write-Host "  [SECURITY] SCANNING DEPENDENCIES FOR KNOWN CVE VULNERABILITIES" -ForegroundColor Cyan
+          Write-Host "============================================================" -ForegroundColor Cyan
+          dotnet list package --vulnerable --include-transitive
+
+      - name: "[INIT] Initialize CodeQL Database"
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: +security-extended,security-and-quality
+
+      - name: "[BUILD] Compile C# Codebase for CodeQL Tracer"
+        shell: pwsh
+        run: |
+          Write-Host "============================================================" -ForegroundColor Cyan
+          Write-Host "  [BUILD] COMPILING CORE LIBRARIES FOR CODEQL TRACER" -ForegroundColor Cyan
+          Write-Host "============================================================" -ForegroundColor Cyan
+          dotnet build src/core/obxodka.Shared/obxodka.Shared.csproj -c Release
+          dotnet build src/core/obxodka.Client/obxodka.Client.csproj -c Release
+          dotnet build tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release
+
+      - name: "[ANALYZE] Execute Deep CodeQL Security Inspection"
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
