@@ -310,7 +310,7 @@ public sealed class SplitTunnelPolicy
             if (trimmed.Contains('\\') || trimmed.Contains('/'))
             {
                 _ = paths.Add(trimmed);
-                var fileName = Path.GetFileName(trimmed);
+                var fileName = Path.GetFileName(trimmed.Replace('\\', '/'));
                 if (!string.IsNullOrWhiteSpace(fileName) && !IsProtectedObxodkaEntry(fileName))
                 {
                     _ = names.Add(fileName);
@@ -457,7 +457,7 @@ public sealed class SplitTunnelPolicy
 
             if (!string.IsNullOrWhiteSpace(fullPath))
             {
-                var fileName = Path.GetFileName(fullPath);
+                var fileName = Path.GetFileName(fullPath.Replace('\\', '/'));
                 if (!string.IsNullOrWhiteSpace(fileName) && _bypassedExeNames.Contains(fileName))
                 {
                     return true;
