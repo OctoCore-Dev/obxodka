@@ -11,22 +11,32 @@ body:
     id: version
     attributes:
       label: Версия приложения
-      description: Укажите версию (например, v4.8.1)
-      placeholder: v4.8.1
+      description: Укажите версию и номер билда (например, v6.2.0 Build 92)
+      placeholder: v6.2.0
     validations:
       required: true
   - type: dropdown
     id: os
     attributes:
-      label: Операционная система
+      label: Операционная система / способ установки
       description: На каком устройстве произошла ошибка?
       options:
-        - Windows 11
-        - Windows 10
+        - Windows 11 (Microsoft Store)
+        - Windows 11 (Setup EXE / GitHub Release)
+        - Windows 10 (Microsoft Store / Setup EXE)
         - Android (Google Play)
         - Android (APK / Sideload)
+        - Сборка из исходников (Self-built)
     validations:
       required: true
+  - type: input
+    id: network
+    attributes:
+      label: Провайдер / сеть (опционально)
+      description: Например, МТС LTE, Ростелеком, Дом.ру — помогает отслеживать особенности ТСПУ
+      placeholder: Не указано
+    validations:
+      required: false
   - type: textarea
     id: description
     attributes:
@@ -57,6 +67,6 @@ body:
     id: logs
     attributes:
       label: Логи или скриншоты
-      description: Приложите логи или перетащите скриншоты сюда.
+      description: Приложите фрагмент лога или скриншот. Перед отправкой удалите личный email, JWT-токены и любые приватные данные!
     validations:
       required: false

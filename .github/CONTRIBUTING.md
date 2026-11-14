@@ -1,13 +1,13 @@
 # <img src="https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/assets/icons/octo_tools.svg" width="30" height="30" alt="" style="vertical-align: -5px;" /> Руководство по участию в разработке (Contributing to Obxodka)
 
-Спасибо за интерес к развитию проекта **Obxodka**! Мы рады любому конструктивному вкладу: от отчётов об ошибках и предложений новых функций до оптимизации низкоуровневого кода, скинов и улучшения документации.
+Спасибо за интерес к развитию проекта **Obxodka**! Мы открыты к любому конструктивному вкладу: от отчётов об ошибках и диагностики провайдерских блокировок в РФ до оптимизации сетевого ядра, UI и документации.
 
 ---
 
 ## <img src="https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/assets/icons/octo_terminal.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Требования для локальной разработки
 
 - **.NET 10 SDK** (версия 10.0.100 или новее)
-- **Visual Studio 2026 / Rider / VS Code** с расширениями для C# 14 и .NET MAUI
+- **Visual Studio 2026 / Rider / VS Code** с поддержкой C# и .NET MAUI
 - Установленные рабочие нагрузки MAUI: `maui-windows`, `maui-android`
 
 ```powershell
@@ -19,50 +19,50 @@ dotnet workload install maui-windows maui-android
 
 ## <img src="https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/assets/icons/octo_zap.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Процесс разработки и сборки (Workflow)
 
-1. **Форкните** репозиторий [OctoCore-Dev/obxodka](https://github.com/OctoCore-Dev/obxodka) на GitHub.
-2. Создайте свою ветку от `develop`:
-    ```bash
-    git checkout -b feature/awesome-feature
-    ```
-3. Соберите проект:
+1. **Форкните** репозиторий [`OctoCore-Dev/obxodka`](https://github.com/OctoCore-Dev/obxodka) на GitHub.
+2. Создайте свою ветку строго от **`develop`**:
+   ```bash
+   git checkout -b fix/my-improvement
+   ```
+3. Соберите нужную цель:
+   ```powershell
+   # Сборка MAUI клиента под Windows
+   dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
 
-    ```powershell
-    # Сборка MAUI клиента под Windows
-    dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Debug
+   # Сборка MAUI клиента под Android
+   dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release
 
-    # Или сборка корневого решения
-    dotnet build obxodka.sln -c Debug
-    ```
-
-4. Запустите модульные тесты:
-    ```powershell
-    dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
-    ```
-    _Все 389 тестов должны успешно проходить без ошибок и предупреждений._
-5. Убедитесь в чистоте кода:
-    - **0 предупреждений компилятора (0 warnings, 0 errors)**.
-    - Соблюдение правил архитектурной изоляции и Zero-Allocation в горячих путях обработки пакетов (`ArrayPool<byte>.Shared`).
-6. Закоммитьте изменения:
-    ```bash
-    git commit -m "feat: добавлена поддержка функции X"
-    ```
-7. Отправьте ветку в свой форк и создайте **Pull Request** в ветку `develop` репозитория `OctoCore-Dev/obxodka`.
+   # Сборка ядра и тестов (или всего решения obxodka.slnx)
+   dotnet build obxodka.slnx -c Release
+   ```
+4. Запустите автономные модульные тесты (не требуют живого VPN-сервера и Appium UI):
+   ```powershell
+   dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --filter "Category!=Integration&Category!=UI&Category!=WireLevel"
+   ```
+   _Все 500+ тестов ядра и wire-level стенда (505 тестов с локальным loopback) должны проходить с **0 warnings, 0 errors**._
+5. Проверьте требования к коду:
+   - Никаких секретов, токенов, `.pfx` или приватных IP в диффе.
+   - Без блокирующих `.Result` / `.Wait()` в асинхронных путях; статические приватные поля с префиксом `s_camelCase` (`t_` только для `[ThreadStatic]`).
+   - В горячих путях пакетов используйте пулы (`ArrayPool<byte>.Shared`) и `Span<byte>` без лишних аллокаций.
+6. Закоммитьте изменения в формате Conventional Commits и откройте **Pull Request** в ветку **`develop`**.
 
 ---
 
-## <img src="https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/assets/icons/octo_doc.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Соглашение и лицензия
+## <img src="https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/assets/icons/octo_doc.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Лицензия, бренд и права на вклад (AGPLv3 + Trademark Policy)
 
-Отправляя код в проект Obxodka, вы подтверждаете согласие с условиями [Лицензии (Source-Available)](../LICENSE), [Политикой конфиденциальности](../PRIVACY_POLICY.md) и [Условиями использования](../TERMS_OF_SERVICE.md).
+* Клиентский код распространяется по открытой лицензии **[GNU Affero General Public License v3.0 (AGPLv3)](../LICENSE)**.
+* Направляя Pull Request в `OctoCore-Dev/obxodka`, вы подтверждаете, что имеете право передать предложенный код под лицензией **GNU AGPLv3** для включения в официальный репозиторий и официальные релизы Obxodka (включая публикации в Google Play, Microsoft Store и GitHub Releases).
+* Наименования **Obxodka / OctoCore**, логотипы и идентификаторы пакетов защищены **[TRADEMARK.md](../TRADEMARK.md)**: сторонние сборки обязаны сохранять открытый код под AGPLv3, но не имеют права использовать официальный бренд.
 
 ---
 
 ## <img src="https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/assets/icons/octo_tools.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Сообщения об ошибках (Issues)
 
-Если вы обнаружили баг:
+Если вы обнаружили баг или блокировку на конкретном провайдере РФ:
 
-1. Проверьте существующие [Issues](https://github.com/OctoCore-Dev/obxodka/issues), чтобы убедиться, что проблема ещё не зарегистрирована.
-2. Создайте новый Issue, используя шаблон **Bug Report**.
-3. Укажите версию операционной системы, версию приложения и шаги для воспроизведения.
+1. Проверьте существующие [Issues](https://github.com/OctoCore-Dev/obxodka/issues).
+2. Создайте новый Issue по шаблону **Bug Report**, указав платформу, провайдера/регион и фрагмент лога подключения (**без JWT-токенов, email и паролей**).
+3. Если нашли уязвимость безопасности — не открывайте публичный Issue, а напишите через **[Security Advisories](https://github.com/OctoCore-Dev/obxodka/security/advisories/new)** ([SECURITY.md](SECURITY.md)).
 
 ---
 
