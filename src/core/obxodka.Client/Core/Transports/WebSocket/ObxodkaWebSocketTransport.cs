@@ -294,7 +294,6 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 }
                 _webSocket = null;
                 _wsInvoker = null;
-                ownershipTransferred = false;
                 DisposeAttemptTransport(ws, invoker);
             }
             catch
