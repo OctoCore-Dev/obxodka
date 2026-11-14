@@ -1,0 +1,12 @@
+# Автоматическое назначение ревьюера для всех Pull Request в OctoCore-Dev/obxodka
+* @irovbyte
+
+# Критичные зоны: безопасность, транспорты, CI/CD, релизная конфигурация и лицензирование
+/.github/ @irovbyte
+/LICENSE @irovbyte
+/TRADEMARK.md @irovbyte
+/version.props @irovbyte
+/servers.json @irovbyte
+/src/core/obxodka.Client/Security/ @irovbyte
+/src/core/obxodka.Client/Config/ @irovbyte
+/src/core/obxodka.Client/Core/ @irovbyte

@@ -1,0 +1,52 @@
+network-core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/core/obxodka.Client/Core/**'
+          - 'src/core/obxodka.Shared/Stealth/**'
+          - 'src/core/obxodka.Shared/MtuEngine/**'
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/core/obxodka.Client/Security/**'
+          - '.github/workflows/codeql.yml'
+          - '.github/SECURITY.md'
+
+android:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/apps/obxodka.Maui/Platforms/Android/**'
+          - 'packaging/store/android/**'
+
+windows:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/apps/obxodka.Maui/Platforms/Windows/**'
+          - 'installer/**'
+          - 'packaging/store/windows/**'
+
+ui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/apps/obxodka.Maui/Pages/**'
+          - 'src/apps/obxodka.Maui/Controls/**'
+          - 'src/apps/obxodka.Avalonia/**'
+          - 'src/core/obxodka.Shared/Themes/**'
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/*.yml'
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**.md'
+          - 'LICENSE'
+          - 'docs/**'
