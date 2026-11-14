@@ -351,7 +351,7 @@ jobs:
           cat SHA256SUMS-android.txt
 
       - name: "[ARTIFACT] Upload Android Dist Package"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obxodka-android-dist
           path: ./android-dist/*
@@ -495,7 +495,7 @@ jobs:
           Get-Content "./win-dist/SHA256SUMS-windows.txt"
 
       - name: "[ARTIFACT] Upload Windows Dist Package"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obxodka-windows-dist
           path: ./win-dist/*
