@@ -8,7 +8,7 @@ public static class SafeThemeExtractor
 
     //разрешенные расширения файлов в теме оформления
     private static readonly FrozenSet<string> s_allowedExtensions =
-        ((string[])[".json", ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".wav", ".mp3", ".ogg", ".ttf", ".otf"])
+        new[] { ".json", ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".wav", ".mp3", ".ogg", ".ttf", ".otf" }
         .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //сигнатуры внедренных веб-скриптов и командных оболочек для защиты от polyglot атак
@@ -96,7 +96,7 @@ public static class SafeThemeExtractor
             }
 
             //защита от zip slip (выход за пределы каталога темы)
-            var destinationFilePath = Path.GetFullPath(Path.Combine(targetFullPath, entry.FullName));
+            var destinationFilePath = Path.GetFullPath(Path.Combine(targetFullPath, entry.FullName.TrimStart('/', '\\')));
             if (!destinationFilePath.StartsWith(targetFullPath, StringComparison.OrdinalIgnoreCase))
             {
                 throw new SecurityException($"[ThemeSecurity] Блокировка Zip Slip: попытка записи вне директории темы: '{entry.FullName}'");

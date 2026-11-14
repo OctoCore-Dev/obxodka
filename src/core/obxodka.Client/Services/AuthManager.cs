@@ -4,7 +4,7 @@ namespace obxodka.Services;
 public sealed class AuthManager
 {
     private static readonly SemaphoreSlim s_fileLock = new(1, 1);
-    private static UserSession? s_cachedSession;
+    private static volatile UserSession? s_cachedSession;
     private static AuthenticationHeaderValue? s_cachedAuthHeader;
 
     //получение заголовка авторизации bearer

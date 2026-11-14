@@ -72,7 +72,7 @@ public sealed partial class ThemeStorageService
         Action<string, double, bool, bool, string?>? onProgressChanged,
         CancellationToken ct)
     {
-        var targetDir = Path.Combine(ThemesDirectory, themeId);
+        var targetDir = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'));
         _ = Directory.CreateDirectory(targetDir);
 
         void Report(double p)
@@ -105,7 +105,7 @@ public sealed partial class ThemeStorageService
             foreach (var rel in assetPaths)
             {
                 var isIcon = string.Equals(rel, "icon.png", StringComparison.OrdinalIgnoreCase);
-                var dest = Path.Combine(targetDir, rel);
+                var dest = Path.Combine(targetDir, rel.TrimStart('/', '\\'));
                 var parentDir = Path.GetDirectoryName(dest);
                 if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
                 {

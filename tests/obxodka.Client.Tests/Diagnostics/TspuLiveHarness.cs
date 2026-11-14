@@ -327,7 +327,10 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
             {
                 _cts.Cancel();
             }
-            catch { }
+            catch (Exception)
+            {
+                //подавление ошибки отмены токена стенда
+            }
 
             _udpDownstream?.Dispose();
             _udpUpstream?.Dispose();
@@ -344,7 +347,10 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         {
             await _cts.CancelAsync();
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки асинхронной отмены токена стенда
+        }
 
         Dispose(true);
         GC.SuppressFinalize(this);

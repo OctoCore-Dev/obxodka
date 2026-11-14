@@ -145,9 +145,14 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         {
             while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
             {
+                //сброс счетчика семафора до нуля
+                continue;
             }
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException)
+        {
+            //семафор уже освобожден при закрытии очереди
+        }
 
         while (_high.TryDequeue(out var highItem))
         {

@@ -206,7 +206,10 @@ public sealed partial class ObxodkaWebSocketTransport
             {
                 await _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None).ConfigureAwait(false);
             }
-            catch { }
+            catch (Exception)
+            {
+                //подавление ошибки закрытия сокета при завершении
+            }
         }
         _webSocket?.Dispose();
         _wsInvoker?.Dispose();

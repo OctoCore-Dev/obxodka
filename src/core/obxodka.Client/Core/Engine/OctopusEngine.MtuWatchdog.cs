@@ -21,7 +21,10 @@ public sealed partial class OctopusEngine
             _mtuScanCts?.Cancel();
             _mtuScanCts?.Dispose();
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки отмены предыдущего токена сканирования
+        }
 
         var engineCts = _cts;
         if (engineCts is null || engineCts.IsCancellationRequested)
@@ -47,7 +50,10 @@ public sealed partial class OctopusEngine
                     _ = await ScanAndLockOptimalMtuAsync(token).ConfigureAwait(false);
                 }
             }
-            catch { }
+            catch (Exception)
+            {
+                //подавление отмены задачи фонового замера mtu
+            }
         }, token);
     }
 

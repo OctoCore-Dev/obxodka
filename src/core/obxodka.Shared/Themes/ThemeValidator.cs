@@ -21,11 +21,12 @@ public static partial class ThemeValidator
 
     //зарезервированные системные имена устройств dos/windows для защиты от спецфайлов
     private static readonly FrozenSet<string> s_reservedDeviceNames =
-        ((string[])[
+        new[]
+        {
             "CON", "PRN", "AUX", "NUL",
             "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-        ]).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //проверка, совпадает ли сегмент с зарезервированным именем устройства без аллокаций
     private static bool IsReservedDeviceName(ReadOnlySpan<char> name)
@@ -342,19 +343,17 @@ public static partial class ThemeValidator
             }
         }
 
-        if (manifest.Vfx?.StatusText is { } st)
+        if (manifest.Vfx?.StatusText is { } st &&
+            (ContainsDangerousText(st.Disconnected, 64) ||
+             ContainsDangerousText(st.Connecting, 64) ||
+             ContainsDangerousText(st.Connected, 64) ||
+             ContainsDangerousText(st.Error, 64) ||
+             ContainsDangerousText(st.ButtonIdle, 32) ||
+             ContainsDangerousText(st.ButtonConnecting, 32) ||
+             ContainsDangerousText(st.ButtonConnected, 32)))
         {
-            if (ContainsDangerousText(st.Disconnected, 64) ||
-                ContainsDangerousText(st.Connecting, 64) ||
-                ContainsDangerousText(st.Connected, 64) ||
-                ContainsDangerousText(st.Error, 64) ||
-                ContainsDangerousText(st.ButtonIdle, 32) ||
-                ContainsDangerousText(st.ButtonConnecting, 32) ||
-                ContainsDangerousText(st.ButtonConnected, 32))
-            {
-                errorMessage = "Invalid or prohibited text in vfx.statusText.";
-                return false;
-            }
+            errorMessage = "Invalid or prohibited text in vfx.statusText.";
+            return false;
         }
 
         string?[] assetPaths =
@@ -393,14 +392,14 @@ public static partial class ThemeValidator
             }
         }
 
+        if (manifest.Vfx?.ParticleSprites is { Count: > 12 })
+        {
+            errorMessage = "Too many particleSprites in theme manifest (max 12).";
+            return false;
+        }
+
         if (manifest.Vfx?.ParticleSprites is { Count: > 0 } sprites)
         {
-            if (sprites.Count > 12)
-            {
-                errorMessage = "Too many particleSprites in theme manifest (max 12).";
-                return false;
-            }
-
             foreach (var sp in sprites)
             {
                 if (!IsSafeRelativePath(sp))
@@ -450,24 +449,20 @@ public static partial class ThemeValidator
             }
         }
 
-        if (manifest.Decorations?.FrameSlice is { } slice)
+        if (manifest.Decorations?.FrameSlice is { } slice &&
+            (slice.Top < 0 || slice.Right < 0 || slice.Bottom < 0 || slice.Left < 0 ||
+             slice.Top > 4096 || slice.Right > 4096 || slice.Bottom > 4096 || slice.Left > 4096))
         {
-            if (slice.Top < 0 || slice.Right < 0 || slice.Bottom < 0 || slice.Left < 0 ||
-                slice.Top > 4096 || slice.Right > 4096 || slice.Bottom > 4096 || slice.Left > 4096)
-            {
-                errorMessage = "Invalid frameSlice values in theme manifest (must be between 0 and 4096).";
-                return false;
-            }
+            errorMessage = "Invalid frameSlice values in theme manifest (must be between 0 and 4096).";
+            return false;
         }
 
-        if (manifest.Decorations?.FrameSliceMobile is { } sliceMobile)
+        if (manifest.Decorations?.FrameSliceMobile is { } sliceMobile &&
+            (sliceMobile.Top < 0 || sliceMobile.Right < 0 || sliceMobile.Bottom < 0 || sliceMobile.Left < 0 ||
+             sliceMobile.Top > 4096 || sliceMobile.Right > 4096 || sliceMobile.Bottom > 4096 || sliceMobile.Left > 4096))
         {
-            if (sliceMobile.Top < 0 || sliceMobile.Right < 0 || sliceMobile.Bottom < 0 || sliceMobile.Left < 0 ||
-                sliceMobile.Top > 4096 || sliceMobile.Right > 4096 || sliceMobile.Bottom > 4096 || sliceMobile.Left > 4096)
-            {
-                errorMessage = "Invalid frameSliceMobile values in theme manifest (must be between 0 and 4096).";
-                return false;
-            }
+            errorMessage = "Invalid frameSliceMobile values in theme manifest (must be between 0 and 4096).";
+            return false;
         }
 
         errorMessage = null;

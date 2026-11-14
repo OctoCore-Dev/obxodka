@@ -57,7 +57,7 @@ public sealed partial class ThemeStorageService
                 }
             }
 
-            var targetDir = Path.Combine(ThemesDirectory, manifest.Id);
+            var targetDir = Path.Combine(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
             if (Directory.Exists(targetDir))
             {
                 Directory.Delete(targetDir, true);
@@ -72,7 +72,7 @@ public sealed partial class ThemeStorageService
                     return (false, $"Недопустимый относительный путь файла: '{relPath}'", null);
                 }
 
-                var destFile = Path.Combine(targetDir, relPath);
+                var destFile = Path.Combine(targetDir, relPath.TrimStart('/', '\\'));
                 var destParent = Path.GetDirectoryName(destFile);
                 if (!string.IsNullOrEmpty(destParent))
                 {

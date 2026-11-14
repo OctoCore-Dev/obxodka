@@ -79,7 +79,10 @@ public sealed partial class ObxodkaStreamTransport
                             await cts0.CancelAsync().ConfigureAwait(false);
                         }
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        //подавление ошибки отмены луча 0
+                    }
                 }
                 else if (rx1 == 0 && rx0 > 0 && _rayCts[1] != null)
                 {
@@ -92,7 +95,10 @@ public sealed partial class ObxodkaStreamTransport
                             await cts1.CancelAsync().ConfigureAwait(false);
                         }
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        //подавление ошибки отмены луча 1
+                    }
                 }
             }
 
@@ -115,7 +121,10 @@ public sealed partial class ObxodkaStreamTransport
                             await cts0.CancelAsync().ConfigureAwait(false);
                         }
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        //подавление ошибки сброса зависшего луча 0
+                    }
                     while (_txChannels[0].TryDequeue(out var leftover))
                     {
                         if (!_txChannels[1].TryEnqueue(leftover.buffer, leftover.length))
@@ -137,7 +146,10 @@ public sealed partial class ObxodkaStreamTransport
                             await cts1.CancelAsync().ConfigureAwait(false);
                         }
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        //подавление ошибки сброса зависшего луча 1
+                    }
                     while (_txChannels[1].TryDequeue(out var leftover))
                     {
                         if (!_txChannels[0].TryEnqueue(leftover.buffer, leftover.length))
@@ -169,7 +181,10 @@ public sealed partial class ObxodkaStreamTransport
                                 await ctsPref.CancelAsync().ConfigureAwait(false);
                             }
                         }
-                        catch { }
+                        catch (Exception)
+                        {
+                            //подавление ошибки отмены предпочтительного луча
+                        }
                     }
                 }
             }
@@ -403,7 +418,10 @@ public sealed partial class ObxodkaStreamTransport
                 {
                     await Task.Delay(25).ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки паузы отправки сигнала отключения
+                }
             }
             else
             {

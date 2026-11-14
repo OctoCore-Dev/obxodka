@@ -45,7 +45,10 @@ public static class InSituDiagnosticsEngine
                 {
                     socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl);
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки если платформа не поддерживает ручную установку ttl
+                }
             }
 
             var sw = Stopwatch.StartNew();

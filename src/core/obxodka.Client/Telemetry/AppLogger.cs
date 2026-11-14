@@ -106,7 +106,10 @@ public static class AppLogger
                         await s_writer.FlushAsync().ConfigureAwait(false);
                     }
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки сброса буфера записи логов
+                }
                 flushCounter = 0;
             }
         }
@@ -139,12 +142,18 @@ public static class AppLogger
                         s_currentFileBytes = 0;
                         s_writer = new StreamWriter(fs, Encoding.UTF8) { AutoFlush = false };
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        //подавление ошибки ротации файла лога
+                    }
                 }
             }
 
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки форматирования строки лога
+        }
     }
 
     //добавление в кольцевой буфер последних логов для экрана
@@ -231,7 +240,10 @@ public static class AppLogger
             var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH] {fullMessage}\n";
             File.AppendAllText(CrashLogFilePath, crashEntry);
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки записи аварийного лога на диск
+        }
     }
 
     //получение последних строк для интерфейса
@@ -257,7 +269,10 @@ public static class AppLogger
         {
             s_writer?.Flush();
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки сброса буфера логера
+        }
     }
 
     //перехват необработанных сбоев приложения
@@ -274,7 +289,10 @@ public static class AppLogger
             TaskScheduler.UnobservedTaskException += (_, e) =>
                 LogCrash($"[UNOBSERVED TASK EXCEPTION] {e.Exception.Message}", e.Exception);
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки регистрации глобальных хуков исключений
+        }
     }
 
     //открытие файла лога в системе
@@ -292,6 +310,9 @@ public static class AppLogger
                 });
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки запуска внешнего процесса просмотра логов
+        }
     }
 }

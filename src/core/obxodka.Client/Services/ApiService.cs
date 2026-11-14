@@ -217,7 +217,10 @@ public sealed class ApiService(HttpClient client)
                     return resolvedArr;
                 }
             }
-            catch { }
+            catch (Exception)
+            {
+                //подавление сетевой ошибки резолвинга doh
+            }
         }
 
         //резервный системный днс только если все doh серверы заблокированы сетью
@@ -241,7 +244,10 @@ public sealed class ApiService(HttpClient client)
                 return sysArr;
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление сетевой ошибки системного днс
+        }
 
         if (host.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
             host.Contains("octocore", StringComparison.OrdinalIgnoreCase))
@@ -432,7 +438,10 @@ public sealed class ApiService(HttpClient client)
                         {
                             PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
                         }
-                        catch { }
+                        catch (Exception)
+                        {
+                            //подавление ошибки вызова события деавторизации в ui потоке
+                        }
                         return (false, null, "Сессия истекла или устройство было удалено.");
                     }
 
@@ -460,7 +469,10 @@ public sealed class ApiService(HttpClient client)
                                     return (false, null, msg);
                                 }
                             }
-                            catch { }
+                            catch (Exception)
+                            {
+                                //подавление ошибки десериализации ответа ошибки api
+                            }
                         }
                         return (false, null, trimmed);
                     }
@@ -519,7 +531,10 @@ public sealed class ApiService(HttpClient client)
                             {
                                 PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
                             }
-                            catch { }
+                            catch (Exception)
+                            {
+                                //подавление ошибки вызова события деавторизации в ui потоке
+                            }
                             return (false, null, "Сессия истекла или устройство было удалено.");
                         }
 
@@ -547,7 +562,10 @@ public sealed class ApiService(HttpClient client)
                                         return (false, null, msg);
                                     }
                                 }
-                                catch { }
+                                catch (Exception)
+                                {
+                                    //подавление ошибки десериализации ответа ошибки api
+                                }
                             }
                             return (false, null, trimmed);
                         }
@@ -732,7 +750,10 @@ public sealed class ApiService(HttpClient client)
                         }
                     }
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки запроса к зеркалу обнаружения серверов
+                }
             }
         }
         catch (Exception ex)

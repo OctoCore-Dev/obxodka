@@ -254,7 +254,10 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                         _ = mgmtProcs.Add($"{name} (PID: {p.Id})");
                     }
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки доступа к свойствам завершенного системного процесса
+                }
                 finally
                 {
                     p.Dispose();
@@ -266,7 +269,10 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 report.DetectedManagementSoftware = string.Join(", ", mgmtProcs);
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки перечисления процессов операционной системы
+        }
     }
 
     //проверка доступности dns через https

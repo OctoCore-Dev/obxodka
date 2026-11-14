@@ -30,7 +30,7 @@ public class InSituDiagnosticsTests
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
 
-        var (passed, summary) = await InSituDiagnosticsEngine.TestCanaryEchoAsync(client, cts.Token);
+        var (_, summary) = await InSituDiagnosticsEngine.TestCanaryEchoAsync(client, cts.Token);
         Assert.NotNull(summary);
         Assert.Contains("Anycast", summary);
     }

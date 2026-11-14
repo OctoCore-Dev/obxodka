@@ -89,7 +89,7 @@ public class ZeroAllocationNetworkTests : IDisposable
         packet[9] = 17;
         Random.Shared.NextBytes(packet.AsSpan(10));
 
-        for (var w = 0; w < 50; w++)
+        for (var w = 0; w < 500; w++)
         {
             _ = deduplicator.IsDuplicate(packet.AsSpan());
         }

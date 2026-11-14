@@ -58,9 +58,12 @@ public sealed partial class OctopusEngine
                 var cycle = Interlocked.Increment(ref probeCycle);
                 try
                 {
-                    await (_transport?.SendPingProbeAsync() ?? Task.CompletedTask).ConfigureAwait(false);
+                    await _transport.SendPingProbeAsync().ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление сетевой ошибки отправки зонда
+                }
 
                 try
                 {
@@ -73,7 +76,10 @@ public sealed partial class OctopusEngine
                         _ = SendPacketAsync(p1);
                     }
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки генерации или отправки icmp пакета
+                }
 
                 AppLogger.Log($"[PROBE TX #{cycle}] Sent lightweight Ping + ICMP(28B). TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
             }
@@ -87,7 +93,7 @@ public sealed partial class OctopusEngine
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    _ = _transport?.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
+                    _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
                     EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
@@ -99,7 +105,7 @@ public sealed partial class OctopusEngine
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    _ = _transport?.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
+                    _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
                     EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
@@ -122,7 +128,7 @@ public sealed partial class OctopusEngine
             }
             else
             {
-                _ = _transport?.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
+                _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
                 EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
             }
             return deltaRx > 0 && deltaTx > 0;
@@ -133,7 +139,7 @@ public sealed partial class OctopusEngine
             var deltaTx = TotalBytesSent - initialSent;
             if (deltaRx > 0)
             {
-                _ = _transport?.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
+                _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
                 EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
             }
             return deltaRx > 0 && deltaTx > 0;

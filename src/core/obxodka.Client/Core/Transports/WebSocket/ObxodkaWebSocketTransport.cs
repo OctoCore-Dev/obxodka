@@ -235,7 +235,10 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             {
                 ws.Options.SetRequestHeader("Host", targetHostHeader);
             }
-            catch { }
+            catch (Exception)
+            {
+                //подавление ошибки установки кастомного заголовка host в websocket
+            }
             RoutingHello.ApplyWebSocketHeaders(ws.Options, ActiveBrowserProfile);
 
             var cid = RandomNumberGenerator.GetInt32(10000000, 100000000);
@@ -307,12 +310,18 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 {
                     ws.Dispose();
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки очистки сокета при сбое порта
+                }
                 try
                 {
                     invoker.Dispose();
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки очистки http invoker при сбое порта
+                }
             }
         }
 

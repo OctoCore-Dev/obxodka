@@ -136,7 +136,10 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
                 }
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки отправки сохраненного аварийного лога
+        }
     }
 
     //фоновая обработка очереди отправки

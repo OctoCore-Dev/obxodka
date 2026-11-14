@@ -228,7 +228,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         };
 
         using var client = new HttpClient(handler);
-        var req = new HttpRequestMessage(HttpMethod.Post, "https://gateway.icloud.com:443/api/v1/sync?ray=0&mtu=1280")
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://gateway.icloud.com:443/api/v1/sync?ray=0&mtu=1280")
         {
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
@@ -245,10 +245,10 @@ public sealed class DynamicProtocolAndConnectivityTests
         });
         req.Content = pushContent;
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
         try
         {
-            var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             Assert.NotNull(resp);
         }
         catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)

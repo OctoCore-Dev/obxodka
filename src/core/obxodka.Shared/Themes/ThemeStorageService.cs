@@ -65,7 +65,7 @@ public sealed partial class ThemeStorageService
             return false;
         }
 
-        var targetDir = Path.Combine(ThemesDirectory, themeId);
+        var targetDir = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'));
         return File.Exists(Path.Combine(targetDir, "theme.json"));
     }
 
@@ -77,7 +77,7 @@ public sealed partial class ThemeStorageService
             return null;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId, "theme.json");
+        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
         if (!File.Exists(manifestPath))
         {
             return null;
@@ -112,7 +112,7 @@ public sealed partial class ThemeStorageService
 
         try
         {
-            var targetDir = Path.Combine(ThemesDirectory, themeId);
+            var targetDir = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'));
             if (Directory.Exists(targetDir))
             {
                 Directory.Delete(targetDir, true);

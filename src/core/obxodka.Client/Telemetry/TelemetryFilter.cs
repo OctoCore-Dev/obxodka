@@ -26,7 +26,10 @@ public static class TelemetryFilter
                 }
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки инспекции сборок текущего домена
+        }
 
         return false;
     }

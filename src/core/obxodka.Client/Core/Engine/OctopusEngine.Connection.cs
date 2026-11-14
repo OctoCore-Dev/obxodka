@@ -63,7 +63,10 @@ public sealed partial class OctopusEngine
                     _serverIpv6Array = [.. v6List];
                 }
             }
-            catch { }
+            catch (Exception)
+            {
+                //подавление ошибки обновления адресов сервера
+            }
         }
     }
 
@@ -299,7 +302,10 @@ public sealed partial class OctopusEngine
                 {
                     await oldTransport.DisposeAsync().ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки закрытия предыдущего транспорта
+                }
             }
 
             AppLogger.Log($"[OCTOPUS-SHIELD] Seamless escalation complete! Tunnel preserved on {AssignedIp} via WebSocket Shield.");
@@ -319,7 +325,10 @@ public sealed partial class OctopusEngine
                 {
                     await wsTransport.DisposeAsync().ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception)
+                {
+                    //подавление ошибки закрытия резервного транспорта
+                }
             }
             Volatile.Write(ref _isEscalatingToShield, 0);
         }
@@ -368,7 +377,10 @@ public sealed partial class OctopusEngine
                 _mtuScanCts.Dispose();
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки отмены сканирования mtu при остановке
+        }
         _mtuScanCts = null;
 
         if (_cts is not null)
@@ -399,7 +411,10 @@ public sealed partial class OctopusEngine
             _mtuScanCts?.Cancel();
             _mtuScanCts?.Dispose();
         }
-        catch { }
+        catch (Exception)
+        {
+            //подавление ошибки отмены токена сканирования mtu
+        }
         _mtuScanCts = null;
 
         _cts?.Cancel();
