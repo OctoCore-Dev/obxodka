@@ -10,9 +10,9 @@ public static class DnsAdBlockRuleManager
     public static HashSet<string> ParseRuleLines(IEnumerable<string> lines)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rawLine in lines)
+        foreach (var rawLine in lines.Select(l => l.Trim()))
         {
-            var line = rawLine.Trim();
+            var line = rawLine;
             if (string.IsNullOrEmpty(line) || line.StartsWith('#') || line.StartsWith('!'))
             {
                 continue;
@@ -60,8 +60,9 @@ public static class DnsAdBlockRuleManager
                 return domains.Count;
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or OperationCanceledException or NotSupportedException or ArgumentException)
         {
+            //игнорируем поврежденный или заблокированный файл кэша правил
         }
 
         return 0;
@@ -83,7 +84,7 @@ public static class DnsAdBlockRuleManager
             File.Move(tempPath, cacheFilePath, overwrite: true);
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or OperationCanceledException or NotSupportedException or ArgumentException)
         {
             return false;
         }
@@ -132,7 +133,7 @@ public static class DnsAdBlockRuleManager
 
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or InvalidOperationException or NotSupportedException or ArgumentException)
         {
             return false;
         }

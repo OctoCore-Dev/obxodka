@@ -60,7 +60,7 @@ public sealed partial class OctopusEngine
                 {
                     await _transport.SendPingProbeAsync().ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException or InvalidOperationException)
                 {
                     //подавление сетевой ошибки отправки зонда
                 }
@@ -76,7 +76,7 @@ public sealed partial class OctopusEngine
                         _ = SendPacketAsync(p1);
                     }
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException or InvalidOperationException)
                 {
                     //подавление ошибки генерации или отправки icmp пакета
                 }

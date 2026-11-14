@@ -41,7 +41,7 @@ public static class RuSubnetRegistry
                     LoadFromCompressedStream(stream);
                 }
             }
-            catch
+            catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentException or NotSupportedException)
             {
                 //в случае ошибки оставляем карту пустой во избежание сбоя приложения
             }
@@ -123,21 +123,31 @@ public static class RuSubnetRegistry
 
         lock (s_initLock)
         {
-            var minCount = 1U << (32 - maxPrefixLength);
             foreach (var (start, end) in s_ranges)
             {
-                var count = end - start + 1;
-                //отбираем крупные блоки
-                if (count >= minCount)
+                if (end < start)
                 {
-                    //вычисляем маску подсети
-                    var prefixLen = 32 - (int)Math.Round(Math.Log2(count));
+                    continue;
+                }
+
+                //точное выровненное разбиение диапазона на cidr блоки без захвата чужих адресов
+                var cur = (ulong)start;
+                var endEx = (ulong)end + 1;
+                while (cur < endEx)
+                {
+                    var tz = cur == 0 ? 32 : System.Numerics.BitOperations.TrailingZeroCount(cur);
+                    var rem = endEx - cur;
+                    var maxFit = 63 - System.Numerics.BitOperations.LeadingZeroCount(rem);
+                    var stepBits = Math.Min(32, Math.Min(tz, maxFit));
+                    var prefixLen = 32 - stepBits;
+
                     if (prefixLen <= maxPrefixLength)
                     {
-                        var mask = prefixLen == 0 ? 0 : uint.MaxValue << (32 - prefixLen);
-                        var net = start & mask;
-                        result.Add((net, mask));
+                        var mask = prefixLen == 0 ? 0u : uint.MaxValue << stepBits;
+                        result.Add(((uint)cur, mask));
                     }
+
+                    cur += 1UL << stepBits;
                 }
             }
         }

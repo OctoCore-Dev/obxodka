@@ -50,7 +50,7 @@ public sealed class AuthManager
                 await PlatformServices.SecureStorage.SetAsync(AppPreferenceKeys.UserVpnConfig, session.VpnConfig).ConfigureAwait(false);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             AppLogger.LogError("[AUTH SAVE ERROR]", ex);
         }
@@ -114,7 +114,7 @@ public sealed class AuthManager
             s_cachedAuthHeader = new AuthenticationHeaderValue("Bearer", jwt);
             return session;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             AppLogger.LogError("[AUTH LOAD ERROR]", ex);
             ClearSessionDataInternal();
@@ -138,7 +138,7 @@ public sealed class AuthManager
             s_cachedAuthHeader = null;
             ClearSessionDataInternal();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             AppLogger.LogError("[AUTH CLEAR ERROR]", ex);
         }

@@ -6,51 +6,45 @@ public sealed class ApiService(HttpClient client)
     //событие сброса авторизации при 401
     public static event Action? OnUnauthorized;
 
-    //создание обработчика для android с валидацией сертификатов
-    private static HttpClientHandler CreateAndroidHandler() => new()
+    //создание базового обработчика с шифрованным doh и обходом dpi без привязки к пину туннеля
+    private static SocketsHttpHandler CreateApiSocketsHandler() => new()
     {
         UseProxy = false,
-        ServerCertificateCustomValidationCallback = (req, cert, chain, errors) =>
-            CertificateValidator.ValidateServerCertificate(cert, chain, errors)
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        SslOptions = SslOptionsFactory.Create(dynamicPinningHash: ""),
+        ConnectCallback = async (context, cToken) =>
+        {
+            var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
+            var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+            try
+            {
+                await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
+                var netStream = new NetworkStream(socket, ownsSocket: true);
+                return !IPAddress.IsLoopback(resolvedIp)
+                    ? DpiBypassStream.CreateForProfile(netStream, TlsBrowserProfile.Chrome, bypassEnabled: true, forcePureL4: true)
+                    : netStream;
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
     };
 
     //клиент с дефолтным обработчиком и строгим ssl pinning
-    private static readonly Lazy<HttpClient> s_fallbackNative = new(() => new HttpClient(
-        OperatingSystem.IsAndroid()
-            ? CreateAndroidHandler()
-            : new SocketsHttpHandler
-            {
-                SslOptions = SslOptionsFactory.Create(),
-                UseProxy = false
-            })
+    private static readonly Lazy<HttpClient> s_fallbackNative = new(() => new HttpClient(CreateApiSocketsHandler())
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(1, 1)
     });
 
-    //клиент tls 1.2 с проверкой сертификата
-    private static readonly Lazy<HttpClient> s_fallbackTls12 = new(() => new HttpClient(
-        OperatingSystem.IsAndroid()
-            ? CreateAndroidHandler()
-            : new SocketsHttpHandler
-            {
-                SslOptions = SslOptionsFactory.Create(),
-                UseProxy = false
-            })
-    {
-        Timeout = TimeSpan.FromSeconds(8),
-        DefaultRequestVersion = new Version(1, 1)
-    });
+    //общий экземпляр для фоновых сервисов без di (телеметрия и инспектор)
+    internal static ApiService Shared { get; } = new(s_fallbackNative.Value);
 
     //клиент http 2.0
-    private static readonly Lazy<HttpClient> s_fallbackHttp2 = new(() => new HttpClient(
-        OperatingSystem.IsAndroid()
-            ? CreateAndroidHandler()
-            : new SocketsHttpHandler
-            {
-                SslOptions = SslOptionsFactory.Create(),
-                UseProxy = false
-            })
+    private static readonly Lazy<HttpClient> s_fallbackHttp2 = new(() => new HttpClient(CreateApiSocketsHandler())
     {
         Timeout = TimeSpan.FromSeconds(8),
         DefaultRequestVersion = new Version(2, 0)
@@ -61,57 +55,55 @@ public sealed class ApiService(HttpClient client)
 
     //клиент для doh запросов с привязкой к физическому адаптеру мимо туннеля
     private static readonly Lazy<HttpClient> s_dohClient = new(() => new HttpClient(
-        OperatingSystem.IsAndroid()
-            ? new HttpClientHandler { UseProxy = false }
-            : new SocketsHttpHandler
+        new SocketsHttpHandler
+        {
+            UseProxy = false,
+            ConnectTimeout = TimeSpan.FromSeconds(2),
+            SslOptions = SslOptionsFactory.CreatePublicDoh(),
+            ConnectCallback = async (context, cToken) =>
             {
-                UseProxy = false,
-                ConnectTimeout = TimeSpan.FromSeconds(2),
-                SslOptions = SslOptionsFactory.CreatePublicDoh(),
-                ConnectCallback = async (context, cToken) =>
+                var host = context.DnsEndPoint.Host;
+                IPAddress? targetIp = null;
+                if (IPAddress.TryParse(host, out var parsedIp))
                 {
-                    var host = context.DnsEndPoint.Host;
-                    IPAddress? targetIp = null;
-                    if (IPAddress.TryParse(host, out var parsedIp))
+                    targetIp = parsedIp;
+                }
+                else if (host.Equals("cloudflare-dns.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetIp = IPAddress.Parse("1.1.1.1");
+                }
+                else if (host.Equals("dns.adguard.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetIp = IPAddress.Parse("94.140.14.14");
+                }
+                else
+                {
+                    var resolved = await Dns.GetHostAddressesAsync(host, cToken).ConfigureAwait(false);
+                    foreach (var a in resolved)
                     {
-                        targetIp = parsedIp;
-                    }
-                    else if (host.Equals("cloudflare-dns.com", StringComparison.OrdinalIgnoreCase))
-                    {
-                        targetIp = IPAddress.Parse("1.1.1.1");
-                    }
-                    else if (host.Equals("dns.adguard.com", StringComparison.OrdinalIgnoreCase))
-                    {
-                        targetIp = IPAddress.Parse("94.140.14.14");
-                    }
-                    else
-                    {
-                        var resolved = await Dns.GetHostAddressesAsync(host, cToken).ConfigureAwait(false);
-                        foreach (var a in resolved)
+                        if (a.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(a))
                         {
-                            if (a.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(a))
-                            {
-                                targetIp = a;
-                                break;
-                            }
+                            targetIp = a;
+                            break;
                         }
                     }
-
-                    targetIp ??= IPAddress.Parse("1.1.1.1");
-                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-                    try
-                    {
-                        await socket.ConnectAsync(new IPEndPoint(targetIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
-                        return new NetworkStream(socket, ownsSocket: true);
-                    }
-                    catch
-                    {
-                        socket.Dispose();
-                        throw;
-                    }
                 }
-            })
+
+                targetIp ??= IPAddress.Parse("1.1.1.1");
+                var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+                try
+                {
+                    await socket.ConnectAsync(new IPEndPoint(targetIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            }
+        })
     {
         Timeout = TimeSpan.FromSeconds(2)
     });
@@ -139,11 +131,15 @@ public sealed class ApiService(HttpClient client)
         Span<byte> b = stackalloc byte[4];
         _ = ip.TryWriteBytes(b, out _);
 
-        return b[0] is 0 or 10 or 127 ||
-               (b[0] == 169 && b[1] == 254) ||
-               (b[0] == 172 && b[1] is >= 16 and <= 31) ||
-               (b[0] == 192 && b[1] == 168) ||
-               (b[0] == 100 && b[1] is >= 64 and <= 127);
+        return b[0] switch
+        {
+            0 or 10 or 127 => true,
+            169 => b[1] == 254,
+            172 => b[1] is >= 16 and <= 31,
+            192 => b[1] == 168,
+            100 => b[1] is >= 64 and <= 127,
+            _ => false
+        };
     }
 
     //защищенный резолвинг всех a записей домена с приоритетом doh против спуфинга провайдера
@@ -152,6 +148,11 @@ public sealed class ApiService(HttpClient client)
         if (IPAddress.TryParse(host, out var literalIp))
         {
             return [literalIp];
+        }
+
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return [IPAddress.Loopback];
         }
 
         var nowTicks = Stopwatch.GetTimestamp();
@@ -217,7 +218,7 @@ public sealed class ApiService(HttpClient client)
                     return resolvedArr;
                 }
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is HttpRequestException or SocketException or OperationCanceledException or TimeoutException or JsonException or InvalidOperationException or FormatException)
             {
                 //подавление сетевой ошибки резолвинга doh
             }
@@ -227,14 +228,9 @@ public sealed class ApiService(HttpClient client)
         try
         {
             var sysAddrs = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
-            foreach (var addr in sysAddrs)
+            foreach (var addr in sysAddrs.Where(addr => addr.AddressFamily == AddressFamily.InterNetwork && !IsBogonOrSinkholeIpv4(addr) && !results.Contains(addr)))
             {
-                if (addr.AddressFamily == AddressFamily.InterNetwork &&
-                    !IsBogonOrSinkholeIpv4(addr) &&
-                    !results.Contains(addr))
-                {
-                    results.Add(addr);
-                }
+                results.Add(addr);
             }
 
             if (results.Count > 0)
@@ -244,7 +240,7 @@ public sealed class ApiService(HttpClient client)
                 return sysArr;
             }
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException or ArgumentException)
         {
             //подавление сетевой ошибки системного днс
         }
@@ -270,19 +266,11 @@ public sealed class ApiService(HttpClient client)
     //резервный клиент с обходом dpi через сырой поток
     private static readonly Lazy<HttpClient> s_fallbackDirectDpi = new(() =>
     {
-        if (OperatingSystem.IsAndroid())
-        {
-            return new HttpClient(CreateAndroidHandler())
-            {
-                Timeout = TimeSpan.FromSeconds(8),
-                DefaultRequestVersion = new Version(1, 1)
-            };
-        }
-
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
-            SslOptions = SslOptionsFactory.Create(targetHost: AppSecrets.GetRandomSni()),
+            //для прямого подключения к ip отключаем подставной sni (clean zero-sni)
+            SslOptions = SslOptionsFactory.Create(targetHost: null),
             ConnectCallback = async (context, cToken) =>
             {
                 var targetIp = IPAddress.TryParse(context.DnsEndPoint.Host, out var parsedHostIp)
@@ -294,7 +282,7 @@ public sealed class ApiService(HttpClient client)
 
                 foreach (var port in fallbackPorts)
                 {
-                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
                     ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
                     try
                     {
@@ -304,7 +292,7 @@ public sealed class ApiService(HttpClient client)
                         var netStream = new NetworkStream(socket, ownsSocket: true);
                         return new DpiBypassStream(netStream, bypassEnabled: true);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is SocketException or IOException or TimeoutException or OperationCanceledException or ObjectDisposedException or AuthenticationException)
                     {
                         lastConnectEx = ex;
                         socket.Dispose();
@@ -341,45 +329,12 @@ public sealed class ApiService(HttpClient client)
         _ = request.Headers.Remove("X-Telemetry-Token");
         _ = request.Headers.TryAddWithoutValidation("X-Telemetry-Token", AppConfig.TelemetryAuthToken);
 
-        var pathAndQuery = request.RequestUri?.PathAndQuery ?? "/api";
-        var sig = AppSecrets.GenerateStealthSignature(pathAndQuery, out var ts);
-        _ = request.Headers.Remove("X-Obx-Timestamp");
-        _ = request.Headers.Remove("X-Obx-Sig");
-        _ = request.Headers.TryAddWithoutValidation("X-Obx-Timestamp", ts);
-        _ = request.Headers.TryAddWithoutValidation("X-Obx-Sig", sig);
-
         _ = request.Headers.Remove("X-Obx-Proto");
         _ = request.Headers.TryAddWithoutValidation("X-Obx-Proto", "7");
     }
 
     //создание базового http обработчика с проверкой сертификата
-    public static HttpMessageHandler CreateDefaultHandler() =>
-        OperatingSystem.IsAndroid()
-            ? CreateAndroidHandler()
-            : new SocketsHttpHandler
-            {
-                UseProxy = false,
-                SslOptions = SslOptionsFactory.Create(),
-                ConnectCallback = async (context, cToken) =>
-                {
-                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-                    try
-                    {
-                        var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
-                        await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
-                        var netStream = new NetworkStream(socket, ownsSocket: true);
-                        return !IPAddress.IsLoopback(resolvedIp)
-                            ? new DpiBypassStream(netStream, bypassEnabled: true)
-                            : netStream;
-                    }
-                    catch
-                    {
-                        socket.Dispose();
-                        throw;
-                    }
-                }
-            };
+    public static HttpMessageHandler CreateDefaultHandler() => CreateApiSocketsHandler();
 
     //отправка запроса с перебором зеркал и обходом блокировок
     private async Task<(bool Success, TResponse? Data, string? Error)> SendRequestAsync<TRequest, TResponse>(
@@ -404,16 +359,14 @@ public sealed class ApiService(HttpClient client)
             candidateDomains.Add(AppConfig.ApiBaseUrl);
         }
 
-        foreach (var dom in AppConfig.KnownDomainBases)
+        foreach (var dom in AppConfig.KnownDomainBases.Where(dom => !candidateDomains.Any(d => d.StartsWith(dom, StringComparison.OrdinalIgnoreCase))))
         {
-            if (!candidateDomains.Any(d => d.StartsWith(dom, StringComparison.OrdinalIgnoreCase)))
-            {
-                candidateDomains.Add(dom);
-            }
+            candidateDomains.Add(dom);
         }
 
-        HttpClient[] domainClients = [client, s_fallbackNative.Value, s_fallbackTls12.Value, s_fallbackHttp2.Value];
+        HttpClient[] domainClients = [client, s_fallbackNative.Value, s_fallbackHttp2.Value];
         Exception? lastEx = null;
+        string? lastHttpError = null;
 
         foreach (var baseCandidate in candidateDomains)
         {
@@ -430,18 +383,11 @@ public sealed class ApiService(HttpClient client)
                     }
 
                     await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
-                    var response = await currentClient.SendAsync(request, ct).ConfigureAwait(false);
+                    using var response = await currentClient.SendAsync(request, ct).ConfigureAwait(false);
 
                     if (response.StatusCode == HttpStatusCode.Unauthorized)
                     {
-                        try
-                        {
-                            PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
-                        }
-                        catch (Exception)
-                        {
-                            //подавление ошибки вызова события деавторизации в ui потоке
-                        }
+                        NotifyUnauthorized();
                         return (false, null, "Сессия истекла или устройство было удалено.");
                     }
 
@@ -455,139 +401,148 @@ public sealed class ApiService(HttpClient client)
                         return (true, null, null);
                     }
 
-                    var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(rawError))
+                    var errorMsg = await ReadHttpErrorAsync(response, ct).ConfigureAwait(false);
+                    //блокировки waf/cloudflare (403) и транзиентные сбои 5xx переключаются на следующее зеркало и прямой dpi канал
+                    if (response.StatusCode == HttpStatusCode.Forbidden || (int)response.StatusCode >= 500)
                     {
-                        var trimmed = rawError.Trim();
-                        if (trimmed.StartsWith('{'))
-                        {
-                            try
-                            {
-                                var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
-                                if (errorObj is { Message: { Length: > 0 } msg })
-                                {
-                                    return (false, null, msg);
-                                }
-                            }
-                            catch (Exception)
-                            {
-                                //подавление ошибки десериализации ответа ошибки api
-                            }
-                        }
-                        return (false, null, trimmed);
+                        lastHttpError = errorMsg;
+                        AppLogger.LogWarning($"[API] {method} {reqUrl} returned {(int)response.StatusCode}. Trying fallback...");
+                        break;
                     }
 
-                    return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
+                    return (false, null, errorMsg);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     throw;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or TaskCanceledException or AuthenticationException or JsonException or InvalidOperationException)
                 {
                     lastEx = ex;
                     var innerInfo = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
                     AppLogger.LogWarning($"[API] {method} {reqUrl} direct attempt failed: {ex.Message}{innerInfo}");
 
-                    var isTlsBlock = ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.InnerException is AuthenticationException or SocketException);
+                    var isTlsBlock = (ex is TaskCanceledException or TimeoutException) ||
+                        (ex is HttpRequestException && (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("handshake", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("reset", StringComparison.OrdinalIgnoreCase) || ex.InnerException is AuthenticationException or SocketException));
                     if (isTlsBlock)
                     {
-                        AppLogger.LogWarning($"[API-DPI] ISP/TSPU TLS block detected on {baseCandidate}. Fast-tracking to DPI bypass...");
+                        AppLogger.LogWarning($"[API-DPI] ISP/TSPU block or timeout detected on {baseCandidate}. Fast-tracking to next mirror / DPI bypass...");
                         break;
                     }
                 }
             }
         }
 
-        //резервная попытка через прямой ip и обход dpi
-        string[] directHosts = [AppSecrets.GetRandomSni(), AppConfig.PrimaryDomain, AppConfig.MirrorDomain];
+        //резервная попытка через прямой ip и обход dpi с реальными доменами щита
+        string[] directHosts = [AppConfig.PrimaryDomain, AppConfig.MirrorDomain];
         var trimmedPath = url.TrimStart('/');
-        string[] pathVariants = trimmedPath.StartsWith("api/", StringComparison.OrdinalIgnoreCase)
-            ? [trimmedPath, $"v1/{trimmedPath}", $"cdn-cgi/{trimmedPath}"]
-            : [trimmedPath];
 
         foreach (var relayIp in AppConfig.DirectRelayIps)
         {
-            foreach (var pathVariant in pathVariants)
+            foreach (var directHost in directHosts)
             {
-                foreach (var directHost in directHosts)
+                if (string.IsNullOrWhiteSpace(directHost))
                 {
-                    try
+                    continue;
+                }
+
+                try
+                {
+                    var directUrl = $"https://{relayIp}/{trimmedPath}";
+                    using var request = new HttpRequestMessage(method, directUrl);
+                    request.Headers.Host = directHost;
+                    if (body is not null && requestInfo is not null)
                     {
-                        var directUrl = $"https://{relayIp}/{pathVariant}";
-                        using var request = new HttpRequestMessage(method, directUrl);
-                        request.Headers.Host = directHost;
-                        if (body is not null && requestInfo is not null)
-                        {
-                            request.Content = JsonContent.Create(body, requestInfo);
-                        }
-
-                        await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
-                        var response = await s_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
-
-                        if (response.StatusCode == HttpStatusCode.Unauthorized)
-                        {
-                            try
-                            {
-                                PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
-                            }
-                            catch (Exception)
-                            {
-                                //подавление ошибки вызова события деавторизации в ui потоке
-                            }
-                            return (false, null, "Сессия истекла или устройство было удалено.");
-                        }
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            AppLogger.LogDebug($"[API-DPI] Request {method} {pathVariant} succeeded via DPI bypass stream (IP {relayIp}, Host {directHost})");
-                            if (responseInfo is not null)
-                            {
-                                return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
-                            }
-                            return (true, null, null);
-                        }
-
-                        var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                        if (!string.IsNullOrWhiteSpace(rawError))
-                        {
-                            var trimmed = rawError.Trim();
-                            if (trimmed.StartsWith('{'))
-                            {
-                                try
-                                {
-                                    var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
-                                    if (errorObj is { Message: { Length: > 0 } msg })
-                                    {
-                                        return (false, null, msg);
-                                    }
-                                }
-                                catch (Exception)
-                                {
-                                    //подавление ошибки десериализации ответа ошибки api
-                                }
-                            }
-                            return (false, null, trimmed);
-                        }
-
-                        return (false, null, $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}");
+                        request.Content = JsonContent.Create(body, requestInfo);
                     }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+
+                    await PrepareRequestAsync(request, includeAuth).ConfigureAwait(false);
+                    using var response = await s_fallbackDirectDpi.Value.SendAsync(request, ct).ConfigureAwait(false);
+
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
                     {
-                        throw;
+                        NotifyUnauthorized();
+                        return (false, null, "Сессия истекла или устройство было удалено.");
                     }
-                    catch (Exception ex)
+
+                    if (response.IsSuccessStatusCode)
                     {
-                        lastEx = ex;
-                        AppLogger.LogError($"[API DIRECT DPI ERROR] {method} {relayIp} ({directHost}): {ex.Message}", ex);
+                        AppLogger.LogDebug($"[API-DPI] Request {method} {trimmedPath} succeeded via DPI bypass stream (IP {relayIp}, Host {directHost})");
+                        if (responseInfo is not null)
+                        {
+                            return (true, await response.Content.ReadFromJsonAsync(responseInfo, ct).ConfigureAwait(false), null);
+                        }
+                        return (true, null, null);
                     }
+
+                    var errorMsg = await ReadHttpErrorAsync(response, ct).ConfigureAwait(false);
+                    if (response.StatusCode == HttpStatusCode.Forbidden || (int)response.StatusCode >= 500)
+                    {
+                        lastHttpError = errorMsg;
+                        continue;
+                    }
+
+                    return (false, null, errorMsg);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or TaskCanceledException or AuthenticationException or JsonException or InvalidOperationException)
+                {
+                    lastEx = ex;
+                    AppLogger.LogError($"[API DIRECT DPI ERROR] {method} {relayIp} ({directHost}): {ex.Message}", ex);
                 }
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastHttpError))
+        {
+            return (false, null, lastHttpError);
         }
 
         var baseEx = lastEx?.GetBaseException();
         var message = baseEx is not null && baseEx != lastEx ? $"{lastEx!.Message} ({baseEx.Message})" : lastEx?.Message;
         return (false, null, message ?? "Не удалось связаться с сервером");
+    }
+
+    private static void NotifyUnauthorized()
+    {
+        try
+        {
+            PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки вызова события деавторизации в ui потоке
+        }
+    }
+
+    private static async ValueTask<string> ReadHttpErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var rawError = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(rawError))
+        {
+            var trimmed = rawError.Trim();
+            if (trimmed.StartsWith('{'))
+            {
+                try
+                {
+                    var errorObj = JsonSerializer.Deserialize(trimmed, AppJsonContext.Default.MessageResponse);
+                    if (errorObj is { Message: { Length: > 0 } msg })
+                    {
+                        return msg;
+                    }
+                }
+                catch (Exception ex) when (ex is JsonException or NotSupportedException)
+                {
+                    //подавление ошибки десериализации ответа ошибки api
+                }
+            }
+            return trimmed;
+        }
+
+        return $"Ошибка сервера {(int)response.StatusCode}: {response.ReasonPhrase}";
     }
 
     //отправка post запроса
@@ -733,7 +688,8 @@ public sealed class ApiService(HttpClient client)
 
         try
         {
-            using var rawClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3.5) };
+            using var rawHandler = CreateDefaultHandler();
+            using var rawClient = new HttpClient(rawHandler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(3.5) };
             foreach (var discoveryUrl in AppConfig.RemoteServersDiscoveryUrls)
             {
                 try
@@ -750,13 +706,13 @@ public sealed class ApiService(HttpClient client)
                         }
                     }
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException or JsonException or InvalidOperationException or AuthenticationException)
                 {
                     //подавление ошибки запроса к зеркалу обнаружения серверов
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException or JsonException or InvalidOperationException or AuthenticationException)
         {
             AppLogger.LogWarning($"[API-DISCOVERY] Remote discovery attempt failed: {ex.Message}");
         }
@@ -794,6 +750,18 @@ public sealed class ApiService(HttpClient client)
             "api/Vpn/telemetry",
             telemetry,
             AppJsonContext.Default.TelemetryDto,
+            includeAuth: false,
+            ct: ct).ConfigureAwait(false);
+        return success;
+    }
+
+    //отправка отчета об инциденте подключения через основной конвейер с обходом dpi
+    public async Task<bool> PostIncidentAsync(IncidentReportDto incident, CancellationToken ct = default)
+    {
+        var (success, _) = await PostAsync(
+            "api/Vpn/incident",
+            incident,
+            AppJsonContext.Default.IncidentReportDto,
             includeAuth: false,
             ct: ct).ConfigureAwait(false);
         return success;

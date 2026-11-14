@@ -52,29 +52,6 @@ public interface IMainThreadService
     public Task<T> InvokeOnMainThreadAsync<T>(Func<Task<T>> func);
 }
 
-//интерфейс служб геолокации
-public interface IGeolocationService
-{
-    public Task<Location?> GetLastKnownLocationAsync();
-    public Task<Location?> GetLocationAsync(GeolocationRequest request, CancellationToken cancellationToken = default);
-    public event EventHandler<GeolocationChangedEventArgs> LocationChanged;
-}
-
-//интерфейс буфера обмена
-public interface IClipboardService
-{
-    public Task<string?> GetTextAsync();
-    public Task SetTextAsync(string text);
-    public bool HasText { get; }
-}
-
-//интерфейс быстрых действий приложения
-public interface IAppActionsService
-{
-    public Task SetAsync(IEnumerable<AppAction> actions);
-    public event EventHandler<AppActionEventArgs> OnAction;
-}
-
 //интерфейс аудита корневых сертификатов устройства на предмет mitm перехвата
 public interface ICertificateAuditService
 {
@@ -107,15 +84,3 @@ public enum NetworkConnectionType { Unknown, Cellular, Wifi, Bluetooth, Ethernet
 public enum AppNetworkAccess { Unknown, None, Local, ConstrainedInternet, Internet }
 public enum AppDeviceIdiom { Unknown, Phone, Tablet, Desktop, TV, Watch, Car }
 public enum AppDeviceType { Unknown, Physical, Virtual }
-public sealed record Location(double Latitude, double Longitude, double? Altitude, double? Accuracy, DateTimeOffset Timestamp);
-public sealed record GeolocationRequest(GeolocationAccuracy Accuracy, TimeSpan Timeout);
-public enum GeolocationAccuracy { Lowest, Low, Medium, High, Best }
-public sealed class GeolocationChangedEventArgs(Location location) : EventArgs
-{
-    public Location Location { get; } = location;
-}
-public sealed record AppAction(string Id, string Title, string? Subtitle, string? Icon);
-public sealed class AppActionEventArgs(string actionId) : EventArgs
-{
-    public string ActionId { get; } = actionId;
-}

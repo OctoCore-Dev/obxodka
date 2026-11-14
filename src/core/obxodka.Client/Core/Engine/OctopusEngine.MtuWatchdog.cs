@@ -16,16 +16,6 @@ public sealed partial class OctopusEngine
     //планирование отложенного интеллектуального замера mtu
     public void ScheduleSmartMtuScan(int delayMs = 2500)
     {
-        try
-        {
-            _mtuScanCts?.Cancel();
-            _mtuScanCts?.Dispose();
-        }
-        catch (Exception)
-        {
-            //подавление ошибки отмены предыдущего токена сканирования
-        }
-
         var engineCts = _cts;
         if (engineCts is null || engineCts.IsCancellationRequested)
         {
@@ -33,7 +23,20 @@ public sealed partial class OctopusEngine
         }
 
         var scanCts = CancellationTokenSource.CreateLinkedTokenSource(engineCts.Token);
-        _mtuScanCts = scanCts;
+        var prevScanCts = Interlocked.Exchange(ref _mtuScanCts, scanCts);
+        if (prevScanCts is not null)
+        {
+            try
+            {
+                prevScanCts.Cancel();
+                prevScanCts.Dispose();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
+            {
+                //подавление ошибки отмены предыдущего токена сканирования
+            }
+        }
+
         var token = scanCts.Token;
 
         _ = Task.Run(async () =>
@@ -50,7 +53,7 @@ public sealed partial class OctopusEngine
                     _ = await ScanAndLockOptimalMtuAsync(token).ConfigureAwait(false);
                 }
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
             {
                 //подавление отмены задачи фонового замера mtu
             }
@@ -116,7 +119,6 @@ public sealed partial class OctopusEngine
                     //даже минимальный зонд 1200 байт завис после прокачки окна — признак блокировки тспу по объему байт
                     if (transport is ObxodkaStreamTransport && !ct.IsCancellationRequested)
                     {
-                        Volatile.Write(ref _isScanningMtu, 0);
                         if (await TryEscalateToShieldAsync("PostHandshakeMtuBurstFreeze", ct).ConfigureAwait(false))
                         {
                             return SmartMtuEngine.CurrentMtu;
@@ -284,8 +286,14 @@ public sealed partial class OctopusEngine
                     await Task.Delay(200, token).ConfigureAwait(false);
                 }
             }
-            catch (OperationCanceledException) { }
-            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException)
+            {
+                //ожидаемая остановка фонового сторожа mtu
+            }
+            catch (ObjectDisposedException)
+            {
+                //источник отмены освобожден при остановке движка
+            }
             finally
             {
                 OnPingUpdated -= OnPing;

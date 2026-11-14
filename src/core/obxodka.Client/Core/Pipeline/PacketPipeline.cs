@@ -78,19 +78,30 @@ public sealed class PacketPipeline(OctopusEngine engine)
                 var isDf = (inputBuf[6] & 0x40) != 0;
                 if (isDf && SmartMtuEngine.TryBuildIcmpFragmentationNeeded(span, length, currentMtu, out var icmpPkt, out var icmpLen))
                 {
-                    LocalDelivery?.Invoke(icmpPkt, icmpLen);
+                    try
+                    {
+                        LocalDelivery?.Invoke(icmpPkt, icmpLen);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(icmpPkt);
+                    }
                     ArrayPool<byte>.Shared.Return(inputBuf);
                     return;
                 }
             }
-            else if (version == 6)
+            else if (version == 6 && SmartMtuEngine.TryBuildIcmpPacketTooBig(span, length, currentMtu, out var icmp6Pkt, out var icmp6Len))
             {
-                if (SmartMtuEngine.TryBuildIcmpPacketTooBig(span, length, currentMtu, out var icmp6Pkt, out var icmp6Len))
+                try
                 {
                     LocalDelivery?.Invoke(icmp6Pkt, icmp6Len);
-                    ArrayPool<byte>.Shared.Return(inputBuf);
-                    return;
                 }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(icmp6Pkt);
+                }
+                ArrayPool<byte>.Shared.Return(inputBuf);
+                return;
             }
         }
 

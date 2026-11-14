@@ -63,7 +63,7 @@ public sealed partial class OctopusEngine
                     _serverIpv6Array = [.. v6List];
                 }
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is SocketException or ArgumentException or NotSupportedException)
             {
                 //подавление ошибки обновления адресов сервера
             }
@@ -153,7 +153,7 @@ public sealed partial class OctopusEngine
         {
             _clientCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is CryptographicException or FormatException or PlatformNotSupportedException or ArgumentException)
         {
             AppLogger.LogWarning($"[VPN] Обнаружен устаревший сертификат: {ex.Message}. Требуется повторная авторизация.");
             OnCertificateRevoked?.Invoke("Обнаружен устаревший сертификат. Пожалуйста, войдите снова.");
@@ -175,7 +175,7 @@ public sealed partial class OctopusEngine
         var strategy = SniEngine.ResolveTransportStrategy(
             serverIp,
             targetSni,
-            PlatformServices.Preferences.Get("ForceWebSocket", false));
+            PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false));
 
         if (strategy.ClearDynamicPinning)
         {
@@ -212,7 +212,6 @@ public sealed partial class OctopusEngine
             {
                 _ = Interlocked.Increment(ref _largeRxPackets);
             }
-            SmartMtuEngine.ClampTcpMss(pkt.AsSpan(0, len), SmartMtuEngine.CurrentMtu);
             OnProbePacketInspect?.Invoke(pkt, len);
             var handler = OnPacketReceived;
             if (handler is not null)
@@ -302,7 +301,7 @@ public sealed partial class OctopusEngine
                 {
                     await oldTransport.DisposeAsync().ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
                 {
                     //подавление ошибки закрытия предыдущего транспорта
                 }
@@ -312,7 +311,7 @@ public sealed partial class OctopusEngine
             ScheduleSmartMtuScan(1500);
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or WebSocketException or HttpRequestException or InvalidOperationException or CryptographicException or ObjectDisposedException)
         {
             AppLogger.LogWarning($"[OCTOPUS-SHIELD] Seamless escalation failed ({reason}): {ex.Message}");
             return false;
@@ -325,7 +324,7 @@ public sealed partial class OctopusEngine
                 {
                     await wsTransport.DisposeAsync().ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
                 {
                     //подавление ошибки закрытия резервного транспорта
                 }
@@ -369,34 +368,33 @@ public sealed partial class OctopusEngine
     {
         Volatile.Write(ref _watchdogArmedTicks, 0);
         _smoothedPing = 0;
-        try
+        var scanCts = Interlocked.Exchange(ref _mtuScanCts, null);
+        if (scanCts is not null)
         {
-            if (_mtuScanCts is not null)
+            try
             {
-                await _mtuScanCts.CancelAsync().ConfigureAwait(false);
-                _mtuScanCts.Dispose();
+                await scanCts.CancelAsync().ConfigureAwait(false);
+                scanCts.Dispose();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
+            {
+                //подавление ошибки отмены сканирования mtu при остановке
             }
         }
-        catch (Exception)
+
+        var engineCts = Interlocked.Exchange(ref _cts, null);
+        if (engineCts is not null)
         {
-            //подавление ошибки отмены сканирования mtu при остановке
+            await engineCts.CancelAsync().ConfigureAwait(false);
+            engineCts.Dispose();
         }
-        _mtuScanCts = null;
 
-        if (_cts is not null)
+        Interlocked.Exchange(ref _clientCert, null)?.Dispose();
+
+        var transport = Interlocked.Exchange(ref _transport, null);
+        if (transport is not null)
         {
-            await _cts.CancelAsync().ConfigureAwait(false);
-            _cts.Dispose();
-        }
-        _cts = null;
-
-        _clientCert?.Dispose();
-        _clientCert = null;
-
-        if (_transport is not null)
-        {
-            await _transport.DisposeAsync();
-            _transport = null;
+            await transport.DisposeAsync().ConfigureAwait(false);
         }
 
         GC.SuppressFinalize(this);
@@ -406,26 +404,30 @@ public sealed partial class OctopusEngine
     public void Dispose()
     {
         Volatile.Write(ref _watchdogArmedTicks, 0);
-        try
+        var scanCts = Interlocked.Exchange(ref _mtuScanCts, null);
+        if (scanCts is not null)
         {
-            _mtuScanCts?.Cancel();
-            _mtuScanCts?.Dispose();
+            try
+            {
+                scanCts.Cancel();
+                scanCts.Dispose();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
+            {
+                //подавление ошибки отмены токена сканирования mtu
+            }
         }
-        catch (Exception)
+
+        var engineCts = Interlocked.Exchange(ref _cts, null);
+        if (engineCts is not null)
         {
-            //подавление ошибки отмены токена сканирования mtu
+            engineCts.Cancel();
+            engineCts.Dispose();
         }
-        _mtuScanCts = null;
 
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = null;
+        Interlocked.Exchange(ref _clientCert, null)?.Dispose();
 
-        _clientCert?.Dispose();
-        _clientCert = null;
-
-        _transport?.Dispose();
-        _transport = null;
+        Interlocked.Exchange(ref _transport, null)?.Dispose();
 
         GC.SuppressFinalize(this);
     }

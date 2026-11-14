@@ -23,8 +23,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     }
 
     [SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
+    [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed", Justification = "Потокобезопасное освобождение выполняется через Interlocked.Exchange")]
     private IVpnTransport? _transport;
+    [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed", Justification = "Потокобезопасное освобождение выполняется через Interlocked.Exchange")]
     private X509Certificate2? _clientCert;
+    [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed", Justification = "Потокобезопасное освобождение выполняется через Interlocked.Exchange")]
     private CancellationTokenSource? _cts;
     private Action<Socket>? _protectAction;
     private int _isEscalatingToShield;
@@ -78,9 +81,6 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     //выделенный сервером ipv6 адрес клиента
     public string AssignedIpV6 { get; private set; } = "fd00::2";
 
-    //внешний wan ip адрес
-    public string? PublicWanIp { get; set; }
-
     //событие приема сетевого пакета из туннеля
     public event Action<byte[], int>? OnPacketReceived;
     private event Action<byte[], int>? OnProbePacketInspect;
@@ -126,7 +126,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public string ActiveProtocol { get; private set; } = "AUTO";
 
     //активное имя sni маскировки
-    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
+    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? string.Empty;
 
     //активный браузерный профиль маскировки tls (ssot)
     public TlsBrowserProfile ActiveBrowserProfile =>
@@ -161,42 +161,32 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     //обработка и сглаживание замера rtt пинга через фильтр экспоненциального скользящего среднего
     private void ReportPing(long rawRtt)
     {
-        if (rawRtt <= 0)
+        if (rawRtt < 0)
         {
             return;
         }
-        _ = Interlocked.Add(ref _totalBytesReceived, 9);
+        var effectiveRtt = Math.Max(1L, rawRtt);
         if (_smoothedPing <= 0)
         {
-            _smoothedPing = rawRtt;
+            _smoothedPing = effectiveRtt;
         }
-        else if (rawRtt < _smoothedPing)
+        else if (effectiveRtt < _smoothedPing)
         {
             var alpha = 0.55;
-            _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
+            _smoothedPing = (_smoothedPing * (1 - alpha)) + (effectiveRtt * alpha);
         }
         else
         {
-            var alpha = rawRtt > _smoothedPing * 1.5 ? 0.05 : 0.20;
-            _smoothedPing = (_smoothedPing * (1 - alpha)) + (rawRtt * alpha);
+            var alpha = effectiveRtt > _smoothedPing * 1.5 ? 0.05 : 0.20;
+            _smoothedPing = (_smoothedPing * (1 - alpha)) + (effectiveRtt * alpha);
         }
         OnPingUpdated?.Invoke((long)Math.Round(_smoothedPing));
     }
 
     //отправка синтезированного управляющего l3 пакета (icmp pmtud) обратно в локальный tun адаптер ос
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void DeliverLocalPacket(byte[] packet, int length)
-    {
-        var handler = OnPacketReceived;
-        if (handler is not null)
-        {
-            handler.Invoke(packet, length);
-        }
-        else
-        {
-            ArrayPool<byte>.Shared.Return(packet);
-        }
-    }
+    private void DeliverLocalPacket(byte[] packet, int length) =>
+        OnPacketReceived?.Invoke(packet, length);
 
     //отправка пакета напрямую из пула памяти через центральный конвейер обработки
     public void SendPacketFromPool(byte[] inputBuf, int length)

@@ -24,7 +24,7 @@ public sealed partial class ThemeStorageService
             baseDir += Path.DirectorySeparatorChar;
         }
 
-        var p = Path.GetFullPath(Path.Combine(baseDir, cleanRel.TrimStart('/', '\\')));
+        var p = Path.GetFullPath(Path.Join(baseDir, cleanRel.TrimStart('/', '\\')));
         return p.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase) && File.Exists(p) && ThemeValidator.ValidateAssetFile(p, out _)
             ? p
             : null;
@@ -116,31 +116,26 @@ public sealed partial class ThemeStorageService
             manifest.Apps.TryGetValue("obxodka", out var obxodkaEl) &&
             obxodkaEl.ValueKind == JsonValueKind.Object)
         {
-            if (obxodkaEl.TryGetProperty("sounds", out var appSounds) && appSounds.ValueKind == JsonValueKind.Object)
-            {
-                string[] soundKeys = ["connect", "disconnect", "click", "hover", "notification", "ambient"];
-                foreach (var key in soundKeys)
-                {
-                    if (appSounds.TryGetProperty(key, out var sProp) && sProp.ValueKind == JsonValueKind.String)
-                    {
-                        Add(sProp.GetString());
-                    }
-                }
-            }
-
-            if (obxodkaEl.TryGetProperty("vpnButton", out var appBtn) && appBtn.ValueKind == JsonValueKind.Object)
-            {
-                string[] btnKeys = ["idle", "connecting", "active", "error", "idleWebp", "connectingWebp", "activeWebp", "errorWebp"];
-                foreach (var key in btnKeys)
-                {
-                    if (appBtn.TryGetProperty(key, out var bProp) && bProp.ValueKind == JsonValueKind.String)
-                    {
-                        Add(bProp.GetString());
-                    }
-                }
-            }
+            AddSectionStrings(obxodkaEl, "sounds", ["connect", "disconnect", "click", "hover", "notification", "ambient"], Add);
+            AddSectionStrings(obxodkaEl, "vpnButton", ["idle", "connecting", "active", "error", "idleWebp", "connectingWebp", "activeWebp", "errorWebp"], Add);
         }
 
         return set;
+    }
+
+    //извлечение строковых путей ресурсов из секции json манифеста
+    private static void AddSectionStrings(JsonElement parent, string sectionName, string[] keys, Action<string?> add)
+    {
+        if (!parent.TryGetProperty(sectionName, out var section) || section.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        foreach (var val in keys
+            .Select(key => section.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() : null)
+            .Where(val => val is not null))
+        {
+            add(val);
+        }
     }
 }

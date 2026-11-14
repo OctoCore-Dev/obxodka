@@ -68,104 +68,107 @@ public sealed partial class ObxodkaStreamTransport
             //проверка лучей которые не завершили рукопожатие за отведенное время
             if (connTicks > 0 && ((nowTs - connTicks) * 1000.0 / Stopwatch.Frequency) > 8000)
             {
-                if (rx0 == 0 && rx1 > 0 && _rayCts[0] != null)
+                if (rx0 == 0 && rx1 > 0 && Volatile.Read(ref _rayCts[0]) is { } cts0)
                 {
                     AppLogger.LogWarning("[RAY-HEALTH] Ray #0 never completed handshake. Aborting to hop port.");
                     Volatile.Write(ref _lastRxTicks0, nowTs);
                     try
                     {
-                        if (_rayCts[0] is { } cts0)
-                        {
-                            await cts0.CancelAsync().ConfigureAwait(false);
-                        }
+                        await cts0.CancelAsync().ConfigureAwait(false);
                     }
-                    catch (Exception)
+                    catch (ObjectDisposedException)
                     {
                         //подавление ошибки отмены луча 0
                     }
                 }
-                else if (rx1 == 0 && rx0 > 0 && _rayCts[1] != null)
+                else if (rx1 == 0 && rx0 > 0 && Volatile.Read(ref _rayCts[1]) is { } cts1)
                 {
                     AppLogger.LogWarning("[RAY-HEALTH] Ray #1 never completed handshake. Aborting to hop port.");
                     Volatile.Write(ref _lastRxTicks1, nowTs);
                     try
                     {
-                        if (_rayCts[1] is { } cts1)
-                        {
-                            await cts1.CancelAsync().ConfigureAwait(false);
-                        }
+                        await cts1.CancelAsync().ConfigureAwait(false);
                     }
-                    catch (Exception)
+                    catch (ObjectDisposedException)
                     {
                         //подавление ошибки отмены луча 1
                     }
                 }
             }
 
-            //переключение трафика при зависании одного из активных лучей
-            if (rx0 > 0 && rx1 > 0 && activeRays > 1)
+            //переключение и восстановление активности рабочих лучей 0 и 1
+            if (rx0 > 0 && rx1 > 0)
             {
                 var silence0Ms = (nowTs - rx0) * 1000.0 / Stopwatch.Frequency;
                 var silence1Ms = (nowTs - rx1) * 1000.0 / Stopwatch.Frequency;
 
-                if (silence0Ms > 8000 && silence1Ms < 3000)
+                if (activeRays > 1)
                 {
-                    AppLogger.LogWarning($"[RAY-HEALTH] Ray #0 stalled (silence {silence0Ms:F0}ms). Aborting Ray #0 socket & shifting 100% traffic to Ray #1.");
-                    Volatile.Write(ref _activeRays, 1);
-                    Volatile.Write(ref _preferredRay, 1);
-                    Volatile.Write(ref _hasClearPreferredRay, 1);
-                    try
+                    if (silence0Ms > 8000 && silence1Ms < 3000)
                     {
-                        if (_rayCts[0] is { } cts0)
+                        _inspector.RecordProbeTimeout(0);
+                        AppLogger.LogWarning($"[RAY-HEALTH] Ray #0 stalled (silence {silence0Ms:F0}ms). Aborting Ray #0 socket & shifting 100% traffic to Ray #1.");
+                        Volatile.Write(ref _activeRays, 1);
+                        Volatile.Write(ref _preferredRay, 1);
+                        Volatile.Write(ref _hasClearPreferredRay, 1);
+                        try
                         {
-                            await cts0.CancelAsync().ConfigureAwait(false);
+                            if (Volatile.Read(ref _rayCts[0]) is { } cts0)
+                            {
+                                await cts0.CancelAsync().ConfigureAwait(false);
+                            }
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            //подавление ошибки сброса зависшего луча 0
+                        }
+                        while (_txChannels[0].TryDequeue(out var leftover))
+                        {
+                            if (!_txChannels[1].TryEnqueue(leftover.buffer, leftover.length))
+                            {
+                                ArrayPool<byte>.Shared.Return(leftover.buffer);
+                            }
                         }
                     }
-                    catch (Exception)
+                    else if (silence1Ms > 8000 && silence0Ms < 3000)
                     {
-                        //подавление ошибки сброса зависшего луча 0
-                    }
-                    while (_txChannels[0].TryDequeue(out var leftover))
-                    {
-                        if (!_txChannels[1].TryEnqueue(leftover.buffer, leftover.length))
+                        _inspector.RecordProbeTimeout(1);
+                        AppLogger.LogWarning($"[RAY-HEALTH] Ray #1 stalled (silence {silence1Ms:F0}ms). Aborting Ray #1 socket & shifting 100% traffic to Ray #0.");
+                        Volatile.Write(ref _activeRays, 1);
+                        Volatile.Write(ref _preferredRay, 0);
+                        Volatile.Write(ref _hasClearPreferredRay, 1);
+                        try
                         {
-                            ArrayPool<byte>.Shared.Return(leftover.buffer);
+                            if (Volatile.Read(ref _rayCts[1]) is { } cts1)
+                            {
+                                await cts1.CancelAsync().ConfigureAwait(false);
+                            }
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            //подавление ошибки сброса зависшего луча 1
+                        }
+                        while (_txChannels[1].TryDequeue(out var leftover))
+                        {
+                            if (!_txChannels[0].TryEnqueue(leftover.buffer, leftover.length))
+                            {
+                                ArrayPool<byte>.Shared.Return(leftover.buffer);
+                            }
                         }
                     }
                 }
-                else if (silence1Ms > 8000 && silence0Ms < 3000)
-                {
-                    AppLogger.LogWarning($"[RAY-HEALTH] Ray #1 stalled (silence {silence1Ms:F0}ms). Aborting Ray #1 socket & shifting 100% traffic to Ray #0.");
-                    Volatile.Write(ref _activeRays, 1);
-                    Volatile.Write(ref _preferredRay, 0);
-                    Volatile.Write(ref _hasClearPreferredRay, 1);
-                    try
-                    {
-                        if (_rayCts[1] is { } cts1)
-                        {
-                            await cts1.CancelAsync().ConfigureAwait(false);
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        //подавление ошибки сброса зависшего луча 1
-                    }
-                    while (_txChannels[1].TryDequeue(out var leftover))
-                    {
-                        if (!_txChannels[0].TryEnqueue(leftover.buffer, leftover.length))
-                        {
-                            ArrayPool<byte>.Shared.Return(leftover.buffer);
-                        }
-                    }
-                }
-                else if (silence0Ms < 3000 && silence1Ms < 3000 && activeRays < 2)
+                else if (silence0Ms < 3000 && silence1Ms < 3000)
                 {
                     Volatile.Write(ref _activeRays, 2);
+                    Volatile.Write(ref _hasClearPreferredRay, 0);
+                    activeRays = 2;
+                    AppLogger.Log("[RAY-HEALTH] Both Ray #0 and Ray #1 are healthy again. Restored activeRays = 2.");
                 }
             }
-            else if (activeRays <= 1)
+
+            if (activeRays <= 1)
             {
-                var pref = Volatile.Read(ref _preferredRay);
+                var pref = Volatile.Read(ref _preferredRay) == 1 ? 1 : 0;
                 var rxPref = pref == 0 ? rx0 : rx1;
                 if (rxPref > 0)
                 {
@@ -176,12 +179,12 @@ public sealed partial class ObxodkaStreamTransport
                         Volatile.Write(ref pref == 0 ? ref _lastRxTicks0 : ref _lastRxTicks1, nowTs);
                         try
                         {
-                            if (_rayCts[pref] is { } ctsPref)
+                            if (Volatile.Read(ref _rayCts[pref]) is { } ctsPref)
                             {
                                 await ctsPref.CancelAsync().ConfigureAwait(false);
                             }
                         }
-                        catch (Exception)
+                        catch (ObjectDisposedException)
                         {
                             //подавление ошибки отмены предпочтительного луча
                         }
@@ -190,32 +193,12 @@ public sealed partial class ObxodkaStreamTransport
             }
 
             //формирование маски живых лучей
-            byte rxAliveMask = 0;
-            if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 10000)
-            {
-                rxAliveMask |= 0x01;
-            }
-            if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < 10000)
-            {
-                rxAliveMask |= 0x02;
-            }
-            if (_inspector.IsRayAlive(2, nowTs, 10000))
-            {
-                rxAliveMask |= 0x04;
-            }
-            if (rxAliveMask == 0)
-            {
-                rxAliveMask = (byte)(1 << Volatile.Read(ref _preferredRay));
-            }
-            if (Volatile.Read(ref _hasClearPreferredRay) == 1)
-            {
-                rxAliveMask |= Volatile.Read(ref _preferredRay) == 0 ? (byte)0x10 : (byte)0x20;
-            }
+            var rxAliveMask = BuildRxAliveMask(nowTs, maxSilenceMs: 10000, includePreferredFlags: Volatile.Read(ref _hasClearPreferredRay) == 1);
 
             //отправка зондов пинга во все активные каналы
             for (var r = 0; r < Math.Min(activeRays, 3); r++)
             {
-                if (_rayCts[r] == null)
+                if (Volatile.Read(ref _rayCts[r]) == null)
                 {
                     continue;
                 }
@@ -297,36 +280,7 @@ public sealed partial class ObxodkaStreamTransport
     public Task SendPingProbeAsync()
     {
         var nowTs = Stopwatch.GetTimestamp();
-        var rx0 = Volatile.Read(ref _lastRxTicks0);
-        var rx1 = Volatile.Read(ref _lastRxTicks1);
-        var rx2 = Volatile.Read(ref _lastRxTicks2);
-        byte rxAliveMask = 0;
-        if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 3500)
-        {
-            rxAliveMask |= 0x01;
-        }
-        if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < 3500)
-        {
-            rxAliveMask |= 0x02;
-        }
-        if (rx2 > 0 && ((nowTs - rx2) * 1000.0 / Stopwatch.Frequency) < 3500)
-        {
-            rxAliveMask |= 0x04;
-        }
-        if ((rxAliveMask & 0x07) == 0)
-        {
-            rxAliveMask = (byte)(1 << Math.Clamp(Volatile.Read(ref _preferredRay), 0, 2));
-        }
-
-        var pref = Volatile.Read(ref _preferredRay);
-        if (pref == 0)
-        {
-            rxAliveMask |= 0x10;
-        }
-        else if (pref == 1)
-        {
-            rxAliveMask |= 0x20;
-        }
+        var rxAliveMask = BuildRxAliveMask(nowTs, maxSilenceMs: 3500, includePreferredFlags: true);
 
         var activeRaysCount = Volatile.Read(ref _activeRays);
         var raysToSend = Math.Min(_txChannels.Length, Math.Max(1, activeRaysCount));
@@ -349,41 +303,29 @@ public sealed partial class ObxodkaStreamTransport
     //проверка проходимости исходящего mtu заданного размера через активный луч
     public async Task<bool> ProbeMtuAsync(int size, CancellationToken ct)
     {
-        if (!IsConnected || _cts?.IsCancellationRequested == true)
+        if (!IsConnected || _cts?.IsCancellationRequested == true || size < 16)
         {
             return false;
         }
 
         var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var nowTs = Stopwatch.GetTimestamp();
-        _pendingMtuProbes[nowTs] = tcs;
+        var probeTs = Stopwatch.GetTimestamp();
+        while (!_pendingMtuProbes.TryAdd(probeTs, tcs))
+        {
+            probeTs++;
+        }
 
         var buf = ArrayPool<byte>.Shared.Rent(size);
         try
         {
             buf[0] = 0xAA;
             buf[1] = 0xBB;
-            BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(2, 8), nowTs);
+            BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(2, 8), probeTs);
 
-            var rx0 = Volatile.Read(ref _lastRxTicks0);
-            var rx1 = Volatile.Read(ref _lastRxTicks1);
-            byte rxAliveMask = 0;
-            if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < 3500)
-            {
-                rxAliveMask |= 0x01;
-            }
-            if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < 3500)
-            {
-                rxAliveMask |= 0x02;
-            }
-            if (rxAliveMask == 0)
-            {
-                rxAliveMask = (byte)(1 << Volatile.Read(ref _preferredRay));
-            }
-            buf[10] = rxAliveMask;
+            buf[10] = BuildRxAliveMask(Stopwatch.GetTimestamp(), maxSilenceMs: 3500, includePreferredFlags: true);
             RandomNumberGenerator.Fill(buf.AsSpan(11, size - 11));
 
-            var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Volatile.Read(ref _preferredRay);
+            var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Math.Clamp(Volatile.Read(ref _preferredRay), 0, 1);
             if (!_txChannels[targetRay].TryEnqueue(buf, size))
             {
                 ArrayPool<byte>.Shared.Return(buf);
@@ -395,12 +337,58 @@ public sealed partial class ObxodkaStreamTransport
             using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
 
             var returnedLen = await tcs.Task.ConfigureAwait(false);
+            if (returnedLen == 0 && !ct.IsCancellationRequested)
+            {
+                _inspector.RecordProbeTimeout(targetRay);
+            }
             return returnedLen >= size - 2;
         }
         finally
         {
-            _ = _pendingMtuProbes.TryRemove(nowTs, out _);
+            _ = _pendingMtuProbes.TryRemove(probeTs, out _);
         }
+    }
+
+    //сборка битовой маски живых лучей и флагов предпочтительного канала
+    private byte BuildRxAliveMask(long nowTs, double maxSilenceMs, bool includePreferredFlags)
+    {
+        var rx0 = Volatile.Read(ref _lastRxTicks0);
+        var rx1 = Volatile.Read(ref _lastRxTicks1);
+        var rx2 = Volatile.Read(ref _lastRxTicks2);
+        byte mask = 0;
+
+        if (rx0 > 0 && ((nowTs - rx0) * 1000.0 / Stopwatch.Frequency) < maxSilenceMs)
+        {
+            mask |= 0x01;
+        }
+        if (rx1 > 0 && ((nowTs - rx1) * 1000.0 / Stopwatch.Frequency) < maxSilenceMs)
+        {
+            mask |= 0x02;
+        }
+        if ((rx2 > 0 && ((nowTs - rx2) * 1000.0 / Stopwatch.Frequency) < maxSilenceMs) || _inspector.IsRayAlive(2, nowTs, maxSilenceMs))
+        {
+            mask |= 0x04;
+        }
+
+        var pref = Math.Clamp(Volatile.Read(ref _preferredRay), 0, 2);
+        if ((mask & 0x07) == 0)
+        {
+            mask = (byte)(1 << pref);
+        }
+
+        if (includePreferredFlags)
+        {
+            if (pref == 0)
+            {
+                mask |= 0x10;
+            }
+            else if (pref == 1)
+            {
+                mask |= 0x20;
+            }
+        }
+
+        return mask;
     }
 
     //сигнал корректного завершения соединения с отправкой кадра CmdDisconnect серверу
@@ -418,7 +406,7 @@ public sealed partial class ObxodkaStreamTransport
                 {
                     await Task.Delay(25).ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (OperationCanceledException)
                 {
                     //подавление ошибки паузы отправки сигнала отключения
                 }
@@ -452,7 +440,7 @@ public sealed partial class ObxodkaStreamTransport
         buf[0] = 0xEE;
         buf[1] = 0x77;
 
-        var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Volatile.Read(ref _preferredRay);
+        var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Math.Clamp(Volatile.Read(ref _preferredRay), 0, 1);
         if (!_txChannels[targetRay].TryEnqueue(buf, 2))
         {
             ArrayPool<byte>.Shared.Return(buf);
@@ -465,6 +453,7 @@ public sealed partial class ObxodkaStreamTransport
         }
         catch (OperationCanceledException)
         {
+            //штатная отмена замера пакетного mtu
         }
 
         lock (_receivedBurstMtus)
@@ -480,7 +469,7 @@ public sealed partial class ObxodkaStreamTransport
         buf[0] = 0xCC;
         buf[1] = 0xDD;
         BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(2, 2), (ushort)mtu);
-        var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Volatile.Read(ref _preferredRay);
+        var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Math.Clamp(Volatile.Read(ref _preferredRay), 0, 1);
         if (!_txChannels[targetRay].TryEnqueue(buf, 4))
         {
             ArrayPool<byte>.Shared.Return(buf);
@@ -502,15 +491,12 @@ public sealed partial class ObxodkaStreamTransport
         _cts?.Cancel();
         for (var i = 0; i < _txChannels.Length; i++)
         {
-            _txChannels[i].DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
             _txChannels[i].Dispose();
+            _txChannels[i].DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
         }
         _httpClient0?.Dispose();
-        _handler0?.Dispose();
         _httpClient1?.Dispose();
-        _handler1?.Dispose();
         _httpClient2?.Dispose();
-        _handler2?.Dispose();
         _inspector.Reset();
         _cts?.Dispose();
     }
@@ -525,22 +511,37 @@ public sealed partial class ObxodkaStreamTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
-        if (_cts != null)
+        var cts = Interlocked.Exchange(ref _cts, null);
+        if (cts != null)
         {
-            await _cts.CancelAsync().ConfigureAwait(false);
+            await cts.CancelAsync().ConfigureAwait(false);
+        }
+        var rayTasks = _activeRayTasks;
+        _activeRayTasks = [];
+        if (rayTasks.Length > 0)
+        {
+            try
+            {
+                await Task.WhenAll(rayTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                //ожидаемая отмена задач лучей при освобождении транспорта
+            }
+            catch (TimeoutException)
+            {
+                //таймаут ожидания остановки задач лучей при освобождении транспорта
+            }
         }
         for (var i = 0; i < _txChannels.Length; i++)
         {
-            _txChannels[i].DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
             _txChannels[i].Dispose();
+            _txChannels[i].DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
         }
         _httpClient0?.Dispose();
-        _handler0?.Dispose();
         _httpClient1?.Dispose();
-        _handler1?.Dispose();
         _httpClient2?.Dispose();
-        _handler2?.Dispose();
         _inspector.Reset();
-        _cts?.Dispose();
+        cts?.Dispose();
     }
 }

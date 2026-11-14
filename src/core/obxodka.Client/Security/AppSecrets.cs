@@ -13,40 +13,6 @@ public static class AppSecrets
         "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="
     ];
 
-    //пул sni доменов для маскировки tls clienthello
-    public static readonly string[] AllowedSniPool =
-    [
-        "login.live.com",
-        "update.code.visualstudio.com",
-        "teams.microsoft.com",
-        "client.wns.windows.com",
-        "dl.google.com",
-        "c.s-microsoft.com",
-        "www.microsoft.com",
-        "fonts.googleapis.com",
-        "login.microsoftonline.com",
-        "ajax.googleapis.com"
-    ];
-
-    //выбор случайного sni из пула
-    public static string GetRandomSni() =>
-        AllowedSniPool[RandomNumberGenerator.GetInt32(AllowedSniPool.Length)];
-
-    //список sni кандидатов для маршрутизации
-    public static List<string> GetCandidateSniList(int count = 8)
-    {
-        var result = new List<string>(count);
-        foreach (var sni in AllowedSniPool)
-        {
-            if (result.Count < count && !result.Contains(sni, StringComparer.OrdinalIgnoreCase))
-            {
-                result.Add(sni);
-            }
-        }
-
-        return result;
-    }
-
     //замаскированный секретный ключ xor от реверса
     private static readonly byte[] s_obfuscatedSecret =
     [
@@ -94,7 +60,7 @@ public static class AppSecrets
 
             return Encoding.UTF8.GetString(raw);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
             return endpoint;
         }
@@ -118,16 +84,5 @@ public static class AppSecrets
         }
 
         return Encoding.UTF8.GetString(decrypted);
-    }
-
-    //генерация hmac подписи для запросов к api
-    public static string GenerateStealthSignature(string endpoint, out string timestamp)
-    {
-        timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
-        var keyBytes = Encoding.UTF8.GetBytes(InternalPfxPassword);
-        var payloadBytes = Encoding.UTF8.GetBytes($"{timestamp}:{endpoint}");
-        Span<byte> hash = stackalloc byte[32];
-        _ = HMACSHA256.HashData(keyBytes, payloadBytes, hash);
-        return Convert.ToHexStringLower(hash[..12]);
     }
 }

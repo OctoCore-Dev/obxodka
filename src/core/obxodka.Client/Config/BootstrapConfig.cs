@@ -17,7 +17,7 @@ public static class BootstrapConfig
         try
         {
             string? json = null;
-            var localPath = Path.Combine(AppContext.BaseDirectory, "servers.json");
+            var localPath = Path.Join(AppContext.BaseDirectory, "servers.json");
             if (File.Exists(localPath))
             {
                 json = File.ReadAllText(localPath);
@@ -64,7 +64,7 @@ public static class BootstrapConfig
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or JsonException or FormatException or ArgumentException or NotSupportedException)
         {
             AppLogger.Log($"[BOOTSTRAP] Failed to load servers.json: {ex.Message}");
         }

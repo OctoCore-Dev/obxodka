@@ -160,6 +160,29 @@ public static class SniEngine
         return false;
     }
 
+    //единое определение режима щита, ssl-пиннинга и целевого sni для выбранного сервера
+    public static bool ConfigureServerSecurity(VpnServerDto server, out string targetSni)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        var isShield = string.Equals(server.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(server.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
+                       IsShieldEndpoint(server.Ip, server.Ip);
+
+        if (isShield)
+        {
+            OctopusEngine.DynamicSslPublicKeyHash = null;
+            targetSni = Uri.CheckHostName(server.Ip) == UriHostNameType.Dns ? server.Ip : AppConfig.PrimaryDomain;
+        }
+        else
+        {
+            OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(server.CertHash) ? server.CertHash : null;
+            targetSni = server.Ip;
+        }
+
+        return isShield;
+    }
+
     //определение режима транспорта и целевого sni перед запуском туннеля
     public static SniTransportStrategy ResolveTransportStrategy(string serverIp, string? targetSni, bool forceWebSocket)
     {

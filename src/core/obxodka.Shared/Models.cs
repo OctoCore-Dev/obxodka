@@ -96,19 +96,25 @@ public sealed record VpnServerDto(
     string[]? Mirrors = null)
 {
     public bool Equals(VpnServerDto? other) =>
-        ReferenceEquals(this, other) ||
-        (other is not null &&
-         Ip == other.Ip &&
-         Port == other.Port &&
-         Location == other.Location &&
-         IsOnline == other.IsOnline &&
-         LoadPercent == other.LoadPercent &&
-         CertHash == other.CertHash &&
-         Provider == other.Provider &&
-         Flag == other.Flag &&
-         Role == other.Role &&
-         ((Mirrors is null && other.Mirrors is null) ||
-          (Mirrors is not null && other.Mirrors is not null && Mirrors.AsSpan().SequenceEqual(other.Mirrors))));
+        other is not null &&
+        (ReferenceEquals(this, other) || EqualsCore(other));
+
+    private bool EqualsCore(VpnServerDto other) =>
+        Ip == other.Ip &&
+        Port == other.Port &&
+        Location == other.Location &&
+        IsOnline == other.IsOnline &&
+        LoadPercent == other.LoadPercent &&
+        CertHash == other.CertHash &&
+        Provider == other.Provider &&
+        Flag == other.Flag &&
+        Role == other.Role &&
+        MirrorsEqual(Mirrors, other.Mirrors);
+
+    private static bool MirrorsEqual(string[]? left, string[]? right) =>
+        left is null
+            ? right is null
+            : right is not null && left.AsSpan().SequenceEqual(right);
 
     public override int GetHashCode()
     {

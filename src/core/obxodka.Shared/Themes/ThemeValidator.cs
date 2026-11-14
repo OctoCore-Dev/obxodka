@@ -136,7 +136,7 @@ public static partial class ThemeValidator
             errorMessage = null;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException or NotSupportedException)
         {
             errorMessage = $"Error inspecting asset file '{fullPath}': {ex.Message}";
             return false;
@@ -497,7 +497,7 @@ public static partial class ThemeValidator
             var end = $"#{r2:X2}{g2:X2}{b2:X2}";
             return (start, end);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentOutOfRangeException)
         {
             return (baseHex, "#004578");
         }

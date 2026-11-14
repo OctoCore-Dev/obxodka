@@ -15,174 +15,180 @@ public static class CertificateValidator
             return false;
         }
 
-        X509Certificate2? ownedCert = null;
         try
         {
-            var cert2 = certificate as X509Certificate2 ?? (ownedCert = new X509Certificate2(certificate));
-
-            //проверка срока действия сертификата с запасом 1 день на рассинхронизацию часов
-            var nowUtc = DateTime.UtcNow;
-            var notBeforeUtc = cert2.NotBefore.ToUniversalTime();
-            var notAfterUtc = cert2.NotAfter.ToUniversalTime();
-
-            if (nowUtc < notBeforeUtc - TimeSpan.FromDays(1) || nowUtc > notAfterUtc)
+            if (certificate is X509Certificate2 cert2)
             {
-                return false;
+                return ValidateServerCertificateCore(cert2, chain, errors, dynamicPinningHash);
             }
 
-            //ожидаемый хэш открытого ключа
-            var expectedPin = dynamicPinningHash is not null
-                ? (string.IsNullOrWhiteSpace(dynamicPinningHash) ? null : dynamicPinningHash)
-                : OctopusEngine.DynamicSslPublicKeyHash;
+            using var ownedCert = new X509Certificate2(certificate);
+            return ValidateServerCertificateCore(ownedCert, chain, errors, dynamicPinningHash);
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NotSupportedException or ObjectDisposedException or InvalidOperationException)
+        {
+            AppLogger.LogError($"[CERT ERROR] Exception during certificate validation: {ex.Message}", ex);
+            return false;
+        }
+    }
 
-            var pubKey = cert2.GetPublicKey();
-            var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
-            AppLogger.Log($"[CERT] Validating server certificate: Subject='{cert2.Subject}', Thumbprint='{cert2.Thumbprint}', PubKeyHash='{hash}', NotAfter='{notAfterUtc:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
+    //внутренняя логика проверки сертификата и цепочки доверия
+    private static bool ValidateServerCertificateCore(
+        X509Certificate2 cert2,
+        X509Chain? chain,
+        SslPolicyErrors errors,
+        string? dynamicPinningHash)
+    {
+        //проверка срока действия сертификата с запасом 1 день на рассинхронизацию часов
+        var nowUtc = DateTime.UtcNow;
+        var notBeforeUtc = cert2.NotBefore.ToUniversalTime();
+        var notAfterUtc = cert2.NotAfter.ToUniversalTime();
 
-            //сверка с ожидаемым пином
-            if (!string.IsNullOrWhiteSpace(expectedPin))
+        if (nowUtc < notBeforeUtc - TimeSpan.FromDays(1) || nowUtc > notAfterUtc)
+        {
+            return false;
+        }
+
+        //ожидаемый хэш открытого ключа
+        var expectedPin = dynamicPinningHash is not null
+            ? (string.IsNullOrWhiteSpace(dynamicPinningHash) ? null : dynamicPinningHash)
+            : OctopusEngine.DynamicSslPublicKeyHash;
+
+        var pubKey = cert2.GetPublicKey();
+        var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
+        AppLogger.Log($"[CERT] Validating server certificate: Subject='{cert2.Subject}', Thumbprint='{cert2.Thumbprint}', PubKeyHash='{hash}', NotAfter='{notAfterUtc:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
+
+        //сверка с ожидаемым пином
+        if (!string.IsNullOrWhiteSpace(expectedPin))
+        {
+            if (string.Equals(hash, expectedPin, StringComparison.Ordinal))
             {
-                if (string.Equals(hash, expectedPin, StringComparison.Ordinal))
+                AppLogger.Log($"[CERT OK] Matched dynamic public key hash '{expectedPin}'");
+                return true;
+            }
+
+            using var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey();
+            if (key is not null)
+            {
+                var spkiHash = Convert.ToBase64String(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
+                if (string.Equals(spkiHash, expectedPin, StringComparison.Ordinal))
                 {
-                    AppLogger.Log($"[CERT OK] Matched dynamic public key hash '{expectedPin}'");
+                    AppLogger.Log($"[CERT OK] Matched SPKI public key hash '{expectedPin}'");
                     return true;
                 }
-
-                using var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey();
-                if (key is not null)
-                {
-                    var spkiHash = Convert.ToBase64String(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
-                    if (string.Equals(spkiHash, expectedPin, StringComparison.Ordinal))
-                    {
-                        AppLogger.Log($"[CERT OK] Matched SPKI public key hash '{expectedPin}'");
-                        return true;
-                    }
-                }
-
-                if (string.Equals(cert2.Thumbprint, expectedPin, StringComparison.OrdinalIgnoreCase))
-                {
-                    AppLogger.Log($"[CERT OK] Matched thumbprint '{expectedPin}'");
-                    return true;
-                }
             }
 
-            //сверка с резервными зашитыми ключами
-            foreach (var backupHash in AppSecrets.BackupPublicKeyHashes)
+            if (string.Equals(cert2.Thumbprint, expectedPin, StringComparison.OrdinalIgnoreCase))
             {
-                if (string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase) || string.Equals(hash, backupHash, StringComparison.Ordinal))
-                {
-                    AppLogger.Log($"[CERT OK] Matched hardcoded backup thumbprint '{backupHash}'");
-                    return true;
-                }
+                AppLogger.Log($"[CERT OK] Matched thumbprint '{expectedPin}'");
+                return true;
             }
+        }
 
-            //проверка принадлежности сертификата доверенным доменам обходки
-            var isTrustedDomain = IsTrustedObxodkaCertificate(cert2);
-
-            if (isTrustedDomain)
+        //сверка с резервными зашитыми ключами
+        foreach (var backupHash in AppSecrets.BackupPublicKeyHashes)
+        {
+            if (string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase) || string.Equals(hash, backupHash, StringComparison.Ordinal))
             {
-                var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
-                if (nonNameErrors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors)
-                {
-                    using var verifyChain = new X509Chain();
-                    verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                    verifyChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
-                                                               X509VerificationFlags.IgnoreInvalidBasicConstraints;
-                    if (chain is not null)
-                    {
-                        foreach (var elem in chain.ChainElements)
-                        {
-                            _ = verifyChain.ChainPolicy.ExtraStore.Add(elem.Certificate);
-                        }
-                    }
-
-                    if (verifyChain.Build(cert2))
-                    {
-                        AppLogger.Log("[CERT OK] Trusted domain chain verified successfully.");
-                        return true;
-                    }
-
-                    if (chain is not null)
-                    {
-                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
-                                                              X509VerificationFlags.IgnoreInvalidBasicConstraints;
-                        if (chain.Build(cert2))
-                        {
-                            AppLogger.Log("[CERT OK] Trusted domain passed via outer chain.");
-                            return true;
-                        }
-
-                        //толерантность к устаревшим кросс-подписанным корням на мобильных платформах
-                        var onlyLegacyRootStatus = chain.ChainStatus.All(s =>
-                            s.Status is X509ChainStatusFlags.NoError or
-                                        X509ChainStatusFlags.NotTimeValid or
-                                        X509ChainStatusFlags.UntrustedRoot);
-                        if (onlyLegacyRootStatus && chain.ChainElements.Count > 1)
-                        {
-                            AppLogger.Log("[CERT OK] Trusted domain passed with tolerated legacy root chain status.");
-                            return true;
-                        }
-                    }
-                }
+                AppLogger.Log($"[CERT OK] Matched hardcoded backup thumbprint '{backupHash}'");
+                return true;
             }
+        }
 
-            //если пиннинг был включен но ни один ключ не совпал отклоняем соединение
-            if (!string.IsNullOrWhiteSpace(expectedPin))
-            {
-                AppLogger.LogError($"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
-                return false;
-            }
+        //если пиннинг был включен но ни один ключ не совпал отклоняем соединение до проверки доменного корня
+        if (!string.IsNullOrWhiteSpace(expectedPin))
+        {
+            AppLogger.LogError($"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
+            return false;
+        }
 
-            //базовая проверка системного корневого центра сертификации для внешних запросов
-            if (errors == SslPolicyErrors.None && string.IsNullOrWhiteSpace(expectedPin))
+        //проверка принадлежности сертификата доверенным доменам обходки
+        var isTrustedDomain = IsTrustedObxodkaCertificate(cert2);
+
+        if (isTrustedDomain)
+        {
+            var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
+            if (nonNameErrors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors)
             {
                 using var verifyChain = new X509Chain();
                 verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                verifyChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
+                                                           X509VerificationFlags.IgnoreInvalidBasicConstraints;
+                if (chain is not null)
+                {
+                    foreach (var elem in chain.ChainElements)
+                    {
+                        _ = verifyChain.ChainPolicy.ExtraStore.Add(elem.Certificate);
+                    }
+                }
+
                 if (verifyChain.Build(cert2))
                 {
-                    AppLogger.Log("[CERT OK] Default system root CA chain verified.");
+                    AppLogger.Log("[CERT OK] Trusted domain chain verified successfully.");
                     return true;
                 }
 
                 if (chain is not null)
                 {
                     chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
+                                                          X509VerificationFlags.IgnoreInvalidBasicConstraints;
                     if (chain.Build(cert2))
                     {
-                        AppLogger.Log("[CERT OK] Default outer chain verified.");
+                        AppLogger.Log("[CERT OK] Trusted domain passed via outer chain.");
+                        return true;
+                    }
+
+                    //толерантность к устаревшим кросс-подписанным корням на мобильных платформах
+                    var onlyLegacyRootStatus = chain.ChainStatus.All(s =>
+                        s.Status is X509ChainStatusFlags.NoError or
+                                    X509ChainStatusFlags.NotTimeValid or
+                                    X509ChainStatusFlags.UntrustedRoot);
+                    if (onlyLegacyRootStatus && chain.ChainElements.Count > 1)
+                    {
+                        AppLogger.Log("[CERT OK] Trusted domain passed with tolerated legacy root chain status.");
                         return true;
                     }
                 }
             }
+        }
 
-            AppLogger.LogError($"[CERT REJECTED] Server certificate did not match trusted pins or trusted root CA. Errors: '{errors}'");
-            return false;
-        }
-        catch (Exception ex)
+        //базовая проверка системного корневого центра сертификации для внешних запросов
+        if (errors == SslPolicyErrors.None)
         {
-            AppLogger.LogError($"[CERT ERROR] Exception during certificate validation: {ex.Message}", ex);
-            return false;
+            using var verifyChain = new X509Chain();
+            verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            if (verifyChain.Build(cert2))
+            {
+                AppLogger.Log("[CERT OK] Default system root CA chain verified.");
+                return true;
+            }
+
+            if (chain is not null)
+            {
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                if (chain.Build(cert2))
+                {
+                    AppLogger.Log("[CERT OK] Default outer chain verified.");
+                    return true;
+                }
+            }
         }
-        finally
-        {
-            ownedCert?.Dispose();
-        }
+
+        AppLogger.LogError($"[CERT REJECTED] Server certificate did not match trusted pins or trusted root CA. Errors: '{errors}'");
+        return false;
     }
 
     //проверка наличия доменов обходки в san сертификата
     private static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
     {
-        foreach (var ext in cert2.Extensions)
+        foreach (var sanExt in cert2.Extensions.OfType<X509SubjectAlternativeNameExtension>())
         {
-            if (ext is X509SubjectAlternativeNameExtension sanExt)
+            foreach (var dns in sanExt.EnumerateDnsNames())
             {
-                foreach (var dns in sanExt.EnumerateDnsNames())
+                if (IsTrustedHostName(dns))
                 {
-                    if (IsTrustedHostName(dns))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }

@@ -13,19 +13,19 @@ public sealed partial class ThemeStorageService
             return (false, "Поток архива темы пуст.", null);
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "obxodka_theme_import_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Join(Path.GetTempPath(), "obxodka_theme_import_" + Guid.NewGuid().ToString("N"));
         try
         {
             await SafeThemeExtractor.ExtractZipSafelyAsync(zipStream, tempDir, ct).ConfigureAwait(false);
 
             var sourceThemeDir = tempDir;
-            var manifestPath = Path.Combine(tempDir, "theme.json");
+            var manifestPath = Path.Join(tempDir, "theme.json");
             if (!File.Exists(manifestPath))
             {
                 var subDirs = Directory.GetDirectories(tempDir);
                 foreach (var subDir in subDirs)
                 {
-                    var candidate = Path.Combine(subDir, "theme.json");
+                    var candidate = Path.Join(subDir, "theme.json");
                     if (File.Exists(candidate))
                     {
                         sourceThemeDir = subDir;
@@ -57,7 +57,7 @@ public sealed partial class ThemeStorageService
                 }
             }
 
-            var targetDir = Path.Combine(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
+            var targetDir = Path.Join(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
             if (Directory.Exists(targetDir))
             {
                 Directory.Delete(targetDir, true);
@@ -72,7 +72,7 @@ public sealed partial class ThemeStorageService
                     return (false, $"Недопустимый относительный путь файла: '{relPath}'", null);
                 }
 
-                var destFile = Path.Combine(targetDir, relPath.TrimStart('/', '\\'));
+                var destFile = Path.Join(targetDir, relPath.TrimStart('/', '\\'));
                 var destParent = Path.GetDirectoryName(destFile);
                 if (!string.IsNullOrEmpty(destParent))
                 {
@@ -84,7 +84,7 @@ public sealed partial class ThemeStorageService
 
             return (true, null, manifest);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or InvalidDataException or JsonException or OperationCanceledException or NotSupportedException or ArgumentException)
         {
             LastError = ex.Message;
             return (false, ex.Message, null);
@@ -97,7 +97,7 @@ public sealed partial class ThemeStorageService
                 {
                     Directory.Delete(tempDir, true);
                 }
-                catch
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
                 {
                     //подавление ошибок удаления временной директории
                 }

@@ -168,7 +168,7 @@ public static class RoutingHello
                 ArrayPool<byte>.Shared.Return(rx);
             }
         }
-        catch
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or IOException)
         {
             return false;
         }
@@ -276,21 +276,32 @@ public static class RoutingHello
         var ua = userAgent ?? string.Empty;
         var ch = secChUa ?? string.Empty;
 
-        return ch.Contains("Microsoft Edge", StringComparison.OrdinalIgnoreCase) ||
-            ua.Contains(" Edg/", StringComparison.OrdinalIgnoreCase)
-            ? TlsBrowserProfile.Edge
-            : ch.Contains("Yandex", StringComparison.OrdinalIgnoreCase) ||
-            ua.Contains("YaBrowser/", StringComparison.OrdinalIgnoreCase)
-            ? TlsBrowserProfile.Yandex
-            : ch.Contains("Opera", StringComparison.OrdinalIgnoreCase) ||
-            ua.Contains(" OPR/", StringComparison.OrdinalIgnoreCase)
-            ? TlsBrowserProfile.Opera
-            : ua.Contains("Firefox/", StringComparison.OrdinalIgnoreCase)
-            ? TlsBrowserProfile.Firefox
-            : (ua.Contains("Safari/", StringComparison.OrdinalIgnoreCase) &&
-                !ua.Contains("Chrome/", StringComparison.OrdinalIgnoreCase) &&
-                !ua.Contains("Chromium/", StringComparison.OrdinalIgnoreCase))
-            ? ((ua.Contains("iPhone", StringComparison.OrdinalIgnoreCase) || ua.Contains("iPad", StringComparison.OrdinalIgnoreCase))
+        if (ch.Contains("Microsoft Edge", StringComparison.OrdinalIgnoreCase) || ua.Contains(" Edg/", StringComparison.OrdinalIgnoreCase))
+        {
+            return TlsBrowserProfile.Edge;
+        }
+
+        if (ch.Contains("Yandex", StringComparison.OrdinalIgnoreCase) || ua.Contains("YaBrowser/", StringComparison.OrdinalIgnoreCase))
+        {
+            return TlsBrowserProfile.Yandex;
+        }
+
+        if (ch.Contains("Opera", StringComparison.OrdinalIgnoreCase) || ua.Contains(" OPR/", StringComparison.OrdinalIgnoreCase))
+        {
+            return TlsBrowserProfile.Opera;
+        }
+
+        if (ua.Contains("Firefox/", StringComparison.OrdinalIgnoreCase))
+        {
+            return TlsBrowserProfile.Firefox;
+        }
+
+        var isSafari = ua.Contains("Safari/", StringComparison.OrdinalIgnoreCase) &&
+                       !ua.Contains("Chrome/", StringComparison.OrdinalIgnoreCase) &&
+                       !ua.Contains("Chromium/", StringComparison.OrdinalIgnoreCase);
+
+        return isSafari
+            ? (ua.Contains("iPhone", StringComparison.OrdinalIgnoreCase) || ua.Contains("iPad", StringComparison.OrdinalIgnoreCase)
                 ? TlsBrowserProfile.SafariIos
                 : TlsBrowserProfile.SafariMac)
             : TlsBrowserProfile.Chrome;

@@ -20,7 +20,7 @@ public sealed partial class ThemeStorageService
 
     //получение стандартной директории тем в данных приложения
     public static string GetDefaultThemesDirectory() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "themes");
+        Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "themes");
 
     //получение списка всех корректно установленных тем
     public List<ThemeManifest> GetInstalledThemes()
@@ -31,14 +31,10 @@ public sealed partial class ThemeStorageService
             return list;
         }
 
-        foreach (var dir in Directory.GetDirectories(ThemesDirectory))
+        foreach (var manifestPath in Directory.GetDirectories(ThemesDirectory)
+            .Select(dir => Path.Join(dir, "theme.json"))
+            .Where(File.Exists))
         {
-            var manifestPath = Path.Combine(dir, "theme.json");
-            if (!File.Exists(manifestPath))
-            {
-                continue;
-            }
-
             try
             {
                 var json = File.ReadAllText(manifestPath);
@@ -48,9 +44,17 @@ public sealed partial class ThemeStorageService
                     list.Add(manifest);
                 }
             }
-            catch
+            catch (IOException)
             {
-                //битый манифест пропускаем
+                //битый или недоступный манифест пропускаем
+            }
+            catch (UnauthorizedAccessException)
+            {
+                //нет доступа к манифесту
+            }
+            catch (JsonException)
+            {
+                //поврежденный json манифеста пропускаем
             }
         }
 
@@ -65,8 +69,8 @@ public sealed partial class ThemeStorageService
             return false;
         }
 
-        var targetDir = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'));
-        return File.Exists(Path.Combine(targetDir, "theme.json"));
+        var targetDir = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'));
+        return File.Exists(Path.Join(targetDir, "theme.json"));
     }
 
     //чтение локальной версии установленной темы
@@ -77,7 +81,7 @@ public sealed partial class ThemeStorageService
             return null;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
+        var manifestPath = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
         if (!File.Exists(manifestPath))
         {
             return null;
@@ -89,7 +93,15 @@ public sealed partial class ThemeStorageService
             var manifest = JsonSerializer.Deserialize(json, ThemeJsonContext.Default.ThemeManifest);
             return manifest?.Version;
         }
-        catch
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+        catch (JsonException)
         {
             return null;
         }
@@ -112,7 +124,7 @@ public sealed partial class ThemeStorageService
 
         try
         {
-            var targetDir = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'));
+            var targetDir = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'));
             if (Directory.Exists(targetDir))
             {
                 Directory.Delete(targetDir, true);
@@ -120,7 +132,7 @@ public sealed partial class ThemeStorageService
 
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
         {
             LastError = ex.Message;
             return false;

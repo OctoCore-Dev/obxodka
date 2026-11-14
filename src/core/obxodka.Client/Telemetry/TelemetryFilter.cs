@@ -13,9 +13,8 @@ public static class TelemetryFilter
     {
         try
         {
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var name in AppDomain.CurrentDomain.GetAssemblies().Select(asm => asm.GetName().Name))
             {
-                var name = asm.GetName().Name;
                 if (name is not null &&
                     (name.StartsWith("xunit.", StringComparison.OrdinalIgnoreCase) ||
                      name.StartsWith("testhost", StringComparison.OrdinalIgnoreCase) ||
@@ -26,9 +25,13 @@ public static class TelemetryFilter
                 }
             }
         }
-        catch (Exception)
+        catch (AppDomainUnloadedException)
         {
-            //подавление ошибки инспекции сборок текущего домена
+            //игнорируем выгрузку домена при проверке тестовых сборок
+        }
+        catch (InvalidOperationException)
+        {
+            //игнорируем ошибку инспекции сборок текущего домена
         }
 
         return false;
