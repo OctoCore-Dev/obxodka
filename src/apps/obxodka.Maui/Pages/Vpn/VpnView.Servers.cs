@@ -488,6 +488,9 @@ public sealed partial class VpnView
         });
     }
 
+    //признак выполняющегося горячего переключения сервера
+    private bool _isHotSwapping;
+
     //бесшовное переключение сервера на лету без полного разрыва
     private async Task SwitchServerHotSwapAsync(VpnServerDto newServer)
     {
@@ -497,6 +500,7 @@ public sealed partial class VpnView
         }
 
         _isBusy = true;
+        _isHotSwapping = true;
         try
         {
             StartLoaderAnimation();
@@ -513,25 +517,8 @@ public sealed partial class VpnView
             var orderedCandidates = new List<VpnServerDto> { newServer };
             orderedCandidates.AddRange(_cachedServers.Where(s => s.Ip != newServer.Ip));
 
-            var isShieldNode = string.Equals(newServer.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(newServer.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(newServer.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                               newServer.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
-
-            if (isShieldNode)
-            {
-                OctopusEngine.DynamicSslPublicKeyHash = null;
-                UpdateActiveNode(newServer.Ip);
-            }
-            else if (!string.IsNullOrWhiteSpace(newServer.CertHash))
-            {
-                OctopusEngine.DynamicSslPublicKeyHash = newServer.CertHash;
-                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
-            }
-            else
-            {
-                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
-            }
+            _ = SniEngine.ConfigureServerSecurity(newServer, out _);
+            UpdateActiveNode(newServer.Ip);
 
             AppLogger.Log($"[HOT-SWAP] Seamlessly switching to server: {newServer.Location} ({newServer.Ip}:{newServer.Port})");
             await Task.Run(async () => await _vpnService.StartVpnAsync(newServer.Ip, newServer.Port, orderedCandidates));
@@ -554,6 +541,7 @@ public sealed partial class VpnView
         }
         finally
         {
+            _isHotSwapping = false;
             _isBusy = false;
         }
     }

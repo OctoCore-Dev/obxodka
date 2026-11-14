@@ -225,7 +225,6 @@ public sealed partial class VpnView
             LoaderCanvas?.InvalidateSurface();
             OuterAura?.InvalidateSurface();
             TrafficGraphCanvas?.InvalidateSurface();
-            UpdateRayIndicator();
 
             UpdateCardOpacity();
             PopulateServerList();

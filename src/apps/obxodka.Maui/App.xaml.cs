@@ -163,9 +163,9 @@ internal sealed partial class App : Application
             }
 
             await Shell.Current.GoToAsync("//main");
-            if (Shell.Current.CurrentPage is MainPage)
+            if (Shell.Current.CurrentPage is MainPage mp)
             {
-                PendingTileAction = false;
+                mp.HandlePendingTileAction();
             }
         });
     }

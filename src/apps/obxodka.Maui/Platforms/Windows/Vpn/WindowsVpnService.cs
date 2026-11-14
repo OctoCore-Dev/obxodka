@@ -28,6 +28,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     private int _isHandlingDrop;
     private string _currentAssignedIp = "";
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
+    private readonly Action<string> _statusMessageHandler;
+    private readonly Action<string> _certRevokedHandler;
+    private readonly Action<long, long> _trafficUpdatedHandler;
+    private readonly EventHandler _processExitHandler;
+    private long _lastTrafficSent;
+    private long _lastTrafficReceived;
+    private long _lastTrafficTicks;
     public static SplitTunnelPolicy SplitTunnelPolicy => WindowsSplitTunnelEngine.Policy;
 
     public WindowsVpnService()
@@ -36,9 +43,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.ProtectTransportSockets(BindSocketToPhysicalAdapter);
         ObxodkaStreamTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
         ObxodkaWebSocketTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
-        OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
-        _ = Task.Run(CleanupStaleRoutesAsync);
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+
+        _statusMessageHandler = msg => OnLogUpdated?.Invoke(msg);
+        _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
+        _trafficUpdatedHandler = HandleEngineTrafficUpdated;
+        _processExitHandler = (_, _) =>
         {
             try
             {
@@ -46,7 +55,13 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
             }
             catch { }
         };
-        OctopusEngine.OnCertificateRevoked += msg => OnForceLogoutRequested?.Invoke(msg);
+
+        OctopusEngine.Current.OnStatusMessage += _statusMessageHandler;
+        _ = Task.Run(CleanupStaleRoutesAsync);
+        AppDomain.CurrentDomain.ProcessExit += _processExitHandler;
+        OctopusEngine.OnCertificateRevoked += _certRevokedHandler;
+        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
+        OctopusEngine.Current.OnTrafficUpdated += _trafficUpdatedHandler;
         OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
         OctopusEngine.Current.OnMtuUpdated += HandleMtuUpdated;
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
@@ -57,6 +72,29 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
         OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
         OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
+    }
+
+    //трансляция счетчиков трафика ядра в событие интерфейса vpn сервиса
+    private void HandleEngineTrafficUpdated(long sentBytes, long receivedBytes)
+    {
+        var nowTicks = Environment.TickCount64;
+        var prevTicks = Interlocked.Exchange(ref _lastTrafficTicks, nowTicks);
+        var prevSent = Interlocked.Exchange(ref _lastTrafficSent, sentBytes);
+        var prevReceived = Interlocked.Exchange(ref _lastTrafficReceived, receivedBytes);
+
+        if (prevTicks <= 0 || nowTicks <= prevTicks)
+        {
+            return;
+        }
+
+        var elapsedSec = (nowTicks - prevTicks) / 1000.0;
+        var upBps = sentBytes >= prevSent ? (long)((sentBytes - prevSent) / elapsedSec) : 0;
+        var downBps = receivedBytes >= prevReceived ? (long)((receivedBytes - prevReceived) / elapsedSec) : 0;
+        OnTrafficUpdated?.Invoke(new AppTrafficStats
+        {
+            UploadSpeedBps = upBps,
+            DownloadSpeedBps = downBps
+        });
     }
 
     //обновление внутреннего состояния vpn сервиса
@@ -126,6 +164,11 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
     //освобождение ресурсов vpn сервиса
     public void Dispose()
     {
+        AppDomain.CurrentDomain.ProcessExit -= _processExitHandler;
+        OctopusEngine.Current.OnStatusMessage -= _statusMessageHandler;
+        OctopusEngine.OnCertificateRevoked -= _certRevokedHandler;
+        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
+        OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
         OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;

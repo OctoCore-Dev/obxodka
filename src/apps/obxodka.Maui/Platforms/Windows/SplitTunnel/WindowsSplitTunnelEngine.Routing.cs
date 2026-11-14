@@ -64,6 +64,8 @@ internal static partial class WindowsSplitTunnelEngine
 
             var stillValid = customIps.Contains(ipStr) ||
                             customIps.Contains(reason) ||
+                            (policy.BypassAllRuTlds && (reason.StartsWith("Auto-Bypass RU", StringComparison.Ordinal) || reason == "Tier-1 RU Supernet")) ||
+                            (policy.BypassRemoteManagement && reason == "Сессия удалённого доступа") ||
                             (reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsProcessBypassed(reason, reason)) ||
                             (!reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsDomainBypassed(reason));
 
@@ -140,16 +142,14 @@ internal static partial class WindowsSplitTunnelEngine
             }
         }
 
-        s_pinnedRoutes[destIpNetworkOrder] = row;
+        if (status == 0)
+        {
+            s_pinnedRoutes[destIpNetworkOrder] = row;
+        }
 
         Span<byte> ipBytes = stackalloc byte[4];
         MemoryMarshal.Write(ipBytes, in destIpNetworkOrder);
         var ipStr = new IPAddress(ipBytes).ToString();
-        Policy.RecordBypassRoute(ipStr, reason);
-        if (notify)
-        {
-            NotifyRoutesUpdatedAsync();
-        }
 
         //fallback через команду route add если прямой вызов win32 вернул ошибку
         if (status != 0)
@@ -171,9 +171,32 @@ internal static partial class WindowsSplitTunnelEngine
                         UseShellExecute = false
                     });
                     _ = p?.WaitForExit(1500);
+                    if (p?.ExitCode == 0)
+                    {
+                        s_pinnedRoutes[destIpNetworkOrder] = row;
+                        Policy.RecordBypassRoute(ipStr, reason);
+                        if (notify)
+                        {
+                            NotifyRoutesUpdatedAsync();
+                        }
+                    }
+                    else
+                    {
+                        _ = s_routeReasons.TryRemove(destIpNetworkOrder, out _);
+                    }
                 }
-                catch { }
+                catch
+                {
+                    _ = s_routeReasons.TryRemove(destIpNetworkOrder, out _);
+                }
             });
+            return;
+        }
+
+        Policy.RecordBypassRoute(ipStr, reason);
+        if (notify)
+        {
+            NotifyRoutesUpdatedAsync();
         }
     }
 

@@ -435,10 +435,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
                 {
                     await SwitchToAppAfterAuthAsync();
-                    if (App.PendingTileAction)
-                    {
-                        App.PendingTileAction = false;
-                    }
+                    HandlePendingTileAction();
                 }
                 else
                 {
@@ -512,6 +509,18 @@ public sealed partial class MainPage : ContentPage, IDisposable
         });
 
         await SyncBalanceFromServerAsync(session);
+    }
+
+    //обработка отложенного нажатия системной плитки быстрого доступа
+    public void HandlePendingTileAction()
+    {
+        if (!App.PendingTileAction)
+        {
+            return;
+        }
+
+        App.PendingTileAction = false;
+        TabContentVpn.TriggerTileToggle();
     }
 
     private async Task HandleLogoutClickAsync()

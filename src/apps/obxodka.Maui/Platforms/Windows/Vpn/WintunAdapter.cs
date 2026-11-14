@@ -194,159 +194,84 @@ internal sealed partial class WintunAdapter : IDisposable
             return 0;
         }
 
-        IntPtr stopHandle;
+        var stopSafeHandle = _stopEvent.SafeWaitHandle;
+        var stopRefAdded = false;
         try
         {
-            stopHandle = _stopEvent.SafeWaitHandle.DangerousGetHandle();
+            stopSafeHandle.DangerousAddRef(ref stopRefAdded);
+            var handles = new[] { waitEvent, stopSafeHandle.DangerousGetHandle() };
+            outBatch.Clear();
+            const int maxPacketSize = 65535;
+
+            while (!ct.IsCancellationRequested && !_isDisposed && _session != IntPtr.Zero)
+            {
+                lock (_rxLock)
+                {
+                    if (_isDisposed || _session == IntPtr.Zero)
+                    {
+                        break;
+                    }
+
+                    while (!_isDisposed && _session != IntPtr.Zero)
+                    {
+                        var ptr = WintunReceivePacket(_session, out var size);
+                        if (ptr == IntPtr.Zero)
+                        {
+                            break;
+                        }
+
+                        if (size > maxPacketSize)
+                        {
+                            WintunReleaseReceivePacket(_session, ptr);
+                            continue;
+                        }
+
+                        var buf = ArrayPool<byte>.Shared.Rent((int)size);
+                        Marshal.Copy(ptr, buf, 0, (int)size);
+                        WintunReleaseReceivePacket(_session, ptr);
+                        outBatch.Add(buf, (int)size);
+
+                        if (outBatch.Count >= 256)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (outBatch.Count > 0 || _isDisposed || _session == IntPtr.Zero || ct.IsCancellationRequested)
+                {
+                    return outBatch.Count;
+                }
+
+                uint waitResult;
+                try
+                {
+                    waitResult = WaitForMultipleObjects(2, handles, false, 200);
+                }
+                catch
+                {
+                    break;
+                }
+
+                if (waitResult != 0 || _isDisposed || _session == IntPtr.Zero)
+                {
+                    break;
+                }
+            }
+
+            return outBatch.Count;
         }
         catch
         {
             return 0;
         }
-
-        var handles = new[] { waitEvent, stopHandle };
-        outBatch.Clear();
-        const int maxPacketSize = 65535;
-
-        while (!ct.IsCancellationRequested && !_isDisposed && _session != IntPtr.Zero)
+        finally
         {
-            lock (_rxLock)
+            if (stopRefAdded)
             {
-                if (_isDisposed || _session == IntPtr.Zero)
-                {
-                    break;
-                }
-
-                while (!_isDisposed && _session != IntPtr.Zero)
-                {
-                    var ptr = WintunReceivePacket(_session, out var size);
-                    if (ptr == IntPtr.Zero)
-                    {
-                        break;
-                    }
-
-                    if (size > maxPacketSize)
-                    {
-                        WintunReleaseReceivePacket(_session, ptr);
-                        continue;
-                    }
-
-                    var buf = ArrayPool<byte>.Shared.Rent((int)size);
-                    Marshal.Copy(ptr, buf, 0, (int)size);
-                    WintunReleaseReceivePacket(_session, ptr);
-                    outBatch.Add(buf, (int)size);
-
-                    if (outBatch.Count >= 256)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            if (outBatch.Count > 0 || _isDisposed || _session == IntPtr.Zero || ct.IsCancellationRequested)
-            {
-                return outBatch.Count;
-            }
-
-            uint waitResult;
-            try
-            {
-                waitResult = WaitForMultipleObjects(2, handles, false, 200);
-            }
-            catch
-            {
-                break;
-            }
-
-            if (waitResult != 0 || _isDisposed || _session == IntPtr.Zero)
-            {
-                break;
+                stopSafeHandle.DangerousRelease();
             }
         }
-
-        return outBatch.Count;
-    }
-
-    //чтение единичного пакета
-    public (byte[]? buffer, int length) ReceivePacket(CancellationToken ct)
-    {
-        if (_isDisposed || _session == IntPtr.Zero)
-        {
-            return (null, 0);
-        }
-
-        IntPtr waitEvent;
-        lock (_rxLock)
-        {
-            if (_isDisposed || _session == IntPtr.Zero)
-            {
-                return (null, 0);
-            }
-            waitEvent = WintunGetReadWaitEvent(_session);
-        }
-
-        if (waitEvent == IntPtr.Zero)
-        {
-            return (null, 0);
-        }
-
-        IntPtr stopHandle;
-        try
-        {
-            stopHandle = _stopEvent.SafeWaitHandle.DangerousGetHandle();
-        }
-        catch
-        {
-            return (null, 0);
-        }
-
-        var handles = new[] { waitEvent, stopHandle };
-        const int maxPacketSize = 65535;
-
-        while (!ct.IsCancellationRequested && !_isDisposed && _session != IntPtr.Zero)
-        {
-            byte[]? data = null;
-            var packetSize = 0;
-            lock (_rxLock)
-            {
-                if (!_isDisposed && _session != IntPtr.Zero)
-                {
-                    var ptr = WintunReceivePacket(_session, out var size);
-                    if (ptr != IntPtr.Zero)
-                    {
-                        if (size <= maxPacketSize)
-                        {
-                            data = ArrayPool<byte>.Shared.Rent((int)size);
-                            Marshal.Copy(ptr, data, 0, (int)size);
-                            packetSize = (int)size;
-                        }
-                        WintunReleaseReceivePacket(_session, ptr);
-                    }
-                }
-            }
-
-            if (data != null)
-            {
-                return (data, packetSize);
-            }
-
-            uint waitResult;
-            try
-            {
-                waitResult = WaitForMultipleObjects(2, handles, false, 200);
-            }
-            catch
-            {
-                break;
-            }
-
-            if (waitResult != 0 || _isDisposed || _session == IntPtr.Zero)
-            {
-                break;
-            }
-        }
-
-        return (null, 0);
     }
 
     //отправка пакета в сетевой стек windows

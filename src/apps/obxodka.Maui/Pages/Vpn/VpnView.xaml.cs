@@ -227,7 +227,6 @@ public sealed partial class VpnView : ContentView, IDisposable
         _vpnService = vpnService;
         _apiService = apiService;
 
-        UpdateRayIndicator();
         UpdateActiveNode();
         LoadSavedServerSelection();
         _ = RefreshServerListAsync();
@@ -316,7 +315,6 @@ public sealed partial class VpnView : ContentView, IDisposable
     //анимация плавного появления карточек при входе
     public async Task PlayEntranceAnimationAsync()
     {
-        UpdateRayIndicator();
         Opacity = 1;
         TranslationY = 0;
         await this.PlayCardsEntranceAsync(35, 240);
@@ -330,10 +328,5 @@ public sealed partial class VpnView : ContentView, IDisposable
         {
             TotalTrafficLabelMain.Text = trafficText;
         }
-    }
-
-    //обновление индикатора сетевого луча
-    private static void UpdateRayIndicator()
-    {
     }
 }

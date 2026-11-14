@@ -2,46 +2,9 @@ using System.Buffers.Binary;
 
 namespace obxodka.Platforms.Windows;
 
-//генерация сырых пакетов tcp (syn-ack, rst) и синтез ответов dns для wintun
+//генерация сырых пакетов tcp (rst) и синтез ответов dns для wintun
 internal static partial class WindowsSplitTunnelEngine
 {
-    //отправка syn-ack ответа для завершения рукопожатия tcp
-    private static void SendTcpSynAck(ReadOnlySpan<byte> origPacket, int ihl, WintunAdapter adapter)
-    {
-        var resp = new byte[40];
-        resp[0] = 0x45;
-        resp[1] = 0x00;
-        BinaryPrimitives.WriteUInt16BigEndian(resp.AsSpan(2, 2), 40);
-        BinaryPrimitives.WriteUInt16BigEndian(resp.AsSpan(4, 2), 0);
-        BinaryPrimitives.WriteUInt16BigEndian(resp.AsSpan(6, 2), 0x4000);
-        resp[8] = 128;
-        resp[9] = 6;
-        resp[10] = 0;
-        resp[11] = 0;
-
-        origPacket.Slice(16, 4).CopyTo(resp.AsSpan(12, 4));
-        origPacket.Slice(12, 4).CopyTo(resp.AsSpan(16, 4));
-
-        origPacket.Slice(ihl + 2, 2).CopyTo(resp.AsSpan(20, 2));
-        origPacket.Slice(ihl, 2).CopyTo(resp.AsSpan(22, 2));
-
-        BinaryPrimitives.WriteUInt32BigEndian(resp.AsSpan(24, 4), 0x10000000);
-
-        var origSeq = BinaryPrimitives.ReadUInt32BigEndian(origPacket.Slice(ihl + 4, 4));
-        BinaryPrimitives.WriteUInt32BigEndian(resp.AsSpan(28, 4), origSeq + 1);
-
-        resp[32] = 0x50;
-        resp[33] = 0x12;
-        BinaryPrimitives.WriteUInt16BigEndian(resp.AsSpan(34, 2), 64240);
-        resp[36] = 0;
-        resp[37] = 0;
-        resp[38] = 0;
-        resp[39] = 0;
-
-        ComputeIpv4AndTcpChecksum(resp);
-        adapter.SendPacket(resp);
-    }
-
     //генерация и отправка tcp rst для сброса сессии исключенного приложения
     private static void SendTcpReset(ReadOnlySpan<byte> origPacket, int ihl, WintunAdapter adapter)
     {
