@@ -165,7 +165,7 @@ public class SslCertificateValidationTests
                 //внешний сервер недоступен в офлайн или тестовой среде
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             listener.Flush();
             Assert.Fail($"ObxodkaStreamTransport failed: {ex.Message}\nTrace:\n{sw}");
