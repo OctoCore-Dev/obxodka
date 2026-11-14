@@ -511,7 +511,7 @@ public sealed partial class ObxodkaStreamTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
-        var cts = Interlocked.Exchange(ref _cts, null);
+        using var cts = Interlocked.Exchange(ref _cts, null);
         if (cts != null)
         {
             await cts.CancelAsync().ConfigureAwait(false);
@@ -542,6 +542,5 @@ public sealed partial class ObxodkaStreamTransport
         _httpClient1?.Dispose();
         _httpClient2?.Dispose();
         _inspector.Reset();
-        cts?.Dispose();
     }
 }

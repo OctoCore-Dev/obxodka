@@ -195,30 +195,17 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             _cts = new CancellationTokenSource();
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+            Interlocked.Exchange(ref _wsInvoker, null)?.Dispose();
             ClientWebSocket? ws = null;
             HttpMessageInvoker? invoker = null;
-            CancellationTokenSource? attemptCts = null;
-            CancellationTokenSource? linkedCts = null;
             var ownershipTransferred = false;
 
             try
             {
-                ws = new ClientWebSocket();
-                ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-                ws.Options.SetBuffer(131072, 131072);
-                try
-                {
-                    ws.Options.SetRequestHeader("Host", targetHostHeader);
-                }
-                catch (PlatformNotSupportedException)
-                {
-                    //игнорируем неподдерживаемую платформой ручную установку заголовка host
-                }
-                catch (ArgumentException)
-                {
-                    //игнорируем ошибку формата заголовка host
-                }
-                RoutingHello.ApplyWebSocketHeaders(ws.Options, ActiveBrowserProfile);
+                ws = CreateConfiguredWebSocket(targetHostHeader, ActiveBrowserProfile);
+                invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
+                using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
 
                 var cid = RandomNumberGenerator.GetInt32(10000000, 100000000);
                 var nowQuerySec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -227,14 +214,9 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                     Query = $"cid={cid}&_t={nowQuerySec}&v=133.0"
                 };
 
-                invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
-                attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
-                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
-
                 AppLogger.Log($"[OBXODKA-WS] Connecting to {uriBuilder.Uri} (SNI={ActiveSni}, Port={candidatePort}, Profile={ActiveBrowserProfile})...");
                 await ws.ConnectAsync(uriBuilder.Uri, invoker, linkedCts.Token).ConfigureAwait(false);
 
-                _wsInvoker?.Dispose();
                 _wsInvoker = invoker;
                 _webSocket = ws;
                 ownershipTransferred = true;
@@ -288,7 +270,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 Volatile.Write(ref _connected, false);
                 _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
                 AppLogger.LogWarning($"[OBXODKA-WS] Port {candidatePort} (Profile {ActiveBrowserProfile}) failed: {ex.Message}. Trying next candidate...");
-                var retryCts = Interlocked.Exchange(ref _cts, null);
+                using var retryCts = Interlocked.Exchange(ref _cts, null);
                 var loopTasks = _activeLoopTasks;
                 _activeLoopTasks = [];
                 try
@@ -310,41 +292,72 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 {
                     //подавление таймаута ожидания фоновых задач при смене порта
                 }
-                retryCts?.Dispose();
                 _webSocket = null;
                 _wsInvoker = null;
                 ownershipTransferred = false;
-                try
-                {
-                    ws?.Dispose();
-                }
-                catch (ObjectDisposedException)
-                {
-                    //сокет уже освобожден
-                }
-                try
-                {
-                    invoker?.Dispose();
-                }
-                catch (ObjectDisposedException)
-                {
-                    //обработчик уже освобожден
-                }
-                ws = null;
-                invoker = null;
+                DisposeAttemptTransport(ws, invoker);
             }
-            finally
+            catch
             {
-                linkedCts?.Dispose();
-                attemptCts?.Dispose();
                 if (!ownershipTransferred)
                 {
-                    ws?.Dispose();
-                    invoker?.Dispose();
+                    DisposeAttemptTransport(ws, invoker);
                 }
+                throw;
             }
         }
 
         throw lastEx ?? new TimeoutException("WebSocket connection failed across all candidate ports.");
+    }
+
+    //создание и настройка клиентского сокета websocket для попытки подключения
+    private static ClientWebSocket CreateConfiguredWebSocket(string targetHostHeader, TlsBrowserProfile browserProfile)
+    {
+        var ws = new ClientWebSocket();
+        try
+        {
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            ws.Options.SetBuffer(131072, 131072);
+            try
+            {
+                ws.Options.SetRequestHeader("Host", targetHostHeader);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                //игнорируем неподдерживаемую платформой ручную установку заголовка host
+            }
+            catch (ArgumentException)
+            {
+                //игнорируем ошибку формата заголовка host
+            }
+            RoutingHello.ApplyWebSocketHeaders(ws.Options, browserProfile);
+            return ws;
+        }
+        catch
+        {
+            ws.Dispose();
+            throw;
+        }
+    }
+
+    //безопасное освобождение ресурсов неудачной попытки websocket
+    private static void DisposeAttemptTransport(ClientWebSocket? ws, HttpMessageInvoker? invoker)
+    {
+        try
+        {
+            ws?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            //сокет уже освобожден
+        }
+        try
+        {
+            invoker?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            //обработчик уже освобожден
+        }
     }
 }

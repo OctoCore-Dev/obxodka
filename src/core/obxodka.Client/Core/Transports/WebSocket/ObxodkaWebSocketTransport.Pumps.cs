@@ -134,17 +134,17 @@ public sealed partial class ObxodkaWebSocketTransport
                             OnMtuUpdated?.Invoke(sMtu);
                         }
                     }
-                    else if (command == ObxodkaFraming.CmdMtuBurstPayload)
+                    else if (command == ObxodkaFraming.CmdMtuBurstPayload &&
+                             payloadLen >= 4 &&
+                             payloadSpan[0] == 0xEE &&
+                             payloadSpan[1] == 0x55)
                     {
-                        if (payloadLen >= 4 && payloadSpan[0] == 0xEE && payloadSpan[1] == 0x55)
+                        var targetMtu = BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
+                        lock (_receivedBurstMtus)
                         {
-                            var targetMtu = BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
-                            lock (_receivedBurstMtus)
+                            if (!_receivedBurstMtus.Contains(targetMtu))
                             {
-                                if (!_receivedBurstMtus.Contains(targetMtu))
-                                {
-                                    _receivedBurstMtus.Add(targetMtu);
-                                }
+                                _receivedBurstMtus.Add(targetMtu);
                             }
                         }
                     }

@@ -373,8 +373,10 @@ public sealed partial class OctopusEngine
         {
             try
             {
-                await scanCts.CancelAsync().ConfigureAwait(false);
-                scanCts.Dispose();
+                using (scanCts)
+                {
+                    await scanCts.CancelAsync().ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
             {
@@ -385,8 +387,10 @@ public sealed partial class OctopusEngine
         var engineCts = Interlocked.Exchange(ref _cts, null);
         if (engineCts is not null)
         {
-            await engineCts.CancelAsync().ConfigureAwait(false);
-            engineCts.Dispose();
+            using (engineCts)
+            {
+                await engineCts.CancelAsync().ConfigureAwait(false);
+            }
         }
 
         Interlocked.Exchange(ref _clientCert, null)?.Dispose();

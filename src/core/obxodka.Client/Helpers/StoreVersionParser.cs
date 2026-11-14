@@ -232,9 +232,10 @@ public static partial class StoreVersionParser
                               pkgs.ValueKind == JsonValueKind.Array)
                 .Select(sku => sku.GetProperty("Sku").GetProperty("Properties").GetProperty("Packages")))
             {
-                foreach (var pkg in pkgs.EnumerateArray().Where(pkg => pkg.TryGetProperty("Version", out _)))
+                foreach (var rawVerStr in pkgs.EnumerateArray()
+                    .Select(pkg => pkg.TryGetProperty("Version", out var verProp) ? verProp.GetString() : null)
+                    .Where(static s => !string.IsNullOrEmpty(s)))
                 {
-                    var rawVerStr = pkg.GetProperty("Version").GetString();
                     if (ulong.TryParse(rawVerStr, out var rawVer) && rawVer > 0)
                     {
                         var major = (rawVer >> 48) & 0xFFFF;

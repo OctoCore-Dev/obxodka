@@ -142,80 +142,79 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
 
     //создание http клиента с поддержкой http2, ротации профиля браузера и обхода dpi
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Reliability",
+        "CA2000:Dispose objects before losing scope",
+        Justification = "Владение обработчиком передается в HttpClient (disposeHandler: true) и освобождается в catch при ошибке.")]
     private HttpClient CreateHttpClient(string targetHost, string serverIp, int port, bool enableDpiBypass = true)
     {
         var browserProfile = ActiveBrowserProfile;
-        SocketsHttpHandler? handler = null;
+        var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            Proxy = null,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+            KeepAlivePingDelay = Timeout.InfiniteTimeSpan,
+            KeepAlivePingTimeout = Timeout.InfiniteTimeSpan,
+            EnableMultipleHttp2Connections = true,
+            InitialHttp2StreamWindowSize = 8388608,
+            SslOptions = SslOptionsFactory.Create(
+                targetHost: targetHost,
+                applicationProtocols: [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11],
+                browserProfile: browserProfile),
+            ConnectCallback = async (context, cToken) =>
+            {
+                var effectivePort = port;
+                var targetIp = IPAddress.TryParse(serverIp, out var ipAddr)
+                    ? ipAddr
+                    : await ApiService.ResolveHostAntiPoisonAsync(serverIp, cToken).ConfigureAwait(false);
+
+                var connectTarget = new IPEndPoint(targetIp, effectivePort);
+                var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+                {
+                    NoDelay = true,
+                    SendBufferSize = 4194304,
+                    ReceiveBufferSize = 4194304
+                };
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 10);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 3);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
+                OnSocketCreated?.Invoke(socket);
+                _protectAction?.Invoke(socket);
+
+                AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={effectivePort}, Browser={browserProfile})...");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
+                    sw.Stop();
+                    AppLogger.Log($"[TCP OK] Connected to {connectTarget} in {sw.ElapsedMilliseconds}ms.");
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    AppLogger.LogError($"[TCP FAIL] Socket failed to connect to {connectTarget} after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                    socket.Dispose();
+                    throw;
+                }
+
+                var netStream = new NetworkStream(socket, ownsSocket: true);
+                return (enableDpiBypass && !IPAddress.IsLoopback(targetIp))
+                    ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
+                    : netStream;
+            }
+        };
+
         try
         {
-            handler = new SocketsHttpHandler
-            {
-                UseProxy = false,
-                Proxy = null,
-                ConnectTimeout = TimeSpan.FromSeconds(5),
-                PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
-                KeepAlivePingDelay = Timeout.InfiniteTimeSpan,
-                KeepAlivePingTimeout = Timeout.InfiniteTimeSpan,
-                EnableMultipleHttp2Connections = true,
-                InitialHttp2StreamWindowSize = 8388608,
-                SslOptions = SslOptionsFactory.Create(
-                    targetHost: targetHost,
-                    applicationProtocols: [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11],
-                    browserProfile: browserProfile),
-                ConnectCallback = async (context, cToken) =>
-                {
-                    var effectivePort = port;
-                    var targetIp = IPAddress.TryParse(serverIp, out var ipAddr)
-                        ? ipAddr
-                        : await ApiService.ResolveHostAntiPoisonAsync(serverIp, cToken).ConfigureAwait(false);
-
-                    var connectTarget = new IPEndPoint(targetIp, effectivePort);
-                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
-                    {
-                        NoDelay = true,
-                        SendBufferSize = 4194304,
-                        ReceiveBufferSize = 4194304
-                    };
-                    socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-                    socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 10);
-                    socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 3);
-                    socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
-                    OnSocketCreated?.Invoke(socket);
-                    _protectAction?.Invoke(socket);
-
-                    AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={effectivePort}, Browser={browserProfile})...");
-                    var sw = Stopwatch.StartNew();
-                    try
-                    {
-                        await socket.ConnectAsync(connectTarget, cToken).ConfigureAwait(false);
-                        sw.Stop();
-                        AppLogger.Log($"[TCP OK] Connected to {connectTarget} in {sw.ElapsedMilliseconds}ms.");
-                    }
-                    catch (Exception ex)
-                    {
-                        sw.Stop();
-                        AppLogger.LogError($"[TCP FAIL] Socket failed to connect to {connectTarget} after {sw.ElapsedMilliseconds}ms: {ex.Message}");
-                        socket.Dispose();
-                        throw;
-                    }
-
-                    var netStream = new NetworkStream(socket, ownsSocket: true);
-                    return (enableDpiBypass && !IPAddress.IsLoopback(targetIp))
-                        ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
-                        : netStream;
-                }
-            };
-
-            var client = new HttpClient(handler, disposeHandler: true)
-            {
-                Timeout = Timeout.InfiniteTimeSpan
-            };
-            handler = null;
-            return client;
+            return new HttpClient(handler, disposeHandler: true);
         }
-        finally
+        catch
         {
-            handler?.Dispose();
+            handler.Dispose();
+            throw;
         }
     }
 
@@ -226,6 +225,7 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
         {
             _httpClient0?.Dispose();
             _httpClient0 = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+            _httpClient0.Timeout = Timeout.InfiniteTimeSpan;
             return _httpClient0;
         }
 
@@ -233,11 +233,13 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
         {
             _httpClient1?.Dispose();
             _httpClient1 = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+            _httpClient1.Timeout = Timeout.InfiniteTimeSpan;
             return _httpClient1;
         }
 
         _httpClient2?.Dispose();
         _httpClient2 = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+        _httpClient2.Timeout = Timeout.InfiniteTimeSpan;
         return _httpClient2;
     }
 

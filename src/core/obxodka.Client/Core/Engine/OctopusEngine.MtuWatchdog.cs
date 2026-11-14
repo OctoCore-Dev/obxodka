@@ -28,8 +28,10 @@ public sealed partial class OctopusEngine
         {
             try
             {
-                prevScanCts.Cancel();
-                prevScanCts.Dispose();
+                using (prevScanCts)
+                {
+                    prevScanCts.Cancel();
+                }
             }
             catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
             {
@@ -117,12 +119,11 @@ public sealed partial class OctopusEngine
                 else
                 {
                     //даже минимальный зонд 1200 байт завис после прокачки окна — признак блокировки тспу по объему байт
-                    if (transport is ObxodkaStreamTransport && !ct.IsCancellationRequested)
+                    if (transport is ObxodkaStreamTransport &&
+                        !ct.IsCancellationRequested &&
+                        await TryEscalateToShieldAsync("PostHandshakeMtuBurstFreeze", ct).ConfigureAwait(false))
                     {
-                        if (await TryEscalateToShieldAsync("PostHandshakeMtuBurstFreeze", ct).ConfigureAwait(false))
-                        {
-                            return SmartMtuEngine.CurrentMtu;
-                        }
+                        return SmartMtuEngine.CurrentMtu;
                     }
 
                     optimalMtu = SmartMtuEngine.MinMtu;

@@ -202,7 +202,7 @@ public sealed partial class ObxodkaWebSocketTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
-        var cts = Interlocked.Exchange(ref _cts, null);
+        using var cts = Interlocked.Exchange(ref _cts, null);
         if (cts is not null)
         {
             await cts.CancelAsync().ConfigureAwait(false);
@@ -235,6 +235,5 @@ public sealed partial class ObxodkaWebSocketTransport
         }
         _webSocket?.Dispose();
         _wsInvoker?.Dispose();
-        cts?.Dispose();
     }
 }
