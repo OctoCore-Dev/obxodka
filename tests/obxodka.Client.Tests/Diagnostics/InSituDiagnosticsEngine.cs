@@ -39,13 +39,13 @@ public static class InSituDiagnosticsEngine
             {
                 socket.Ttl = (short)ttl;
             }
-            catch
+            catch (Exception ex) when (ex is SocketException or NotSupportedException or PlatformNotSupportedException)
             {
                 try
                 {
                     socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.IpTimeToLive, ttl);
                 }
-                catch (Exception)
+                catch (Exception innerEx) when (innerEx is SocketException or NotSupportedException or PlatformNotSupportedException)
                 {
                     //подавление ошибки если платформа не поддерживает ручную установку ttl
                 }
@@ -68,12 +68,15 @@ public static class InSituDiagnosticsEngine
             }
             catch (OperationCanceledException)
             {
+                //таймаут пробы на текущем хопе ttl
             }
             catch (SocketException ex) when (ex.SocketErrorCode is SocketError.TimedOut or SocketError.HostUnreachable or SocketError.NetworkUnreachable)
             {
+                //штатное истечение ttl без сброса от тспу
             }
-            catch
+            catch (Exception ex) when (ex is SocketException or ObjectDisposedException or InvalidOperationException)
             {
+                //игнорируем прочие сетевые ошибки зондирования хопа
             }
         }
 
@@ -156,7 +159,7 @@ public static class InSituDiagnosticsEngine
                     results.Add($"{name}: HTTP {(int)resp.StatusCode}");
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
             {
                 results.Add($"{name}: БЛОКИРОВКА ({ex.Message})");
             }

@@ -110,7 +110,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 systemAddrs = await Dns.GetHostAddressesAsync("cloudflare.com", ct).ConfigureAwait(false);
                 systemDnsSw.Stop();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException or ArgumentException)
             {
                 return (DiagnosticStatus.Failed, $"Системный DNS сбоит: {ex.Message}");
             }
@@ -140,7 +140,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             {
                 return (DiagnosticStatus.Failed, $"ТСПУ сбросил TCP SYN на {serverHost}:{serverPort} (TCP RST)");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException or TimeoutException or ObjectDisposedException or InvalidOperationException)
             {
                 return (DiagnosticStatus.Failed, $"Не удалось подключиться к {serverHost}:{serverPort}: {ex.Message}");
             }
@@ -233,7 +233,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 }
             }
         }
-        catch
+        catch (Exception ex) when (ex is System.Net.NetworkInformation.NetworkInformationException or SocketException or PlatformNotSupportedException)
         {
             report.PrimaryInterfaceName = "Default Physical Interface";
         }
@@ -244,23 +244,30 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             var activeProcs = Process.GetProcesses();
             foreach (var p in activeProcs)
             {
-                try
+                using (p)
                 {
-                    var name = p.ProcessName;
-                    if (name.Contains("AnyDesk", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("TeamViewer", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("RustDesk", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        _ = mgmtProcs.Add($"{name} (PID: {p.Id})");
+                        var name = p.ProcessName;
+                        if (name.Contains("AnyDesk", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("TeamViewer", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("RustDesk", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _ = mgmtProcs.Add($"{name} (PID: {p.Id})");
+                        }
                     }
-                }
-                catch (Exception)
-                {
-                    //подавление ошибки доступа к свойствам завершенного системного процесса
-                }
-                finally
-                {
-                    p.Dispose();
+                    catch (InvalidOperationException)
+                    {
+                        //процесс завершился до чтения имени
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        //нет прав на чтение системного процесса
+                    }
+                    catch (NotSupportedException)
+                    {
+                        //чтение свойств процесса не поддерживается платформой
+                    }
                 }
             }
 
@@ -269,7 +276,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 report.DetectedManagementSoftware = string.Join(", ", mgmtProcs);
             }
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException or PlatformNotSupportedException)
         {
             //подавление ошибки перечисления процессов операционной системы
         }
@@ -285,7 +292,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
             return resp.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
         {
             return false;
         }
@@ -321,7 +328,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         {
             return (DiagnosticStatus.Failed, "ТСПУ оборвал соединение (TCP RST 10054) во время TLS ClientHello");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException or TimeoutException or OperationCanceledException or InvalidOperationException)
         {
             return (DiagnosticStatus.Failed, $"Ошибка TLS: {ex.Message}");
         }
@@ -344,7 +351,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             await Task.Delay(300, ct).ConfigureAwait(false);
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
         {
             return false;
         }
@@ -398,7 +405,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         {
             (status, message) = await action().ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             status = DiagnosticStatus.Failed;
             message = ex.Message;

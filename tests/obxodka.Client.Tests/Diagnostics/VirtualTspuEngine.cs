@@ -139,13 +139,11 @@ public sealed class VirtualTspuEngine
                 }
             }
 
-            if (packet.Length >= 5 && packet[0] == 0x16 && packet[1] == 0x03 && packet[2] is 0x01 or 0x03)
+            if (packet.Length >= 5 && packet[0] == 0x16 && packet[1] == 0x03 && packet[2] is 0x01 or 0x03 &&
+                TryExtractTlsSni(packet, out var sni))
             {
-                if (TryExtractTlsSni(packet, out var sni))
-                {
-                    threats |= TspuThreat.CleartextSniDetected;
-                    detailsList.Add($"Обнаружен открытый SNI: {sni}");
-                }
+                threats |= TspuThreat.CleartextSniDetected;
+                detailsList.Add($"Обнаружен открытый SNI: {sni}");
             }
         }
 
@@ -161,9 +159,8 @@ public sealed class VirtualTspuEngine
         var entropySum = 0.0;
         var idx = 0;
 
-        foreach (var mem in packets)
+        foreach (var audit in packets.Select(mem => InspectPacket(idx++, mem.Span, isUdp)))
         {
-            var audit = InspectPacket(idx++, mem.Span, isUdp);
             report.TotalPackets++;
             entropySum += audit.Entropy;
             report.MaxEntropy = Math.Max(report.MaxEntropy, audit.Entropy);

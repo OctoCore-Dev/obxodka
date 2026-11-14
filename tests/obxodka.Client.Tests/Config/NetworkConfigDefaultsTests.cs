@@ -47,8 +47,7 @@ public class NetworkConfigDefaultsTests
     {
         foreach (var ip in DnsDefaults.TrustedDnsServers)
         {
-            var parsed = IPAddress.TryParse(ip, out var addr);
-            Assert.True(parsed);
+            Assert.True(IPAddress.TryParse(ip, out var addr));
             Assert.NotNull(addr);
         }
     }

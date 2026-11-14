@@ -257,12 +257,9 @@ public sealed class StealthProtocolTests
         var lowPriorityFound = false;
         for (var i = 0; i < 16; i++)
         {
-            if (queue.TryDequeue(out var item))
+            if (queue.TryDequeue(out var item) && item.length == 1200)
             {
-                if (item.length == 1200)
-                {
-                    lowPriorityFound = true;
-                }
+                lowPriorityFound = true;
             }
         }
 
@@ -338,10 +335,10 @@ public sealed class StealthProtocolTests
     }
 
     [Fact]
-    public void ClientHelloBuilderGeneratesStrictRfcCompliantTlsRecordWithoutDuplicateExtensionLength()
+    public void RoutingHelloGeneratesStrictRfcCompliantTlsRecordWithoutDuplicateExtensionLength()
     {
         var sni = Encoding.UTF8.GetBytes($"vpn.{AppConfig.PrimaryDomain}");
-        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+        var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         Assert.NotNull(hello);
         Assert.True(hello.Length >= 100);
@@ -497,11 +494,11 @@ public sealed class StealthProtocolTests
         inspector.RecordRx(1, now - (long)(Stopwatch.Frequency * 0.1));
         inspector.RecordRx(2, now - (long)(Stopwatch.Frequency * 0.1));
 
-        inspector.SelectRaysForPacket(
+        PacketRouter.SelectRaysFromHealth(
+            isLatencyCritical: true,
+            aliveMask: inspector.GetAliveMask(now),
             preferredRay: 1,
-            needsHedging: true,
-            activeRays: 3,
-            nowTs: now,
+            hash: 0,
             out var primaryRay,
             out var duplicateRay);
 
@@ -760,7 +757,7 @@ public sealed class StealthProtocolTests
     public void TryFindSniMidsldOffsetLocatesMiddleOfSecondLevelDomain()
     {
         var sni = Encoding.UTF8.GetBytes("vpn.obxodka.one");
-        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+        var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         var found = DpiBypassStream.TryFindSniMidsldOffset(hello, out var splitOffset);
         Assert.True(found);
@@ -780,7 +777,7 @@ public sealed class StealthProtocolTests
     public async Task DpiBypassStreamSplitsClientHelloAtMidsldInPureL4ModeAsync()
     {
         var sni = Encoding.UTF8.GetBytes("obxodka.one");
-        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+        var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         var underlying = new TestRecordingStream();
         await using var dpiStream = new DpiBypassStream(underlying, delayMs: 1)
@@ -810,7 +807,7 @@ public sealed class StealthProtocolTests
     public async Task DpiBypassStreamSplitsClientHelloIntoTwoValidRecordsInTlsRecordModeAsync()
     {
         var sni = Encoding.UTF8.GetBytes("obxodka.one");
-        var hello = ClientHelloBuilder.BuildChrome120ClientHello(sni);
+        var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         var underlying = new TestRecordingStream();
         await using var dpiStream = new DpiBypassStream(underlying, delayMs: 1)

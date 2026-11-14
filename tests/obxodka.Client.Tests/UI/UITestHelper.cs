@@ -13,9 +13,9 @@ public static class UITestHelper
         var baseDir = AppContext.BaseDirectory;
         var candidates = new[]
         {
-            Path.Combine(baseDir, "..", "..", "..", "..", "bin", "Release", "net10.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
-            Path.Combine(baseDir, "..", "..", "..", "..", "bin", "Debug", "net10.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
-            Path.Combine(baseDir, "obxodka.exe")
+            Path.Join(baseDir, "..", "..", "..", "..", "bin", "Release", "net10.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
+            Path.Join(baseDir, "..", "..", "..", "..", "bin", "Debug", "net10.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
+            Path.Join(baseDir, "obxodka.exe")
         };
 
         foreach (var candidate in candidates)
@@ -28,9 +28,17 @@ public static class UITestHelper
                     return full;
                 }
             }
-            catch
+            catch (IOException)
             {
-
+                //путь кандидата недоступен при проверке
+            }
+            catch (ArgumentException)
+            {
+                //некорректный шаблон пути кандидата
+            }
+            catch (NotSupportedException)
+            {
+                //формат пути не поддерживается платформой
             }
         }
 

@@ -364,7 +364,7 @@ public class ThemeSecurityTests
         }
         ms.Position = 0;
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Join(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
         try
         {
             _ = await Assert.ThrowsAsync<SecurityException>(() => SafeThemeExtractor.ExtractZipSafelyAsync(ms, tempDir));
@@ -390,7 +390,7 @@ public class ThemeSecurityTests
         }
         ms.Position = 0;
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Join(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
         try
         {
             _ = await Assert.ThrowsAsync<SecurityException>(() => SafeThemeExtractor.ExtractZipSafelyAsync(ms, tempDir));
@@ -416,7 +416,7 @@ public class ThemeSecurityTests
         }
         ms.Position = 0;
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Join(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
         try
         {
             _ = await Assert.ThrowsAsync<SecurityException>(() => SafeThemeExtractor.ExtractZipSafelyAsync(ms, tempDir));

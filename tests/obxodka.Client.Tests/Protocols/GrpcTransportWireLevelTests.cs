@@ -8,7 +8,7 @@ public class StreamTransportWireLevelTests
     public async Task StreamTransportConnectsViaStandardTlsClientHelloOnWireAsync()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var listener = new TcpListener(IPAddress.Loopback, 0);
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
@@ -26,7 +26,7 @@ public class StreamTransportWireLevelTests
                 {
                     _ = await transport.ConnectAsync("127.0.0.1", "test-thumbprint", cts.Token);
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or ObjectDisposedException or TimeoutException or InvalidOperationException)
                 {
                     //подавление ожидаемого разрыва соединения тестового сокета
                 }
@@ -52,7 +52,7 @@ public class StreamTransportWireLevelTests
                 {
                     await connectTask;
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or ObjectDisposedException or TimeoutException or InvalidOperationException)
                 {
                     //ожидание завершения фоновой задачи соединения
                 }

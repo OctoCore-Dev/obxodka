@@ -162,6 +162,7 @@ public class SslCertificateValidationTests
             }
             catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException)
             {
+                //внешний сервер недоступен в офлайн или тестовой среде
             }
         }
         catch (Exception ex)

@@ -20,7 +20,7 @@ public partial class VpnUITests : IDisposable
             _session = new WindowsDriver(new Uri(WindowsApplicationDriverUrl), appiumOptions);
             _session.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(1);
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _session = null;
         }

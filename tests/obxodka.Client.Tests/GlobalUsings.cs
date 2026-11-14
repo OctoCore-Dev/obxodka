@@ -39,6 +39,5 @@ global using obxodka.Shared.MtuEngine;
 global using obxodka.Shared.Stealth;
 global using obxodka.Shared.Stealth.ClientHello;
 global using obxodka.Shared.Themes;
-global using obxodka.Stealth;
 global using OpenQA.Selenium.Appium;
 global using OpenQA.Selenium.Appium.Windows;

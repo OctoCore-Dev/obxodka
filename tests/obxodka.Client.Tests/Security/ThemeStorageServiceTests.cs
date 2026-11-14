@@ -69,15 +69,15 @@ public sealed class ThemeStorageServiceTests
         var paths = ThemeStorageService.EnumerateAssetPaths(manifest).ToList();
 
         Assert.Contains("icon.png", paths);
-        Assert.Contains(Path.Combine("assets", "bg.png"), paths);
-        Assert.Contains(Path.Combine("assets", "bg.mp4"), paths);
-        Assert.Contains(Path.Combine("assets", "frame.png"), paths);
-        Assert.Contains(Path.Combine("assets", "btn_idle.png"), paths);
-        Assert.Contains(Path.Combine("assets", "connect.wav"), paths);
-        Assert.Contains(Path.Combine("assets", "click.wav"), paths);
-        Assert.Contains(Path.Combine("assets", "particle.png"), paths);
-        Assert.Contains(Path.Combine("assets", "p1.png"), paths);
-        Assert.Contains(Path.Combine("assets", "p2.png"), paths);
+        Assert.Contains(Path.Join("assets", "bg.png"), paths);
+        Assert.Contains(Path.Join("assets", "bg.mp4"), paths);
+        Assert.Contains(Path.Join("assets", "frame.png"), paths);
+        Assert.Contains(Path.Join("assets", "btn_idle.png"), paths);
+        Assert.Contains(Path.Join("assets", "connect.wav"), paths);
+        Assert.Contains(Path.Join("assets", "click.wav"), paths);
+        Assert.Contains(Path.Join("assets", "particle.png"), paths);
+        Assert.Contains(Path.Join("assets", "p1.png"), paths);
+        Assert.Contains(Path.Join("assets", "p2.png"), paths);
     }
 
     [Fact]
