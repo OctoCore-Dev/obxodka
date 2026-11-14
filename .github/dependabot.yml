@@ -23,6 +23,14 @@ updates:
           - "SkiaSharp*"
           - "CommunityToolkit.*"
           - "AathifMahir.*"
+      avalonia:
+        patterns:
+          - "Avalonia*"
+    ignore:
+      - dependency-name: "Microsoft.Extensions.*"
+        versions: [">= 11.0.0"]
+      - dependency-name: "Microsoft.Maui.*"
+        versions: [">= 11.0.0"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
