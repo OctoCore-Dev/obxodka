@@ -23,15 +23,19 @@ permissions:
 
 jobs:
   analyze:
-    name: "CodeQL Analysis (.NET 10 / C#)"
+    name: "CodeQL Analysis (.NET 10 / Core, Avalonia, Windows MAUI)"
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: "[CACHE-DIR] Ensure Windows Build Cache"
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
       - name: "[SETUP] .NET 10 SDK"
         uses: actions/setup-dotnet@v6
@@ -59,13 +63,70 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  [BUILD] COMPILING CORE LIBRARIES FOR CODEQL TRACER" -ForegroundColor Cyan
+          Write-Host "  [BUILD] COMPILING CORE, TESTS & DESKTOP/WINDOWS UI FOR CODEQL" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
-          dotnet build src/core/obxodka.Shared/obxodka.Shared.csproj -c Release
-          dotnet build src/core/obxodka.Client/obxodka.Client.csproj -c Release
-          dotnet build tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release
+          $projects = @(
+            @("src/core/obxodka.Shared/obxodka.Shared.csproj", ""),
+            @("src/core/obxodka.Client/obxodka.Client.csproj", ""),
+            @("tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj", ""),
+            @("src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj", ""),
+            @("src/apps/obxodka.Maui/obxodka.Maui.csproj", "net10.0-windows10.0.19041.0")
+          )
+          foreach ($entry in $projects) {
+            $proj = $entry[0]
+            $tfm = $entry[1]
+            if ($tfm -ne "") {
+              dotnet build $proj -f $tfm -c Release
+            } else {
+              dotnet build $proj -c Release
+            }
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: "[ANALYZE] Execute Deep CodeQL Security Inspection"
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:csharp"
+
+  analyze-android:
+    name: "CodeQL Analysis (.NET 10 / Android MAUI)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: "[SETUP-JAVA] Setup Java JDK 17"
+        uses: actions/setup-java@v4
+        with:
+          distribution: "microsoft"
+          java-version: "17"
+
+      - name: "[SETUP] .NET 10 SDK"
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: "[WORKLOAD] Install MAUI Android Workload"
+        run: dotnet workload install maui-android
+
+      - name: "[INIT] Initialize CodeQL Database (Android)"
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: +security-extended,security-and-quality
+
+      - name: "[BUILD] Compile Android MAUI Client for CodeQL Tracer"
+        run: |
+          echo "============================================================"
+          echo "  [BUILD] COMPILING ANDROID MAUI CLIENT FOR CODEQL"
+          echo "============================================================"
+          dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release -p:EnableMauiLinux=true
+
+      - name: "[ANALYZE] Execute Deep CodeQL Security Inspection (Android)"
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp-android"
