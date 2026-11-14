@@ -398,10 +398,8 @@ Directory.Build.props
 Directory.Build.props.local
 3D_Scope/
 AGENTS.md
-RULES.md
 CODEBASE_MAP.md
-CORE_PROTOCOL_GRAPH_AND_SECURITY_AUDIT.md
-docs/CODEBASE_AUDIT_LEDGER.md
 *.audit.md
 *_AUDIT*.md
 *LEDGER*.md
+obxodka.Maui.slnf
