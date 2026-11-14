@@ -788,6 +788,9 @@ jobs:
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: "[DOWNLOAD] Download Android Dist Artifacts"
         uses: actions/download-artifact@v4
@@ -820,7 +823,14 @@ jobs:
           if [ -s ../packaging/whatsnew/whatsnew-ru-RU ]; then
             echo "### [CHANGELOG] Release Notes" >> release_body.md
             cat ../packaging/whatsnew/whatsnew-ru-RU >> release_body.md
+            echo "" >> release_body.md
           fi
+
+          python3 ../.github/scripts/update_changelog.py \
+            --version "${{ needs.check-version.outputs.version }}" \
+            --build "${{ needs.check-version.outputs.build_number }}" \
+            --tag "${{ needs.check-version.outputs.tag }}" \
+            --stdout-only >> release_body.md || true
 
           echo "body_file=$(realpath release_body.md)" >> $GITHUB_OUTPUT
 
@@ -852,7 +862,8 @@ jobs:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: "[SUMMARY] Generate Executive Telemetry Dashboard"
         run: |
@@ -884,8 +895,17 @@ jobs:
           *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 10.*
           EOF
 
+      - name: "[CHANGELOG] Update CHANGELOG.md"
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && needs.create-release.result == 'success'
+        run: |
+          python3 .github/scripts/update_changelog.py \
+            --version "${{ needs.check-version.outputs.version }}" \
+            --build "${{ needs.check-version.outputs.build_number }}" \
+            --tag "${{ needs.check-version.outputs.tag }}" \
+            --changelog CHANGELOG.md
+
       - name: "[BADGES] Update Store Deployment Badges"
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped' || needs.create-release.result == 'success')
         run: |
           mkdir -p .github/badges
           VERSION="${{ needs.check-version.outputs.version }}"
@@ -952,8 +972,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/badges/
+          git add .github/badges/ CHANGELOG.md
           if ! git diff --cached --quiet; then
-            git commit -m "chore(badges): update store deployment status badges [skip ci]"
+            git commit -m "chore(badges): update store deployment status badges and changelog [skip ci]"
+            git pull --rebase origin main || true
             git push origin main
           fi
