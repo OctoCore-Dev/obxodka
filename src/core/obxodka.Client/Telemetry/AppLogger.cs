@@ -55,11 +55,11 @@ public static class AppLogger
     {
         try
         {
-            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "logs");
+            var logDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "logs");
             _ = Directory.CreateDirectory(logDir);
 
-            LogFilePath = Path.Combine(logDir, "client.log");
-            CrashLogFilePath = Path.Combine(logDir, "crash.log");
+            LogFilePath = Path.Join(logDir, "client.log");
+            CrashLogFilePath = Path.Join(logDir, "crash.log");
 
             //проверка размера файла и чистка если больше 1 мб
             if (File.Exists(LogFilePath))
@@ -77,7 +77,7 @@ public static class AppLogger
 
             LogPass($"[SESSION] Новая сессия запущена: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Console.Error.WriteLine($"[AppLogger] Ошибка инициализации логгера: {ex.Message}");
         }
@@ -106,7 +106,10 @@ public static class AppLogger
                         await s_writer.FlushAsync().ConfigureAwait(false);
                     }
                 }
-                catch { }
+                catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+                {
+                    //подавление ошибки сброса буфера записи логов
+                }
                 flushCounter = 0;
             }
         }
@@ -139,12 +142,18 @@ public static class AppLogger
                         s_currentFileBytes = 0;
                         s_writer = new StreamWriter(fs, Encoding.UTF8) { AutoFlush = false };
                     }
-                    catch { }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        //подавление ошибки ротации файла лога
+                    }
                 }
             }
 
         }
-        catch { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки форматирования строки лога
+        }
     }
 
     //добавление в кольцевой буфер последних логов для экрана
@@ -231,7 +240,10 @@ public static class AppLogger
             var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH] {fullMessage}\n";
             File.AppendAllText(CrashLogFilePath, crashEntry);
         }
-        catch { }
+        catch (Exception logEx) when (logEx is not OutOfMemoryException)
+        {
+            //подавление ошибки записи аварийного лога на диск
+        }
     }
 
     //получение последних строк для интерфейса
@@ -257,7 +269,10 @@ public static class AppLogger
         {
             s_writer?.Flush();
         }
-        catch { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки сброса буфера логера
+        }
     }
 
     //перехват необработанных сбоев приложения
@@ -274,7 +289,10 @@ public static class AppLogger
             TaskScheduler.UnobservedTaskException += (_, e) =>
                 LogCrash($"[UNOBSERVED TASK EXCEPTION] {e.Exception.Message}", e.Exception);
         }
-        catch { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки регистрации глобальных хуков исключений
+        }
     }
 
     //открытие файла лога в системе
@@ -292,6 +310,9 @@ public static class AppLogger
                 });
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки запуска внешнего процесса просмотра логов
+        }
     }
 }

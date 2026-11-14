@@ -38,7 +38,7 @@ public class DnsAdBlockRuleManagerTests
     [Fact]
     public async Task SaveCacheAndLoadFromCacheRoundtripsSuccessfullyAsync()
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), $"adblock_test_{Guid.NewGuid():N}.txt");
+        var tempFile = Path.Join(Path.GetTempPath(), $"adblock_test_{Guid.NewGuid():N}.txt");
         try
         {
             var initialDomains = new[] { "custom-test-domain1.xyz", "custom-test-domain2.xyz" };
@@ -66,11 +66,17 @@ public class DnsAdBlockRuleManagerTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            try
             {
-                Content = new StringContent(responseContent)
-            };
-            return Task.FromResult(response);
+                response.Content = new StringContent(responseContent);
+                return Task.FromResult(response);
+            }
+            catch
+            {
+                response.Dispose();
+                throw;
+            }
         }
     }
 
@@ -93,7 +99,7 @@ public class DnsAdBlockRuleManagerTests
 
         using var handler = new MockHttpMessageHandler(mockContent);
         using var client = new HttpClient(handler);
-        var tempCache = Path.Combine(Path.GetTempPath(), $"adblock_remote_test_{Guid.NewGuid():N}.txt");
+        var tempCache = Path.Join(Path.GetTempPath(), $"adblock_remote_test_{Guid.NewGuid():N}.txt");
 
         try
         {

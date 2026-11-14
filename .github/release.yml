@@ -1,0 +1,37 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+    authors:
+      - dependabot[bot]
+  categories:
+    - title: "🚀 Новые возможности"
+      labels:
+        - enhancement
+        - feature
+    - title: "🐛 Исправления и стабильность"
+      labels:
+        - bug
+        - fix
+    - title: "🌐 Сеть, DPI и транспорты"
+      labels:
+        - network-core
+        - dpi
+    - title: "🔒 Безопасность"
+      labels:
+        - security
+    - title: "📱 Android и Windows"
+      labels:
+        - android
+        - windows
+        - ui
+    - title: "📦 Зависимости и CI/CD"
+      labels:
+        - dependencies
+        - ci
+    - title: "📚 Документация"
+      labels:
+        - documentation
+    - title: "🔧 Прочие изменения"
+      labels:
+        - "*"

@@ -20,6 +20,9 @@
 
 <!-- Store & Action Badges -->
 <a href="https://github.com/OctoCore-Dev/obxodka/releases"><img src="https://img.shields.io/github/v/release/OctoCore-Dev/obxodka?style=for-the-badge&logo=github&color=00e5ff&label=Latest%20Version" alt="Latest Version" /></a>
+<a href="https://github.com/OctoCore-Dev/obxodka/stargazers"><img src="https://img.shields.io/github/stars/OctoCore-Dev/obxodka?style=for-the-badge&logo=github&color=F59E0B&label=Stars" alt="GitHub Stars" /></a>
+<a href="https://github.com/OctoCore-Dev/obxodka/releases"><img src="https://img.shields.io/github/downloads/OctoCore-Dev/obxodka/total?style=for-the-badge&logo=github&color=10B981&label=Downloads" alt="Total Downloads" /></a>
+<a href="https://github.com/orgs/OctoCore-Dev/projects/1"><img src="https://img.shields.io/badge/Roadmap-Obxodka_Dev-00e5ff?style=for-the-badge&logo=github&logoColor=white" alt="Public Roadmap" /></a>
 <a href="https://github.com/OctoCore-Dev/obxodka/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/release.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Central%20Pipeline" alt="Central Pipeline" /></a>
 <a href="https://play.google.com/store/apps/details?id=com.octocore.obxodka"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/playstore.json&style=for-the-badge&logo=googleplay" alt="Google Play Deploy" /></a>
 <a href="https://apps.microsoft.com/store/detail/9NZXP5WR803J"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/mstore.json&style=for-the-badge&logo=windows" alt="Microsoft Store Deploy" /></a>
@@ -31,11 +34,12 @@
 <!-- Tech Stack Badges -->
 [![.NET 10 MAUI](https://img.shields.io/badge/.NET-10.0_MAUI-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
 [![C# 14](https://img.shields.io/badge/Language-C%23_14-239120?style=flat-square&logo=c-sharp)](https://learn.microsoft.com/dotnet/csharp/)
-[![OBXODKA-STREAM Dual-Ray](https://img.shields.io/badge/Protocol-OBXODKA--STREAM_Dual--Ray-00e5ff?style=flat-square&logo=speedtest)](docs/ARCHITECTURE.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/ci.yml?branch=develop&style=flat-square&logo=githubactions&logoColor=white&label=CI)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/codeql.yml?branch=develop&style=flat-square&logo=github&logoColor=white&label=CodeQL)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/codeql.yml)
 [![Strict Zero-Logs](https://img.shields.io/badge/Privacy-Strict_Zero--Logs-00C853?style=flat-square&logo=shield)](PRIVACY_POLICY.md)
-[![Terms of Service](https://img.shields.io/badge/Terms-ToS_%26_EULA-blue?style=flat-square)](TERMS_OF_SERVICE.md)
 [![Wintun Layer 3](https://img.shields.io/badge/Kernel_Driver-Wintun-orange?style=flat-square&logo=windows)](https://www.wintun.net/)
-[![License](https://img.shields.io/badge/License-Source--Available-blue?style=flat-square)](LICENSE)
+[![License: GNU AGPLv3](https://img.shields.io/badge/License-GNU_AGPLv3-blue?style=flat-square)](LICENSE)
+[![Trademark Policy](https://img.shields.io/badge/Brand-Trademark_Policy-6366F1?style=flat-square)](TRADEMARK.md)
 
 </div>
 
@@ -56,62 +60,60 @@
 <table>
   <tr>
     <td width="50%" valign="top">
-      <h3><img src=".github/assets/icons/octo_stealth.svg" width="30" height="30" style="vertical-align: -6px;" /> 1. Кристальная маскировка под Web</h3>
-      <p>Трафик инкапсулируется в полнодуплексные потоки <b>HTTP/2 поверх TLS 1.3</b> (порты <code>443</code>, <code>8443</code>, <code>2053</code>) с генерацией <b>3.4M+ динамических поддоменов</b>, 3-этапным расщеплением <code>ClientHello</code> в <code>DpiBypassStream</code> и имитационными запросами Early Decoy (<code>GET /</code>, <code>GET /favicon.ico</code>). Для цензуры сессия неотличима от браузера Chrome.</p>
+      <h3><img src=".github/assets/icons/octo_stealth.svg" width="30" height="30" style="vertical-align: -6px;" /> 1. Гибридный транспорт под DPI / ТСПУ</h3>
+      <p>Клиент сочетает два транспорта: прямой <b>OBXODKA-STREAM</b> (полнодуплексный HTTP/2 поверх TLS 1.3 на портах <code>443</code>, <code>8443</code>, <code>2053</code> в режиме Zero-SNI с жестким SSL Pinning) и резервный облачный <b>OBXODKA-WS</b> через Cloudflare Edge с ротацией зеркал и бесшовной эскалацией без пересоздания TUN-адаптера.</p>
     </td>
     <td width="50%" valign="top">
       <h3><img src=".github/assets/icons/octo_game.svg" width="30" height="30" style="vertical-align: -6px;" /> 2. Dual-Ray Hedging для гейминга</h3>
-      <p>Параллельное открытие двух независимых TCP-лучей (<code>Ray 0</code> и <code>Ray 1</code>). Критичные игровые пакеты UDP и ICMP-пинги <b>клонируются по обоим лучам</b>. Аппаратный <code>PacketDeduplicator</code> (скользящее окно 500 мс) на лету отбрасывает дубли с 0 аллокаций. Пакетлосс и джиттер полностью ликвидированы!</p>
+      <p>В режиме <code>OBXODKA-STREAM</code> открываются два параллельных TCP-луча (<code>Ray 0</code> и <code>Ray 1</code>), а критичные UDP/ICMP-пакеты дублируются в оба луча. Кольцевой дедупликатор <code>PacketDeduplicator</code> без аллокаций отбрасывает запоздавшую копию и сглаживает импульсный джиттер.</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3><img src=".github/assets/icons/octo_ping.svg" width="30" height="30" style="vertical-align: -6px;" /> 3. 500ms Sub-Second Probing</h3>
-      <p>Высокочастотное зондирование задержки каждые 500 мс гарантирует моментальную калибровку RTT, удерживает сотовые NAT-таблицы живыми и исключает зависание видеопотоков 4K/8K при переходе между вышками связи.</p>
+      <h3><img src=".github/assets/icons/octo_ping.svg" width="30" height="30" style="vertical-align: -6px;" /> 3. Адаптивная сегментация ClientHello</h3>
+      <p>Модуль <code>DpiBypassStream</code> совместно с <code>RoutingHello</code> выбирает браузерный TLS-профиль и применяет нарезку первого пакета <code>ClientHello</code> (<code>PureL4Midsld</code>, <code>TlsRecordMidsld</code>, <code>MultiRecordMidsld</code>) с микро-джиттером, усложняя сигнатурный разбор на ТСПУ.</p>
     </td>
     <td width="50%" valign="top">
-      <h3><img src=".github/assets/icons/octo_disconnect.svg" width="30" height="30" style="vertical-align: -6px;" /> 4. Zero-Flicker Disconnect</h3>
-      <p>Бесшовное отключение туннеля не сбрасывает сетевой стек Windows и не дергает адаптеры. При отключении физический интернет не «моргает», а локальные приложения, игры и Discord продолжают работать без разрыва сокетов.</p>
+      <h3><img src=".github/assets/icons/octo_disconnect.svg" width="30" height="30" style="vertical-align: -6px;" /> 4. Zero-Flicker Disconnect &amp; Probing</h3>
+      <p>Плавное снятие <code>/1</code> супернет-маршрутов на Windows без сброса физического адаптера, адаптивное зондирование задержки и удержание NAT сотовых операторов на Android без «моргания» интернета у локальных программ и игр.</p>
     </td>
   </tr>
   <tr>
     <td colspan="2" valign="top">
-      <h3><img src=".github/assets/icons/octo_mtu.svg" width="30" height="30" style="vertical-align: -6px;" /> 5. Адаптивный MTU и обход «Черных дыр» ТСПУ</h3>
-      <p>Безопасный базовый MTU 1280 байт с динамическим зондированием (1200–1440 байт) и серверным TCPMSS Clamping (1240 байт) гарантируют мгновенное открытие тяжелых сайтов и стримов без фрагментации на мобильных операторах (МТС, МегаФон, Билайн, Т2, Yota).</p>
+      <h3><img src=".github/assets/icons/octo_mtu.svg" width="30" height="30" style="vertical-align: -6px;" /> 5. Адаптивный MTU и защита от «чёрных дыр» ТСПУ</h3>
+      <p>Внутритуннельное зондирование MTU, серверный TCPMSS Clamping и встроенный L3 <code>DnsAdBlocker</code> обеспечивают прохождение трафика на мобильных сетях и ШПД при каскадной инкапсуляции без «залипания» HTTPS-сессий.</p>
     </td>
   </tr>
 </table>
 
 ---
 
-## <img src=".github/assets/icons/octo_server.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Архитектура конвейера OBXODKA-STREAM
+## <img src=".github/assets/icons/octo_server.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Архитектура конвейера Obxodka
 
-Сетевой трафик проходит через оптимизированный сквозной конвейер, устойчивый к блокировкам DPI:
+Сетевой трафик проходит через единый сквозной конвейер ядра `OctopusEngine`:
 
-* **Клиентский уровень (Windows / Android):** Перехват пакетов на сетевом уровне Layer 3 через высокоскоростной драйвер Wintun или Android VpnService. Модуль `PacketRouter` выполняет интеллектуальную маршрутизацию и клонирование приоритетных пакетов (UDP Gaming и ICMP-пинги).
-* **Стелс-транспорт Dual-Ray:** Данные инкапсулируются в два параллельных независимых потока HTTP/2 (порты `443`, `8443` и `2053`) поверх TLS 1.3. Модуль `DpiBypassStream` выполняет сегментацию `ClientHello` и ротацию доменов (3.4M+ SNI), маскируя туннель под легитимный пользовательский веб-серфинг.
-* **Серверный кластер Obxodka Node:** Прием потоков через `ObxodkaTunnelEndpoint`, субмиллисекундная дедупликация пакетов на кольцевом буфере в оперативной памяти (`PacketDeduplicator`, zero-allocation) и маршрутизация в открытый интернет через интерфейс `tun0`.
-
----
-
-## <img src=".github/assets/icons/octo_lock.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Взаимная авторизация mTLS Zero-Trust
-
-Полный отказ от статических логинов и паролей на сетевых портах в пользу криптографической аутентификации:
-
-* **Динамические сессионные сертификаты:** При входе в систему клиент получает уникальный зашифрованный `.pfx`-сертификат через защищенный API-шлюз.
-* **Взаимная верификация (mTLS Handshake):** При каждом подключении клиент и сервер взаимно проверяют криптографические сертификаты и SPKI-хэши публичных ключей, полностью исключая атаки перехвата (MITM) и неавторизованный доступ.
-* **Эфемерная безопасность:** Сессионные ключи шифрования хранятся исключительно в оперативной памяти (RAM-Only) и безвозвратно уничтожаются сразу после завершения сетевой сессии.
+* **Платформенные адаптеры (Windows / Android):** Перехват Layer 3 пакетов через драйвер **Wintun** (64 MB ring buffer) на Windows и нативный `VpnService` на Android с поддержкой **Split Tunneling** и исключением банковских/государственных приложений.
+* **Маршрутизация и приоритеты:** `PacketRouter` распределяет трафик по `PriorityPacketQueue` (приоритет DNS, TCP SYN/ACK, игрового UDP и ICMP) и при использовании `OBXODKA-STREAM` дублирует realtime-пакеты по `Ray 0` и `Ray 1`.
+* **Защита от фризов ТСПУ:** При обнаружении блокировки даунлинка (`TX > 0, RX = 0`) инспектор `OctopusEngine.TryEscalateToShieldAsync` на лету переключает транспорт на облачный **WebSocket Shield** (`OBXODKA-WS`) без обрыва TUN-интерфейса.
 
 ---
 
-## <img src=".github/assets/icons/octo_chart.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Сравнение протоколов и технологий
+## <img src=".github/assets/icons/octo_lock.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Взаимная аутентификация mTLS и DoH Anti-Poison
 
-| Протокол / Технология | Устойчивость к DPI / ТСПУ | Скорость и игровой пинг | Шифрование сессии | Мультиплексирование | Защита от блокировок |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| <img src=".github/assets/icons/octo.svg" width="24" height="24" style="vertical-align:-4px;"/> **Obxodka (OBXODKA-STREAM)** | <img src=".github/assets/icons/octo_check.svg" width="24" height="24" style="vertical-align:-4px;"/> **100% (Не детектируется)** | <img src=".github/assets/icons/octo_zap.svg" width="24" height="24" style="vertical-align:-4px;"/> **< 1ms задержка (Dual-Ray)** | <img src=".github/assets/icons/octo_lock.svg" width="24" height="24" style="vertical-align:-4px;"/> **TLS 1.3 + AES-256-GCM** | **Dual-Ray Duplex HTTP/2** | **Максимальная** |
-| **WireGuard** | <img src=".github/assets/icons/octo_cross.svg" width="24" height="24" style="vertical-align:-4px;"/> 0% (Блокируется по UDP) | Высокая (но уязвим к дропу) | ChaCha20-Poly1305 | Нет | Блокируется |
-| **OpenVPN** | <img src=".github/assets/icons/octo_cross.svg" width="24" height="24" style="vertical-align:-4px;"/> 10% (Легко детектируется) | Низкая (TAP Overhead) | TLS / AES-CBC | Нет | Блокируется |
-| **Shadowsocks / VLESS** | <img src=".github/assets/icons/octo_warning.svg" width="24" height="24" style="vertical-align:-4px;"/> 60% (Частично блокируется) | Высокая | AEAD / TLS | Ограничено | Частичная |
+* **Сессионные сертификаты mTLS:** При входе клиент получает персональный `.pfx`-сертификат устройства и предъявляет его при установлении туннеля.
+* **Проверка открытых ключей (SPKI Pinning):** При прямых подключениях к серверам `CertificateValidator` сверяет SHA-256 хэш публичного ключа сервера с эталоном, предотвращая MITM-подмену даже при наличии сторонних корневых сертификатов.
+* **DoH-резолвинг:** `ApiService` проверяет домены через шифрованные DoH-резолверы, отсеивая поддельные bogon/sinkhole-ответы провайдеров.
+
+---
+
+## <img src=".github/assets/icons/octo_chart.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Сравнение протоколов в условиях жёсткого DPI
+
+| Протокол / Подход | Маскировка под HTTPS | Резервный CDN Shield | Обработка потерь UDP/ICMP | Шифрование / Аутентификация |
+| :--- | :---: | :---: | :---: | :---: |
+| <img src=".github/assets/icons/octo.svg" width="24" height="24" style="vertical-align:-4px;"/> **Obxodka (`OBXODKA-STREAM` + `WS`)** | HTTP/2 over TLS 1.3 + `DpiBypassStream` | Авто-эскалация на Cloudflare WSS | `Dual-Ray Hedging` + дедупликация | TLS 1.3 + mTLS `.pfx` + SPKI Pinning |
+| **Классический WireGuard** | Нет (сигнатура UDP-хендшейка) | Нет | Одиночный UDP-поток | Noise_IK / статические ключи |
+| **OpenVPN (TCP/UDP)** | Частичная (распознаётся по TLS-фреймам) | Нет | Одиночный поток / TCP-over-TCP | TLS / OpenVPN Data Channel |
+| **Shadowsocks / VLESS** | Зависит от транспорта (WS / Reality) | Опционально (CDN) | Одиночное соединение | AEAD / XTLS-TLS |
 
 ---
 
@@ -152,17 +154,28 @@
 - [x] **Автоматическая синхронизация отзывов:** Google Play + Microsoft Store в единой экосистеме
 - [x] **CI/CD Авто-деплой:** непрерывная сборка и публикация в магазины через GitHub Actions
 - [x] **Встроенный AdBlock & Anti-Phishing фильтр на уровне DNS**
-- [ ] **Разработка клиентов под iOS и macOS**
+- [ ] **Кроссплатформенный desktop-клиент (`obxodka.Avalonia`, Linux / macOS)** *(UI-каркас в разработке)*
+- [ ] **Клиент под iOS**
 
 ---
 
 ## <img src=".github/assets/icons/octo_tools.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Часто задаваемые вопросы (FAQ)
 
 <details>
-<summary><b>Почему Obxodka не блокируется, когда блокируют другие VPN?</b></summary>
+<summary><b>Почему клиент открыт под GNU AGPLv3 и можно ли собрать его самостоятельно?</b></summary>
 <br/>
 
-Большинство обычных VPN используют протоколы с фиксированными сигнатурами (WireGuard handshake, OpenVPN TLS handshake). Системы DPI легко видят такие пакеты и сбрасывают соединение. **Obxodka** инкапсулирует трафик в проприетарные дуплексные HTTP/2 потоки поверх TLS 1.3 на портах 443, 8443 и 2053 с генерацией динамических поддоменов (3.4M+ SNI), 3-этапным расщеплением ClientHello в `DpiBypassStream` и ранней имитацией браузерных запросов Early Decoy — для любого провайдера это выглядит как стандартный защищенный просмотр веб-сайтов через Google Chrome.
+Мы открыли исходный код клиентского приложения под лицензией **[GNU AGPLv3](LICENSE)**, чтобы любой разработчик или исследователь безопасности мог убедиться в отсутствии скрытой слежки и бэкдоров. Если вы не доверяете готовым сборкам из магазинов приложений, вы можете скомпилировать клиент самостоятельно из этого репозитория и пользоваться им через свой аккаунт **Obxodka** (с активной подпиской/балансом времени).
+
+Форки и доработки приветствуются в виде **Pull Request** в ветку `develop`. Обратите внимание на **[TRADEMARK.md](TRADEMARK.md)**: сторонние сборки обязаны сохранять лицензию AGPLv3 (открытый исходный код), но не имеют права использовать бренд **Obxodka / OctoCore**, логотипы и официальные ID пакетов в сторах.
+
+</details>
+
+<details>
+<summary><b>Как Obxodka обходит блокировки DPI / ТСПУ?</b></summary>
+<br/>
+
+Обычные VPN используют протоколы с фиксированными сигнатурами (WireGuard, OpenVPN). **Obxodka** сочетает два режима: прямой **OBXODKA-STREAM** (полнодуплексный HTTP/2 поверх TLS 1.3 на портах `443`, `8443`, `2053` в режиме Zero-SNI) с нарезкой `ClientHello` в `DpiBypassStream` и облачный **OBXODKA-WS** через Cloudflare Shield с ротацией зеркал и автоматическим переключением `TryEscalateToShieldAsync` при зависании канала.
 
 </details>
 
@@ -170,7 +183,7 @@
 <summary><b>Как Dual-Ray Hedging решает проблему пинга и потерь пакетов в онлайн-играх?</b></summary>
 <br/>
 
-В обычных VPN трафик идет по одному соединению. Если провайдер кратковременно теряет пакет (джиттер/дроп на узле ТСПУ), игра зависает или телепортирует персонажа. В Obxodka технология **Dual-Ray Hedging** клонирует каждый игровой UDP-пакет и ICMP-пинг в два независимых физических TCP-луча (`Ray 0` и `Ray 1`). Сервер и клиент принимают тот пакет, который пришел быстрее, а дубликат мгновенно отбрасывается `PacketDeduplicator`. В результате пинг остается идеально ровным даже при нестабильном интернете.
+В режиме `OBXODKA-STREAM` игровой UDP-трафик и ICMP-пинги клонируются в два параллельных TCP-луча (`Ray 0` и `Ray 1`). Принимающая сторона забирает первый дошедший пакет, а дубликат мгновенно отбрасывается через `PacketDeduplicator` без аллокаций памяти. Это сглаживает импульсные потери и джиттер на проблемных участках сети.
 
 </details>
 
@@ -178,12 +191,12 @@
 <summary><b>Ведёт ли Obxodka логи посещений (Logs)?</b></summary>
 <br/>
 
-**Категорически нет.** Вся архитектура построена по принципу Zero-Log. Серверы не хранят историю посещенных сайтов, IP-адреса назначения или DNS-запросы. Трафик проходит через оперативную память в зашифрованном виде и мгновенно уничтожается. Подробнее читайте в [Политике конфиденциальности](PRIVACY_POLICY.md).
+**Нет.** Вся маршрутизация пакетов работает в оперативной памяти. Серверы не сохраняют историю посещённых сайтов, IP-адреса назначения или DNS-запросы. Подробнее читайте в [Политике конфиденциальности](PRIVACY_POLICY.md).
 
 </details>
 
 <details>
-<summary><b>Как собрать проект из исходников самостоятельно?</b></summary>
+<summary><b>Как собрать проект и запустить тесты из исходников самостоятельно?</b></summary>
 <br/>
 
 ```powershell
@@ -197,9 +210,11 @@ dotnet workload install maui-windows maui-android
 # 3. Сборка клиента под Windows
 dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
 
-# 4. Запуск модульных тестов
-dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
+# 4. Запуск автономных модульных тестов (без живого сервера и UI)
+dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --filter "Category!=Integration&Category!=UI&Category!=WireLevel"
 ```
+
+Подробнее о структуре решений (`obxodka.slnx`), стандартах кода и отправке PR читайте в [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 </details>
 
@@ -236,8 +251,9 @@ dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
       <ul>
         <li><img src=".github/assets/icons/octo_shield.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Политика конфиденциальности:</b> <a href="PRIVACY_POLICY.md">PRIVACY_POLICY.md</a></li>
         <li><img src=".github/assets/icons/octo_doc.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Условия использования:</b> <a href="TERMS_OF_SERVICE.md">TERMS_OF_SERVICE.md</a></li>
-        <li><img src=".github/assets/icons/octo_terminal.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Сообщить об ошибке:</b> <a href="https://github.com/OctoCore-Dev/obxodka/issues">GitHub Issues</a></li>
-        <li><img src=".github/assets/icons/octo_lock.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Контакты поддержки:</b> <a href="https://github.com/OctoCore-Dev/obxodka/discussions">GitHub Discussions</a></li>
+        <li><img src=".github/assets/icons/octo_lock.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Товарные знаки и бренд:</b> <a href="TRADEMARK.md">TRADEMARK.md</a></li>
+        <li><img src=".github/assets/icons/octo_terminal.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Участие в разработке:</b> <a href=".github/CONTRIBUTING.md">CONTRIBUTING.md</a></li>
+        <li><img src=".github/assets/icons/octo_globe.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Поддержка и обсуждения:</b> <a href="https://github.com/OctoCore-Dev/obxodka/discussions">GitHub Discussions</a></li>
       </ul>
     </td>
   </tr>
@@ -246,5 +262,5 @@ dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj
 ---
 
 <p align="center">
-  <sub>Разработано командой <a href="https://github.com/OctoCore-Dev">OctoCore</a>. Лицензия <a href="LICENSE">Source-Available (OctoCore)</a>.</sub>
+  <sub>Разработано командой <a href="https://github.com/OctoCore-Dev">OctoCore</a>. Лицензия кода <a href="LICENSE">GNU AGPLv3</a> • Правила бренда <a href="TRADEMARK.md">TRADEMARK.md</a>.</sub>
 </p>

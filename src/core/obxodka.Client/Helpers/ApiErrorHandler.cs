@@ -140,8 +140,9 @@ public static class ApiErrorHandler
                 }
             }
         }
-        catch
+        catch (JsonException)
         {
+            //ответ ошибки не является валидным json
         }
 
         return fallbackMessage;

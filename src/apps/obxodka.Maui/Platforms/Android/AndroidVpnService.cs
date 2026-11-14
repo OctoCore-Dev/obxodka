@@ -26,17 +26,56 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
     private readonly SemaphoreSlim _vpnGate = new(1, 1);
     private readonly Lock _roamingLock = new();
     private CancellationTokenSource? _roamingCts;
+    private readonly Action<string> _statusMessageHandler;
+    private readonly Action<string> _certRevokedHandler;
+    private readonly Action<int> _mtuUpdatedHandler;
+    private readonly Action<long, long> _trafficUpdatedHandler;
+    private long _lastTrafficSent;
+    private long _lastTrafficReceived;
+    private long _lastTrafficTicks;
 
     private AndroidVpnService()
     {
-        OctopusEngine.Current.OnStatusMessage += msg => OnLogUpdated?.Invoke(msg);
-        OctopusEngine.OnCertificateRevoked += msg => OnForceLogoutRequested?.Invoke(msg);
+        _statusMessageHandler = msg => OnLogUpdated?.Invoke(msg);
+        _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
+        _mtuUpdatedHandler = mtu => OctopusVpnService.Instance?.OnMtuUpdated(mtu);
+        _trafficUpdatedHandler = HandleEngineTrafficUpdated;
+
+        OctopusEngine.Current.OnStatusMessage += _statusMessageHandler;
+        OctopusEngine.OnCertificateRevoked += _certRevokedHandler;
+        OctopusEngine.Current.OnMtuUpdated -= _mtuUpdatedHandler;
+        OctopusEngine.Current.OnMtuUpdated += _mtuUpdatedHandler;
+        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
+        OctopusEngine.Current.OnTrafficUpdated += _trafficUpdatedHandler;
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
         OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
         OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
         OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
         OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
+    }
+
+    //трансляция счетчиков трафика ядра в событие интерфейса vpn сервиса
+    private void HandleEngineTrafficUpdated(long sentBytes, long receivedBytes)
+    {
+        var nowTicks = Environment.TickCount64;
+        var prevTicks = Interlocked.Exchange(ref _lastTrafficTicks, nowTicks);
+        var prevSent = Interlocked.Exchange(ref _lastTrafficSent, sentBytes);
+        var prevReceived = Interlocked.Exchange(ref _lastTrafficReceived, receivedBytes);
+
+        if (prevTicks <= 0 || nowTicks <= prevTicks)
+        {
+            return;
+        }
+
+        var elapsedSec = (nowTicks - prevTicks) / 1000.0;
+        var upBps = sentBytes >= prevSent ? (long)((sentBytes - prevSent) / elapsedSec) : 0;
+        var downBps = receivedBytes >= prevReceived ? (long)((receivedBytes - prevReceived) / elapsedSec) : 0;
+        OnTrafficUpdated?.Invoke(new AppTrafficStats
+        {
+            UploadSpeedBps = upBps,
+            DownloadSpeedBps = downBps
+        });
     }
 
     //обработка потери физической сети на android
@@ -106,7 +145,10 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketBlockDetected);
                 ChangeState(AppVpnState.Reconnecting);
 
-                OctopusEngine.MarkNodeByteCapped(_currentServerIp);
+                if (OctopusEngine.Current.TotalBytesReceived < 100_000)
+                {
+                    OctopusEngine.MarkNodeByteCapped(_currentServerIp);
+                }
 
                 if (_fallbackServers.Count <= 1 || !OctopusEngine.IsNodeByteCapped(_currentServerIp))
                 {
@@ -156,12 +198,12 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                             ? (await ApiService.ResolveHostAntiPoisonAsync(nextServer.Ip).ConfigureAwait(false)).ToString()
                             : nextServer.Ip;
                         var nextPort = nextServer.Port > 0 ? nextServer.Port : 443;
-                        OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(nextServer.CertHash) ? nextServer.CertHash : null;
+                        _ = SniEngine.ConfigureServerSecurity(nextServer, out var nextTargetSni);
 
                         OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupServer(_currentServerIp));
                         try
                         {
-                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, nextPort, targetSni: nextServer.Ip);
+                            await OctopusEngine.Current.ReconnectAsync(_currentServerIp, nextPort, targetSni: nextTargetSni);
                             _ = OctopusVpnService.Instance?.EstablishTun();
                             var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
                             if (_isExplicitlyStopped)
@@ -246,7 +288,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                                     ? (await ApiService.ResolveHostAntiPoisonAsync(fb.Ip).ConfigureAwait(false)).ToString()
                                     : fb.Ip;
                                 var fbPort = fb.Port > 0 ? fb.Port : 443;
-                                OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(fb.CertHash) ? fb.CertHash : null;
+                                _ = SniEngine.ConfigureServerSecurity(fb, out _);
 
                                 await Task.Delay(backoffMs);
                                 if (_isExplicitlyStopped)
@@ -453,7 +495,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                 }
             }
 
-            var stealthHost = AppSecrets.AllowedSniPool[0];
+            var stealthHost = targetIp;
             _currentServerIp = targetIp;
             _isExplicitlyStopped = false;
 
@@ -531,15 +573,10 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     continue;
                 }
 
-                var isShield = string.Equals(s.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(s.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(s.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                               s.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
+                _ = SniEngine.ConfigureServerSecurity(s, out var targetSni);
 
                 _currentServerIp = candidateIp;
                 _currentServerIndex = idx;
-                OctopusEngine.DynamicSslPublicKeyHash = isShield ? null : (!string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null);
-                var targetSni = isShield ? (Uri.CheckHostName(s.Ip) == UriHostNameType.Dns ? s.Ip : AppConfig.PrimaryDomain) : s.Ip;
 
                 for (var attempt = 1; attempt <= 2; attempt++)
                 {
@@ -587,7 +624,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         else if (curTx > 0)
                         {
                             AppLogger.LogWarning($"[ANDROID-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Dual-ray HTTP/2 tunnel is authenticated and established! Proceeding with route activation...");
-                            OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
+                            OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
                             ChangeState(AppVpnState.Connected);
@@ -735,6 +772,13 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
     //освобождение ресурсов сервиса
     public void Dispose()
     {
+        OctopusEngine.Current.OnStatusMessage -= _statusMessageHandler;
+        OctopusEngine.OnCertificateRevoked -= _certRevokedHandler;
+        OctopusEngine.Current.OnMtuUpdated -= _mtuUpdatedHandler;
+        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
+        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
+        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
+        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
         lock (_roamingLock)
         {
             try

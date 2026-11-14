@@ -44,7 +44,7 @@ public static class DnsProbeService
 
             return healthy.Length > 0 ? healthy : targets;
         }
-        catch
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException)
         {
             return targets;
         }
@@ -66,7 +66,7 @@ public static class DnsProbeService
             sw.Stop();
             return (ip, sw.ElapsedMilliseconds, true);
         }
-        catch
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException or FormatException)
         {
             return (ip, long.MaxValue, false);
         }

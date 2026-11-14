@@ -17,6 +17,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     private int _count;
     private int _highStreak;
     private int _disposed;
+    private int _inflight;
 
     //лимиты обычных и управляющих пакетов
     private readonly int _maxCount = maxCapacity;
@@ -29,42 +30,51 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryEnqueue(byte[] buffer, int length)
     {
-        if (Volatile.Read(ref _disposed) != 0)
-        {
-            return false;
-        }
-
-        var isControl = IsControlFrame(buffer, length);
-        var limit = isControl ? _controlHeadroom : _maxCount;
-
-        if (Interlocked.Increment(ref _count) > limit)
-        {
-            _ = Interlocked.Decrement(ref _count);
-            return false;
-        }
-
-        if (isControl || IsHighPriority(buffer, length))
-        {
-            _high.Enqueue((buffer, length));
-        }
-        else
-        {
-            _low.Enqueue((buffer, length));
-        }
-
+        _ = Interlocked.Increment(ref _inflight);
         try
         {
-            _ = _semaphore.Release();
-        }
-        catch (ObjectDisposedException)
-        {
-            return false;
-        }
-        catch (SemaphoreFullException)
-        {
-        }
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return false;
+            }
 
-        return true;
+            var isControl = IsControlFrame(buffer, length);
+            var limit = isControl ? _controlHeadroom : _maxCount;
+
+            if (Interlocked.Increment(ref _count) > limit)
+            {
+                _ = Interlocked.Decrement(ref _count);
+                return false;
+            }
+
+            if (isControl || IsHighPriority(buffer, length))
+            {
+                _high.Enqueue((buffer, length));
+            }
+            else
+            {
+                _low.Enqueue((buffer, length));
+            }
+
+            try
+            {
+                _ = _semaphore.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+            catch (SemaphoreFullException)
+            {
+                //достигнут максимальный счетчик семафора очереди
+            }
+
+            return true;
+        }
+        finally
+        {
+            _ = Interlocked.Decrement(ref _inflight);
+        }
     }
 
     //асинхронное извлечение следующего пакета с учетом приоритета и защиты от голодания
@@ -84,7 +94,10 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 _ = _semaphore.Release();
             }
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException)
+        {
+            //очередь освобождена во время ожидания пакета
+        }
 
         return ([], 0);
     }
@@ -104,7 +117,10 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 _ = _semaphore.Release();
             }
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException)
+        {
+            //очередь освобождена при неблокирующем чтении
+        }
 
         item = default;
         return false;
@@ -145,9 +161,14 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         {
             while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
             {
+                //сброс счетчика семафора до нуля
+                continue;
             }
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException)
+        {
+            //семафор уже освобожден при закрытии очереди
+        }
 
         while (_high.TryDequeue(out var highItem))
         {
@@ -186,10 +207,14 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 
         var b0 = buffer[0];
         var b1 = buffer[1];
-        return (b0 == 0xAA && b1 == 0xBB) ||
-               (b0 == 0xCC && b1 == 0xDD) ||
-               (b0 == 0xEE && (b1 == 0x77 || b1 == 0x55)) ||
-               (length <= 32 && b0 == 0x99);
+        return b0 switch
+        {
+            0xAA => b1 == 0xBB,
+            0xCC => b1 == 0xDD,
+            0xEE => b1 is 0x77 or 0x55 or 0x88 or 0x99,
+            0x99 => length <= 32,
+            _ => false
+        };
     }
 
     //классификация приоритетных сетевых пакетов l3/l4 (icmp, dns/ntp малые udp, чистые tcp ack/syn/fin)
@@ -257,11 +282,16 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         return false;
     }
 
-    //освобождение ресурсов семафора
+    //освобождение ресурсов семафора после завершения активных операций добавления
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
+            var sw = default(SpinWait);
+            while (Volatile.Read(ref _inflight) > 0)
+            {
+                sw.SpinOnce();
+            }
             _semaphore.Dispose();
         }
     }

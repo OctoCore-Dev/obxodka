@@ -24,6 +24,7 @@ public class WebSocketTransportTests
         var (ip, ip6) = await transport.ConnectAsync(AppConfig.PrimaryDomain, dummyThumbprint, cts.Token);
         Assert.NotNull(ip);
         Assert.True(IPAddress.TryParse(ip, out _));
+        Assert.True(string.IsNullOrEmpty(ip6) || IPAddress.TryParse(ip6, out _));
         Assert.True(transport.IsConnected);
 
         await transport.SendDisconnectSignalAsync();

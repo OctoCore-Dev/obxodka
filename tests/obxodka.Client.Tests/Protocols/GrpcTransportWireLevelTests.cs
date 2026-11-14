@@ -8,7 +8,7 @@ public class StreamTransportWireLevelTests
     public async Task StreamTransportConnectsViaStandardTlsClientHelloOnWireAsync()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var listener = new TcpListener(IPAddress.Loopback, 0);
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
@@ -17,29 +17,47 @@ public class StreamTransportWireLevelTests
             configuredSni: AppConfig.PrimaryDomain
         );
 
-        var connectTask = Task.Run(async () =>
+        Task? connectTask = null;
+        try
         {
-            try
+            connectTask = Task.Run(async () =>
             {
-                _ = await transport.ConnectAsync("127.0.0.1", "test-thumbprint", cts.Token);
-            }
-            catch
+                try
+                {
+                    _ = await transport.ConnectAsync("127.0.0.1", "test-thumbprint", cts.Token);
+                }
+                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or System.Security.Authentication.AuthenticationException or OperationCanceledException or ObjectDisposedException or TimeoutException or InvalidOperationException)
+                {
+                    //подавление ожидаемого разрыва соединения тестового сокета
+                }
+            }, cts.Token);
+
+            using var acceptedSocket = await listener.AcceptSocketAsync(cts.Token);
+            acceptedSocket.ReceiveTimeout = 3000;
+
+            var buffer = new byte[4096];
+            var firstRead = acceptedSocket.Receive(buffer, 0, buffer.Length, SocketFlags.None);
+
+            Assert.True(firstRead > 5, "Server socket must receive TLS ClientHello from StreamTransport");
+            Assert.Equal(0x16, buffer[0]);
+            Assert.Equal(0x03, buffer[1]);
+            Assert.Equal(0x01, buffer[5]);
+        }
+        finally
+        {
+            listener.Stop();
+            if (connectTask != null)
             {
+                try
+                {
+                    await connectTask;
+                }
+                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or System.Security.Authentication.AuthenticationException or OperationCanceledException or ObjectDisposedException or TimeoutException or InvalidOperationException)
+                {
+                    //ожидание завершения фоновой задачи соединения
+                }
             }
-        }, cts.Token);
-
-        using var acceptedSocket = await listener.AcceptSocketAsync(cts.Token);
-        acceptedSocket.ReceiveTimeout = 3000;
-
-        var buffer = new byte[4096];
-        var firstRead = acceptedSocket.Receive(buffer, 0, buffer.Length, SocketFlags.None);
-
-        Assert.True(firstRead > 5, "Server socket must receive TLS ClientHello from StreamTransport");
-        Assert.Equal(0x16, buffer[0]);
-        Assert.Equal(0x03, buffer[1]);
-        Assert.Equal(0x01, buffer[5]);
-
-        listener.Stop();
-        await transport.DisposeAsync();
+            await transport.DisposeAsync();
+        }
     }
 }

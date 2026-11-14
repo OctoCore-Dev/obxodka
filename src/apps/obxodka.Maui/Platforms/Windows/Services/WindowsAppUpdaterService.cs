@@ -275,8 +275,16 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
         return Convert.ToHexStringLower(hashBytes);
     }
 
+    private enum AuthenticodeCheckStatus
+    {
+        Unsigned,
+        TrustedChain,
+        SelfSignedUntrustedRoot,
+        InvalidSignature
+    }
+
     //проверка наличия и валидности сертификата authenticode у исполняемого файла
-    private static bool TryVerifyAuthenticode(string filePath)
+    private static AuthenticodeCheckStatus CheckAuthenticodeSignature(string filePath)
     {
         try
         {
@@ -285,12 +293,30 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             using var cert = new X509Certificate2(rawCert);
 #pragma warning restore SYSLIB0057
             AppLogger.Log($"[AUTHENTICODE] Installer is signed by '{cert.Subject}', Thumbprint: {cert.Thumbprint}, Valid: {cert.NotBefore:d} - {cert.NotAfter:d}");
-            return cert.Verify();
+
+            if (cert.Verify())
+            {
+                return AuthenticodeCheckStatus.TrustedChain;
+            }
+
+            //самоподписанный сертификат github actions допустим только при проверке sha256 без повреждений подписи
+            using var chain = new X509Chain();
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            _ = chain.Build(cert);
+            foreach (var status in chain.ChainStatus)
+            {
+                if (status.Status is X509ChainStatusFlags.NotSignatureValid or X509ChainStatusFlags.InvalidBasicConstraints)
+                {
+                    return AuthenticodeCheckStatus.InvalidSignature;
+                }
+            }
+
+            return AuthenticodeCheckStatus.SelfSignedUntrustedRoot;
         }
         catch (Exception ex)
         {
-            AppLogger.Log($"[AUTHENTICODE] File is not signed with Authenticode or signature is invalid: {ex.Message}");
-            return false;
+            AppLogger.Log($"[AUTHENTICODE] File is unsigned or signature metadata unavailable: {ex.Message}");
+            return AuthenticodeCheckStatus.Unsigned;
         }
     }
 
@@ -319,38 +345,52 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                         await resp.Content.CopyToAsync(fs).ConfigureAwait(false);
                     }
 
-                    //проверка целостности sha256
+                    //строгая проверка контрольной суммы sha256 перед запуском инсталлятора
                     var computedHash = await ComputeFileSha256Async(tempPath).ConfigureAwait(false);
                     AppLogger.Log($"[UPDATE-SECURITY] Downloaded installer SHA256: {computedHash}");
 
-                    if (!string.IsNullOrWhiteSpace(expectedSha256))
+                    if (string.IsNullOrWhiteSpace(expectedSha256))
                     {
-                        if (!string.Equals(computedHash, expectedSha256, StringComparison.OrdinalIgnoreCase))
-                        {
-                            AppLogger.LogError($"[UPDATE-SECURITY ALERT] Checksum mismatch! Expected: {expectedSha256}, Actual: {computedHash}. Deleting file.");
-                            try
-                            {
-                                File.Delete(tempPath);
-                            }
-                            catch { }
+                        AppLogger.LogError("[UPDATE-SECURITY ALERT] Missing SHA256 checksum in GitHub release metadata. Aborting installer launch and deleting file.");
+                        TryDeleteFile(tempPath);
 
-                            MainThread.BeginInvokeOnMainThread(async () =>
-                                await NeoAlert.ShowAsync(
-                                    "Ошибка безопасности",
-                                    "Контрольная сумма загруженного обновления не совпадает с официальным релизом. Запуск заблокирован для безопасности системы.",
-                                    "OK"));
-                            return;
-                        }
-
-                        AppLogger.Log("[UPDATE-SECURITY] SHA256 checksum verified successfully.");
-                    }
-                    else
-                    {
-                        AppLogger.LogWarning("[UPDATE-SECURITY] Expected SHA256 was not found in release metadata; checking Authenticode...");
+                        MainThread.BeginInvokeOnMainThread(async () =>
+                            await NeoAlert.ShowAsync(
+                                "Ошибка безопасности",
+                                "В описании релиза отсутствует обязательная контрольная сумма SHA-256. Запуск обновления заблокирован.",
+                                "OK"));
+                        return;
                     }
 
-                    //проверка подписи authenticode при ее наличии
-                    _ = TryVerifyAuthenticode(tempPath);
+                    if (!string.Equals(computedHash, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        AppLogger.LogError($"[UPDATE-SECURITY ALERT] Checksum mismatch! Expected: {expectedSha256}, Actual: {computedHash}. Deleting file.");
+                        TryDeleteFile(tempPath);
+
+                        MainThread.BeginInvokeOnMainThread(async () =>
+                            await NeoAlert.ShowAsync(
+                                "Ошибка безопасности",
+                                "Контрольная сумма загруженного обновления не совпадает с официальным релизом. Запуск заблокирован для безопасности системы.",
+                                "OK"));
+                        return;
+                    }
+
+                    AppLogger.Log("[UPDATE-SECURITY] SHA256 checksum verified successfully.");
+
+                    //проверка встроенной подписи authenticode при ее наличии у установщика
+                    var sigStatus = CheckAuthenticodeSignature(tempPath);
+                    if (sigStatus == AuthenticodeCheckStatus.InvalidSignature)
+                    {
+                        AppLogger.LogError("[UPDATE-SECURITY ALERT] Installer Authenticode signature is corrupted or invalid. Blocking launch.");
+                        TryDeleteFile(tempPath);
+
+                        MainThread.BeginInvokeOnMainThread(async () =>
+                            await NeoAlert.ShowAsync(
+                                "Ошибка безопасности",
+                                "Цифровая подпись установщика повреждена. Запуск обновления заблокирован.",
+                                "OK"));
+                        return;
+                    }
 
                     _ = Process.Start(new ProcessStartInfo(tempPath)
                     {
@@ -364,18 +404,24 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             catch (Exception ex)
             {
                 AppLogger.LogError($"[DOWNLOAD INSTALLER ERROR] {ex.Message}", ex);
-                try
-                {
-                    if (File.Exists(tempPath))
-                    {
-                        File.Delete(tempPath);
-                    }
-                }
-                catch { }
+                TryDeleteFile(tempPath);
             }
         }
 
         _ = await Launcher.OpenAsync(new Uri(url));
+    }
+
+    //безопасное удаление временного файла установщика
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch { }
     }
 
     //открытие страницы приложения в магазине microsoft store

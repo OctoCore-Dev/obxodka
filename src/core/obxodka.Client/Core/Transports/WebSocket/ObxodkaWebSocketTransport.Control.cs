@@ -16,8 +16,9 @@ public sealed partial class ObxodkaWebSocketTransport
             {
                 break;
             }
-            catch
+            catch (Exception ex) when (ex is IOException or WebSocketException or ObjectDisposedException or InvalidOperationException)
             {
+                //игнорируем сетевую ошибку отправки пинга
             }
         }
     }
@@ -31,7 +32,7 @@ public sealed partial class ObxodkaWebSocketTransport
             return;
         }
 
-        if (!_txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdData, packet, length)))
+        if (!_txQueue.TryEnqueue(packet, length))
         {
             ArrayPool<byte>.Shared.Return(packet);
         }
@@ -45,7 +46,13 @@ public sealed partial class ObxodkaWebSocketTransport
             return Task.CompletedTask;
         }
 
-        _ = _txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdDisconnect, [], 0));
+        var discBuf = ArrayPool<byte>.Shared.Rent(2);
+        discBuf[0] = 0xEE;
+        discBuf[1] = 0x99;
+        if (!_txQueue.TryEnqueue(discBuf, 2))
+        {
+            ArrayPool<byte>.Shared.Return(discBuf);
+        }
         return Task.CompletedTask;
     }
 
@@ -59,7 +66,7 @@ public sealed partial class ObxodkaWebSocketTransport
 
         var pingPayload = ArrayPool<byte>.Shared.Rent(8);
         BinaryPrimitives.WriteInt64LittleEndian(pingPayload.AsSpan(0, 8), Stopwatch.GetTimestamp());
-        if (!_txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdPing, pingPayload, 8)))
+        if (!_txQueue.TryEnqueue(pingPayload, 8))
         {
             ArrayPool<byte>.Shared.Return(pingPayload);
         }
@@ -75,18 +82,24 @@ public sealed partial class ObxodkaWebSocketTransport
         }
 
         var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var nowTs = Stopwatch.GetTimestamp();
-        _pendingMtuProbes[nowTs] = tcs;
+        var probeTs = Stopwatch.GetTimestamp();
+        while (!_pendingMtuProbes.TryAdd(probeTs, tcs))
+        {
+            probeTs++;
+        }
 
         var payloadLen = Math.Max(16, size - 2);
-        var buf = ArrayPool<byte>.Shared.Rent(payloadLen);
+        var queueLen = payloadLen + 2;
+        var buf = ArrayPool<byte>.Shared.Rent(queueLen);
         try
         {
-            BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(0, 8), nowTs);
-            buf[8] = 0x11;
-            RandomNumberGenerator.Fill(buf.AsSpan(9, payloadLen - 9));
+            buf[0] = 0xAA;
+            buf[1] = 0xBB;
+            BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(2, 8), probeTs);
+            buf[10] = 0x11;
+            RandomNumberGenerator.Fill(buf.AsSpan(11, queueLen - 11));
 
-            if (!_txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdPing, buf, payloadLen)))
+            if (!_txQueue.TryEnqueue(buf, queueLen))
             {
                 ArrayPool<byte>.Shared.Return(buf);
                 return false;
@@ -101,7 +114,7 @@ public sealed partial class ObxodkaWebSocketTransport
         }
         finally
         {
-            _ = _pendingMtuProbes.TryRemove(nowTs, out _);
+            _ = _pendingMtuProbes.TryRemove(probeTs, out _);
         }
     }
 
@@ -118,8 +131,12 @@ public sealed partial class ObxodkaWebSocketTransport
             _receivedBurstMtus.Clear();
         }
 
-        if (!_txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdMtuBurstRequest, [], 0)))
+        var burstBuf = ArrayPool<byte>.Shared.Rent(2);
+        burstBuf[0] = 0xEE;
+        burstBuf[1] = 0x77;
+        if (!_txQueue.TryEnqueue(burstBuf, 2))
         {
+            ArrayPool<byte>.Shared.Return(burstBuf);
             return [];
         }
 
@@ -129,6 +146,7 @@ public sealed partial class ObxodkaWebSocketTransport
         }
         catch (OperationCanceledException)
         {
+            //штатная отмена замера пакетного mtu
         }
 
         lock (_receivedBurstMtus)
@@ -145,9 +163,11 @@ public sealed partial class ObxodkaWebSocketTransport
             return Task.CompletedTask;
         }
 
-        var buf = ArrayPool<byte>.Shared.Rent(2);
-        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(0, 2), (ushort)mtu);
-        if (!_txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdMtuSync, buf, 2)))
+        var buf = ArrayPool<byte>.Shared.Rent(4);
+        buf[0] = 0xCC;
+        buf[1] = 0xDD;
+        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(2, 2), (ushort)mtu);
+        if (!_txQueue.TryEnqueue(buf, 4))
         {
             ArrayPool<byte>.Shared.Return(buf);
         }
@@ -164,14 +184,8 @@ public sealed partial class ObxodkaWebSocketTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
-        _ = _txChannel.Writer.TryComplete();
-        while (_txChannel.Reader.TryRead(out var item))
-        {
-            if (item.Buffer.Length > 0)
-            {
-                ArrayPool<byte>.Shared.Return(item.Buffer);
-            }
-        }
+        _txQueue.Dispose();
+        _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
         _cts?.Cancel();
         _cts?.Dispose();
         _webSocket?.Dispose();
@@ -188,28 +202,38 @@ public sealed partial class ObxodkaWebSocketTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
-        _ = _txChannel.Writer.TryComplete();
-        while (_txChannel.Reader.TryRead(out var item))
+        using var cts = Interlocked.Exchange(ref _cts, null);
+        if (cts is not null)
         {
-            if (item.Buffer.Length > 0)
+            await cts.CancelAsync().ConfigureAwait(false);
+        }
+        var loopTasks = _activeLoopTasks;
+        _activeLoopTasks = [];
+        if (loopTasks.Length > 0)
+        {
+            try
             {
-                ArrayPool<byte>.Shared.Return(item.Buffer);
+                await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
+            {
+                //игнорируем таймаут ожидания завершения фоновых циклов
             }
         }
-        if (_cts is not null)
-        {
-            await _cts.CancelAsync().ConfigureAwait(false);
-        }
+        _txQueue.Dispose();
+        _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
         if (_webSocket is { State: WebSocketState.Open })
         {
             try
             {
                 await _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None).ConfigureAwait(false);
             }
-            catch { }
+            catch (Exception ex) when (ex is WebSocketException or IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+            {
+                //подавление ошибки закрытия сокета при завершении
+            }
         }
         _webSocket?.Dispose();
         _wsInvoker?.Dispose();
-        _cts?.Dispose();
     }
 }

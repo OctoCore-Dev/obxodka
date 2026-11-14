@@ -16,13 +16,12 @@ public class ReleaseIntegrityTests
     private static string FindRepoRoot()
     {
         var ghWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
-        if (!string.IsNullOrWhiteSpace(ghWorkspace) && Directory.Exists(ghWorkspace))
+        if (!string.IsNullOrWhiteSpace(ghWorkspace) &&
+            Directory.Exists(ghWorkspace) &&
+            (File.Exists(Path.Join(ghWorkspace, "obxodka.slnx")) ||
+             File.Exists(Path.Join(ghWorkspace, "version.props"))))
         {
-            if (File.Exists(Path.Combine(ghWorkspace, "obxodka.slnx")) ||
-                File.Exists(Path.Combine(ghWorkspace, "version.props")))
-            {
-                return ghWorkspace;
-            }
+            return ghWorkspace;
         }
 
         var candidates = new[]
@@ -41,9 +40,9 @@ public class ReleaseIntegrityTests
             var current = new DirectoryInfo(start);
             while (current != null)
             {
-                if (File.Exists(Path.Combine(current.FullName, "obxodka.slnx")) ||
-                    File.Exists(Path.Combine(current.FullName, "version.props")) ||
-                    File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
+                if (File.Exists(Path.Join(current.FullName, "obxodka.slnx")) ||
+                    File.Exists(Path.Join(current.FullName, "version.props")) ||
+                    File.Exists(Path.Join(current.FullName, "Directory.Build.props")))
                 {
                     return current.FullName;
                 }
@@ -52,7 +51,7 @@ public class ReleaseIntegrityTests
         }
 
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var defaultPath = Path.Combine(userProfile, "code", "obxodka");
+        var defaultPath = Path.Join(userProfile, "code", "obxodka");
         if (Directory.Exists(defaultPath))
         {
             return defaultPath;
@@ -68,7 +67,7 @@ public class ReleaseIntegrityTests
     public void SmartProguardDependencyAuditMustProtectAllReferencedLibraries()
     {
         var root = FindRepoRoot();
-        var csprojPath = Path.Combine(root, "src", "apps", "obxodka.Maui", "obxodka.Maui.csproj");
+        var csprojPath = Path.Join(root, "src", "apps", "obxodka.Maui", "obxodka.Maui.csproj");
         Assert.True(File.Exists(csprojPath), $"File not found: {csprojPath}");
 
         var doc = XDocument.Load(csprojPath);
@@ -78,7 +77,7 @@ public class ReleaseIntegrityTests
             .Cast<string>()
             .ToList();
 
-        var proguardCfgPath = Path.Combine(root, "src", "apps", "obxodka.Maui", "Platforms", "Android", "proguard.cfg");
+        var proguardCfgPath = Path.Join(root, "src", "apps", "obxodka.Maui", "Platforms", "Android", "proguard.cfg");
         Assert.True(File.Exists(proguardCfgPath), $"[R8 GUARD]: proguard.cfg missing at {proguardCfgPath}");
 
         var rulesText = File.ReadAllText(proguardCfgPath);
@@ -104,7 +103,7 @@ public class ReleaseIntegrityTests
     public void SmartAndroidManifestPermissionsGuardRejectsUnauthorizedForegroundServices()
     {
         var root = FindRepoRoot();
-        var manifestPath = Path.Combine(root, "src", "apps", "obxodka.Maui", "Platforms", "Android", "AndroidManifest.xml");
+        var manifestPath = Path.Join(root, "src", "apps", "obxodka.Maui", "Platforms", "Android", "AndroidManifest.xml");
         Assert.True(File.Exists(manifestPath), $"File not found: {manifestPath}");
 
         var doc = XDocument.Load(manifestPath);
@@ -114,17 +113,14 @@ public class ReleaseIntegrityTests
             .Cast<string>()
             .ToList();
 
-        foreach (var perm in permissions)
+        foreach (var perm in permissions.Where(p => p.StartsWith("android.permission.FOREGROUND_SERVICE_", StringComparison.OrdinalIgnoreCase)))
         {
-            if (perm.StartsWith("android.permission.FOREGROUND_SERVICE_", StringComparison.OrdinalIgnoreCase))
-            {
-                var isAllowed = string.Equals(perm, "android.permission.FOREGROUND_SERVICE_SPECIAL_USE", StringComparison.OrdinalIgnoreCase);
-                Assert.True(
-                    isAllowed,
-                    $"[SMART GOOGLE PLAY POLICY GUARD FAILED]: Dangerous permission '{perm}' was found in AndroidManifest.xml! " +
-                    "Google Play API strictly halts and blocks deployment for any new foreground service permission without manual Console declaration review. " +
-                    "Only 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' is permitted for the Octopus VPN tunnel.");
-            }
+            var isAllowed = string.Equals(perm, "android.permission.FOREGROUND_SERVICE_SPECIAL_USE", StringComparison.OrdinalIgnoreCase);
+            Assert.True(
+                isAllowed,
+                $"[SMART GOOGLE PLAY POLICY GUARD FAILED]: Dangerous permission '{perm}' was found in AndroidManifest.xml! " +
+                "Google Play API strictly halts and blocks deployment for any new foreground service permission without manual Console declaration review. " +
+                "Only 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' is permitted for the Octopus VPN tunnel.");
         }
     }
 
@@ -132,11 +128,11 @@ public class ReleaseIntegrityTests
     public void SmartWhatsNewCharacterLimitValidationMustNotExceedGooglePlayQuota()
     {
         var root = FindRepoRoot();
-        var whatsNewDir = Path.Combine(root, "packaging", "whatsnew");
+        var whatsNewDir = Path.Join(root, "packaging", "whatsnew");
         Assert.True(Directory.Exists(whatsNewDir), $"whatsnew directory not found at {whatsNewDir}");
 
-        var ruFile = Path.Combine(whatsNewDir, "whatsnew-ru-RU");
-        var enFile = Path.Combine(whatsNewDir, "whatsnew-en-US");
+        var ruFile = Path.Join(whatsNewDir, "whatsnew-ru-RU");
+        var enFile = Path.Join(whatsNewDir, "whatsnew-en-US");
 
         Assert.True(File.Exists(ruFile), "whatsnew-ru-RU is required for Google Play releases!");
         Assert.True(File.Exists(enFile), "whatsnew-en-US is required for Google Play releases!");
@@ -156,7 +152,7 @@ public class ReleaseIntegrityTests
     public void SmartVersionPropsValidationMustEnsureMonotonicVersionCode()
     {
         var root = FindRepoRoot();
-        var versionPropsPath = Path.Combine(root, "version.props");
+        var versionPropsPath = Path.Join(root, "version.props");
         Assert.True(File.Exists(versionPropsPath), $"version.props not found at {versionPropsPath}");
 
         var doc = XDocument.Load(versionPropsPath);

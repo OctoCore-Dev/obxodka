@@ -1,4 +1,3 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
 using Microsoft.Maui.Controls.Shapes;
 using Path = System.IO.Path;
 
@@ -39,12 +38,13 @@ public sealed partial class VpnView
                 return;
             }
 
+            var activeSni = OctopusEngine.Current?.ActiveSni;
             _activeConnectedNode = !string.IsNullOrWhiteSpace(host) &&
                 !IPAddress.TryParse(host, out _) &&
                 !host.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) &&
                 !host.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase)
                 ? host
-                : OctopusEngine.Current?.ActiveSni ?? AppSecrets.AllowedSniPool[0];
+                : (!string.IsNullOrWhiteSpace(activeSni) ? activeSni : "Zero-SNI");
 
             var displayHost = _activeConnectedNode;
             if (string.IsNullOrWhiteSpace(displayHost) ||
@@ -52,12 +52,24 @@ public sealed partial class VpnView
                 displayHost.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
                 displayHost.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase))
             {
-                displayHost = AppSecrets.AllowedSniPool[0];
+                displayHost = "Прямой TLS (Zero-SNI)";
+            }
+
+            if (_vpnService.CurrentState == AppVpnState.Connected && OctopusEngine.Current is { } engine)
+            {
+                var rayTag = engine.ActiveProtocol == "OBXODKA-WS"
+                    ? "WS"
+                    : $"{engine.ActiveRays}L";
+                displayHost = $"{displayHost} • {rayTag}";
             }
 
             NodeHostLabel?.Text = displayHost;
         });
     }
+
+    //переключение состояния vpn по нажатию системной плитки быстрого доступа
+    public void TriggerTileToggle() =>
+        MainThread.BeginInvokeOnMainThread(() => OnConnectClickedAsync(null, EventArgs.Empty));
 
     //обновление статуса и цвета ip адреса
     private void UpdateIpStatusDisplay(string text, Color textColor, Color iconColor)
@@ -285,7 +297,6 @@ public sealed partial class VpnView
     //обработка смены состояния vpn туннеля
     private void HandleAppVpnStateChanged(AppVpnState state)
     {
-        UpdateRayIndicator();
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             ServerSelectorButton.Opacity = state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting ? 0.55 : 1.0;
@@ -296,7 +307,10 @@ public sealed partial class VpnView
             switch (state)
             {
                 case AppVpnState.Disconnected:
-                    _isBusy = false;
+                    if (!_isHotSwapping)
+                    {
+                        _isBusy = false;
+                    }
                     _isErrorState = false;
                     _errorTransitionFactor = 0f;
                     StopLoaderAnimation(animateExit: true);
@@ -327,7 +341,6 @@ public sealed partial class VpnView
                     UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? VpnStatusMessages.Connected, textPrimary, accent);
                     UpdateActiveNode(_activeConnectedNode);
                     ConnectButtonCore.IsEnabled = true;
-                    UpdateRayIndicator();
                     await SetNeonStateAsync(
                         GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected),
                         GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction),
@@ -657,31 +670,16 @@ public sealed partial class VpnView
             var orderedCandidates = new List<VpnServerDto> { targetServer };
             orderedCandidates.AddRange(servers.Where(s => s.Ip != targetServer.Ip));
 
-            var isShieldNode = string.Equals(targetServer.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(targetServer.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(targetServer.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                               targetServer.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
-
-            if (isShieldNode)
-            {
-                //для cloudflare shield узлов ssl-пиннинг отключается так как cloudflare использует веб-сертификаты с регулярной ротацией
-                OctopusEngine.DynamicSslPublicKeyHash = null;
-                UpdateActiveNode(targetServer.Ip);
-            }
-            else if (!string.IsNullOrWhiteSpace(targetServer.CertHash))
-            {
-                OctopusEngine.DynamicSslPublicKeyHash = targetServer.CertHash;
-                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
-            }
-            else
+            var isShieldNode = SniEngine.ConfigureServerSecurity(targetServer, out _);
+            if (!isShieldNode && string.IsNullOrWhiteSpace(OctopusEngine.DynamicSslPublicKeyHash))
             {
                 var (successHash, hashData, _) = await _apiService.GetCertHashAsync();
                 if (successHash && hashData is not null && !string.IsNullOrEmpty(hashData.Hash))
                 {
                     OctopusEngine.DynamicSslPublicKeyHash = hashData.Hash;
                 }
-                UpdateActiveNode(AppSecrets.AllowedSniPool[0]);
             }
+            UpdateActiveNode(targetServer.Ip);
 
             AppLogger.Log($"[VPN-TARGET] User initiated connect to: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port}) | Role: {targetServer.Role ?? "worker"} | Provider: {targetServer.Provider} | Flag: {targetServer.Flag}");
             await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, orderedCandidates));

@@ -126,7 +126,7 @@ public sealed class DefaultPreferencesService : IPreferencesService
                 var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
                 return (T)Convert.ChangeType(val, targetType, CultureInfo.InvariantCulture);
             }
-            catch
+            catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException or ArgumentException)
             {
                 return defaultValue;
             }
@@ -204,7 +204,7 @@ public sealed class DefaultMainThreadService : IMainThreadService
         {
             action();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             AppLogger.LogError("[DefaultMainThreadService] Unhandled action error", ex);
         }

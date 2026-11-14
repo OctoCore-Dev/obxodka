@@ -42,16 +42,8 @@ public static class DeviceHelper
         }
 
         var clean = id.Replace("-", "", StringComparison.Ordinal).Trim();
-        var allSame = true;
         var first = clean[0];
-        foreach (var c in clean)
-        {
-            if (c != first)
-            {
-                allSame = false;
-                break;
-            }
-        }
+        var allSame = clean.All(c => c == first);
 
         return !allSame || (first != '0' && first != 'f' && first != 'F');
     }

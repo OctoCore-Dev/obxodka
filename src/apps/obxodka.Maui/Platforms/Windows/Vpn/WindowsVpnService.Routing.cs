@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace obxodka.Platforms.Windows;
 
 //управление системными маршрутами windows и привязкой сетевых сокетов к физическому шлюзу
@@ -7,6 +9,46 @@ internal sealed partial class WindowsVpnService
     private static string s_savedPhysicalGateway = "";
     private static int s_savedPhysicalIfIndex;
     private static IPAddress? s_savedPhysicalLocalIp;
+    private static readonly ConcurrentDictionary<string, byte> s_remoteMgmtBypassIps = new(StringComparer.OrdinalIgnoreCase);
+    private static volatile bool s_ipv6RoutesApplied;
+
+    //сброс кэшированных параметров физического интерфейса при обрыве или смене сети
+    private static void ResetSavedPhysicalGateway()
+    {
+        s_savedPhysicalGateway = "";
+        s_savedPhysicalIfIndex = 0;
+        s_savedPhysicalLocalIp = null;
+    }
+
+    //проверка наличия активного физического ipv6 шлюза на хосте
+    private static bool HasActiveIpv6Connectivity()
+    {
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up ||
+                    nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                    IsConflictingAdapter(nic) ||
+                    nic.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var props = nic.GetIPProperties();
+                if (props.GatewayAddresses.Any(g =>
+                        g.Address.AddressFamily == AddressFamily.InterNetworkV6 &&
+                        !IPAddress.IsLoopback(g.Address) &&
+                        !g.Address.Equals(IPAddress.IPv6Any)))
+                {
+                    return true;
+                }
+            }
+        }
+        catch { }
+
+        return false;
+    }
 
     //структура строки таблицы маршрутизации iphlpapi
     [StructLayout(LayoutKind.Sequential)]
@@ -50,7 +92,14 @@ internal sealed partial class WindowsVpnService
         {
             _ = await RunCmdAsync("route", $"delete {relayIp} mask 255.255.255.255");
         }
+        foreach (var mgmtIp in s_remoteMgmtBypassIps.Keys.ToArray())
+        {
+            _ = await RunCmdAsync("route", $"delete {mgmtIp} mask 255.255.255.255", timeoutMs: 1500);
+            _ = s_remoteMgmtBypassIps.TryRemove(mgmtIp, out _);
+        }
         await DisableDnsLeakProtectionAsync();
+        await RestoreAdapterDnsBackupAsync();
+        ResetSavedPhysicalGateway();
 
         try
         {
@@ -92,22 +141,30 @@ internal sealed partial class WindowsVpnService
             var (exitCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set address name=\"{adapterName}\" static {ip} {mask} none");
             if (exitCode == 0)
             {
-                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active");
+                var effectiveMtu = Math.Clamp(SmartMtuEngine.CurrentMtu, SmartMtuEngine.MinMtu, 1500);
+                var (mCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={effectiveMtu} store=active");
                 var (metCode, _) = await RunCmdAsync("netsh", $"interface ipv4 set interface \"{adapterName}\" metric=50");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{adapterName}\" static {DnsDefaults.PrimaryDns} primary validate=no");
                 _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{adapterName}\" {DnsDefaults.SecondaryDns} index=2 validate=no");
                 _ = DnsFlushResolverCache();
-                AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}, wintunMtu=1500 (tunnelMtu={SmartMtuEngine.CurrentMtu})");
+                AppLogger.Log($"[NET CONFIG] IPv4 netsh set: mtuExit={mCode}, metricExit={metCode}, wintunMtu={effectiveMtu} (tunnelMtu={SmartMtuEngine.CurrentMtu})");
 
-                if (!string.IsNullOrWhiteSpace(ipv6))
+                var hasServerIpv6 = !string.IsNullOrWhiteSpace(ipv6) &&
+                                    IPAddress.TryParse(ipv6, out var parsedV6) &&
+                                    parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
+                var effectiveIpv6 = hasServerIpv6 ? ipv6 : (HasActiveIpv6Connectivity() ? "fd00::2" : null);
+                if (!string.IsNullOrWhiteSpace(effectiveIpv6))
                 {
-                    var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={ipv6} store=active");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active");
+                    var (v6Code, v6Out) = await RunCmdAsync("netsh", $"interface ipv6 set address interface=\"{adapterName}\" address={effectiveIpv6} store=active");
+                    _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={effectiveMtu} store=active");
                     _ = await RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=50");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
-                    _ = await RunCmdAsync("netsh", $"interface ipv6 add dnsservers name=\"{adapterName}\" 2001:4860:4860::8888 index=2 validate=no");
+                    if (hasServerIpv6)
+                    {
+                        _ = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{adapterName}\" static 2606:4700:4700::1111 primary validate=no");
+                        _ = await RunCmdAsync("netsh", $"interface ipv6 add dnsservers name=\"{adapterName}\" 2001:4860:4860::8888 index=2 validate=no");
+                    }
                     _ = DnsFlushResolverCache();
-                    AppLogger.Log($"[NET CONFIG] IPv6 netsh set: code={v6Code}, out={v6Out}");
+                    AppLogger.Log($"[NET CONFIG] IPv6 netsh set ({(hasServerIpv6 ? "tunnel" : "leak-guard")}): code={v6Code}, out={v6Out}");
                 }
 
                 return;
@@ -119,10 +176,17 @@ internal sealed partial class WindowsVpnService
             $"-NoProfile -Command \"try {{ New-NetIPAddress -InterfaceAlias '{adapterName}' -IPAddress '{ip}' -PrefixLength {pfx} -ErrorAction Stop; Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses '{DnsDefaults.PrimaryDns}','{DnsDefaults.SecondaryDns}' -ErrorAction Stop }} catch {{ $_.Exception.Message }}\"");
         AppLogger.Log($"[NET CONFIG] IPv4 PowerShell fallback: code={psCode}, out={psErr}");
 
-        if (!string.IsNullOrWhiteSpace(ipv6))
+        var psHasServerIpv6 = !string.IsNullOrWhiteSpace(ipv6) &&
+                              IPAddress.TryParse(ipv6, out var parsedPsV6) &&
+                              parsedPsV6.AddressFamily == AddressFamily.InterNetworkV6;
+        var psEffectiveIpv6 = psHasServerIpv6 ? ipv6 : (HasActiveIpv6Connectivity() ? "fd00::2" : null);
+        if (!string.IsNullOrWhiteSpace(psEffectiveIpv6))
         {
+            var dnsCmd = psHasServerIpv6
+                ? $"; Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses '2606:4700:4700::1111','2001:4860:4860::8888' -ErrorAction Stop"
+                : string.Empty;
             var (psV6Code, psV6Err) = await RunCmdAsync("powershell",
-                $"-NoProfile -Command \"try {{ New-NetIPAddress -InterfaceAlias '{adapterName}' -IPAddress '{ipv6}' -PrefixLength 64 -ErrorAction Stop; Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses '2606:4700:4700::1111','2001:4860:4860::8888' -ErrorAction Stop }} catch {{ $_.Exception.Message }}\"");
+                $"-NoProfile -Command \"try {{ New-NetIPAddress -InterfaceAlias '{adapterName}' -IPAddress '{psEffectiveIpv6}' -PrefixLength 64 -ErrorAction Stop{dnsCmd} }} catch {{ $_.Exception.Message }}\"");
             AppLogger.Log($"[NET CONFIG] IPv6 PowerShell fallback: code={psV6Code}, out={psV6Err}");
         }
     }
@@ -132,9 +196,10 @@ internal sealed partial class WindowsVpnService
     {
         try
         {
-            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
-            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu=1500 store=active").ConfigureAwait(false);
-            AppLogger.Log($"[MTU ADAPTER] Maintaining Wintun adapter '{adapterName}' at 1500B (tunnel effective MTU: {mtu}B, TCP MSS: {mtu - 40}B)");
+            var effectiveMtu = Math.Clamp(mtu, SmartMtuEngine.MinMtu, 1500);
+            _ = await RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{adapterName}\" mtu={effectiveMtu} store=active").ConfigureAwait(false);
+            _ = await RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{adapterName}\" mtu={effectiveMtu} store=active").ConfigureAwait(false);
+            AppLogger.Log($"[MTU ADAPTER] Updated Wintun adapter '{adapterName}' MTU to {effectiveMtu}B (tunnel effective MTU: {mtu}B, TCP MSS: {effectiveMtu - 40}B)");
         }
         catch (Exception ex)
         {
@@ -201,17 +266,25 @@ internal sealed partial class WindowsVpnService
                 }
                 else if (socket.AddressFamily == AddressFamily.InterNetworkV6)
                 {
+                    if (socket.DualMode)
+                    {
+                        socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)ipUnicastIf, IPAddress.HostToNetworkOrder(ifIndex));
+                    }
                     socket.SetSocketOption(SocketOptionLevel.IPv6, (SocketOptionName)ipUnicastIf, ifIndex);
                 }
             }
 
             var localIp = s_savedPhysicalLocalIp;
-            if (socket.AddressFamily == AddressFamily.InterNetwork &&
-                localIp is not null &&
-                localIp.AddressFamily == AddressFamily.InterNetwork &&
-                !IPAddress.IsLoopback(localIp))
+            if (localIp is not null && !IPAddress.IsLoopback(localIp))
             {
-                socket.Bind(new IPEndPoint(localIp, 0));
+                if (socket.AddressFamily == AddressFamily.InterNetwork && localIp.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    socket.Bind(new IPEndPoint(localIp, 0));
+                }
+                else if (socket.AddressFamily == AddressFamily.InterNetworkV6 && socket.DualMode && localIp.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    socket.Bind(new IPEndPoint(localIp.MapToIPv6(), 0));
+                }
             }
         }
         catch (Exception ex)
@@ -422,6 +495,7 @@ internal sealed partial class WindowsVpnService
     //настройка маршрутов windows для туннеля vpn
     private static async Task SetWindowsRoutesAsync(string adapterName, IReadOnlyList<string> serverIps, string assignedIp, bool enable, string? assignedIpV6 = null)
     {
+        _ = assignedIp;
         var primaryIp = serverIps.FirstOrDefault(ip => !string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out _));
         var (gw, physicalIfIndex) = GetDefaultGatewayInfo(primaryIp);
         AppLogger.Log($"[ROUTE] Default Gateway: {gw}, PhysicalIfIndex: {physicalIfIndex}, Name: {adapterName}, ServerIPs: {string.Join(',', serverIps)}, Enable: {enable}");
@@ -491,8 +565,12 @@ internal sealed partial class WindowsVpnService
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(assignedIpV6) && IPAddress.TryParse(assignedIpV6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
+                var hasServerIpv6 = !string.IsNullOrWhiteSpace(assignedIpV6) &&
+                                    IPAddress.TryParse(assignedIpV6, out var parsedV6) &&
+                                    parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
+                if (hasServerIpv6 || HasActiveIpv6Connectivity())
                 {
+                    s_ipv6RoutesApplied = true;
                     var v6MetricTask = RunCmdAsync("netsh", $"interface ipv6 set interface \"{adapterName}\" metric=1", timeoutMs: 1500);
                     var v6R1Task = RunCmdAsync("netsh", $"interface ipv6 add route ::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
                     var v6R2Task = RunCmdAsync("netsh", $"interface ipv6 add route 8000::/1 interface=\"{adapterName}\" metric=1", timeoutMs: 1500);
@@ -527,8 +605,15 @@ internal sealed partial class WindowsVpnService
                 }
             }
 
-            if (!string.IsNullOrEmpty(adapterName))
+            foreach (var mgmtIp in s_remoteMgmtBypassIps.Keys.ToArray())
             {
+                deleteTasks.Add(RunCmdAsync("route", $"delete {mgmtIp} mask 255.255.255.255", timeoutMs: 1500));
+                _ = s_remoteMgmtBypassIps.TryRemove(mgmtIp, out _);
+            }
+
+            if (s_ipv6RoutesApplied && !string.IsNullOrEmpty(adapterName))
+            {
+                s_ipv6RoutesApplied = false;
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route ::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route 8000::/1 interface=\"{adapterName}\"", timeoutMs: 1500));
                 deleteTasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route fd00::/64 interface=\"{adapterName}\"", timeoutMs: 1500));
@@ -601,6 +686,11 @@ internal sealed partial class WindowsVpnService
                         if (parts.Length >= 3)
                         {
                             var foreignAddr = parts[2];
+                            if (foreignAddr.StartsWith('['))
+                            {
+                                continue;
+                            }
+
                             var colonIdx = foreignAddr.LastIndexOf(':');
                             if (colonIdx > 0)
                             {
@@ -609,8 +699,15 @@ internal sealed partial class WindowsVpnService
                                     !IPAddress.IsLoopback(parsedIp) &&
                                     parsedIp.AddressFamily == AddressFamily.InterNetwork)
                                 {
-                                    _ = await RunCmdAsync("route", $"add {remoteIp} mask 255.255.255.255 {nextHop} metric 1{physIfArg}");
-                                    SplitTunnelPolicy.RecordBypassRoute(remoteIp, "Сессия удалённого доступа");
+                                    var normalizedIfArg = string.IsNullOrWhiteSpace(physIfArg)
+                                        ? string.Empty
+                                        : $" {physIfArg.Trim()}";
+                                    var (addCode, _) = await RunCmdAsync("route", $"add {remoteIp} mask 255.255.255.255 {nextHop} metric 1{normalizedIfArg}");
+                                    if (addCode == 0)
+                                    {
+                                        _ = s_remoteMgmtBypassIps.TryAdd(remoteIp, 0);
+                                        SplitTunnelPolicy.RecordBypassRoute(remoteIp, "Сессия удалённого доступа");
+                                    }
                                 }
                             }
                         }

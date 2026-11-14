@@ -45,9 +45,8 @@ public sealed class MirrorAndBootstrapConfigTests
         Assert.NotEmpty(known);
         Assert.Contains(AppConfig.DirectApiBaseUrl, known, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var mirror in MirrorConfig.MirrorDomains)
+        foreach (var expectedBase in MirrorConfig.MirrorDomains.Select(mirror => $"https://{mirror.TrimEnd('/')}/"))
         {
-            var expectedBase = $"https://{mirror.TrimEnd('/')}/";
             Assert.Contains(expectedBase, known, StringComparer.OrdinalIgnoreCase);
         }
     }

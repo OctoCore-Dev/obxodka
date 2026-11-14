@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(GITHUB_ACTIONS)' != 'true' and !$(TargetFramework.Contains('-android'))">
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(EnableMauiLinux)' != 'true' and !$(TargetFramework.Contains('-android'))">
     <TargetFramework>net10.0</TargetFramework>
     <UseMaui>false</UseMaui>
     <OutputType>Library</OutputType>
@@ -8,7 +8,7 @@
     <EnableDefaultXamlItems>false</EnableDefaultXamlItems>
   </PropertyGroup>
 
-  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
     <WindowsPackageType>$(PackageMode)</WindowsPackageType>
     <Configurations>Debug;Release</Configurations>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == ''">net10.0-windows10.0.19041.0;net10.0-android</TargetFrameworks>
@@ -26,7 +26,7 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
   </PropertyGroup>
 
-	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">
+	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true') and $(TargetFramework.Contains('-windows'))">
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>true</SelfContained>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
@@ -34,7 +34,7 @@
 		<ApplicationManifest>Platforms\Windows\app.manifest</ApplicationManifest>
 	</PropertyGroup>
 
-	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))) and $(TargetFramework.Contains('-android'))">
+	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))) and $(TargetFramework.Contains('-android'))">
 		<RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
 		<RunAOTCompilation>false</RunAOTCompilation>
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
@@ -46,14 +46,14 @@
 		<AndroidEnableShrinking Condition="'$(Configuration)' == 'Release'">true</AndroidEnableShrinking>
 	</PropertyGroup>
 
-    <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
+    <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
         <ApplicationTitle>Obxodka</ApplicationTitle>
         <ApplicationId>com.octocore.obxodka</ApplicationId>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
-	<PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
+	<PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
 		<TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.17763.0</TargetPlatformMinVersion>
         <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-android'))">29.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-ios'))">16.1</SupportedOSPlatformVersion>
@@ -73,7 +73,7 @@
         <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
     </PropertyGroup>
 
-	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
+	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
         <MauiIcon Condition="$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#FFFFFF" />
         <MauiIcon Condition="!$(TargetFramework.Contains('-android'))" Include="Resources\AppIcon\appiconfg.svg" />
         <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="Transparent" />
@@ -83,7 +83,7 @@
 		<MauiXaml Update="Pages\**\*.xaml" Generator="MSBuild:Compile" />
 	</ItemGroup>
 
-<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
+<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
     <PackageReference Include="AathifMahir.Maui.MauiIcons.Fluent" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.110" />
@@ -98,7 +98,7 @@
     <PackageReference Include="System.Management" Version="10.0.12" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
 </ItemGroup>
 
-  <ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))) and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+  <ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))) and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
     <PackageReference Include="Xamarin.AndroidX.Activity.Ktx" Version="1.13.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
@@ -111,7 +111,7 @@
     <ProguardConfiguration Include="Platforms\Android\proguard.cfg" />
   </ItemGroup>
 
-	<ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true') and $(TargetFramework.Contains('-windows'))">
+	<ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true') and $(TargetFramework.Contains('-windows'))">
         <Content Include="Platforms\Windows\Engine\**\*">
             <PackagePath>Engine</PackagePath>
             <Link>Engine\%(RecursiveDir)%(Filename)%(Extension)</Link>
@@ -119,7 +119,7 @@
         </Content>
     </ItemGroup>
 
-	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(GITHUB_ACTIONS)' == 'true' or $(TargetFramework.Contains('-android'))">
+	<ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
 	  <ProjectReference Include="..\..\core\obxodka.Client\obxodka.Client.csproj" />
 	  <ProjectReference Include="..\..\core\obxodka.Shared\obxodka.Shared.csproj" />
 	</ItemGroup>
@@ -130,10 +130,10 @@
 		<XmlPoke XmlInputPath="Platforms\Windows\Package.appxmanifest" Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10'/&gt;" Query="/m:Package/m:Identity/@Version" Value="$(AppxPackageVersion)" />
 	</Target>
 
-	<Target Name="Build" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(GITHUB_ACTIONS)' != 'true' and !$(TargetFramework.Contains('-android'))">
+	<Target Name="Build" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(EnableMauiLinux)' != 'true' and !$(TargetFramework.Contains('-android'))">
 		<Message Importance="high" Text="🐧 Linux detected: obxodka.Maui skipped successfully." />
 	</Target>
-	<Target Name="Publish" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(GITHUB_ACTIONS)' != 'true' and !$(TargetFramework.Contains('-android'))" />
+	<Target Name="Publish" Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(EnableMauiLinux)' != 'true' and !$(TargetFramework.Contains('-android'))" />
 	<Target Name="_EnsureProguardProjectReferencesExists" BeforeTargets="_CompileToDalvik" Condition="$(TargetFramework.Contains('-android'))">
 		<MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_ProguardProjectConfiguration)'))" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')" />
 		<Touch Files="$(_ProguardProjectConfiguration)" AlwaysCreate="true" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')" />

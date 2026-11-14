@@ -31,7 +31,7 @@ internal sealed partial class WindowsVpnService
             _currentAssignedIp = newAssignedIp;
             var ipv6 = OctopusEngine.Current.AssignedIpV6;
             var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
-            var effectiveIpv6 = hasValidIpv6 ? ipv6 : "fd00::2";
+            var effectiveIpv6 = hasValidIpv6 ? ipv6 : null;
             await SetAdapterConfigAsync(_adapter.Name, newAssignedIp, "255.192.0.0", effectiveIpv6).ConfigureAwait(false);
             await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, newAssignedIp, true, effectiveIpv6).ConfigureAwait(false);
             await EnableDnsLeakProtectionAsync(_adapter.Name, newAssignedIp).ConfigureAwait(false);
@@ -52,6 +52,7 @@ internal sealed partial class WindowsVpnService
 
         AppLogger.LogWarning("[WINDOWS-VPN] Physical uplink lost during active VPN. Removing Wintun routes to avoid blackhole...");
         OnLogUpdated?.Invoke("Физическая сеть отключена. Маршруты сброшены.");
+        ResetSavedPhysicalGateway();
         UpdateState(AppVpnState.Reconnecting);
         _ = Task.Run(CleanupStaleRoutesAsync);
     }
@@ -163,18 +164,13 @@ internal sealed partial class WindowsVpnService
                         var newIp = Uri.CheckHostName(nextServer.Ip) == UriHostNameType.Dns
                             ? (await ApiService.ResolveHostAntiPoisonAsync(nextServer.Ip).ConfigureAwait(false)).ToString()
                             : nextServer.Ip;
-                        OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(nextServer.CertHash) ? nextServer.CertHash : null;
+                        _ = SniEngine.ConfigureServerSecurity(nextServer, out _);
                         var newPort = nextServer.Port > 0 ? nextServer.Port : 443;
                         _currentServerIndex = nextIdx;
                         _currentServerIp = newIp;
                         if (!_currentServerIpsToRoute.Contains(newIp))
                         {
                             _currentServerIpsToRoute.Add(newIp);
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(nextServer.CertHash))
-                        {
-                            OctopusEngine.DynamicSslPublicKeyHash = nextServer.CertHash;
                         }
 
                         OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupNode(newIp));
@@ -288,8 +284,7 @@ internal sealed partial class WindowsVpnService
                                     {
                                         _currentServerIpsToRoute.Add(newIp);
                                     }
-                                    OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(fb.CertHash) ? fb.CertHash : null;
-                                    reconnectSni = fb.Ip;
+                                    _ = SniEngine.ConfigureServerSecurity(fb, out reconnectSni);
                                     await SwitchHostRouteAsync(oldIp, newIp);
                                 }
                                 else
@@ -403,7 +398,7 @@ internal sealed partial class WindowsVpnService
                 throw new InvalidOperationException($"Некорректный IP адрес сервера: '{targetIp}'");
             }
 
-            var stealthHost = AppSecrets.AllowedSniPool[0];
+            var stealthHost = targetIp;
 
             _currentServerIp = targetIp;
             _isExplicitlyStopped = false;
@@ -497,13 +492,7 @@ internal sealed partial class WindowsVpnService
                     _currentServerIpsToRoute.AddRange(candidateIpsToRoute);
                     targetIp = candidateIp;
 
-                    var isShield = string.Equals(s.Role, "shield", StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(s.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(s.Ip, AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                                   s.Ip.EndsWith($".{AppConfig.PrimaryDomain}", StringComparison.OrdinalIgnoreCase);
-
-                    OctopusEngine.DynamicSslPublicKeyHash = isShield ? null : (!string.IsNullOrWhiteSpace(s.CertHash) ? s.CertHash : null);
-                    var targetSni = isShield ? (Uri.CheckHostName(s.Ip) == UriHostNameType.Dns ? s.Ip : AppConfig.PrimaryDomain) : s.Ip;
+                    _ = SniEngine.ConfigureServerSecurity(s, out var targetSni);
 
                     for (var attempt = 1; attempt <= 2; attempt++)
                     {
@@ -546,7 +535,7 @@ internal sealed partial class WindowsVpnService
                                 throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
                             }
                             var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
-                            var effectiveIpv6 = hasValidIpv6 ? ipv6 : "fd00::2";
+                            var effectiveIpv6 = hasValidIpv6 ? ipv6 : null;
 
                             OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
                             if (_adapter is null || _adapter.IsDisposed)
@@ -572,23 +561,13 @@ internal sealed partial class WindowsVpnService
                             if ((verified || curRx > 0) && curTx > 0)
                             {
                                 AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu})! Activating routes and elevating adapter priority.");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
-                                if (hasValidIpv6)
-                                {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
-                                }
                                 OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else if (curTx > 0)
                             {
                                 AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Tunnel online, MTU={SmartMtuEngine.CurrentMtu}! Proceeding with route activation...");
-                                _ = RunCmdAsync("netsh", $"interface ipv4 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
-                                if (hasValidIpv6)
-                                {
-                                    _ = RunCmdAsync("netsh", $"interface ipv6 set subinterface \"{_adapter.Name}\" mtu=1500 store=active");
-                                }
-                                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, Math.Max(curRx, 1)));
+                                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                                 _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
                             }
                             else
@@ -732,6 +711,7 @@ internal sealed partial class WindowsVpnService
                     : (!string.IsNullOrEmpty(_currentServerIp) ? [_currentServerIp] : []);
 
                 await DisableDnsLeakProtectionAsync().ConfigureAwait(false);
+                await RestoreAdapterDnsBackupAsync().ConfigureAwait(false);
                 await SetWindowsRoutesAsync(adapterName, ipsToRoute, _currentAssignedIp, false).ConfigureAwait(false);
 
                 if (_adapter != null)
@@ -775,9 +755,7 @@ internal sealed partial class WindowsVpnService
                 }
 
                 _currentAssignedIp = "";
-                s_savedPhysicalLocalIp = null;
-                s_savedPhysicalGateway = "";
-                s_savedPhysicalIfIndex = 0;
+                ResetSavedPhysicalGateway();
                 AppLogger.Log("[SYSTEM] VPN cleanup complete.");
                 OnLogUpdated?.Invoke(VpnStatusMessages.VpnDisconnectedSystem);
             }

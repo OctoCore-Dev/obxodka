@@ -128,7 +128,14 @@ public sealed partial class OctopusVpnService : VpnService
     public override void OnRevoke()
     {
         StopNativeVpn();
-        AndroidVpnService.Instance.ChangeState(AppVpnState.Disconnected);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await AndroidVpnService.Instance.StopVpnAsync().ConfigureAwait(false);
+            }
+            catch { }
+        });
         base.OnRevoke();
     }
 
@@ -429,10 +436,30 @@ public sealed partial class OctopusVpnService : VpnService
 
     private readonly Lock _tunLock = new();
     private string? _currentTunIp;
+    private int _currentTunMtu;
     private volatile bool _isTunRunning;
+    private int _tunGeneration;
+
+    //обновление mtu существующего tun интерфейса при адаптивной подстройке ядра
+    public void OnMtuUpdated(int newMtu)
+    {
+        var clampedMtu = Math.Clamp(newMtu, SmartMtuEngine.MinMtu, 1400);
+        if (!_isTunRunning || string.IsNullOrEmpty(_currentTunIp))
+        {
+            return;
+        }
+
+        if (Math.Abs(clampedMtu - _currentTunMtu) < 20)
+        {
+            return;
+        }
+
+        AppLogger.Log($"[VPN MTU] Applying updated TUN MTU on Android: {_currentTunMtu} -> {clampedMtu}");
+        _ = EstablishTun(forceRebuild: true);
+    }
 
     //инициализация и подъем виртуального интерфейса tun0 с настройками dns из ядра
-    public bool EstablishTun()
+    public bool EstablishTun(bool forceRebuild = false)
     {
         lock (_tunLock)
         {
@@ -444,7 +471,7 @@ public sealed partial class OctopusVpnService : VpnService
                     return false;
                 }
 
-                if (_tunInterface != null && _currentTunIp == ip && _isTunRunning && _txThread is { IsAlive: true } && _rxThread is { IsAlive: true })
+                if (!forceRebuild && _tunInterface != null && _currentTunIp == ip && _isTunRunning && _txThread is { IsAlive: true } && _rxThread is { IsAlive: true })
                 {
                     AppLogger.Log($"[VPN ESTABLISH] TUN already active for {ip}/32 with healthy worker threads. Preserving tunnel interface.");
                     return true;
@@ -482,10 +509,11 @@ public sealed partial class OctopusVpnService : VpnService
                 var ct = _vpnCts.Token;
 
                 using var builder = new Builder(this);
+                var targetMtu = Math.Clamp(SmartMtuEngine.CurrentMtu, SmartMtuEngine.MinMtu, 1400);
                 _ = builder
                     .SetSession("Obxodka")
                     .AddAddress(ip, 32)
-                    .SetMtu(Math.Min(SmartMtuEngine.CurrentMtu, 1400))
+                    .SetMtu(targetMtu)
                     .SetBlocking(true)
                     .AddRoute("0.0.0.0", 0);
 
@@ -554,12 +582,25 @@ public sealed partial class OctopusVpnService : VpnService
                 if (_tunInterface is { FileDescriptor: not null })
                 {
                     AcquireWakeLock();
+                    var gen = Interlocked.Increment(ref _tunGeneration);
                     _currentTunIp = ip;
+                    _currentTunMtu = targetMtu;
                     _isTunRunning = true;
 
                     var tunFd = _tunInterface.Fd;
+                    var pipeline = OctopusEngine.Current.Pipeline;
+                    pipeline.AdBlockFilter = (buf, len) => DnsAdBlocker.ProcessPacket(buf, len);
+                    pipeline.LocalDelivery = (buf, len) =>
+                    {
+                        var copy = ArrayPool<byte>.Shared.Rent(len);
+                        Buffer.BlockCopy(buf, 0, copy, 0, len);
+                        if (!_downstreamChannel.Writer.TryWrite((copy, len)))
+                        {
+                            ArrayPool<byte>.Shared.Return(copy);
+                        }
+                    };
 
-                    _txThread = new Thread(() => ProcessTraffic(tunFd, ct))
+                    _txThread = new Thread(() => ProcessTraffic(tunFd, gen, ct))
                     {
                         IsBackground = true,
                         Priority = System.Threading.ThreadPriority.Highest,
@@ -567,7 +608,7 @@ public sealed partial class OctopusVpnService : VpnService
                     };
                     _txThread.Start();
 
-                    _rxThread = new Thread(() => ProcessDownstreamTraffic(tunFd, ct))
+                    _rxThread = new Thread(() => ProcessDownstreamTraffic(tunFd, gen, ct))
                     {
                         IsBackground = true,
                         Priority = System.Threading.ThreadPriority.Highest,
@@ -597,9 +638,10 @@ public sealed partial class OctopusVpnService : VpnService
     }
 
     //поток записи входящего сетевого трафика в интерфейс tun0
-    private void ProcessDownstreamTraffic(int tunFd, CancellationToken ct)
+    private void ProcessDownstreamTraffic(int tunFd, int gen, CancellationToken ct)
     {
         var reader = _downstreamChannel.Reader;
+        var pipeline = OctopusEngine.Current.Pipeline;
         try
         {
             while (!ct.IsCancellationRequested)
@@ -607,32 +649,31 @@ public sealed partial class OctopusVpnService : VpnService
                 EnsureWakeLockHeld();
                 while (reader.TryRead(out var item))
                 {
-                    try
+                    pipeline.ProcessIncomingPacket(item.buffer, item.length, (buf, len) =>
                     {
-                        unsafe
+                        try
                         {
-                            fixed (byte* ptr = item.buffer)
+                            unsafe
                             {
-                                var written = write(tunFd, ptr, (nuint)item.length);
-                                if (written < 0)
+                                fixed (byte* ptr = buf)
                                 {
-                                    var errno = Marshal.GetLastPInvokeError();
-                                    if (errno == 4)
+                                    var written = write(tunFd, ptr, (nuint)len);
+                                    if (written < 0)
                                     {
-                                        _ = write(tunFd, ptr, (nuint)item.length);
+                                        var errno = Marshal.GetLastPInvokeError();
+                                        if (errno == 4)
+                                        {
+                                            _ = write(tunFd, ptr, (nuint)len);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.LogError($"[TUN WRITE ERROR] {ex.Message}");
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(item.buffer);
-                    }
+                        catch (Exception ex)
+                        {
+                            AppLogger.LogError($"[TUN WRITE ERROR] {ex.Message}");
+                        }
+                    });
                 }
 
                 if (ct.IsCancellationRequested)
@@ -663,12 +704,15 @@ public sealed partial class OctopusVpnService : VpnService
         }
         finally
         {
-            _isTunRunning = false;
+            if (Volatile.Read(ref _tunGeneration) == gen)
+            {
+                _isTunRunning = false;
+            }
         }
     }
 
     //поток чтения исходящих пакетов устройств из tun0 и отправка в очередь octopus
-    private void ProcessTraffic(int tunFd, CancellationToken ct)
+    private void ProcessTraffic(int tunFd, int gen, CancellationToken ct)
     {
         try
         {
@@ -711,25 +755,6 @@ public sealed partial class OctopusVpnService : VpnService
                 }
 
                 var length = (int)bytesRead;
-                if (OctopusEngine.Current.IsServerDestination(buffer.AsSpan(0, length), length))
-                {
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    continue;
-                }
-
-                var sinkholeResp = DnsAdBlocker.ProcessPacket(buffer, length);
-                if (sinkholeResp is not null)
-                {
-                    var copy = ArrayPool<byte>.Shared.Rent(sinkholeResp.Length);
-                    Buffer.BlockCopy(sinkholeResp, 0, copy, 0, sinkholeResp.Length);
-                    if (!_downstreamChannel.Writer.TryWrite((copy, sinkholeResp.Length)))
-                    {
-                        ArrayPool<byte>.Shared.Return(copy);
-                    }
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    continue;
-                }
-
                 _ = OctopusEngine.Current.SendPacketFromPoolAsync(buffer, length);
             }
         }
@@ -739,13 +764,17 @@ public sealed partial class OctopusVpnService : VpnService
         }
         finally
         {
-            _isTunRunning = false;
+            if (Volatile.Read(ref _tunGeneration) == gen)
+            {
+                _isTunRunning = false;
+            }
         }
     }
 
     //полная остановка системного туннеля и освобождение ресурсов дескриптора
     public void StopNativeVpn()
     {
+        _ = Interlocked.Increment(ref _tunGeneration);
         IsActive = false;
         _currentTunIp = null;
         _isTunRunning = false;
@@ -773,6 +802,14 @@ public sealed partial class OctopusVpnService : VpnService
 
         ReleaseWakeLock();
         UnregisterNetworkCallback();
+
+        while (_downstreamChannel.Reader.TryRead(out var stale))
+        {
+            if (stale.buffer is { Length: > 0 })
+            {
+                ArrayPool<byte>.Shared.Return(stale.buffer);
+            }
+        }
 
         _ = Task.Run(() =>
         {

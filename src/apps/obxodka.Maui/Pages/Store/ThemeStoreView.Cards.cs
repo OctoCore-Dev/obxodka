@@ -42,7 +42,7 @@ public sealed partial class ThemeStoreView
                     continue;
                 }
 
-                var folder = Path.Combine(_themeManager.ThemesDirectory, manifest.Id);
+                var folder = Path.Combine(_themeManager.ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
                 var isActive = _themeManager.ActiveTheme?.Id == manifest.Id;
                 var remoteItem = _currentCatalog?.Themes.FirstOrDefault(t => t.Id == manifest.Id);
                 var hasUpdate = remoteItem != null && ThemeManager.IsVersionNewer(manifest.Version, remoteItem.Version);
@@ -105,7 +105,7 @@ public sealed partial class ThemeStoreView
                     var installedVersion = isInstalled ? _themeManager.GetInstalledThemeVersion(item.Id) : null;
                     var displayVersion = !string.IsNullOrEmpty(installedVersion) ? installedVersion : item.Version;
                     var hasUpdate = isInstalled && _themeManager.IsUpdateAvailable(item.Id, item.Version);
-                    var folder = isInstalled ? Path.Combine(_themeManager.ThemesDirectory, item.Id) : null;
+                    var folder = isInstalled ? Path.Combine(_themeManager.ThemesDirectory, item.Id.TrimStart('/', '\\')) : null;
 
                     var model = new ThemeCardModel(
                         Id: item.Id,

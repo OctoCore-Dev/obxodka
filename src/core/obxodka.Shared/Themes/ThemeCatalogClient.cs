@@ -78,7 +78,7 @@ public static class ThemeCatalogClient
                     }
                 }
             }
-            catch
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or JsonException or NotSupportedException or ArgumentException)
             {
                 //переход к следующему зеркалу при ошибке
             }
@@ -100,7 +100,7 @@ public static class ThemeCatalogClient
             {
                 File.Delete(cacheFilePath);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
             {
                 //игнорируем ошибку удаления кэша
             }
@@ -133,7 +133,7 @@ public static class ThemeCatalogClient
                                 onBackgroundCatalogUpdated?.Invoke(fresh);
                             }
                         }
-                        catch
+                        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException or SecurityException or SocketException or JsonException or NotSupportedException or ArgumentException)
                         {
                             //подавление ошибок фонового обновления
                         }
@@ -142,7 +142,7 @@ public static class ThemeCatalogClient
                     return cachedCatalog;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException or JsonException or NotSupportedException)
             {
                 //при повреждении кэша переходим к сетевой загрузке
             }
@@ -167,7 +167,7 @@ public static class ThemeCatalogClient
                 return catalog;
             }
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException or SecurityException or SocketException or JsonException or NotSupportedException or ArgumentException)
         {
             //ошибка сети, пробуем устаревший кэш
         }
@@ -185,7 +185,7 @@ public static class ThemeCatalogClient
                     return cachedCatalog;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException or JsonException or NotSupportedException)
             {
                 //кэш не читается
             }

@@ -35,15 +35,17 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     public DpiBypassMode Mode { get; set; } = DpiBypassMode.PureL4Midsld;
 
     //создание потока обхода dpi с автоматическим подбором режима нарезки под профиль браузера
-    public static DpiBypassStream CreateForProfile(Stream innerStream, TlsBrowserProfile profile, bool bypassEnabled = true)
+    public static DpiBypassStream CreateForProfile(Stream innerStream, TlsBrowserProfile profile, bool bypassEnabled = true, bool forcePureL4 = false)
     {
         RoutingHello.GetDpiDesyncParams(profile, out var modeInt, out var delayMs);
-        var mode = modeInt switch
-        {
-            1 => DpiBypassMode.TlsRecordMidsld,
-            2 => DpiBypassMode.MultiRecordMidsld,
-            _ => DpiBypassMode.PureL4Midsld
-        };
+        var mode = forcePureL4
+            ? DpiBypassMode.PureL4Midsld
+            : modeInt switch
+            {
+                1 => DpiBypassMode.TlsRecordMidsld,
+                2 => DpiBypassMode.MultiRecordMidsld,
+                _ => DpiBypassMode.PureL4Midsld
+            };
 
         return new DpiBypassStream(innerStream, delayMs: delayMs, bypassEnabled: bypassEnabled)
         {
@@ -77,8 +79,14 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         {
             _innerStream.Flush();
         }
-        catch (ObjectDisposedException) { }
-        catch (IOException) { }
+        catch (ObjectDisposedException)
+        {
+            //поток уже закрыт до сброса буфера
+        }
+        catch (IOException)
+        {
+            //игнорируем ошибку ввода-вывода при сбросе закрытого потока
+        }
     }
 
     //асинхронный сброс буфера в сетевой стек
@@ -88,55 +96,33 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         {
             await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (ObjectDisposedException) { }
-        catch (OperationCanceledException) { }
-        catch (IOException) { }
+        catch (ObjectDisposedException)
+        {
+            //поток уже закрыт до асинхронного сброса
+        }
+        catch (OperationCanceledException)
+        {
+            //сброс буфера отменен токеном остановки
+        }
+        catch (IOException)
+        {
+            //игнорируем ошибку ввода-вывода при закрытии потока
+        }
     }
 
     //синхронное чтение байтов из потока через массив
     public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
     //синхронное чтение байтов из потока через спан
-    public override int Read(Span<byte> buffer)
-    {
-        try
-        {
-            return _innerStream.Read(buffer);
-        }
-        catch (ObjectDisposedException)
-        {
-            return 0;
-        }
-        catch (IOException ex) when (ex.InnerException is SocketException or ObjectDisposedException)
-        {
-            return 0;
-        }
-    }
+    public override int Read(Span<byte> buffer) => _innerStream.Read(buffer);
 
     //асинхронное чтение байтов из потока через массив
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
     //асинхронное чтение байтов из потока через память
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-        }
-        catch (ObjectDisposedException)
-        {
-            return 0;
-        }
-        catch (OperationCanceledException)
-        {
-            return 0;
-        }
-        catch (IOException ex) when (ex.InnerException is SocketException or ObjectDisposedException)
-        {
-            return 0;
-        }
-    }
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+        _innerStream.ReadAsync(buffer, cancellationToken);
 
     //перемотка позиции в потоке
     public override long Seek(long offset, SeekOrigin origin) => _innerStream.Seek(offset, origin);
@@ -150,39 +136,33 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     //синхронная запись с разделением sni при первом вызове
     public override void Write(ReadOnlySpan<byte> buffer)
     {
-        try
+        if (_bypassEnabled && _firstWrite && buffer.Length > 32)
         {
-            if (_bypassEnabled && _firstWrite && buffer.Length > 32)
+            _firstWrite = false;
+            if (TryDetermineSplitPoints(buffer, out var split1, out var delay1))
             {
-                _firstWrite = false;
-                if (TryDetermineSplitPoints(buffer, out var split1, out var delay1))
+                if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer))
                 {
-                    if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer))
-                    {
-                        WriteTlsRecordFragmentsSync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld);
-                        return;
-                    }
-
-                    //сегментация l4 tcp: пакет 1 до середины sni, затем пакет 2 со второй половиной
-                    AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Sync, Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
-                    _innerStream.Write(buffer[..split1]);
-                    _innerStream.Flush();
-                    if (delay1 > 0)
-                    {
-                        Thread.Sleep(delay1);
-                    }
-
-                    _innerStream.Write(buffer[split1..]);
-                    _innerStream.Flush();
+                    WriteTlsRecordFragmentsSync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld);
                     return;
                 }
-            }
 
-            _innerStream.Write(buffer);
+                //сегментация l4 tcp: пакет 1 до середины sni, затем пакет 2 со второй половиной
+                AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Sync, Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
+                _innerStream.Write(buffer[..split1]);
+                _innerStream.Flush();
+                if (delay1 > 0)
+                {
+                    Thread.Sleep(delay1);
+                }
+
+                _innerStream.Write(buffer[split1..]);
+                _innerStream.Flush();
+                return;
+            }
         }
-        catch (ObjectDisposedException) { }
-        catch (OperationCanceledException) { }
-        catch (IOException ex) when (ex.InnerException is SocketException or ObjectDisposedException) { }
+
+        _innerStream.Write(buffer);
     }
 
     //асинхронная запись через массив с перенаправлением в память
@@ -192,53 +172,36 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     //асинхронная запись с разделением sni при первом вызове
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        try
+        if (_bypassEnabled && _firstWrite && buffer.Length > 32)
         {
-            if (_bypassEnabled && _firstWrite && buffer.Length > 32)
+            _firstWrite = false;
+            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var delay1))
             {
-                _firstWrite = false;
-                if (TryDetermineSplitPoints(buffer.Span, out var split1, out var delay1))
+                if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer.Span))
                 {
-                    if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer.Span))
-                    {
-                        await WriteTlsRecordFragmentsAsync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld, cancellationToken).ConfigureAwait(false);
-                        return;
-                    }
-
-                    //сегментация l4 tcp: отправка первой части clienthello, пауза и отправка остатка
-                    AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
-                    await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
-                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-                    if (delay1 > 0)
-                    {
-                        await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
-                    await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    await WriteTlsRecordFragmentsAsync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld, cancellationToken).ConfigureAwait(false);
                     return;
                 }
-                else
+
+                //сегментация l4 tcp: отправка первой части clienthello, пауза и отправка остатка
+                AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
+                await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+                if (delay1 > 0)
                 {
-                    AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
+                    await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
                 }
+
+                await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
+                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                return;
             }
 
-            await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+            AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
         }
-        catch (ObjectDisposedException)
-        {
-            //при закрытии или отключении туннеля поток уже освобожден
-        }
-        catch (OperationCanceledException)
-        {
-            //отмена операции при отключении
-        }
-        catch (IOException ex) when (ex.InnerException is SocketException or ObjectDisposedException)
-        {
-            //обрыв соединения при остановке туннеля
-        }
+
+        await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 
     //проверка является ли буфер единой записью tls handshake
@@ -259,13 +222,14 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         var verMajor = buffer[1];
         var verMinor = buffer[2];
         var payload = buffer[5..];
-        var p1 = Math.Clamp(split1 - 5, 8, payload.Length - 4);
+        var p1 = Math.Clamp(split1 - 5, 16, payload.Length - 8);
 
-        if (multiRecord && p1 > 8)
+        if (multiRecord && p1 > 32)
         {
-            AppLogger.Log($"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Sync, Payload={payload.Length}B -> Rec1=4B, Rec2={p1 - 4}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
-            WriteSingleTlsRecordSync(verMajor, verMinor, payload[..4]);
-            WriteSingleTlsRecordSync(verMajor, verMinor, payload[4..p1]);
+            var r1 = Math.Clamp(p1 / 2, 16, p1 - 16);
+            AppLogger.Log($"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Sync, Payload={payload.Length}B -> Rec1={r1}B, Rec2={p1 - r1}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
+            WriteSingleTlsRecordSync(verMajor, verMinor, payload[..r1]);
+            WriteSingleTlsRecordSync(verMajor, verMinor, payload[r1..p1]);
             if (d1 > 0)
             {
                 Thread.Sleep(d1);
@@ -300,9 +264,6 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             _innerStream.Write(rented.AsSpan(0, total));
             _innerStream.Flush();
         }
-        catch (ObjectDisposedException) { }
-        catch (OperationCanceledException) { }
-        catch (IOException ex) when (ex.InnerException is SocketException or ObjectDisposedException) { }
         finally
         {
             ArrayPool<byte>.Shared.Return(rented);
@@ -316,13 +277,14 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         var verMajor = span[1];
         var verMinor = span[2];
         var payload = buffer[5..];
-        var p1 = Math.Clamp(split1 - 5, 8, payload.Length - 4);
+        var p1 = Math.Clamp(split1 - 5, 16, payload.Length - 8);
 
-        if (multiRecord && p1 > 8)
+        if (multiRecord && p1 > 32)
         {
-            AppLogger.Log($"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Async, Payload={payload.Length}B -> Rec1=4B, Rec2={p1 - 4}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
-            await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[..4], ct).ConfigureAwait(false);
-            await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[4..p1], ct).ConfigureAwait(false);
+            var r1 = Math.Clamp(p1 / 2, 16, p1 - 16);
+            AppLogger.Log($"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Async, Payload={payload.Length}B -> Rec1={r1}B, Rec2={p1 - r1}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
+            await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[..r1], ct).ConfigureAwait(false);
+            await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[r1..p1], ct).ConfigureAwait(false);
             if (d1 > 0)
             {
                 await Task.Delay(d1, ct).ConfigureAwait(false);
@@ -357,9 +319,6 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             await _innerStream.WriteAsync(rented.AsMemory(0, total), ct).ConfigureAwait(false);
             await _innerStream.FlushAsync(ct).ConfigureAwait(false);
         }
-        catch (ObjectDisposedException) { }
-        catch (OperationCanceledException) { }
-        catch (IOException ex) when (ex.InnerException is SocketException or ObjectDisposedException) { }
         finally
         {
             ArrayPool<byte>.Shared.Return(rented);

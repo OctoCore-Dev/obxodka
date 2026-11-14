@@ -20,7 +20,7 @@ public static partial class DnsAdBlocker
             if (version == 4)
             {
                 ipHeaderLen = (packet[0] & 0x0F) * 4;
-                if (length < ipHeaderLen + 8)
+                if (ipHeaderLen < 20 || length < ipHeaderLen + 8)
                 {
                     return null;
                 }
@@ -68,7 +68,8 @@ public static partial class DnsAdBlocker
             }
 
             Span<char> domainBuf = stackalloc char[256];
-            if (!TryParseDnsName(dnsSpan, 12, domainBuf, out var charsWritten, out var bytesRead))
+            if (!TryParseDnsName(dnsSpan, 12, domainBuf, out var charsWritten, out var bytesRead) ||
+                dnsOffset + 12 + bytesRead + 4 > length)
             {
                 return null;
             }
@@ -81,8 +82,9 @@ public static partial class DnsAdBlocker
                 return CreateDnsResponse(packet, ipHeaderLen, udpHeaderOffset, dnsOffset, bytesRead, version == 4, isCanary);
             }
         }
-        catch
+        catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException)
         {
+            //отбрасываем поврежденный dns-пакет без прерывания потока
         }
 
         return null;
@@ -105,6 +107,10 @@ public static partial class DnsAdBlocker
 
             if ((len & 0xC0) == 0xC0)
             {
+                if (currentOffset >= dnsSpan.Length)
+                {
+                    return false;
+                }
                 currentOffset++;
                 break;
             }

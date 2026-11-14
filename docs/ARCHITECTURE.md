@@ -4,100 +4,41 @@
 
 ---
 
-## <img src="../.github/assets/icons/octo_chart.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Актуальная высокоуровневая архитектурная схема (v5.9+)
+## <img src="../.github/assets/icons/octo_chart.svg" width="22" height="22" alt="" style="vertical-align: -3px;" /> Актуальная высокоуровневая архитектурная схема (v6.1+)
 
-```
-+========================================================================================+
-|                              КЛИЕНТСКИЙ УРОВЕНЬ (CLIENT)                               |
-|                                                                                        |
-|   +--------------------------------------------------------------------------------+   |
-|   |                       .NET 10 MAUI UI & SkiaSharp 120 FPS                      |   |
-|   |  - SkiaSharp Engine: Quantum Hyper-Crystal, Living Reactor, Shockwave Blast    |   |
-|   |  - Dynamic Speedometer & Traffic Graph: Delta-Time Lerp интерполяция           |   |
-|   |  - ThemeManager: Живые темы, 9-Slice фреймы, частицы, неоновый Bloom-контроль  |   |
-|   +---------------------------------------+----------------------------------------+   |
-|                                           |                                            |
-|                  +------------------------+------------------------+                  |
-|                  v                                                 v                   |
-|   +------------------------------+                  +------------------------------+   |
-|   |   Windows: Wintun Driver     |                  |   Android: VpnService        |   |
-|   |  - 64 MB Ring Buffer (I/O)   |                  |  - Foreground Service (FGS)  |   |
-|   |  - Префиксы 0.0.0.0/1, 128/1 |                  |  - Non-blocking I/O Threads  |   |
-|   |  - Zero-Flicker Disconnect   |                  |  - Адаптивный NAT Keep-Alive |   |
-|   |  - RDP, LAN & Zero-Handoff   |                  |    (500мс старт -> 25с соты) |   |
-|   +--------------+---------------+                  +--------------+---------------+   |
-|                  |                                                 |                   |
-|                  +------------------------+------------------------+                   |
-|                                           v                                            |
-|   +--------------------------------------------------------------------------------+   |
-|   |                      OctopusEngine (Core Network Gateway)                      |   |
-|   |   - PacketRouter: Dual-Ray Hedging (клонирование UDP Gaming и ICMP-пингов)     |   |
-|   |   - PacketDeduplicator: Zero-Allocation дедупликация (500мс окно, 8192 слота)  |   |
-|   |   - PriorityPacketQueue: DNS > ACK/SYN > Realtime/Gaming > Web > Bulk          |   |
-|   |   - 500ms Ping Prober: Ультра-быстрое RTT зондирование без лагов в играх       |   |
-|   |   - Happy Eyeballs: Параллельный RTT-опрос узлов и авто-выбор быстрейшего      |   |
-|   |   - DpiBypassStream: 3-этапная микросегментация TLS ClientHello (1-3B + SNI)   |   |
-|   |   - Multi-Tier DNS Shield: NRPT правило '.', Firewall Port 53 Block, AutoHeal  |   |
-|   |   - In-Tunnel MTU Discovery: Зондирование 1200-1440 Б, безопасный базовый 1280 |   |
-|   |   - DnsAdBlocker: Встроенный L3 Sinkhole фильтрации трекеров и телеметрии      |   |
-|   +---------------------------------------+----------------------------------------+   |
-|                                           v                                            |
-|   +--------------------------------------------------------------------------------+   |
-|   |          Ultra-Stealth OBXODKA-STREAM Transport (Duplex HTTP/2 over TLS 1.3)   |   |
-|   |   - Ray 0 & Ray 1: Два независимых параллельных TCP-луча (Dual-Ray Hedging)    |   |
-|   |   - Динамический генератор SNI: 3.4M+ уникальных поддоменов (Encrypted Pool)   |   |
-|   |   - Early Decoy Multiplexing: Фоновые GET /, /favicon.ico (Chrome 133 эмуляция)|   |
-|   |   - Пул отказоустойчивых портов: :443, :8443, :2053 с автоматическим failover  |   |
-|   |   - Мульти-зеркальный API Fallback (10+ Encrypted Mirrors) + Direct IP         |   |
-|   |   - Аппаратная криптография AES-NI / ARMv8 Crypto Extensions (AES-256-GCM)     |   |
-|   +---------------------------------------+----------------------------------------+   |
-+===========================================|============================================+
-                                            | (Порты :443, :8443, :2053 TLS 1.3 / HTTP/2)
-                                            v
-+========================================================================================+
-|                            СЕТЕВАЯ ИНСПЕКЦИЯ (DPI / ТСПУ)                              |
-|                                                                                        |
-|   * ТСПУ видит: 100% легитимную HTTPS/2 сессию Chrome с Early Decoy веб-запросами      |
-|   * Микросегментация: ClientHello разрезан на 3 части (1-й чанк 1-3B с задержкой 25мс) |
-|   * Отсутствие сигнатур: Никаких фиксированных заголовков WireGuard, OpenVPN, Shadowsocks|
-|   * Dual-Ray Hedging: Потеря пакета на одном луче мгновенно компенсируется вторым лучом|
-+========================================================================================+
-                                            |
-                                            v
-+========================================================================================+
-|                              СЕРВЕРНЫЙ КЛАСТЕР (SERVER)                                |
-|                                                                                        |
-|   +--------------------------------------------------------------------------------+   |
-|   |               ObxodkaTunnelEndpoint (:443, :8443, :2053) & Kestrel Gateway     |   |
-|   |  - TLS 1.3 Termination, Camouflage Fallback на защищенный веб-портал           |   |
-|   |  - MapObxodkaTunnel: Двунаправленный стриминг фреймов по HTTP/2                |   |
-|   |  - Агрегация Ray 0 и Ray 1 в единый сессионный контекст клиента                |   |
-|   +---------------------------------------+----------------------------------------+   |
-|                                           |                                            |
-|                                           v                                            |
-|   +--------------------------------------------------------------------------------+   |
-|   |                      Server PacketRouter & Deduplicator                        |   |
-|   |  - PacketDeduplicator: Дедупликация дублированных пакетов (500мс скользящее    |   |
-|   |    окно, zero-allocation кольцевой буфер)                                      |   |
-|   |  - Dual-Ray Router: Обратное дублирование UDP/ICMP ответов клиенту             |   |
-|   +---------------------------------------+----------------------------------------+   |
-|                                           v                                            |
-|   +--------------------------------------------------------------------------------+   |
-|   |                    LinuxTun (libc P/Invoke Zero-Copy I/O)                      |   |
-|   |  - Прямой ввод-вывод: read(fd) / write(fd) через небезопасные указатели        |   |
-|   |  - Виртуальный интерфейс tun0 (MTU 1500, txqueuelen 10000)                    |   |
-|   |  - Ядро Linux: TCP BBR Congestion Control, TCPMSS Clamping (1240 байт)         |   |
-|   |  - Маршрутизация и NAT (iptables MASQUERADE для 100.64.0.0/10 и fd00::/64)     |   |
-|   +---------------------------------------+----------------------------------------+   |
-|                                           v                                            |
-|   +--------------------------------------------------------------------------------+   |
-|   |                          Бэкенд-сервисы и База Данных                          |   |
-|   |  - obxodka.Api: REST API (Source-Generated JSON, Anti-DDoS, Billing)           |   |
-|   |  - obxodka.Security: RootCaService (Генерация 4096-bit RSA CA + NIST P-256)   |   |
-|   |  - PostgreSQL 14: Пользователи, Устройства, Логи трафика, Отзывы               |   |
-|   |  - Strict Zero-Log: Вся сетевая активность обрабатывается исключительно в RAM  |   |
-|   +--------------------------------------------------------------------------------+   |
-+========================================================================================+
+```mermaid
+flowchart TB
+    subgraph Client["Клиентский уровень (.NET 10 MAUI / WinUI 3 / Android)"]
+        UI["UI & SkiaSharp Renderer\nТемы, графики трафика, состояние VPN"]
+        Win["Windows: Wintun L3 Driver\n64 MB Ring Buffer, /1 маршруты, NRPT DNS"]
+        And["Android: VpnService (FGS)\nNon-blocking I/O, App Cloaking, NAT Keep-Alive"]
+        Core["OctopusEngine (Core Gateway)\nPacketRouter • PriorityPacketQueue • SmartMtuEngine\nDnsAdBlocker • SniEngine • CertificateValidator"]
+        H2["OBXODKA-STREAM (HTTP/2 Dual-Ray)\nZero-SNI по IP + SPKI Pinning\nRay 0 & Ray 1 + PacketDeduplicator"]
+        WS["OBXODKA-WS (Cloudflare Shield)\nWSS через зеркала CDN / 443, 8443, 2053\nАвто-эскалация TryEscalateToShieldAsync"]
+        DPI["DpiBypassStream & RoutingHello\nPureL4Midsld • TlsRecordMidsld • MultiRecordMidsld"]
+
+        UI --> Win & And
+        Win & And --> Core
+        Core --> H2
+        Core --> WS
+        H2 -. "TX > 0, RX = 0 (фриз ТСПУ)" .-> WS
+        H2 --> DPI
+        WS --> DPI
+    end
+
+    DPI --> Net["Сеть провайдера / DPI / ТСПУ"]
+
+    subgraph Server["Серверный кластер (obxodka.Node & API)"]
+        Edge["Caddy / Kestrel TLS 1.3 Gateway (:443, :8443, :2053)\nmTLS проверка .pfx + Camouflage Fallback"]
+        Tun["ObxodkaTunnelEndpoint & PacketDeduplicator\nАгрегация потоков + SmartMtuEngine"]
+        Linux["Linux tun0 (BBR, TCPMSS, NAT)"]
+        Api["obxodka.Api & PostgreSQL\nEmail OTP • Выпуск .pfx • Биллинг (без логов трафика)"]
+
+        Edge --> Tun --> Linux
+        Edge --> Api
+    end
+
+    Net --> Edge
 ```
 
 ---
@@ -208,25 +149,21 @@
    * Если пакет уже был принят по лучу 0, пришедшая с задержкой в несколько миллисекунд копия по лучу 1 мгновенно отбрасывается **без аллокаций памяти** (`zero-allocation`).
    * **Результат:** 0% потерь пакетов в играх (Dota 2, CS2, Valorant, PUBG, Fortnite, WoT) даже при искусственном троттлинге провайдера.
 
-### 2.3. Адаптивная микросегментация TLS (`DpiBypassStream`)
-* **Проблема:** Оборудование ТСПУ (EcoFilter) анализирует первые байты TCP-потока. Обнаруживая заголовок TLS ClientHello (`0x16 0x03`), инспектор извлекает SNI (Server Name Indication) и сверяет домен с черными списками.
-* **Решение:** 3-этапная десинхронизация ClientHello:
-  * **Сегмент 1 (1–3 байта):** искусственно разрезает заголовок TLS-записи $\to$ пауза $25\text{--}55$ мс.
-  * **Сегмент 2:** точка середины доменного имени расширения SNI $\to$ пауза $15\text{--}35$ мс.
-  * **Сегмент 3:** передача остатка пакета (расширения, Client Key Share).
-* Буферы ТСПУ с ограниченным временем удержания пакетов не способны восстановить контекст разорванных фреймов при терабитном потоке магистрали и пропускают сессию без инспекции.
+### 2.3. Адаптивная сегментация TLS (`DpiBypassStream` и `RoutingHello`)
+* **Проблема:** Оборудование ТСПУ анализирует первые байты TCP-потока. Обнаруживая целостный TLS `ClientHello` (`0x16 0x03 ... 0x01`), инспектор извлекает SNI и характеристики рукопожатия.
+* **Решение:** `RoutingHello` подбирает профиль браузера для очередной попытки подключения (`Chrome`, `Yandex`, `Firefox`, `SafariIos`, `Edge`, `ChromePostQuantum`), а `DpiBypassStream` применяет один из трёх режимов нарезки первого `ClientHello`:
+  * `PureL4Midsld` — сегментация TCP-потока на уровне L4 до середины SNI с микро-паузой;
+  * `TlsRecordMidsld` — разбиение одиночной TLS-записи на два валидных TLS Record'а;
+  * `MultiRecordMidsld` — трёхступенчатая фрагментация TLS Record Layer.
 
-### 2.4. Динамическая генерация SNI и пул отказоустойчивых портов
-* **Генерация поддоменов (3.4M+ комбинаций):**
-  Вместо одного статического домена Obxodka генерирует динамические SNI на базе 20+ префиксов служб (`api`, `cdn`, `edge`, `stream`, `cloud`, `mesh`, `core` и др.) и 16-битных случайных hex-хэшей для базовых зон из зашифрованного контейнера `servers.json`.
-* **Прямое подключение по IP (ConnectCallback):**
-  Клиентский транспорт осуществляет TCP-подключение напрямую к IP-адресу узла (`ConnectCallback`), передавая динамически сгенерированный домен только в SNI и заголовке `Host`. Публичные DNS-записи для миллионов поддоменов не требуются, что делает блокировку по DNS бессильной.
-* **Отказоустойчивый пул портов:**
-  Если провайдер блокирует трафик на стандартном порту `443`, клиент автоматически переключается на резервные порты `8443` и `2053`.
+### 2.4. Гибридная стратегия `SniEngine`: `Zero-SNI` + `Cloudflare Shield`
+* **Прямой режим (`OBXODKA-STREAM`, Zero-SNI):** При подключении напрямую к IP узла (`DirectServerIp`) отправка SNI в TLS отключается (`EffectiveSni = null`), а серверный сертификат проверяется по жёсткому **SPKI Public Key Pinning** (`DynamicSslPublicKeyHash` + резервные хэши в `AppSecrets`). Перебор портов: `443`, `8443`, `2053`.
+* **Облачный режим (`OBXODKA-WS`, Cloudflare Shield):** Для узлов за Cloudflare (`PrimaryDomain` и пул `MirrorDomains` из `servers.json`) клиент подключается по WebSocket поверх TLS с валидным доменом щита на портах `443`, `8443`, `2053` и резервным прямым откатом на `DirectServerIp:443`.
+* **Бесшовная эскалация (`TryEscalateToShieldAsync`):** Если прямой поток `OBXODKA-STREAM` упирается в фриз ТСПУ (`TX > 0, RX = 0`), `OctopusEngine` на лету поднимает `ObxodkaWebSocketTransport` через Shield и заменяет транспорт через `Interlocked.Exchange` без пересоздания TUN-интерфейса.
 
-### 2.5. Имитация веб-браузинга (Early Decoy Multiplexing)
-* В первые 60–180 мс после установки HTTP/2 соединения клиент отправляет фоновые запросы `GET /` и `GET /favicon.ico` с аутентичными заголовками браузера Chrome 133 (`User-Agent`, `sec-ch-ua`, `sec-fetch-dest`).
-* Периодические decoy-запросы (каждые 20–45 секунд) поддерживают вид обычного пользовательского веб-серфинга, сбивая эвристические классификаторы ТСПУ.
+### 2.5. Имитация веб-трафика (Decoy & DoH Anti-Poison)
+* **Anti-Poison DNS (`ApiService.ResolveAllHostsAntiPoisonAsync`):** Перед прямыми API-вызовами домены проверяются через шифрованные DoH-резолверы (`DnsDefaults.DohResolvers`), а локальные/заглушечные ответы (`127.x`, `10.x`, `192.168.x`, `100.64.x`) отбрасываются.
+* **Ранние браузерные профили:** HTTP/2 и WebSocket-попытки используют заголовки и TLS-профили из `RoutingHello` и чередуют маскировочные пути (`/api/v1/sync`, `/api/v1/stream`, `/v1/telemetry`, `/g/collect`, `/cdn-cgi/rum`, `/v2/event`).
 
 ### 2.6. Внутритуннельное адаптивное зондирование MTU (In-Tunnel MTU Discovery)
 * **Проблема:** На мобильных сетях (Yota, MegaFon, MTS, Beeline) рукопожатие туннеля проходит успешно (небольшие пакеты <500 байт), но веб-страницы не открываются из-за немого отбрасывания пакетов размером более 1300–1400 байт (Path MTU Black Hole).

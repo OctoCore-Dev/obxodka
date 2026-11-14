@@ -54,9 +54,8 @@ public sealed class DynamicProtocolAndConnectivityTests
     {
         var supportedProtocols = new[] { "HTTP2" };
 
-        foreach (var proto in supportedProtocols)
+        foreach (var isHttp2 in supportedProtocols.Select(proto => proto == "HTTP2"))
         {
-            var isHttp2 = proto == "HTTP2";
             Assert.True(isHttp2);
         }
     }
@@ -184,24 +183,17 @@ public sealed class DynamicProtocolAndConnectivityTests
     }
 
     [Fact]
-    public void DynamicSniGenerationProducesValidSubdomains()
+    public void DirectServerStrategyUsesZeroSniWhileShieldUsesRealDomain()
     {
-        for (var i = 0; i < 100; i++)
-        {
-            var sni = AppSecrets.GetRandomSni();
-            Assert.False(string.IsNullOrWhiteSpace(sni));
-            Assert.Contains(sni, AppSecrets.AllowedSniPool, StringComparer.OrdinalIgnoreCase);
-        }
-    }
+        var directStrategy = SniEngine.ResolveTransportStrategy(AppConfig.DirectServerIp, null, forceWebSocket: false);
+        Assert.False(directStrategy.UseWebSocket);
+        Assert.Null(directStrategy.EffectiveSni);
+        Assert.False(directStrategy.ClearDynamicPinning);
 
-    [Fact]
-    public void GetCandidateSniListReturnsUniqueCandidates()
-    {
-        var candidates = AppSecrets.GetCandidateSniList(8);
-        Assert.Equal(8, candidates.Count);
-        Assert.Equal(candidates.Count, candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count());
-        Assert.Contains("login.live.com", candidates, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("dl.google.com", candidates, StringComparer.OrdinalIgnoreCase);
+        var shieldStrategy = SniEngine.ResolveTransportStrategy(AppConfig.PrimaryDomain, AppConfig.PrimaryDomain, forceWebSocket: false);
+        Assert.True(shieldStrategy.UseWebSocket);
+        Assert.Equal(AppConfig.PrimaryDomain, shieldStrategy.EffectiveSni);
+        Assert.True(shieldStrategy.ClearDynamicPinning);
     }
 
     [Fact]
@@ -228,7 +220,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         };
 
         using var client = new HttpClient(handler);
-        var req = new HttpRequestMessage(HttpMethod.Post, "https://gateway.icloud.com:443/api/v1/sync?ray=0&mtu=1280")
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://gateway.icloud.com:443/api/v1/sync?ray=0&mtu=1280")
         {
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
@@ -245,10 +237,10 @@ public sealed class DynamicProtocolAndConnectivityTests
         });
         req.Content = pushContent;
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
         try
         {
-            var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             Assert.NotNull(resp);
         }
         catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)

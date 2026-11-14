@@ -3,14 +3,6 @@ namespace obxodka.Core.Transports;
 //транспорт туннеля поверх защищенного websocket соединения
 public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport
 {
-    //элемент очереди исходящих фреймов websocket
-    private readonly struct WsTxItem(byte command, byte[] buffer, int length)
-    {
-        public readonly byte Command = command;
-        public readonly byte[] Buffer = buffer;
-        public readonly int Length = length;
-    }
-
     //имя активного протокола
     public string ProtocolName => "OBXODKA-WS";
 
@@ -38,14 +30,8 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
     //событие согласования или изменения mtu
     public event Action<int>? OnMtuUpdated;
 
-    //очередь исходящих пакетов для строго однопоточной отправки
-    private readonly Channel<WsTxItem> _txChannel =
-        Channel.CreateBounded<WsTxItem>(new BoundedChannelOptions(16384)
-        {
-            SingleReader = true,
-            SingleWriter = false,
-            FullMode = BoundedChannelFullMode.Wait
-        });
+    //приоритетная очередь исходящих пакетов для строго однопоточной отправки без bufferbloat
+    private readonly PriorityPacketQueue _txQueue = new(16384);
 
     //источник завершения задачи получения ip адресов туннеля
     private TaskCompletionSource<(string ip, string ip6)> _ipTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -67,6 +53,9 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
     //источник токена отмены текущей сессии
     private CancellationTokenSource? _cts;
+
+    //активные фоновые задачи чтения, записи и пинга сокета
+    private Task[] _activeLoopTasks = [];
 
     //признак установленного соединения
     private bool _connected;
@@ -124,7 +113,8 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
 
                 for (var ipIdx = 0; ipIdx < candidateIps.Length; ipIdx++)
                 {
-                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+                    var targetIp = candidateIps[ipIdx];
+                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
                     {
                         NoDelay = true,
                         SendBufferSize = 4194304,
@@ -140,17 +130,17 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                         {
                             using var perIpCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
                             perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
-                            await socket.ConnectAsync(new IPEndPoint(candidateIps[ipIdx], port), perIpCts.Token).ConfigureAwait(false);
+                            await socket.ConnectAsync(new IPEndPoint(targetIp, port), perIpCts.Token).ConfigureAwait(false);
                         }
                         else
                         {
-                            await socket.ConnectAsync(new IPEndPoint(candidateIps[ipIdx], port), cToken).ConfigureAwait(false);
+                            await socket.ConnectAsync(new IPEndPoint(targetIp, port), cToken).ConfigureAwait(false);
                         }
 
                         connectedSocket = socket;
                         break;
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException or TimeoutException or ObjectDisposedException || cToken.IsCancellationRequested)
                     {
                         lastSocketEx = ex;
                         socket.Dispose();
@@ -168,9 +158,9 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 }
 
                 var netStream = new NetworkStream(connectedSocket, ownsSocket: true);
-                var isShield = SniEngine.IsShieldEndpoint(serverIp, targetSni);
-                return (!isShield && isDirectIp && literalIp is not null && !IPAddress.IsLoopback(literalIp))
-                    ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
+                var isLoopback = connectedSocket.RemoteEndPoint is IPEndPoint remoteEp && IPAddress.IsLoopback(remoteEp.Address);
+                return !isLoopback
+                    ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true, forcePureL4: true)
                     : netStream;
             }
         };
@@ -202,62 +192,34 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             ActiveSni = candidateSni;
             ActiveBrowserProfile = candidate.BrowserProfile;
 
-            //для резервных браузерных профилей выполняем быструю 1-rtt проверку проходимости raw clienthello через тспу
-            if (pIdx > 0 && pIdx + 1 < candidates.Count && IPAddress.TryParse(candidateServerIp, out var probeIp) && !IPAddress.IsLoopback(probeIp))
-            {
-                var rawReachable = await RoutingHello.ProbeRawClientHelloAsync(
-                    new IPEndPoint(probeIp, candidatePort),
-                    candidateSni,
-                    ActiveBrowserProfile,
-                    socket =>
-                    {
-                        OnSocketCreated?.Invoke(socket);
-                        ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-                        _protectAction?.Invoke(socket);
-                    },
-                    timeoutMs: 900,
-                    ct: ct).ConfigureAwait(false);
-
-                if (!rawReachable)
-                {
-                    AppLogger.LogWarning($"[BROWSER-ROTATION] 1-RTT Raw ClientHello probe blocked for '{candidateSni}:{candidatePort}' ({ActiveBrowserProfile}). Rotating to next browser profile...");
-                    continue;
-                }
-            }
-
             _cts = new CancellationTokenSource();
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var ws = new ClientWebSocket();
-            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-            ws.Options.SetBuffer(131072, 131072);
-            try
-            {
-                ws.Options.SetRequestHeader("Host", targetHostHeader);
-            }
-            catch { }
-            RoutingHello.ApplyWebSocketHeaders(ws.Options, ActiveBrowserProfile);
-
-            var cid = RandomNumberGenerator.GetInt32(10000000, 100000000);
-            var nowQuerySec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var uriBuilder = new UriBuilder("wss", connectHost, candidatePort, wsPath)
-            {
-                Query = $"cid={cid}&_t={nowQuerySec}&v=133.0"
-            };
-
-            var invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
-            using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
+            Interlocked.Exchange(ref _wsInvoker, null)?.Dispose();
+            ClientWebSocket? ws = null;
+            HttpMessageInvoker? invoker = null;
+            var ownershipTransferred = false;
 
             try
             {
+                ws = CreateConfiguredWebSocket(targetHostHeader, ActiveBrowserProfile);
+                invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
+                using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
+
+                var cid = RandomNumberGenerator.GetInt32(10000000, 100000000);
+                var nowQuerySec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var uriBuilder = new UriBuilder("wss", connectHost, candidatePort, wsPath)
+                {
+                    Query = $"cid={cid}&_t={nowQuerySec}&v=133.0"
+                };
+
                 AppLogger.Log($"[OBXODKA-WS] Connecting to {uriBuilder.Uri} (SNI={ActiveSni}, Port={candidatePort}, Profile={ActiveBrowserProfile})...");
                 await ws.ConnectAsync(uriBuilder.Uri, invoker, linkedCts.Token).ConfigureAwait(false);
 
-                _wsInvoker?.Dispose();
                 _wsInvoker = invoker;
                 _webSocket = ws;
-                Volatile.Write(ref _connected, true);
+                ownershipTransferred = true;
 
                 var nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 var sessionSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
@@ -287,13 +249,16 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                     ArrayPool<byte>.Shared.Return(hsFrame);
                 }
 
-                _ = Task.Run(() => ReaderLoopAsync(ws, _cts.Token), _cts.Token);
-                _ = Task.Run(() => WriterLoopAsync(ws, _cts.Token), _cts.Token);
-                _ = Task.Run(() => PingLoopAsync(_cts.Token), _cts.Token);
+                var readerTask = Task.Run(() => ReaderLoopAsync(ws, _cts.Token), _cts.Token);
+                var writerTask = Task.Run(() => WriterLoopAsync(ws, _cts.Token), _cts.Token);
+                _activeLoopTasks = [readerTask, writerTask];
 
                 using (linkedCts.Token.Register(() => _ipTcs.TrySetCanceled()))
                 {
                     var result = await _ipTcs.Task.ConfigureAwait(false);
+                    Volatile.Write(ref _connected, true);
+                    var pingTask = Task.Run(() => PingLoopAsync(_cts.Token), _cts.Token);
+                    _activeLoopTasks = [readerTask, writerTask, pingTask];
                     _ = SendPingProbeAsync();
                     AppLogger.Log($"[OBXODKA-WS] Connected on port {candidatePort} (Browser: {ActiveBrowserProfile})! Assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
@@ -302,20 +267,96 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             catch (Exception ex) when (!ct.IsCancellationRequested && pIdx + 1 < candidates.Count)
             {
                 lastEx = ex;
+                Volatile.Write(ref _connected, false);
+                _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
                 AppLogger.LogWarning($"[OBXODKA-WS] Port {candidatePort} (Profile {ActiveBrowserProfile}) failed: {ex.Message}. Trying next candidate...");
+                using var retryCts = Interlocked.Exchange(ref _cts, null);
+                var loopTasks = _activeLoopTasks;
+                _activeLoopTasks = [];
                 try
                 {
-                    ws.Dispose();
+                    if (retryCts is not null)
+                    {
+                        await retryCts.CancelAsync().ConfigureAwait(false);
+                    }
+                    if (loopTasks.Length > 0)
+                    {
+                        await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+                    }
                 }
-                catch { }
-                try
+                catch (OperationCanceledException)
                 {
-                    invoker.Dispose();
+                    //подавление ожидаемой отмены фоновых задач попытки
                 }
-                catch { }
+                catch (TimeoutException)
+                {
+                    //подавление таймаута ожидания фоновых задач при смене порта
+                }
+                _webSocket = null;
+                _wsInvoker = null;
+                DisposeAttemptTransport(ws, invoker);
+            }
+            catch
+            {
+                if (!ownershipTransferred)
+                {
+                    DisposeAttemptTransport(ws, invoker);
+                }
+                throw;
             }
         }
 
         throw lastEx ?? new TimeoutException("WebSocket connection failed across all candidate ports.");
+    }
+
+    //создание и настройка клиентского сокета websocket для попытки подключения
+    private static ClientWebSocket CreateConfiguredWebSocket(string targetHostHeader, TlsBrowserProfile browserProfile)
+    {
+        var ws = new ClientWebSocket();
+        try
+        {
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            ws.Options.SetBuffer(131072, 131072);
+            try
+            {
+                ws.Options.SetRequestHeader("Host", targetHostHeader);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                //игнорируем неподдерживаемую платформой ручную установку заголовка host
+            }
+            catch (ArgumentException)
+            {
+                //игнорируем ошибку формата заголовка host
+            }
+            RoutingHello.ApplyWebSocketHeaders(ws.Options, browserProfile);
+            return ws;
+        }
+        catch
+        {
+            ws.Dispose();
+            throw;
+        }
+    }
+
+    //безопасное освобождение ресурсов неудачной попытки websocket
+    private static void DisposeAttemptTransport(ClientWebSocket? ws, HttpMessageInvoker? invoker)
+    {
+        try
+        {
+            ws?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            //сокет уже освобожден
+        }
+        try
+        {
+            invoker?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            //обработчик уже освобожден
+        }
     }
 }

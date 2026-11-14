@@ -188,7 +188,7 @@ public sealed partial class ThemeManager
             return false;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId, "theme.json");
+        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
         if (!File.Exists(manifestPath))
         {
             return false;
@@ -213,7 +213,7 @@ public sealed partial class ThemeManager
             return false;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId, "theme.json");
+        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
         if (!File.Exists(manifestPath))
         {
             return false;
@@ -250,7 +250,7 @@ public sealed partial class ThemeManager
             return;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, activeId, "theme.json");
+        var manifestPath = Path.Combine(ThemesDirectory, activeId.TrimStart('/', '\\'), "theme.json");
         if (!File.Exists(manifestPath))
         {
             Preferences.Default.Remove(ActiveThemeKey);

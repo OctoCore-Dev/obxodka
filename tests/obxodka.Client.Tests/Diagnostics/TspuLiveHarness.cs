@@ -72,8 +72,9 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                     }
                 }
             }
-            catch
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
             {
+                //штатная остановка приемника upstream udp прокси
             }
         }, ct);
 
@@ -114,9 +115,11 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            //штатная остановка эхо сервера udp
         }
         catch (SocketException)
         {
+            //закрытие сокета эхо сервера udp
         }
         finally
         {
@@ -126,8 +129,9 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
             {
                 await upstreamTask;
             }
-            catch
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
             {
+                //штатная остановка приемника upstream udp прокси
             }
         }
     }
@@ -147,9 +151,11 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            //штатная остановка эхо сервера udp
         }
         catch (SocketException)
         {
+            //закрытие сокета эхо сервера udp
         }
         finally
         {
@@ -169,9 +175,11 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            //штатная остановка эхо сервера udp
         }
         catch (SocketException)
         {
+            //закрытие сокета эхо сервера udp
         }
     }
 
@@ -203,8 +211,9 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                         await clientStream.WriteAsync(retBuf.AsMemory(0, read), innerCts.Token);
                     }
                 }
-                catch
+                catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
                 {
+                    //закрытие канала чтения ответа от целевого tcp сервера
                 }
                 finally
                 {
@@ -258,16 +267,19 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                 {
                     await targetToClientTask;
                 }
-                catch
+                catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
                 {
+                    //закрытие канала чтения ответа от целевого tcp сервера
                 }
             }
         }
         catch (OperationCanceledException)
         {
+            //штатная отмена обработки tcp клиента стенда
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or InvalidOperationException)
         {
+            //закрытие клиентского соединения стенда
         }
     }
 
@@ -295,8 +307,9 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                             await stream.WriteAsync(buf.AsMemory(0, read), ct);
                         }
                     }
-                    catch
+                    catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
                     {
+                        //закрытие клиентского подключения к эхо серверу tcp
                     }
                     finally
                     {
@@ -307,9 +320,11 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            //штатная остановка эхо сервера udp
         }
         catch (SocketException)
         {
+            //закрытие сокета эхо сервера udp
         }
     }
 
@@ -327,7 +342,10 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
             {
                 _cts.Cancel();
             }
-            catch { }
+            catch (ObjectDisposedException)
+            {
+                //подавление ошибки отмены токена стенда
+            }
 
             _udpDownstream?.Dispose();
             _udpUpstream?.Dispose();
@@ -344,7 +362,10 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         {
             await _cts.CancelAsync();
         }
-        catch { }
+        catch (ObjectDisposedException)
+        {
+            //подавление ошибки асинхронной отмены токена стенда
+        }
 
         Dispose(true);
         GC.SuppressFinalize(this);

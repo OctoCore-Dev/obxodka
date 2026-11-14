@@ -54,21 +54,21 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
     private Action<Socket>? _protectAction;
 
     //активное имя sni для маскировки tls
-    public string ActiveSni { get; private set; } = AppSecrets.AllowedSniPool[0];
+    public string ActiveSni { get; private set; } = configuredSni ?? string.Empty;
 
     //профиль маскировки под браузер
     public TlsBrowserProfile ActiveBrowserProfile { get; private set; } = TlsBrowserProfile.Chrome;
 
-    //клиенты и обработчики сокетов для 3 параллельных лучей
+    //клиенты для 3 параллельных лучей
     private HttpClient? _httpClient0;
-    private SocketsHttpHandler? _handler0;
     private HttpClient? _httpClient1;
-    private SocketsHttpHandler? _handler1;
     private HttpClient? _httpClient2;
-    private SocketsHttpHandler? _handler2;
 
     //источник токена отмены текущей сессии
     private CancellationTokenSource? _cts;
+
+    //активные фоновые задачи лучей для безопасного ожидания остановки перед освобождением сокетов
+    private Task[] _activeRayTasks = [];
 
     //признак установленного соединения
     private bool _connected;
@@ -87,11 +87,6 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
 
     //флаг явного предпочтения луча
     private int _hasClearPreferredRay;
-
-    //значения rtt по лучам
-    private long _rayRtt0;
-    private long _rayRtt1;
-    private long _rayRtt2;
 
     //метки времени последнего приема данных по лучам
     private long _lastRxTicks0;
@@ -122,11 +117,36 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
     //назначенный виртуальный ip адрес
     private volatile string? _assignedIp = preferredAssignedIp;
 
+    //счетчик лучей завершившихся до завершения рукопожатия
+    private int _handshakeRaysFailed;
+
+    //последняя ошибка луча на этапе рукопожатия
+    private Exception? _lastHandshakeError;
+
+    //регистрация сбоя луча на этапе рукопожатия для немедленного фейловера без ожидания таймаута
+    private void NotifyHandshakeRayFailed(Exception? ex)
+    {
+        if (ex is not null)
+        {
+            _ = Interlocked.CompareExchange(ref _lastHandshakeError, ex, null);
+        }
+
+        if (!_ipTcs.Task.IsCompleted && Interlocked.Increment(ref _handshakeRaysFailed) >= 3)
+        {
+            var err = Volatile.Read(ref _lastHandshakeError) ?? new SocketException((int)SocketError.ConnectionRefused);
+            _ = _ipTcs.TrySetException(err);
+        }
+    }
+
     //установка действия защиты сокетов
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
 
     //создание http клиента с поддержкой http2, ротации профиля браузера и обхода dpi
-    private (HttpClient client, SocketsHttpHandler handler) CreateHttpClient(string targetHost, string serverIp, int port, bool enableDpiBypass = true)
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Reliability",
+        "CA2000:Dispose objects before losing scope",
+        Justification = "Владение обработчиком передается в HttpClient (disposeHandler: true) и освобождается в catch при ошибке.")]
+    private HttpClient CreateHttpClient(string targetHost, string serverIp, int port, bool enableDpiBypass = true)
     {
         var browserProfile = ActiveBrowserProfile;
         var handler = new SocketsHttpHandler
@@ -145,7 +165,13 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                 browserProfile: browserProfile),
             ConnectCallback = async (context, cToken) =>
             {
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+                var effectivePort = port;
+                var targetIp = IPAddress.TryParse(serverIp, out var ipAddr)
+                    ? ipAddr
+                    : await ApiService.ResolveHostAntiPoisonAsync(serverIp, cToken).ConfigureAwait(false);
+
+                var connectTarget = new IPEndPoint(targetIp, effectivePort);
+                var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
                 {
                     NoDelay = true,
                     SendBufferSize = 4194304,
@@ -157,11 +183,6 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                 socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
                 OnSocketCreated?.Invoke(socket);
                 _protectAction?.Invoke(socket);
-
-                var effectivePort = port;
-                var connectTarget = IPAddress.TryParse(serverIp, out var ipAddr)
-                    ? (EndPoint)new IPEndPoint(ipAddr, effectivePort)
-                    : (context.DnsEndPoint ?? new DnsEndPoint(targetHost, effectivePort));
 
                 AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={effectivePort}, Browser={browserProfile})...");
                 var sw = Stopwatch.StartNew();
@@ -180,18 +201,21 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                 }
 
                 var netStream = new NetworkStream(socket, ownsSocket: true);
-                return (enableDpiBypass && IPAddress.TryParse(serverIp, out var parsedIp) && !IPAddress.IsLoopback(parsedIp))
+                return (enableDpiBypass && !IPAddress.IsLoopback(targetIp))
                     ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true)
                     : netStream;
             }
         };
 
-        var client = new HttpClient(handler)
+        try
         {
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-
-        return (client, handler);
+            return new HttpClient(handler, disposeHandler: true);
+        }
+        catch
+        {
+            handler.Dispose();
+            throw;
+        }
     }
 
     //пересоздание http клиента для конкретного луча
@@ -200,22 +224,22 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
         if (ray == 0)
         {
             _httpClient0?.Dispose();
-            _handler0?.Dispose();
-            (_httpClient0, _handler0) = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+            _httpClient0 = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+            _httpClient0.Timeout = Timeout.InfiniteTimeSpan;
             return _httpClient0;
         }
 
         if (ray == 1)
         {
             _httpClient1?.Dispose();
-            _handler1?.Dispose();
-            (_httpClient1, _handler1) = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+            _httpClient1 = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+            _httpClient1.Timeout = Timeout.InfiniteTimeSpan;
             return _httpClient1;
         }
 
         _httpClient2?.Dispose();
-        _handler2?.Dispose();
-        (_httpClient2, _handler2) = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+        _httpClient2 = CreateHttpClient(targetHost, _activeServerIp, port, enableDpiBypass);
+        _httpClient2.Timeout = Timeout.InfiniteTimeSpan;
         return _httpClient2;
     }
 
@@ -236,29 +260,6 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
             var activeProfile = candidate.BrowserProfile;
             ActiveBrowserProfile = activeProfile;
 
-            //для резервных браузерных профилей выполняем быструю 1-rtt проверку проходимости raw clienthello через тспу
-            if (i > 0 && i + 1 < endpointCandidates.Count && IPAddress.TryParse(serverIp, out var probeIp) && !IPAddress.IsLoopback(probeIp))
-            {
-                var rawReachable = await RoutingHello.ProbeRawClientHelloAsync(
-                    new IPEndPoint(probeIp, port),
-                    targetHost,
-                    activeProfile,
-                    socket =>
-                    {
-                        OnSocketCreated?.Invoke(socket);
-                        _protectAction?.Invoke(socket);
-                    },
-                    timeoutMs: 900,
-                    ct: ct).ConfigureAwait(false);
-
-                if (!rawReachable)
-                {
-                    _inspector.RecordStep($"1-RTT Raw ClientHello probe blocked for '{targetHost}:{port}' ({activeProfile}) -> rotating browser profile");
-                    AppLogger.LogWarning($"[BROWSER-ROTATION] 1-RTT Raw ClientHello probe blocked for '{targetHost}:{port}' ({activeProfile}). Rotating to next browser profile...");
-                    continue;
-                }
-            }
-
             var attemptTimeoutSeconds = 8;
             var dpiModeStr = enableDpi ? "Clean-Split DPI" : "Direct Stream";
             _inspector.IncrementAttempts();
@@ -267,22 +268,28 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
 
             _cts = new CancellationTokenSource();
             _ipTcs = new TaskCompletionSource<(string ip, string ip6)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _handshakeRaysFailed, 0);
+            Volatile.Write(ref _lastHandshakeError, null);
             Volatile.Write(ref _lastRxTicks0, 0);
             Volatile.Write(ref _lastRxTicks1, 0);
             Volatile.Write(ref _lastRxTicks2, 0);
 
             var ray1Port = port == 443 ? 8443 : 443;
             var ray2Port = 2053;
-            (_httpClient0, _handler0) = CreateHttpClient(targetHost, serverIp, port, enableDpi);
-            (_httpClient1, _handler1) = CreateHttpClient(targetHost, serverIp, ray1Port, enableDpi);
-            (_httpClient2, _handler2) = CreateHttpClient(targetHost, serverIp, ray2Port, enableDpi);
+            _httpClient0 = CreateHttpClient(targetHost, serverIp, port, enableDpi);
+            _httpClient1 = CreateHttpClient(targetHost, serverIp, ray1Port, enableDpi);
+            _httpClient2 = CreateHttpClient(targetHost, serverIp, ray2Port, enableDpi);
 
             using var attemptTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(attemptTimeoutSeconds));
             using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptTimeoutCts.Token);
 
-            _ = Task.Run(() => RunPrimaryRayLoopAsync(channelHost, port, thumbprint, enableDpi, _cts.Token), _cts.Token);
-            _ = Task.Run(() => RunSecondaryRayAsync(channelHost, ray1Port, thumbprint, enableDpi, _cts.Token), _cts.Token);
-            _ = Task.Run(() => RunTertiaryRayAsync(channelHost, ray2Port, thumbprint, enableDpi, _cts.Token), _cts.Token);
+            var rayTasks = new Task[]
+            {
+                Task.Run(() => RunPrimaryRayLoopAsync(channelHost, port, thumbprint, enableDpi, _cts.Token), _cts.Token),
+                Task.Run(() => RunSecondaryRayAsync(channelHost, ray1Port, thumbprint, enableDpi, _cts.Token), _cts.Token),
+                Task.Run(() => RunTertiaryRayAsync(channelHost, ray2Port, thumbprint, enableDpi, _cts.Token), _cts.Token)
+            };
+            _activeRayTasks = rayTasks;
 
             using (handshakeCts.Token.Register(() => _ipTcs.TrySetCanceled()))
             {
@@ -300,13 +307,28 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                     var inner = ex.InnerException != null ? $" -> {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
                     _inspector.RecordStep($"Handshake attempt #{i + 1} failed on '{targetHost}:{port}' [{dpiModeStr}] ({ex.GetType().Name})");
                     AppLogger.LogWarning($"[OBXODKA-STREAM] Handshake attempt #{i + 1} failed on '{targetHost}:{port}' [{dpiModeStr}] ({ex.GetType().Name}: {ex.Message}{inner}). Hopping to next endpoint in pool...");
-                    await _cts.CancelAsync().ConfigureAwait(false);
+                    var attemptCts = Interlocked.Exchange(ref _cts, null);
+                    if (attemptCts is not null)
+                    {
+                        await attemptCts.CancelAsync().ConfigureAwait(false);
+                    }
+                    try
+                    {
+                        await Task.WhenAll(rayTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        //ожидаемая отмена задач лучей при переходе к следующему кандидату
+                    }
+                    catch (TimeoutException)
+                    {
+                        //таймаут ожидания остановки задач лучей при смене кандидата
+                    }
+                    _activeRayTasks = [];
                     _httpClient0?.Dispose();
-                    _handler0?.Dispose();
                     _httpClient1?.Dispose();
-                    _handler1?.Dispose();
                     _httpClient2?.Dispose();
-                    _handler2?.Dispose();
+                    attemptCts?.Dispose();
                     await Task.Delay(50, ct).ConfigureAwait(false);
                 }
             }

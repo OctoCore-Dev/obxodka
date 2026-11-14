@@ -23,8 +23,9 @@ public static class PlatformThrottler
             {
                 PlatformServices.MainThread.BeginInvokeOnMainThread(action);
             }
-            catch
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                //изолируем сбои ui-диспетчера от фоновых потоков
             }
         }
     }

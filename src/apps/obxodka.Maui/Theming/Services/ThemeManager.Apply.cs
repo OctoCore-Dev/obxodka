@@ -20,7 +20,7 @@ public sealed partial class ThemeManager
             return false;
         }
 
-        var folderPath = Path.Combine(ThemesDirectory, manifest.Id);
+        var folderPath = Path.Combine(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
 
         if (MainThread.IsMainThread)
         {

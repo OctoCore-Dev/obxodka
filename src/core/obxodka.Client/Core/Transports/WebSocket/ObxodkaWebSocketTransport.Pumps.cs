@@ -66,8 +66,9 @@ public sealed partial class ObxodkaWebSocketTransport
                             var parts = info[3..].Split('|');
                             var assignedIp = parts[0];
                             var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                            foreach (var part in parts)
+                            for (var pIdx = 0; pIdx < parts.Length; pIdx++)
                             {
+                                var part = parts[pIdx];
                                 if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
                                     int.TryParse(part[4..], out var sMtu) &&
                                     sMtu >= SmartMtuEngine.MinMtu && sMtu <= SmartMtuEngine.MaxMtu)
@@ -81,17 +82,23 @@ public sealed partial class ObxodkaWebSocketTransport
                     }
                     else if (command == ObxodkaFraming.CmdData)
                     {
-                        var packetBuf = ArrayPool<byte>.Shared.Rent(payloadLen);
-                        payloadSpan.CopyTo(packetBuf);
-                        OnPacketReceived?.Invoke(packetBuf, payloadLen);
+                        if (OnPacketReceived is { } onPacketReceived)
+                        {
+                            var packetBuf = ArrayPool<byte>.Shared.Rent(payloadLen);
+                            payloadSpan.CopyTo(packetBuf);
+                            onPacketReceived(packetBuf, payloadLen);
+                        }
                     }
                     else if (command == ObxodkaFraming.CmdPing)
                     {
                         if (payloadLen >= 8)
                         {
-                            var echoBytes = ArrayPool<byte>.Shared.Rent(payloadLen);
-                            payloadSpan.CopyTo(echoBytes);
-                            if (!_txChannel.Writer.TryWrite(new WsTxItem(ObxodkaFraming.CmdPong, echoBytes, payloadLen)))
+                            var echoLen = 2 + payloadLen;
+                            var echoBytes = ArrayPool<byte>.Shared.Rent(echoLen);
+                            echoBytes[0] = 0xEE;
+                            echoBytes[1] = 0x88;
+                            payloadSpan.CopyTo(echoBytes.AsSpan(2, payloadLen));
+                            if (!_txQueue.TryEnqueue(echoBytes, echoLen))
                             {
                                 ArrayPool<byte>.Shared.Return(echoBytes);
                             }
@@ -118,29 +125,26 @@ public sealed partial class ObxodkaWebSocketTransport
                             }
                         }
                     }
-                    else if (command == ObxodkaFraming.CmdMtuSync)
+                    else if (command == ObxodkaFraming.CmdMtuSync && payloadLen >= 2)
                     {
-                        if (payloadLen >= 2)
+                        var sMtu = BinaryPrimitives.ReadUInt16BigEndian(payloadSpan);
+                        if (sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                         {
-                            var sMtu = BinaryPrimitives.ReadUInt16BigEndian(payloadSpan);
-                            if (sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
-                            {
-                                SmartMtuEngine.CurrentMtu = sMtu;
-                                OnMtuUpdated?.Invoke(sMtu);
-                            }
+                            SmartMtuEngine.CurrentMtu = sMtu;
+                            OnMtuUpdated?.Invoke(sMtu);
                         }
                     }
-                    else if (command == ObxodkaFraming.CmdMtuBurstPayload)
+                    else if (command == ObxodkaFraming.CmdMtuBurstPayload &&
+                             payloadLen >= 4 &&
+                             payloadSpan[0] == 0xEE &&
+                             payloadSpan[1] == 0x55)
                     {
-                        if (payloadLen >= 4 && payloadSpan[0] == 0xEE && payloadSpan[1] == 0x55)
+                        var targetMtu = BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
+                        lock (_receivedBurstMtus)
                         {
-                            var targetMtu = BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
-                            lock (_receivedBurstMtus)
+                            if (!_receivedBurstMtus.Contains(targetMtu))
                             {
-                                if (!_receivedBurstMtus.Contains(targetMtu))
-                                {
-                                    _receivedBurstMtus.Add(targetMtu);
-                                }
+                                _receivedBurstMtus.Add(targetMtu);
                             }
                         }
                     }
@@ -158,14 +162,21 @@ public sealed partial class ObxodkaWebSocketTransport
                 }
             }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            //штатная отмена цикла чтения websocket
+        }
+        catch (Exception ex) when (ex is WebSocketException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
         {
             AppLogger.LogWarning($"[OBXODKA-WS] Reader loop terminated: {ex.Message}");
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(rxBuf);
+            if (!_ipTcs.Task.IsCompleted)
+            {
+                _ = _ipTcs.TrySetCanceled(ct.IsCancellationRequested ? ct : CancellationToken.None);
+            }
             if (Volatile.Read(ref _connected))
             {
                 Volatile.Write(ref _connected, false);
@@ -174,74 +185,91 @@ public sealed partial class ObxodkaWebSocketTransport
         }
     }
 
-    //фоновый цикл отправки исходящих пакетов через единую очередь сокета
+    //фоновый цикл отправки исходящих пакетов через единую приоритетную очередь сокета
     private async Task WriterLoopAsync(ClientWebSocket ws, CancellationToken ct)
     {
         var coalesceBuf = ArrayPool<byte>.Shared.Rent(131072);
-        var reader = _txChannel.Reader;
 
         try
         {
             long wsTxBytes = 0;
-            while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            while (!ct.IsCancellationRequested)
             {
+                var firstItem = await _txQueue.DequeueAsync(ct).ConfigureAwait(false);
                 var coalescedLen = 0;
+                var batchCount = 0;
+                var item = firstItem;
+                var hasItem = true;
 
-                while (reader.TryRead(out var item))
+                while (hasItem)
                 {
-                    var cmd = item.Command;
-                    var packet = item.Buffer;
-                    var length = item.Length;
+                    var packet = item.buffer;
+                    var length = item.length;
 
-                    if (packet == null || (length <= 0 && cmd is not (ObxodkaFraming.CmdDisconnect or ObxodkaFraming.CmdMtuBurstRequest)))
+                    if (packet != null && length > 0)
                     {
-                        if (packet != null && packet.Length > 0)
+                        try
+                        {
+                            var isMtu = length == 4 && packet[0] == 0xCC && packet[1] == 0xDD;
+                            var isBurstReq = length == 2 && packet[0] == 0xEE && packet[1] == 0x77;
+                            var isPong = length >= 2 && packet[0] == 0xEE && packet[1] == 0x88;
+                            var isDisconnect = length == 2 && packet[0] == 0xEE && packet[1] == 0x99;
+                            var isPingMarker = length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB;
+                            var isPing = isPingMarker || length == 8;
+
+                            var cmd = isMtu
+                                ? ObxodkaFraming.CmdMtuSync
+                                : (isBurstReq
+                                    ? ObxodkaFraming.CmdMtuBurstRequest
+                                    : (isPong
+                                        ? ObxodkaFraming.CmdPong
+                                        : (isDisconnect
+                                            ? ObxodkaFraming.CmdDisconnect
+                                            : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData))));
+
+                            var payloadOffset = isMtu || isPong || isPingMarker ? 2 : 0;
+                            var payloadLength = isBurstReq || isDisconnect ? 0 : length - payloadOffset;
+
+                            var isEarly = (wsTxBytes + coalescedLen) < ObxodkaFraming.EarlyStageWindowBytes;
+                            var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, maxMtu: SmartMtuEngine.CurrentMtu, isEarlySession: isEarly);
+                            var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
+
+                            if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
+                            {
+                                await ws.SendAsync(coalesceBuf.AsMemory(0, coalescedLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
+                                wsTxBytes += coalescedLen;
+                                coalescedLen = 0;
+                            }
+
+                            var payloadSpan = payloadLength > 0 ? packet.AsSpan(payloadOffset, payloadLength) : ReadOnlySpan<byte>.Empty;
+                            if (totalLen <= coalesceBuf.Length)
+                            {
+                                ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd, payloadSpan, paddingLen, _sessionKey);
+                                coalescedLen += totalLen;
+                            }
+                            else
+                            {
+                                var frame = ArrayPool<byte>.Shared.Rent(totalLen);
+                                try
+                                {
+                                    ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd, payloadSpan, paddingLen, _sessionKey);
+                                    await ws.SendAsync(frame.AsMemory(0, totalLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
+                                    wsTxBytes += totalLen;
+                                }
+                                finally
+                                {
+                                    ArrayPool<byte>.Shared.Return(frame);
+                                }
+                            }
+                        }
+                        finally
                         {
                             ArrayPool<byte>.Shared.Return(packet);
                         }
-                        continue;
                     }
 
-                    try
-                    {
-                        var isEarly = (wsTxBytes + coalescedLen) < ObxodkaFraming.EarlyStageWindowBytes;
-                        var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, length, maxMtu: SmartMtuEngine.CurrentMtu, isEarlySession: isEarly);
-                        var totalLen = ObxodkaFraming.HeaderSize + length + paddingLen;
-
-                        if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
-                        {
-                            await ws.SendAsync(coalesceBuf.AsMemory(0, coalescedLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
-                            wsTxBytes += coalescedLen;
-                            coalescedLen = 0;
-                        }
-
-                        if (totalLen <= coalesceBuf.Length)
-                        {
-                            ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd, packet.AsSpan(0, length), paddingLen, _sessionKey);
-                            coalescedLen += totalLen;
-                        }
-                        else
-                        {
-                            var frame = ArrayPool<byte>.Shared.Rent(totalLen);
-                            try
-                            {
-                                ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd, packet.AsSpan(0, length), paddingLen, _sessionKey);
-                                await ws.SendAsync(frame.AsMemory(0, totalLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
-                                wsTxBytes += totalLen;
-                            }
-                            finally
-                            {
-                                ArrayPool<byte>.Shared.Return(frame);
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        if (packet.Length > 0)
-                        {
-                            ArrayPool<byte>.Shared.Return(packet);
-                        }
-                    }
+                    batchCount++;
+                    hasItem = batchCount < 128 && _txQueue.TryDequeue(out item);
                 }
 
                 if (coalescedLen > 0)
@@ -251,8 +279,11 @@ public sealed partial class ObxodkaWebSocketTransport
                 }
             }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            //штатная отмена цикла записи websocket
+        }
+        catch (Exception ex) when (ex is WebSocketException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
         {
             AppLogger.LogWarning($"[OBXODKA-WS] Writer loop terminated: {ex.Message}");
         }

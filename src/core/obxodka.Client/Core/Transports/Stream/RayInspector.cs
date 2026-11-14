@@ -184,9 +184,9 @@ public sealed class RayInspector
     //фиксация таймаута зонда
     public void RecordProbeTimeout(int ray)
     {
-        if ((uint)ray < MaxInspectorRays)
+        if ((uint)ray < MaxInspectorRays && Interlocked.Increment(ref _lostProbes[ray]) >= 3)
         {
-            _ = Interlocked.Increment(ref _lostProbes[ray]);
+            Volatile.Write(ref _isBlackholed[ray], 1);
         }
     }
 
@@ -380,22 +380,6 @@ public sealed class RayInspector
         return mask;
     }
 
-    //выбор лучей для отправки пакета с учетом здоровья
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SelectRaysForPacket(
-        int preferredRay,
-        bool needsHedging,
-        int activeRays,
-        long nowTs,
-        out int primaryRay,
-        out int duplicateRay)
-    {
-        _ = activeRays;
-        var mask = GetAliveMask(nowTs);
-        //пользовательские данные и пинг идут только через ray 0 и ray 1
-        PacketRouter.SelectRaysFromHealth(needsHedging, mask, preferredRay, hash: 0, out primaryRay, out duplicateRay);
-    }
-
     //отправка телеметрического отчета об инциденте на сервер
     public async Task<bool> ReportIncidentIfExhaustedAsync(
         string reason,
@@ -447,9 +431,12 @@ public sealed class RayInspector
                 Ray2Blackholed: Volatile.Read(ref _isBlackholed[2]) == 1,
                 TimestampUtc: DateTime.UtcNow);
 
-            var endpoint = string.IsNullOrWhiteSpace(apiBaseUrl)
+            var useDefaultApiPipeline = string.IsNullOrWhiteSpace(apiBaseUrl) ||
+                                        string.Equals(apiBaseUrl.TrimEnd('/'), AppConfig.ApiBaseUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+
+            var endpoint = useDefaultApiPipeline
                 ? AppConfig.ApiUrl("api/vpn/incident")
-                : $"{apiBaseUrl.TrimEnd('/')}/api/vpn/incident";
+                : $"{apiBaseUrl!.TrimEnd('/')}/api/vpn/incident";
 
             //блокируем отправку тестовых инцидентов на боевой сервер при прогоне юнит тестов
             if (obxodka.Client.Telemetry.TelemetryFilter.IsTestEnvironment &&
@@ -459,16 +446,26 @@ public sealed class RayInspector
                 return false;
             }
 
+            if (useDefaultApiPipeline)
+            {
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(6));
+                var sent = await ApiService.Shared.PostIncidentAsync(report, timeoutCts.Token).ConfigureAwait(false);
+                AppLogger.LogWarning($"[RAY-INSPECTOR] Telemetry incident report dispatched via ApiService: {reason} (Success={sent})");
+                return sent;
+            }
+
             using var handler = ApiService.CreateDefaultHandler();
             using var httpClient = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(3.5) };
             _ = httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Device-Hwid", hwid);
+            _ = httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Telemetry-Token", AppConfig.TelemetryAuthToken);
             var json = JsonSerializer.Serialize(report, AppJsonContext.Default.IncidentReportDto);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
             AppLogger.LogWarning($"[RAY-INSPECTOR] Telemetry incident report dispatched to {endpoint}: {reason} (Status={response.StatusCode})");
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or JsonException or NotSupportedException or InvalidOperationException)
         {
             return false;
         }

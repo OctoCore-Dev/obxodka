@@ -325,7 +325,7 @@ internal static partial class WindowsSplitTunnelEngine
         MemoryMarshal.Write(gwBytes, in gwUint);
         var gwIp = new IPAddress(gwBytes);
 
-        IPAddress[] dnsServers = [IPAddress.Parse("77.88.8.8"), gwIp, IPAddress.Parse("77.88.8.1")];
+        IPAddress[] dnsServers = [gwIp, IPAddress.Parse("77.88.8.8"), IPAddress.Parse("77.88.8.1")];
 
         foreach (var dnsIp in dnsServers)
         {
@@ -337,6 +337,15 @@ internal static partial class WindowsSplitTunnelEngine
             try
             {
                 using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                var ifIndex = s_physicalIfIndex;
+                if (ifIndex > 0)
+                {
+                    try
+                    {
+                        socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)31, IPAddress.HostToNetworkOrder(ifIndex));
+                    }
+                    catch { }
+                }
                 if (s_physicalLocalIp is not null && !IPAddress.IsLoopback(s_physicalLocalIp))
                 {
                     try

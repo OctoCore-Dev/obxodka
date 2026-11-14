@@ -72,7 +72,7 @@ public sealed partial class ThemeStorageService
         Action<string, double, bool, bool, string?>? onProgressChanged,
         CancellationToken ct)
     {
-        var targetDir = Path.Combine(ThemesDirectory, themeId);
+        var targetDir = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'));
         _ = Directory.CreateDirectory(targetDir);
 
         void Report(double p)
@@ -105,7 +105,7 @@ public sealed partial class ThemeStorageService
             foreach (var rel in assetPaths)
             {
                 var isIcon = string.Equals(rel, "icon.png", StringComparison.OrdinalIgnoreCase);
-                var dest = Path.Combine(targetDir, rel);
+                var dest = Path.Join(targetDir, rel.TrimStart('/', '\\'));
                 var parentDir = Path.GetDirectoryName(dest);
                 if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
                 {
@@ -117,13 +117,13 @@ public sealed partial class ThemeStorageService
                 Report(0.3 + (0.65 * processed / Math.Max(1, totalAssets)));
             }
 
-            await File.WriteAllTextAsync(Path.Combine(targetDir, "theme.json"), manifestJson, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Join(targetDir, "theme.json"), manifestJson, ct).ConfigureAwait(false);
 
             Report(1.0);
             success = true;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is SecurityException or HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException or SocketException or JsonException or NotSupportedException or ArgumentException or InvalidOperationException)
         {
             LastError = ex.Message;
             if (Directory.Exists(targetDir))
@@ -132,9 +132,9 @@ public sealed partial class ThemeStorageService
                 {
                     Directory.Delete(targetDir, true);
                 }
-                catch
+                catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException or SecurityException)
                 {
-                    //подавление ошибок очистки
+                    //подавление ошибок очистки незавершенной установки темы
                 }
             }
 
@@ -183,7 +183,7 @@ public sealed partial class ThemeStorageService
                     return await res.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or NotSupportedException or ArgumentException)
             {
                 lastEx = ex;
             }
@@ -239,7 +239,7 @@ public sealed partial class ThemeStorageService
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or NotSupportedException or ArgumentException)
             {
                 lastEx = ex;
             }
@@ -349,7 +349,7 @@ public sealed partial class ThemeStorageService
                 {
                     File.Delete(fullDest);
                 }
-                catch
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
                 {
                     //подавление ошибок удаления поврежденного файла
                 }

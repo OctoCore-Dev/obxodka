@@ -8,6 +8,17 @@ internal sealed partial class WindowsVpnService
 {
     private static int? s_savedDisableSmartNameResolution;
 
+    private static string GetAppDataFolderPath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
+        _ = Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static string GetSmhnrBackupPath() => Path.Combine(GetAppDataFolderPath(), "smhnr_backup.txt");
+
+    private static string GetDnsBackupPath() => Path.Combine(GetAppDataFolderPath(), "dns_backup.txt");
+
     //предстартовая проверка сети и dns
     public async Task<string?> RunNetworkPreflightAsync()
     {
@@ -115,6 +126,9 @@ internal sealed partial class WindowsVpnService
                 }
             }
 
+            //сохраняем исходные dns настройки адаптеров перед лечением (если бекап еще не создан)
+            await BackupAdapterDnsIfNeededAsync(targetIndices).ConfigureAwait(false);
+
             foreach (var idx in targetIndices)
             {
                 _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"try {{ Set-DnsClientServerAddress -InterfaceIndex {idx} -ServerAddresses '77.88.8.8','1.1.1.1' -ErrorAction Stop }} catch {{ }}\"");
@@ -127,6 +141,102 @@ internal sealed partial class WindowsVpnService
             }
 
             _ = await RunCmdAsync("ipconfig", "/flushdns");
+        }
+        catch { }
+    }
+
+    //сохранение исходных dns серверов физических адаптеров перед заменой
+    private static async Task BackupAdapterDnsIfNeededAsync(HashSet<int> targetIndices)
+    {
+        try
+        {
+            var backupPath = GetDnsBackupPath();
+            if (targetIndices.Count == 0 || File.Exists(backupPath))
+            {
+                return;
+            }
+
+            var lines = new List<string>();
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                var idx = nic.GetIPProperties().GetIPv4Properties()?.Index ?? 0;
+                if (idx <= 0 || !targetIndices.Contains(idx))
+                {
+                    continue;
+                }
+
+                var (_, dnsOut) = await RunCmdAsync("netsh", $"interface ipv4 show dnsservers name=\"{nic.Name}\"", timeoutMs: 2500).ConfigureAwait(false);
+                var isDhcp = dnsOut.Contains("DHCP", StringComparison.OrdinalIgnoreCase);
+                if (isDhcp)
+                {
+                    lines.Add($"{idx}|{nic.Name}|DHCP");
+                }
+                else
+                {
+                    var v4Dns = nic.GetIPProperties().DnsAddresses
+                        .Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
+                        .Select(a => a.ToString())
+                        .ToArray();
+                    if (v4Dns.Length > 0)
+                    {
+                        lines.Add($"{idx}|{nic.Name}|{string.Join(',', v4Dns)}");
+                    }
+                }
+            }
+
+            if (lines.Count > 0)
+            {
+                await File.WriteAllLinesAsync(backupPath, lines).ConfigureAwait(false);
+            }
+        }
+        catch { }
+    }
+
+    //восстановление исходных dns серверов физических адаптеров
+    private static async Task RestoreAdapterDnsBackupAsync()
+    {
+        try
+        {
+            var backupPath = GetDnsBackupPath();
+            if (!File.Exists(backupPath))
+            {
+                return;
+            }
+
+            var lines = await File.ReadAllLinesAsync(backupPath).ConfigureAwait(false);
+            foreach (var line in lines)
+            {
+                var parts = line.Split('|', 3);
+                if (parts.Length < 3 || string.IsNullOrWhiteSpace(parts[1]))
+                {
+                    continue;
+                }
+
+                var nicName = parts[1].Trim();
+                var dnsSpec = parts[2].Trim();
+                if (dnsSpec.Equals("DHCP", StringComparison.OrdinalIgnoreCase))
+                {
+                    _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{nicName}\" dhcp", timeoutMs: 2500).ConfigureAwait(false);
+                }
+                else
+                {
+                    var ips = dnsSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (ips.Length > 0 && IPAddress.TryParse(ips[0], out _))
+                    {
+                        _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{nicName}\" static {ips[0]} primary validate=no", timeoutMs: 2500).ConfigureAwait(false);
+                        for (var i = 1; i < ips.Length; i++)
+                        {
+                            if (IPAddress.TryParse(ips[i], out _))
+                            {
+                                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{nicName}\" {ips[i]} index={i + 1} validate=no", timeoutMs: 2500).ConfigureAwait(false);
+                            }
+                        }
+                    }
+                }
+            }
+
+            File.Delete(backupPath);
+            _ = await RunCmdAsync("ipconfig", "/flushdns", timeoutMs: 2000).ConfigureAwait(false);
         }
         catch { }
     }
@@ -295,8 +405,20 @@ internal sealed partial class WindowsVpnService
             using var key = Registry.LocalMachine.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient");
             if (key != null)
             {
-                var existing = key.GetValue("DisableSmartNameResolution");
-                s_savedDisableSmartNameResolution = existing is int intVal ? intVal : -1;
+                var backupPath = GetSmhnrBackupPath();
+                if (!File.Exists(backupPath))
+                {
+                    var existing = key.GetValue("DisableSmartNameResolution");
+                    var origVal = existing is int intVal ? intVal : -1;
+                    s_savedDisableSmartNameResolution = origVal;
+                    File.WriteAllText(backupPath, origVal.ToString(CultureInfo.InvariantCulture));
+                }
+                else if (!s_savedDisableSmartNameResolution.HasValue &&
+                         int.TryParse(File.ReadAllText(backupPath).Trim(), CultureInfo.InvariantCulture, out var persistedVal))
+                {
+                    s_savedDisableSmartNameResolution = persistedVal;
+                }
+
                 key.SetValue("DisableSmartNameResolution", 1, RegistryValueKind.DWord);
             }
         }
@@ -311,17 +433,36 @@ internal sealed partial class WindowsVpnService
     {
         try
         {
+            var backupPath = GetSmhnrBackupPath();
+            var savedValue = s_savedDisableSmartNameResolution;
+            if (!savedValue.HasValue && File.Exists(backupPath) &&
+                int.TryParse(File.ReadAllText(backupPath).Trim(), CultureInfo.InvariantCulture, out var persistedVal))
+            {
+                savedValue = persistedVal;
+            }
+
+            if (!savedValue.HasValue)
+            {
+                return;
+            }
+
             using var key = Registry.LocalMachine.OpenSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient", true);
             if (key != null)
             {
-                if (s_savedDisableSmartNameResolution == -1)
+                if (savedValue.Value == -1)
                 {
                     key.DeleteValue("DisableSmartNameResolution", false);
                 }
-                else if (s_savedDisableSmartNameResolution.HasValue)
+                else
                 {
-                    key.SetValue("DisableSmartNameResolution", s_savedDisableSmartNameResolution.Value, RegistryValueKind.DWord);
+                    key.SetValue("DisableSmartNameResolution", savedValue.Value, RegistryValueKind.DWord);
                 }
+            }
+
+            s_savedDisableSmartNameResolution = null;
+            if (File.Exists(backupPath))
+            {
+                File.Delete(backupPath);
             }
         }
         catch (Exception ex)
@@ -333,6 +474,7 @@ internal sealed partial class WindowsVpnService
     //активация маршрутов dns в интерфейс туннеля для защиты от утечек
     private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
     {
+        _ = assignedIp;
         ApplySmhnrProtection();
         try
         {

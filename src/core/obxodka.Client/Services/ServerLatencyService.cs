@@ -36,7 +36,7 @@ public static class ServerLatencyService
             healthy.AddRange(unreachable);
             return healthy.Count > 0 ? healthy : servers;
         }
-        catch
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException or IOException or InvalidOperationException)
         {
             return servers;
         }
@@ -54,29 +54,23 @@ public static class ServerLatencyService
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeoutMs);
 
-            using var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+            IPAddress resolvedIp;
+            if (!IPAddress.TryParse(server.Ip, out resolvedIp!))
+            {
+                resolvedIp = await ApiService.ResolveHostAntiPoisonAsync(server.Ip, cts.Token).ConfigureAwait(false);
+            }
+
+            using var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
             {
                 NoDelay = true
             };
 
-            var targetIp = server.Ip;
-            if (Uri.CheckHostName(targetIp) == UriHostNameType.Dns)
-            {
-                var addrs = await Dns.GetHostAddressesAsync(targetIp, cts.Token).ConfigureAwait(false);
-                var ipv4 = addrs.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
-                if (ipv4 is null)
-                {
-                    return (server, long.MaxValue, false);
-                }
-                targetIp = ipv4.ToString();
-            }
-
             var port = server.Port > 0 ? server.Port : 443;
-            await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(targetIp), port), cts.Token).ConfigureAwait(false);
+            await socket.ConnectAsync(new IPEndPoint(resolvedIp, port), cts.Token).ConfigureAwait(false);
             sw.Stop();
             return (server, sw.ElapsedMilliseconds, true);
         }
-        catch
+        catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException or IOException or InvalidOperationException)
         {
             return (server, long.MaxValue, false);
         }

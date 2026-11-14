@@ -22,6 +22,11 @@ public partial class ApiServiceTests : IDisposable
     {
         var request = new EmailAuthRequest("test@example.com");
 
+        using var response = new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.OK,
+            Content = new StringContent("", Encoding.UTF8, "application/json")
+        };
         _ = _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -29,11 +34,7 @@ public partial class ApiServiceTests : IDisposable
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>()
             )
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = HttpStatusCode.OK,
-                Content = new StringContent("", Encoding.UTF8, "application/json")
-            });
+            .ReturnsAsync(response);
 
         var (success, error) = await _apiService.RequestCodeAsync(request);
 
@@ -46,6 +47,11 @@ public partial class ApiServiceTests : IDisposable
     {
         var request = new EmailAuthRequest("test@example.com");
 
+        using var response = new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.Unauthorized,
+            Content = new StringContent("", Encoding.UTF8, "application/json")
+        };
         _ = _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -53,11 +59,7 @@ public partial class ApiServiceTests : IDisposable
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>()
             )
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = HttpStatusCode.Unauthorized,
-                Content = new StringContent("", Encoding.UTF8, "application/json")
-            });
+            .ReturnsAsync(response);
 
         var (success, error) = await _apiService.RequestCodeAsync(request);
 
@@ -70,6 +72,11 @@ public partial class ApiServiceTests : IDisposable
     {
         var request = new EmailAuthRequest("test@example.com");
 
+        using var response = new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.BadRequest,
+            Content = new StringContent(/*lang=json,strict*/ "{\"message\":\"Некорректный email.\"}", Encoding.UTF8, "application/json")
+        };
         _ = _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -77,11 +84,7 @@ public partial class ApiServiceTests : IDisposable
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>()
             )
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = HttpStatusCode.BadRequest,
-                Content = new StringContent(/*lang=json,strict*/ "{\"message\":\"Некорректный email.\"}", Encoding.UTF8, "application/json")
-            });
+            .ReturnsAsync(response);
 
         var (success, error) = await _apiService.RequestCodeAsync(request);
 
@@ -95,6 +98,11 @@ public partial class ApiServiceTests : IDisposable
         var request = new EmailVerifyRequest("test@example.com", "123456", "test_hwid", "MyPhone");
         var rawJson = /*lang=json,strict*/ "{\"token\":\"jwt_token_sample\",\"vpnConfig\":\"vpn_config_data\",\"certThumbprint\":\"CERT_123\",\"balanceSeconds\":3600,\"email\":\"test@example.com\"}";
 
+        using var response = new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.OK,
+            Content = new StringContent(rawJson, Encoding.UTF8, "application/json")
+        };
         _ = _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -102,11 +110,7 @@ public partial class ApiServiceTests : IDisposable
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>()
             )
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(rawJson, Encoding.UTF8, "application/json")
-            });
+            .ReturnsAsync(response);
 
         var (success, data, error) = await _apiService.VerifyCodeAsync(request);
 

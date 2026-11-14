@@ -56,9 +56,8 @@ public static partial class StoreVersionParser
         }
 
         var lines = body.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var line in lines)
+        foreach (var match in lines.Select(line => Sha256ChecksumLineRegex().Match(line)))
         {
-            var match = Sha256ChecksumLineRegex().Match(line);
             if (!match.Success)
             {
                 continue;
@@ -111,12 +110,9 @@ public static partial class StoreVersionParser
                 continue;
             }
 
-            if (insideCodeBlock)
+            if (insideCodeBlock && (Sha256ChecksumLineRegex().IsMatch(line) || RawSha256HexRegex().IsMatch(line)))
             {
-                if (Sha256ChecksumLineRegex().IsMatch(line) || RawSha256HexRegex().IsMatch(line))
-                {
-                    continue;
-                }
+                continue;
             }
 
             if (ChecksumsHeaderRegex().IsMatch(line) ||
@@ -201,7 +197,7 @@ public static partial class StoreVersionParser
 
             return (version, whatsNew, downloadUrl, expectedSha256);
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
         {
             return (null, null, null, null);
         }
@@ -229,32 +225,30 @@ public static partial class StoreVersionParser
                 return null;
             }
 
-            foreach (var sku in skus.EnumerateArray())
+            foreach (var pkgs in skus.EnumerateArray()
+                .Where(sku => sku.TryGetProperty("Sku", out var skuObj) &&
+                              skuObj.TryGetProperty("Properties", out var props) &&
+                              props.TryGetProperty("Packages", out var pkgs) &&
+                              pkgs.ValueKind == JsonValueKind.Array)
+                .Select(sku => sku.GetProperty("Sku").GetProperty("Properties").GetProperty("Packages")))
             {
-                if (sku.TryGetProperty("Sku", out var skuObj) &&
-                    skuObj.TryGetProperty("Properties", out var props) &&
-                    props.TryGetProperty("Packages", out var pkgs) &&
-                    pkgs.ValueKind == JsonValueKind.Array)
+                foreach (var rawVerStr in pkgs.EnumerateArray()
+                    .Select(pkg => pkg.TryGetProperty("Version", out var verProp) ? verProp.GetString() : null)
+                    .Where(static s => !string.IsNullOrEmpty(s)))
                 {
-                    foreach (var pkg in pkgs.EnumerateArray())
+                    if (ulong.TryParse(rawVerStr, out var rawVer) && rawVer > 0)
                     {
-                        if (pkg.TryGetProperty("Version", out var verProp))
-                        {
-                            var rawVerStr = verProp.GetString();
-                            if (ulong.TryParse(rawVerStr, out var rawVer) && rawVer > 0)
-                            {
-                                var major = (rawVer >> 48) & 0xFFFF;
-                                var minor = (rawVer >> 32) & 0xFFFF;
-                                var build = (rawVer >> 16) & 0xFFFF;
-                                return $"{major}.{minor}.{build}";
-                            }
-                        }
+                        var major = (rawVer >> 48) & 0xFFFF;
+                        var minor = (rawVer >> 32) & 0xFFFF;
+                        var build = (rawVer >> 16) & 0xFFFF;
+                        return $"{major}.{minor}.{build}";
                     }
                 }
             }
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
         {
+            //некорректный json каталога microsoft store
         }
 
         return null;

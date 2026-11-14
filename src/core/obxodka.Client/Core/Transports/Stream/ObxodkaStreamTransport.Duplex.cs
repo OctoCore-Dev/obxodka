@@ -10,6 +10,7 @@ public sealed partial class ObxodkaStreamTransport
         var currentClientPort = initialPort;
         var consecutiveDrops = 0;
         var forceNewSocket = false;
+        Exception? lastAttemptEx = null;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
@@ -35,8 +36,9 @@ public sealed partial class ObxodkaStreamTransport
             {
                 break;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
+                lastAttemptEx = ex;
                 if (Volatile.Read(ref _connected))
                 {
                     AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 dropped on port {activePort}: {ex.Message}. Reconnecting in 1s...");
@@ -75,13 +77,14 @@ public sealed partial class ObxodkaStreamTransport
                 {
                     await Task.Delay(rotatedCleanly ? 15 : 500, ct).ConfigureAwait(false);
                 }
-                catch
+                catch (OperationCanceledException)
                 {
                     break;
                 }
             }
-            else if (!_ipTcs.Task.IsCompleted)
+            else if (!_ipTcs.Task.IsCompleted && portIdx >= primaryPorts.Length)
             {
+                NotifyHandshakeRayFailed(lastAttemptEx);
                 break;
             }
         }
@@ -94,6 +97,7 @@ public sealed partial class ObxodkaStreamTransport
         var portIdx = 0;
         var currentClientPort = initialPort;
         var forceNewSocket = false;
+        Exception? lastAttemptEx = null;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
@@ -118,8 +122,9 @@ public sealed partial class ObxodkaStreamTransport
             {
                 break;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
+                lastAttemptEx = ex;
                 AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #1 dropped on port {activePort}: {ex.Message}. Reconnecting in 2s...");
                 portIdx++;
             }
@@ -130,13 +135,14 @@ public sealed partial class ObxodkaStreamTransport
                 {
                     await Task.Delay(rotatedCleanly ? 15 : 500, ct).ConfigureAwait(false);
                 }
-                catch
+                catch (OperationCanceledException)
                 {
                     break;
                 }
             }
-            else if (!_ipTcs.Task.IsCompleted)
+            else if (!_ipTcs.Task.IsCompleted && portIdx >= secondaryPorts.Length)
             {
+                NotifyHandshakeRayFailed(lastAttemptEx);
                 break;
             }
         }
@@ -149,6 +155,7 @@ public sealed partial class ObxodkaStreamTransport
         var portIdx = 0;
         var currentClientPort = initialPort;
         var forceNewSocket = false;
+        Exception? lastAttemptEx = null;
 
         while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
@@ -173,8 +180,9 @@ public sealed partial class ObxodkaStreamTransport
             {
                 break;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
+                lastAttemptEx = ex;
                 AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #2 dropped on port {activePort}: {ex.Message}. Reconnecting in 2s...");
                 portIdx++;
             }
@@ -185,13 +193,14 @@ public sealed partial class ObxodkaStreamTransport
                 {
                     await Task.Delay(rotatedCleanly ? 15 : 500, ct).ConfigureAwait(false);
                 }
-                catch
+                catch (OperationCanceledException)
                 {
                     break;
                 }
             }
-            else if (!_ipTcs.Task.IsCompleted)
+            else if (!_ipTcs.Task.IsCompleted && portIdx >= tertiaryPorts.Length)
             {
+                NotifyHandshakeRayFailed(lastAttemptEx);
                 break;
             }
         }
@@ -201,7 +210,7 @@ public sealed partial class ObxodkaStreamTransport
     private async Task<bool> RunStreamAsync(int ray, HttpClient client, string channelHost, int port, string thumbprint, CancellationToken ct)
     {
         using var rayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _rayCts[ray] = rayCts;
+        Volatile.Write(ref _rayCts[ray], rayCts);
         var token = rayCts.Token;
         var rotatedCleanly = false;
         long raySharedBytes = 0;
@@ -352,8 +361,11 @@ public sealed partial class ObxodkaStreamTransport
                         await stream.FlushAsync(pumpToken).ConfigureAwait(false);
                     }
                 }
-                catch (OperationCanceledException) { }
-                catch (Exception ex)
+                catch (OperationCanceledException)
+                {
+                    //штатная отмена исходящего потока при закрытии луча
+                }
+                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or ObjectDisposedException or InvalidOperationException)
                 {
                     AppLogger.LogWarning($"[OBXODKA-TX] Ray #{ray} upload pump stopped: {ex.Message}");
                 }
@@ -478,8 +490,9 @@ public sealed partial class ObxodkaStreamTransport
                                 var parts = info[3..].Split('|');
                                 var assignedIp = parts[0];
                                 var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                                foreach (var part in parts)
+                                for (var pIdx = 0; pIdx < parts.Length; pIdx++)
                                 {
+                                    var part = parts[pIdx];
                                     if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
                                         int.TryParse(part[4..], out var sMtu) &&
                                         sMtu >= SmartMtuEngine.MinMtu && sMtu <= SmartMtuEngine.MaxMtu)
@@ -518,11 +531,11 @@ public sealed partial class ObxodkaStreamTransport
                                 continue;
                             }
                             _inspector.RecordDataRx(payloadLen);
-                            if (payloadLen >= 20 && !_deduplicator.IsDuplicate(payloadSpan))
+                            if (payloadLen >= 20 && !_deduplicator.IsDuplicate(payloadSpan) && OnPacketReceived is { } onPacketReceived)
                             {
                                 var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
                                 payloadSpan.CopyTo(rented);
-                                OnPacketReceived?.Invoke(rented, payloadLen);
+                                onPacketReceived(rented, payloadLen);
                             }
                         }
                         else if (command == ObxodkaFraming.CmdPong)
@@ -539,22 +552,6 @@ public sealed partial class ObxodkaStreamTransport
                                 if (elapsedMs is >= 0 and < 5000)
                                 {
                                     _inspector.RecordPong(ray, sendTs, now);
-                                    if (ray == 0)
-                                    {
-                                        var prev = Volatile.Read(ref _rayRtt0);
-                                        Volatile.Write(ref _rayRtt0, prev <= 0 ? elapsedMs : ((prev * 3) + elapsedMs) / 4);
-                                    }
-                                    else if (ray == 1)
-                                    {
-                                        var prev = Volatile.Read(ref _rayRtt1);
-                                        Volatile.Write(ref _rayRtt1, prev <= 0 ? elapsedMs : ((prev * 3) + elapsedMs) / 4);
-                                    }
-                                    else if (ray == 2)
-                                    {
-                                        var prev = Volatile.Read(ref _rayRtt2);
-                                        Volatile.Write(ref _rayRtt2, prev <= 0 ? elapsedMs : ((prev * 3) + elapsedMs) / 4);
-                                    }
-
                                     OnPingUpdated?.Invoke(elapsedMs);
                                 }
 
@@ -625,32 +622,42 @@ public sealed partial class ObxodkaStreamTransport
         }
         finally
         {
-            _rayCts[ray] = null;
-            var otherRay = ray == 0 ? 1 : 0;
-            for (var c = 0; c < 3; c++)
+            _ = Interlocked.CompareExchange(ref _rayCts[ray], null, rayCts);
+            if (ray is 0 or 1)
             {
-                if (c != ray && _rayCts[c] != null)
-                {
-                    otherRay = c;
-                    break;
-                }
-            }
+                //миграция допустима строго на второй рабочий data-луч (ray 0 или ray 1), ray 2 зарезервирован под control plane
+                var otherRay = ray == 0 ? 1 : 0;
+                var isOtherAlive = Volatile.Read(ref _rayCts[otherRay]) != null;
 
-            var isOtherAlive = _rayCts[otherRay] != null;
-            if (isOtherAlive && Volatile.Read(ref _connected) && _cts?.IsCancellationRequested != true)
-            {
-                if (Volatile.Read(ref _preferredRay) == ray && otherRay is 0 or 1)
+                if (isOtherAlive && Volatile.Read(ref _connected) && _cts?.IsCancellationRequested != true)
                 {
-                    Volatile.Write(ref _preferredRay, otherRay);
-                    AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #{ray} offline. Migrated preferred ray to #{otherRay}.");
-                }
+                    if (Volatile.Read(ref _preferredRay) == ray)
+                    {
+                        Volatile.Write(ref _preferredRay, otherRay);
+                        AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #{ray} offline. Migrated preferred ray to #{otherRay}.");
+                    }
 
-                while (_txChannels[ray].TryDequeue(out var leftover))
+                    while (_txChannels[ray].TryDequeue(out var leftover))
+                    {
+                        if (!_txChannels[otherRay].TryEnqueue(leftover.buffer, leftover.length))
+                        {
+                            ArrayPool<byte>.Shared.Return(leftover.buffer);
+                        }
+                    }
+                }
+                else
                 {
-                    if (!_txChannels[otherRay].TryEnqueue(leftover.buffer, leftover.length))
+                    while (_txChannels[ray].TryDequeue(out var leftover))
                     {
                         ArrayPool<byte>.Shared.Return(leftover.buffer);
                     }
+                }
+            }
+            else
+            {
+                while (_txChannels[ray].TryDequeue(out var leftover))
+                {
+                    ArrayPool<byte>.Shared.Return(leftover.buffer);
                 }
             }
         }

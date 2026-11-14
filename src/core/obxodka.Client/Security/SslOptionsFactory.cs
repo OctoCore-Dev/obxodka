@@ -28,6 +28,7 @@ public static class SslOptionsFactory
             }
             catch (PlatformNotSupportedException)
             {
+                //политика шифров не поддерживается текущей платформой
             }
         }
 

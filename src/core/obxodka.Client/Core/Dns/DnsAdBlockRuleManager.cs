@@ -7,39 +7,37 @@ public static class DnsAdBlockRuleManager
     public const string DefaultRemoteUrl = "https://raw.githubusercontent.com/AdguardTeam/AdguardSDNSFilter/gh-pages/Filters/rules.txt";
 
     //парсинг строк правил блокировки в набор доменов
-    public static HashSet<string> ParseRuleLines(IEnumerable<string> lines)
+    public static HashSet<string> ParseRuleLines(IEnumerable<string> lines) =>
+        lines
+            .Select(ExtractRuleDomain)
+            .Where(static d => !string.IsNullOrEmpty(d))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
+
+    //извлечение очищенного домена из одной строки правил
+    private static string? ExtractRuleDomain(string rawLine)
     {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rawLine in lines)
+        var line = rawLine.Trim();
+        if (string.IsNullOrEmpty(line) || line.StartsWith('#') || line.StartsWith('!'))
         {
-            var line = rawLine.Trim();
-            if (string.IsNullOrEmpty(line) || line.StartsWith('#') || line.StartsWith('!'))
-            {
-                continue;
-            }
-
-            if (line.StartsWith("0.0.0.0 ", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("127.0.0.1 ", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2)
-                {
-                    line = parts[1];
-                }
-            }
-            else if (line.StartsWith("||", StringComparison.Ordinal) && line.EndsWith('^'))
-            {
-                line = line[2..^1];
-            }
-
-            var clean = CleanDomain(line);
-            if (!string.IsNullOrEmpty(clean))
-            {
-                _ = result.Add(clean);
-            }
+            return null;
         }
 
-        return result;
+        if (line.StartsWith("0.0.0.0 ", StringComparison.OrdinalIgnoreCase) ||
+            line.StartsWith("127.0.0.1 ", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+            {
+                line = parts[1];
+            }
+        }
+        else if (line.StartsWith("||", StringComparison.Ordinal) && line.EndsWith('^'))
+        {
+            line = line[2..^1];
+        }
+
+        var clean = CleanDomain(line);
+        return string.IsNullOrEmpty(clean) ? null : clean;
     }
 
     //загрузка списка блокируемых доменов из локального кэша
@@ -60,8 +58,9 @@ public static class DnsAdBlockRuleManager
                 return domains.Count;
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or OperationCanceledException or NotSupportedException or ArgumentException)
         {
+            //игнорируем поврежденный или заблокированный файл кэша правил
         }
 
         return 0;
@@ -83,7 +82,7 @@ public static class DnsAdBlockRuleManager
             File.Move(tempPath, cacheFilePath, overwrite: true);
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or OperationCanceledException or NotSupportedException or ArgumentException)
         {
             return false;
         }
@@ -132,7 +131,7 @@ public static class DnsAdBlockRuleManager
 
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or InvalidOperationException or NotSupportedException or ArgumentException)
         {
             return false;
         }

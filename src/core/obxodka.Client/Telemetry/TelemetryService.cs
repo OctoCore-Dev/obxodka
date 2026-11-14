@@ -77,7 +77,7 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
                 File.Delete(crashPath);
             }
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             //сбой отправки не должен ломать запуск программы
         }
@@ -136,7 +136,10 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
                 }
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки отправки сохраненного аварийного лога
+        }
     }
 
     //фоновая обработка очереди отправки
@@ -167,7 +170,7 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         }
     }
 
-    //прямая отправка отчета по http
+    //прямая отправка отчета через единый сервис api с токеном и обходом dpi
     private async Task<bool> SendToServerDirectAsync(TelemetryDto dto, CancellationToken ct)
     {
         //блокируем сетевую отправку телеметрии на боевой сервер из юнит тестов
@@ -179,19 +182,11 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         await _sendLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var endpoint = AppConfig.ApiUrl("api/vpn/telemetry");
-            using var handler = ApiService.CreateDefaultHandler();
-            using var client = new HttpClient(handler, disposeHandler: true)
-            {
-                Timeout = TimeSpan.FromSeconds(4)
-            };
-
-            var json = JsonSerializer.Serialize(dto, AppJsonContext.Default.TelemetryDto);
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var response = await client.PostAsync(endpoint, content, ct).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(6));
+            return await ApiService.Shared.PostTelemetryAsync(dto, timeoutCts.Token).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException or InvalidOperationException)
         {
             return false;
         }

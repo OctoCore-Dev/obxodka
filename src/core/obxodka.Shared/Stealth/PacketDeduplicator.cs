@@ -87,19 +87,13 @@ public sealed class PacketDeduplicator
             {
                 var offset = i * 8;
                 var val = BinaryPrimitives.ReadUInt64LittleEndian(packet.Slice(offset, 8));
-                if (version == 4)
+                if (version == 4 && offset == 8)
                 {
-                    if (offset == 8)
-                    {
-                        val &= ~0x00000000FFFF00FFUL;
-                    }
+                    val &= ~0x00000000FFFF00FFUL;
                 }
-                else if (version == 6)
+                else if (version == 6 && offset == 0)
                 {
-                    if (offset == 0)
-                    {
-                        val &= ~0xFF00000000000000UL;
-                    }
+                    val &= ~0xFF00000000000000UL;
                 }
 
                 hash = (hash ^ val) * 0x100000001B3UL;
