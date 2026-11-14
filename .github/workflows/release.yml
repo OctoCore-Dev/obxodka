@@ -306,6 +306,7 @@ jobs:
           echo -e "${CYAN}============================================================${RESET}"
 
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+            -p:EnableMauiLinux=true \
             $SIGNING_ARGS \
             $EXTRA_ARGS
 
@@ -314,6 +315,7 @@ jobs:
           echo -e "${CYAN}============================================================${RESET}"
 
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+            -p:EnableMauiLinux=true \
             -p:AndroidPackageFormat=apk \
             $SIGNING_ARGS \
             $EXTRA_ARGS
@@ -828,10 +830,15 @@ jobs:
           tag_name: ${{ needs.check-version.outputs.tag }}
           name: ${{ needs.check-version.outputs.release_title }}
           body_path: ${{ steps.release-meta.outputs.body_file }}
-          draft: false
+          draft: true
           prerelease: ${{ needs.check-version.outputs.is_prerelease == 'true' }}
           files: |
             ./release-dist/*
+
+      - name: "[RELEASE] Finalize Immutable Release"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.check-version.outputs.tag }}" --draft=false
 
   # ============================================================
   # [STAGE 7] EXECUTIVE DASHBOARD & TELEMETRY
