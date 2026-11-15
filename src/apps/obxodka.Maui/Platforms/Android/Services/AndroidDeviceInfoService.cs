@@ -13,7 +13,9 @@ public sealed class AndroidDeviceInfoService(Context context) : IDeviceInfoServi
 
     //уникальный анонимный идентификатор устройства android id
     public string DeviceId =>
-        Settings.Secure.GetString(_context.ContentResolver, Settings.Secure.AndroidId) ?? string.Empty;
+        _context?.ContentResolver is { } resolver
+            ? Settings.Secure.GetString(resolver, Settings.Secure.AndroidId) ?? string.Empty
+            : string.Empty;
 
     //модель устройства (например sm-s918b или pixel 8)
     public string Model => Build.Model ?? string.Empty;

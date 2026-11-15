@@ -313,6 +313,11 @@ public sealed class ApiService(HttpClient client)
     //добавление сигнатуры hwid и заголовков к запросу
     private static async ValueTask PrepareRequestAsync(HttpRequestMessage request, bool includeAuth = true)
     {
+        if (request?.Headers is null)
+        {
+            return;
+        }
+
         if (includeAuth)
         {
             var authHeader = await AuthManager.GetAuthHeaderAsync().ConfigureAwait(false);
@@ -323,11 +328,17 @@ public sealed class ApiService(HttpClient client)
         }
 
         var hwid = DeviceHelper.Hwid;
-        _ = request.Headers.Remove("X-Device-Hwid");
-        _ = request.Headers.TryAddWithoutValidation("X-Device-Hwid", hwid);
+        if (!string.IsNullOrEmpty(hwid))
+        {
+            _ = request.Headers.Remove("X-Device-Hwid");
+            _ = request.Headers.TryAddWithoutValidation("X-Device-Hwid", hwid);
+        }
 
-        _ = request.Headers.Remove("X-Telemetry-Token");
-        _ = request.Headers.TryAddWithoutValidation("X-Telemetry-Token", AppConfig.TelemetryAuthToken);
+        if (!string.IsNullOrEmpty(AppConfig.TelemetryAuthToken))
+        {
+            _ = request.Headers.Remove("X-Telemetry-Token");
+            _ = request.Headers.TryAddWithoutValidation("X-Telemetry-Token", AppConfig.TelemetryAuthToken);
+        }
 
         _ = request.Headers.Remove("X-Obx-Proto");
         _ = request.Headers.TryAddWithoutValidation("X-Obx-Proto", "7");

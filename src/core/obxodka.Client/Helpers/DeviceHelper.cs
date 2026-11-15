@@ -49,6 +49,16 @@ public static class DeviceHelper
     }
 
     //получение идентификатора платформы из служб устройства
-    private static string? GetPlatformId() =>
-        string.IsNullOrWhiteSpace(PlatformServices.DeviceInfo.DeviceId) ? null : PlatformServices.DeviceInfo.DeviceId;
+    private static string? GetPlatformId()
+    {
+        try
+        {
+            var id = PlatformServices.DeviceInfo?.DeviceId;
+            return string.IsNullOrWhiteSpace(id) ? null : id;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
 }
