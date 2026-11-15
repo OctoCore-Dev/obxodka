@@ -285,27 +285,7 @@ public sealed partial class ObxodkaStreamTransport
                             {
                                 try
                                 {
-                                    var isMtu = length == 4 && packet[0] == 0xCC && packet[1] == 0xDD;
-                                    var isBurstReq = length == 2 && packet[0] == 0xEE && packet[1] == 0x77;
-                                    var isDisconnect = length == 2 && packet[0] == 0xEE && packet[1] == 0x99;
-                                    var isPing = (length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB) || length == 8;
-                                    var cmd = isMtu
-                                        ? ObxodkaFraming.CmdMtuSync
-                                        : (isBurstReq
-                                            ? ObxodkaFraming.CmdMtuBurstRequest
-                                            : (isDisconnect
-                                                ? ObxodkaFraming.CmdDisconnect
-                                                : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData)));
-                                    var payloadOffset = isMtu
-                                        ? 2
-                                        : ((isBurstReq || isDisconnect)
-                                            ? 0
-                                            : ((length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB) ? 2 : 0));
-                                    var payloadLength = isMtu
-                                        ? 2
-                                        : ((isBurstReq || isDisconnect)
-                                            ? 0
-                                            : ((length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB) ? length - 2 : length));
+                                    var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset, out var payloadLength);
 
                                     var isEarly = (rayTxBytes + coalescedLen) < ObxodkaFraming.EarlyStageWindowBytes;
                                     var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, maxMtu: SmartMtuEngine.CurrentMtu, isEarlySession: isEarly);

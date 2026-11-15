@@ -31,6 +31,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     private CancellationTokenSource? _cts;
     private Action<Socket>? _protectAction;
     private int _isEscalatingToShield;
+    [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed", Justification = "Синглтон-блокировка ротации живет весь жизненный цикл")]
+    private readonly SemaphoreSlim _rotationGate = new(1, 1);
+    private List<ProtocolRouteStep> _rotationRing = [];
+    private int _rotationStepIndex;
+    private long _lastHealthyRxTicks;
 
     //реестр прямых узлов попавших под лимит объема трафика тспу с временным штрафом 30 минут
     private static readonly ConcurrentDictionary<string, long> s_cappedDirectNodes = new(StringComparer.OrdinalIgnoreCase);
@@ -68,6 +73,15 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     //динамический хэш открытого ключа ssl pinning
     public static string? DynamicSslPublicKeyHash { get; set; }
+
+    //постоянный хэш сертификата прямого origin-узла (не затирается при работе через shield)
+    public static string? DirectOriginCertHash { get; set; }
+
+    //обратный вызов платформы для регистрации /32 bypass-маршрутов при переключении внешних ip по кругу
+    public Func<string[], CancellationToken, Task>? EnsureExternalHostRoutesAsync { get; set; }
+
+    //событие смены внутреннего ip туннеля при бесшовной ротации протокола
+    public event Action? OnTunnelIpChanged;
 
     //число активных лучей туннеля
     public int ActiveRays { get; private set; } = 2;
@@ -155,6 +169,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         _ = Interlocked.Exchange(ref _largeTxPackets, 0);
         _ = Interlocked.Exchange(ref _largeRxPackets, 0);
         Volatile.Write(ref _watchdogArmedTicks, 0);
+        Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
         _smoothedPing = 0;
     }
 
@@ -165,6 +180,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         {
             return;
         }
+        Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
         var effectiveRtt = Math.Max(1L, rawRtt);
         if (_smoothedPing <= 0)
         {

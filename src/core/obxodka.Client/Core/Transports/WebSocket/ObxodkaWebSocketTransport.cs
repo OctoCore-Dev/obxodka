@@ -1,10 +1,23 @@
 namespace obxodka.Core.Transports;
 
 //транспорт туннеля поверх защищенного websocket соединения
-public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport
+public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport, IHealthAwareTransport
 {
     //имя активного протокола
     public string ProtocolName => "OBXODKA-WS";
+
+    //фактический ip удаленного edge-сервера
+    public string? RemoteConnectedEndpointIp => Volatile.Read(ref _lastConnectedRemoteIp);
+
+    //пометка текущего edge ip как проблемного при 0 rx или заморозке тспу
+    public void ReportUnhealthyEndpoint()
+    {
+        var ip = Volatile.Read(ref _lastConnectedRemoteIp);
+        if (!string.IsNullOrWhiteSpace(ip))
+        {
+            EdgeEndpointHealth.MarkUnhealthy(ip, 120);
+        }
+    }
 
     //флаг активности соединения
     public bool IsConnected => Volatile.Read(ref _connected);
@@ -69,6 +82,9 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
     //назначенный клиенту виртуальный ip адрес
     private volatile string? _assignedIp = preferredAssignedIp;
 
+    //ip последнего подключенного edge-узла
+    private string? _lastConnectedRemoteIp;
+
     //сессионный ключ маскировки фреймов
     private uint _sessionKey;
 
@@ -93,20 +109,23 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
     {
         var browserProfile = ActiveBrowserProfile;
         var isDirectIp = IPAddress.TryParse(serverIp, out var literalIp);
+        var pinningHash = isDirectIp
+            ? (!string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash) ? OctopusEngine.DirectOriginCertHash : (OctopusEngine.DynamicSslPublicKeyHash ?? string.Empty))
+            : string.Empty;
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
             Proxy = null,
-            ConnectTimeout = TimeSpan.FromSeconds(5),
+            ConnectTimeout = TimeSpan.FromSeconds(4),
             SslOptions = SslOptionsFactory.Create(
-                targetHost: targetSni,
-                dynamicPinningHash: string.Empty,
+                targetHost: IPAddress.TryParse(targetSni, out _) ? null : targetSni,
+                dynamicPinningHash: pinningHash,
                 browserProfile: browserProfile),
             ConnectCallback = async (context, cToken) =>
             {
                 var candidateIps = isDirectIp && literalIp is not null
                     ? [literalIp]
-                    : await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken).ConfigureAwait(false);
+                    : EdgeEndpointHealth.FilterAndRotate(await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken).ConfigureAwait(false));
 
                 Socket? connectedSocket = null;
                 Exception? lastSocketEx = null;
@@ -129,7 +148,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                         if (candidateIps.Length > 1 && ipIdx + 1 < candidateIps.Length)
                         {
                             using var perIpCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
-                            perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
+                            perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1600));
                             await socket.ConnectAsync(new IPEndPoint(targetIp, port), perIpCts.Token).ConfigureAwait(false);
                         }
                         else
@@ -137,12 +156,17 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                             await socket.ConnectAsync(new IPEndPoint(targetIp, port), cToken).ConfigureAwait(false);
                         }
 
+                        Volatile.Write(ref _lastConnectedRemoteIp, targetIp.ToString());
                         connectedSocket = socket;
                         break;
                     }
                     catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException or TimeoutException or ObjectDisposedException || cToken.IsCancellationRequested)
                     {
                         lastSocketEx = ex;
+                        if (!isDirectIp)
+                        {
+                            EdgeEndpointHealth.MarkUnhealthy(targetIp.ToString(), 60);
+                        }
                         socket.Dispose();
                         if (cToken.IsCancellationRequested)
                         {
@@ -204,7 +228,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             {
                 ws = CreateConfiguredWebSocket(targetHostHeader, ActiveBrowserProfile);
                 invoker = CreateWsInvoker(candidateSni, candidateServerIp, candidatePort);
-                using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
+                using var attemptCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(4500));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token, attemptCts.Token);
 
                 var cid = RandomNumberGenerator.GetInt32(10000000, 100000000);
@@ -234,15 +258,6 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 try
                 {
                     await ws.SendAsync(hsFrame.AsMemory(0, hsTotalLen), WebSocketMessageType.Binary, true, linkedCts.Token).ConfigureAwait(false);
-                    var chaffFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdChaff, [], out var chaffLen, SmartMtuEngine.CurrentMtu, _candidateSessionKey);
-                    try
-                    {
-                        await ws.SendAsync(chaffFrame.AsMemory(0, chaffLen), WebSocketMessageType.Binary, true, linkedCts.Token).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(chaffFrame);
-                    }
                 }
                 finally
                 {

@@ -43,6 +43,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.ProtectTransportSockets(BindSocketToPhysicalAdapter);
         ObxodkaStreamTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
         ObxodkaWebSocketTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
+        ObxodkaXhttpTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
+        OctopusEngine.Current.EnsureExternalHostRoutesAsync = EnsureHostRoutesBatchAsync;
 
         _statusMessageHandler = msg => OnLogUpdated?.Invoke(msg);
         _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
@@ -72,6 +74,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
         OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
         OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
+        OctopusEngine.Current.OnTunnelIpChanged -= HandleTunnelIpChanged;
+        OctopusEngine.Current.OnTunnelIpChanged += HandleTunnelIpChanged;
     }
 
     //трансляция счетчиков трафика ядра в событие интерфейса vpn сервиса
@@ -173,6 +177,8 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
         OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
         OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
+        OctopusEngine.Current.OnTunnelIpChanged -= HandleTunnelIpChanged;
+        OctopusEngine.Current.EnsureExternalHostRoutesAsync = null;
         _ = StopVpnAsync();
         _cts?.Dispose();
         _vpnGate.Dispose();

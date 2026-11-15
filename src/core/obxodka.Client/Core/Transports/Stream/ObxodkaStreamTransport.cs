@@ -1,10 +1,16 @@
 namespace obxodka.Core.Transports;
 
 //транспорт туннеля поверх многолучевого дуплексного http2 потока
-public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport
+public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport, IHealthAwareTransport
 {
     //имя активного протокола
     public string ProtocolName => "OBXODKA-STREAM";
+
+    //фактический удаленный ip сокета
+    public string? RemoteConnectedEndpointIp => string.IsNullOrWhiteSpace(_activeServerIp) ? null : _activeServerIp;
+
+    //пометка прямого узла как недоступного при сбое или тспу-заморозке
+    public void ReportUnhealthyEndpoint() => OctopusEngine.MarkNodeByteCapped(_activeServerIp);
 
     //флаг активности соединения
     public bool IsConnected => Volatile.Read(ref _connected);
@@ -161,6 +167,9 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
             InitialHttp2StreamWindowSize = 8388608,
             SslOptions = SslOptionsFactory.Create(
                 targetHost: targetHost,
+                dynamicPinningHash: !string.IsNullOrWhiteSpace(OctopusEngine.DynamicSslPublicKeyHash)
+                    ? OctopusEngine.DynamicSslPublicKeyHash
+                    : OctopusEngine.DirectOriginCertHash,
                 applicationProtocols: [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11],
                 browserProfile: browserProfile),
             ConnectCallback = async (context, cToken) =>
@@ -260,7 +269,7 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
             var activeProfile = candidate.BrowserProfile;
             ActiveBrowserProfile = activeProfile;
 
-            var attemptTimeoutSeconds = 8;
+            var attemptTimeoutSeconds = 3;
             var dpiModeStr = enableDpi ? "Clean-Split DPI" : "Direct Stream";
             _inspector.IncrementAttempts();
             _inspector.RecordStep($"Candidate #{i + 1}/{endpointCandidates.Count}: Attempting node {serverIp}:{port} with SNI '{targetHost}' [{dpiModeStr}] Profile: {activeProfile}");

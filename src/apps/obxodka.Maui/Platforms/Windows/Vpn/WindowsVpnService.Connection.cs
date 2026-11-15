@@ -16,6 +16,52 @@ internal sealed partial class WindowsVpnService
         }
     }
 
+    //обработка смены внутреннего ip адреса туннеля при бесшовной ротации протокола
+    private void HandleTunnelIpChanged()
+    {
+        if (_adapter is null || _isExplicitlyStopped)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                AppLogger.LogWarning($"[WINDOWS-VPN] Tunnel IP sync after rotation failed: {ex.Message}");
+            }
+        });
+    }
+
+    //пакетная регистрация /32 bypass-маршрутов для активного узла кругового кольца до открытия сокетов
+    private async Task EnsureHostRoutesBatchAsync(string[] ips, CancellationToken ct)
+    {
+        if (ips is null || ips.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var ip in ips)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!IPAddress.TryParse(ip, out var parsed) || parsed.AddressFamily != AddressFamily.InterNetwork)
+            {
+                continue;
+            }
+
+            if (!_currentServerIpsToRoute.Contains(ip))
+            {
+                _currentServerIpsToRoute.Add(ip);
+            }
+
+            await EnsureHostRouteAsync(ip).ConfigureAwait(false);
+        }
+    }
+
     //синхронизация назначенного ip адреса туннеля с адаптером wintun
     private async Task SyncAdapterAssignedIpAsync()
     {
@@ -107,25 +153,48 @@ internal sealed partial class WindowsVpnService
                     await CleanupStaleRoutesAsync().ConfigureAwait(false);
                     return;
                 }
-                AppLogger.LogWarning($"[DEAD CONNECTION] Packet blackhole detected on Windows. Initiating failover for {_currentServerIp}:{OctopusEngine.Current.ConnectedServerPort}...");
+                AppLogger.LogWarning($"[DEAD CONNECTION] Packet blackhole detected on Windows. Initiating circular protocol recovery from {_currentServerIp}:{OctopusEngine.Current.ConnectedServerPort}...");
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketLossDetected);
                 UpdateState(AppVpnState.Reconnecting);
 
-                //помечаем прямой узел как заблокированный по трафику только если это начальный блэкхол без реального трафика
-                if (OctopusEngine.Current.TotalBytesReceived < 100_000)
+                try
                 {
-                    OctopusEngine.MarkNodeByteCapped(_currentServerIp);
+                    if (await OctopusEngine.Current.TryRotateProtocolAsync("DeadConnectionRecovery").ConfigureAwait(false))
+                    {
+                        if (_adapter is not null)
+                        {
+                            await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
+                        }
+                        OctopusEngine.Current.ResetTrafficCounters();
+                        OctopusEngine.Current.ArmTrafficWatchdog();
+                        UpdateState(AppVpnState.Connected);
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
+                        return;
+                    }
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    AppLogger.LogWarning($"[DEAD CONNECTION] In-place protocol rotation failed: {ex.Message}");
                 }
 
-                if (_fallbackServers.Count <= 1 || !OctopusEngine.IsNodeByteCapped(_currentServerIp))
+                for (var attempt = 1; attempt <= 2; attempt++)
                 {
+                    if (_isExplicitlyStopped || !OctopusEngine.IsUplinkAvailable)
+                    {
+                        return;
+                    }
+
                     try
                     {
-                        await EnsureHostRouteAsync(_currentServerIp);
-                        OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
-                        await OctopusEngine.Current.ReconnectAsync();
-                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
-                        if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
+                        await OctopusEngine.Current.ReconnectAsync().ConfigureAwait(false);
+                        var activeIp = OctopusEngine.Current.ConnectedServerIp;
+                        if (IPAddress.TryParse(activeIp, out _))
+                        {
+                            _currentServerIp = activeIp;
+                        }
+
+                        var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), forceFreshProbe: true).ConfigureAwait(false);
+                        if (verified)
                         {
                             if (_adapter is not null)
                             {
@@ -134,69 +203,13 @@ internal sealed partial class WindowsVpnService
                             OctopusEngine.Current.ResetTrafficCounters();
                             OctopusEngine.Current.ArmTrafficWatchdog();
                             UpdateState(AppVpnState.Connected);
-                            OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
+                            OnLogUpdated?.Invoke(VpnStatusMessages.SwitchedToBackupNodeSuccess);
                             return;
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
                     {
-                        AppLogger.LogWarning($"[SMART CONNECT] Reconnect failed on {_currentServerIp}:{OctopusEngine.Current.ConnectedServerPort}: {ex.Message}");
-                    }
-                }
-
-                if (_fallbackServers.Count > 1)
-                {
-                    for (var i = 0; i < _fallbackServers.Count; i++)
-                    {
-                        var nextIdx = (_currentServerIndex + 1 + i) % _fallbackServers.Count;
-                        var nextServer = _fallbackServers[nextIdx];
-                        if (nextServer.Ip == _currentServerIp && _fallbackServers.Count > 1)
-                        {
-                            continue;
-                        }
-
-                        if (_isExplicitlyStopped)
-                        {
-                            return;
-                        }
-
-                        var oldIp = _currentServerIp;
-                        var newIp = Uri.CheckHostName(nextServer.Ip) == UriHostNameType.Dns
-                            ? (await ApiService.ResolveHostAntiPoisonAsync(nextServer.Ip).ConfigureAwait(false)).ToString()
-                            : nextServer.Ip;
-                        _ = SniEngine.ConfigureServerSecurity(nextServer, out _);
-                        var newPort = nextServer.Port > 0 ? nextServer.Port : 443;
-                        _currentServerIndex = nextIdx;
-                        _currentServerIp = newIp;
-                        if (!_currentServerIpsToRoute.Contains(newIp))
-                        {
-                            _currentServerIpsToRoute.Add(newIp);
-                        }
-
-                        OnLogUpdated?.Invoke(VpnStatusMessages.SwitchingToBackupNode(newIp));
-                        try
-                        {
-                            await SwitchHostRouteAsync(oldIp, newIp);
-                            OctopusEngine.Current.RegisterServerEndpoint(newIp);
-                            await OctopusEngine.Current.ReconnectAsync(newIp, newPort, targetSni: nextServer.Ip);
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
-                            if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
-                            {
-                                if (_adapter is not null)
-                                {
-                                    await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
-                                }
-                                OctopusEngine.Current.ResetTrafficCounters();
-                                OctopusEngine.Current.ArmTrafficWatchdog();
-                                UpdateState(AppVpnState.Connected);
-                                OnLogUpdated?.Invoke(VpnStatusMessages.SwitchedToBackupNodeSuccess);
-                                return;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLogger.LogWarning($"[SMART CONNECT] Failover to {newIp} failed: {ex.Message}");
-                        }
+                        AppLogger.LogWarning($"[SMART CONNECT] Circular reconnect attempt {attempt} failed: {ex.Message}");
                     }
                 }
 
@@ -207,7 +220,7 @@ internal sealed partial class WindowsVpnService
 
                 await StopVpnAsync();
                 UpdateState(AppVpnState.Error);
-                OnErrorOccurred?.Invoke("Сервер отключил соединение.");
+                OnErrorOccurred?.Invoke("Ни один из протоколов не получил ответного трафика (0 RX).");
             }
             finally
             {
@@ -254,75 +267,53 @@ internal sealed partial class WindowsVpnService
                         return;
                     }
 
-                    for (var i = 0; i < 5; i++)
+                    for (var i = 0; i < 4; i++)
                     {
-                        await Task.Delay(1500).ConfigureAwait(false);
-                        if (_isExplicitlyStopped)
+                        await Task.Delay(1200 + (i * 800)).ConfigureAwait(false);
+                        if (_isExplicitlyStopped || !OctopusEngine.IsUplinkAvailable)
                         {
                             return;
                         }
 
                         try
                         {
-                            if (!string.IsNullOrEmpty(_currentServerIp))
+                            await OctopusEngine.Current.ReconnectAsync().ConfigureAwait(false);
+                            if (_isExplicitlyStopped)
                             {
-                                await EnsureHostRouteAsync(_currentServerIp);
-                                OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
-                                string? reconnectSni = null;
-                                var candidateFbPort = 443;
-                                if (i >= 2 && _fallbackServers.Count > 1)
-                                {
-                                    var oldIp = _currentServerIp;
-                                    _currentServerIndex = (_currentServerIndex + 1) % _fallbackServers.Count;
-                                    var fb = _fallbackServers[_currentServerIndex];
-                                    var newIp = Uri.CheckHostName(fb.Ip) == UriHostNameType.Dns
-                                        ? (await ApiService.ResolveHostAntiPoisonAsync(fb.Ip).ConfigureAwait(false)).ToString()
-                                        : fb.Ip;
-                                    _currentServerIp = newIp;
-                                    candidateFbPort = fb.Port > 0 ? fb.Port : 443;
-                                    if (!_currentServerIpsToRoute.Contains(newIp))
-                                    {
-                                        _currentServerIpsToRoute.Add(newIp);
-                                    }
-                                    _ = SniEngine.ConfigureServerSecurity(fb, out reconnectSni);
-                                    await SwitchHostRouteAsync(oldIp, newIp);
-                                }
-                                else
-                                {
-                                    await EnsureHostRouteAsync(_currentServerIp);
-                                }
-                                OctopusEngine.Current.RegisterServerEndpoint(_currentServerIp);
-                                if (reconnectSni is not null)
-                                {
-                                    await OctopusEngine.Current.ReconnectAsync(_currentServerIp, candidateFbPort, targetSni: reconnectSni);
-                                }
-                                else
-                                {
-                                    await OctopusEngine.Current.ReconnectAsync();
-                                }
-                                var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(10000));
-                                if (_isExplicitlyStopped)
-                                {
-                                    return;
-                                }
-                                if (verified || OctopusEngine.Current.TotalBytesReceived > 0)
-                                {
-                                    if (_adapter is not null)
-                                    {
-                                        await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
-                                    }
-                                    OctopusEngine.Current.ResetTrafficCounters();
-                                    OctopusEngine.Current.ArmTrafficWatchdog();
-                                    UpdateState(AppVpnState.Connected);
-                                    OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
-                                    return;
-                                }
-                                await OctopusEngine.Current.DisposeAsync();
+                                return;
                             }
+
+                            var activeIp = OctopusEngine.Current.ConnectedServerIp;
+                            if (IPAddress.TryParse(activeIp, out _))
+                            {
+                                _currentServerIp = activeIp;
+                            }
+
+                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4500), forceFreshProbe: true).ConfigureAwait(false);
+                            if (_isExplicitlyStopped)
+                            {
+                                return;
+                            }
+
+                            if (verified)
+                            {
+                                if (_adapter is not null)
+                                {
+                                    await SyncAdapterAssignedIpAsync().ConfigureAwait(false);
+                                }
+                                OctopusEngine.Current.ResetTrafficCounters();
+                                OctopusEngine.Current.ArmTrafficWatchdog();
+                                UpdateState(AppVpnState.Connected);
+                                OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
+                                return;
+                            }
+
+                            await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
                         }
-                        catch (Exception ex)
+                        catch (Exception ex) when (ex is not OutOfMemoryException)
                         {
-                            AppLogger.LogWarning($"[RECONNECT] Attempt {i + 1} failed: {ex.Message}");
+                            AppLogger.LogWarning($"[RECONNECT] Circular drop recovery attempt {i + 1} failed: {ex.Message}");
+                            await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
                         }
                     }
 
@@ -381,24 +372,8 @@ internal sealed partial class WindowsVpnService
                 {
                     AppLogger.LogWarning($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
                     await AutoHealAdapterDnsAsync().ConfigureAwait(false);
-                    try
-                    {
-                        var ips = new[] { await ApiService.ResolveHostAntiPoisonAsync(serverIp).ConfigureAwait(false) };
-                        if (ips.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) is { } ipv4)
-                        {
-                            targetIp = ipv4.ToString();
-                        }
-                    }
-                    catch { }
                 }
             }
-
-            if (!IPAddress.TryParse(targetIp, out _))
-            {
-                throw new InvalidOperationException($"Некорректный IP адрес сервера: '{targetIp}'");
-            }
-
-            var stealthHost = targetIp;
 
             _currentServerIp = targetIp;
             _isExplicitlyStopped = false;
@@ -406,259 +381,126 @@ internal sealed partial class WindowsVpnService
             try
             {
                 LogNetworkDiagnostics(OnLogUpdated);
-                OnLogUpdated?.Invoke(VpnStatusMessages.BuildingRoute(stealthHost));
-
-                var connected = false;
-                Exception? lastException = null;
+                OnLogUpdated?.Invoke(VpnStatusMessages.BuildingRoute(targetIp));
 
                 var serversToTry = _fallbackServers.Count > 0
                     ? _fallbackServers
-                    : [new VpnServerDto(targetIp, serverPort, "", true, 0, null)];
+                    : [new VpnServerDto(serverIp, serverPort, "", true, 0, null)];
 
-                if (serversToTry.Count > 1)
+                var forceWebSocket = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+                var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, configuredSni: null, forceWebSocket);
+                if (ring.Count == 0)
                 {
-                    var selected = serversToTry.FirstOrDefault(s => s.Ip == targetIp || s.Ip == serverIp);
-                    var others = serversToTry.Where(s => s != selected).ToList();
-                    if (others.Count > 1)
-                    {
-                        OnLogUpdated?.Invoke(VpnStatusMessages.ResolvingFastestNode);
-                        others = [.. await ServerLatencyService.RankServersByLatencyAsync(others, 650).ConfigureAwait(false)];
-                    }
-                    serversToTry = selected != null
-                        ? [selected, .. others]
-                        : [.. await ServerLatencyService.RankServersByLatencyAsync(serversToTry, 650).ConfigureAwait(false)];
+                    throw new InvalidOperationException("Нет доступных маршрутов или протоколов для подключения.");
                 }
 
-                for (var idx = 0; idx < serversToTry.Count; idx++)
+                _currentServerIpsToRoute.Clear();
+                OctopusEngine.Current.EnsureExternalHostRoutesAsync = EnsureHostRoutesBatchAsync;
+
+                if (_cts is not null)
                 {
-                    if (_isExplicitlyStopped)
-                    {
-                        UpdateState(AppVpnState.Disconnected);
-                        return;
-                    }
+                    await _cts.CancelAsync().ConfigureAwait(false);
+                    _cts.Dispose();
+                }
+                _cts = new CancellationTokenSource();
 
-                    var s = serversToTry[idx];
-                    var candidateIp = s.Ip;
-                    var candidatePort = s.Port > 0 ? s.Port : serverPort;
-
-                    var candidateIpsToRoute = new List<string>();
-                    if (Uri.CheckHostName(candidateIp) == UriHostNameType.Dns)
+                string? activeIpv6 = null;
+                var activeStep = await OctopusEngine.Current.ConnectRotationRingAsync(
+                    ring,
+                    prepareTunnelBeforeVerifyAsync: async (step, stepToken) =>
                     {
-                        try
-                        {
-                            var ips = await ApiService.ResolveAllHostsAntiPoisonAsync(candidateIp).ConfigureAwait(false);
-                            foreach (var ipAddr in ips.Where(a => a.AddressFamily == AddressFamily.InterNetwork))
-                            {
-                                candidateIpsToRoute.Add(ipAddr.ToString());
-                            }
-                            if (candidateIpsToRoute.Count > 0)
-                            {
-                                candidateIp = candidateIpsToRoute[0];
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLogger.LogWarning($"[DNS ERROR] Could not resolve candidate {candidateIp}: {ex.Message}");
-                            lastException = ex;
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        candidateIpsToRoute.Add(candidateIp);
-                    }
-
-                    foreach (var relayIp in AppConfig.DirectRelayIps)
-                    {
-                        if (!candidateIpsToRoute.Contains(relayIp))
-                        {
-                            candidateIpsToRoute.Add(relayIp);
-                        }
-                    }
-                    if (!candidateIpsToRoute.Contains(AppConfig.DirectServerIp))
-                    {
-                        candidateIpsToRoute.Add(AppConfig.DirectServerIp);
-                    }
-
-                    if (!IPAddress.TryParse(candidateIp, out _))
-                    {
-                        AppLogger.LogWarning($"[DNS ERROR] Invalid candidate IP: {candidateIp}. Skipping.");
-                        continue;
-                    }
-
-                    _currentServerIp = candidateIp;
-                    _currentServerIndex = idx;
-                    _currentServerIpsToRoute.Clear();
-                    _currentServerIpsToRoute.AddRange(candidateIpsToRoute);
-                    targetIp = candidateIp;
-
-                    _ = SniEngine.ConfigureServerSecurity(s, out var targetSni);
-
-                    for (var attempt = 1; attempt <= 2; attempt++)
-                    {
+                        stepToken.ThrowIfCancellationRequested();
                         if (_isExplicitlyStopped)
                         {
-                            return;
+                            throw new OperationCanceledException("Stopped by user.");
                         }
 
-                        try
+                        var resolvedStepIp = IPAddress.TryParse(step.Host, out _)
+                            ? step.Host
+                            : (_currentServerIpsToRoute.FirstOrDefault() ?? targetIp);
+                        _currentServerIp = resolvedStepIp;
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(step.Host, step.Port));
+
+                        var ip = OctopusEngine.Current.AssignedIp;
+                        var ipv6 = OctopusEngine.Current.AssignedIpV6;
+                        if (!IPAddress.TryParse(ip, out _))
                         {
-                            if (attempt > 1)
-                            {
-                                OnLogUpdated?.Invoke(VpnStatusMessages.ReconnectingAttempt(attempt, 2));
-                            }
+                            throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
+                        }
 
-                            foreach (var ipToRoute in _currentServerIpsToRoute)
-                            {
-                                await EnsureHostRouteAsync(ipToRoute);
-                                OctopusEngine.Current.RegisterServerEndpoint(ipToRoute);
-                            }
+                        var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
+                        activeIpv6 = hasValidIpv6 ? ipv6 : null;
 
-                            var nodeRole = s.Role ?? "worker";
-                            AppLogger.Log($"[WINDOWS-VPN] Connecting to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}, Provider: {s.Provider}]");
-                            OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(candidateIp, candidatePort));
-                            await OctopusEngine.Current.ConnectAsync(candidateIp, candidatePort, targetSni: targetSni);
+                        OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
+                        if (_adapter is null || _adapter.IsDisposed)
+                        {
+                            OnLogUpdated?.Invoke(VpnStatusMessages.InitializingWintunAdapter);
+                            _adapter = await Task.Run(() => new WintunAdapter("Obxodka", "Obxodka"), stepToken).ConfigureAwait(false);
+                        }
 
-                            if (_cts != null)
-                            {
-                                await _cts.CancelAsync().ConfigureAwait(false);
-                                _cts.Dispose();
-                            }
-                            _cts = new CancellationTokenSource();
-                            var ip = OctopusEngine.Current.AssignedIp;
-                            var ipv6 = OctopusEngine.Current.AssignedIpV6;
-
-                            AppLogger.Log($"[WINDOWS-VPN] Established connection to node: {s.Location} ({candidateIp}:{candidatePort}) [Role: {nodeRole}]. Assigned IP: {ip}, IPv6: {ipv6}");
-
-                            if (!IPAddress.TryParse(ip, out _))
-                            {
-                                throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
-                            }
-                            var hasValidIpv6 = !string.IsNullOrWhiteSpace(ipv6) && IPAddress.TryParse(ipv6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
-                            var effectiveIpv6 = hasValidIpv6 ? ipv6 : null;
-
-                            OnLogUpdated?.Invoke(VpnStatusMessages.IpAssigned(ip));
-                            if (_adapter is null || _adapter.IsDisposed)
-                            {
-                                OnLogUpdated?.Invoke(VpnStatusMessages.InitializingWintunAdapter);
-                                _adapter = await Task.Run(() => new WintunAdapter("Obxodka", "Obxodka"));
-                            }
-
+                        if (!_adapter.IsSessionActive)
+                        {
                             OnLogUpdated?.Invoke(VpnStatusMessages.StartingAdapter(_adapter.Name));
                             _adapter.StartSession();
-
-                            OnLogUpdated?.Invoke(VpnStatusMessages.ApplyingNetworkSettings);
-                            _currentAssignedIp = ip;
-                            await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", effectiveIpv6);
-
-                            OctopusEngine.Current.ResetTrafficCounters();
-
-                            OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
-                            var verified = await OctopusEngine.Current.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(6000), _cts.Token);
-                            var curTx = OctopusEngine.Current.TotalBytesSent;
-                            var curRx = OctopusEngine.Current.TotalBytesReceived;
-
-                            if ((verified || curRx > 0) && curTx > 0)
-                            {
-                                AppLogger.Log($"[WINDOWS-VPN] Channel verified (TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu})! Activating routes and elevating adapter priority.");
-                                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
-                                _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
-                            }
-                            else if (curTx > 0)
-                            {
-                                AppLogger.LogWarning($"[WINDOWS-VPN] Initial downlink probe pending (TX={curTx} B, RX={curRx} B). Tunnel online, MTU={SmartMtuEngine.CurrentMtu}! Proceeding with route activation...");
-                                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
-                                _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
-                            }
-                            else
-                            {
-                                var (_, tcpFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetTCPConnection -RemoteAddress {candidateIp} -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State | Format-Table -AutoSize | Out-String\"");
-                                AppLogger.LogError($"[PROBE-FAIL TCP-STATE]\n{tcpFail.Trim()}");
-
-                                var (_, routeFail) = await RunCmdAsync("powershell", $"-NoProfile -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0','{candidateIp}/32','100.64.0.0/10' -ErrorAction SilentlyContinue | Select-Object DestinationPrefix,NextHop,InterfaceIndex,RouteMetric | Format-Table -AutoSize | Out-String\"");
-                                AppLogger.LogError($"[PROBE-FAIL ROUTE-STATE]\n{routeFail.Trim()}");
-
-                                AppLogger.LogError("[WINDOWS-VPN] Transmission failure (TX=0 B). Outgoing packets blocked.");
-                                OnLogUpdated?.Invoke(VpnStatusMessages.TxTransmissionFailed);
-                                throw new InvalidOperationException("Сбой исходящей передачи (TX=0). Сокет или брандмауэр блокирует отправку данных.");
-                            }
-
-                            OnLogUpdated?.Invoke(VpnStatusMessages.RedirectingTraffic);
-                            await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, ip, true, effectiveIpv6);
-                            OnLogUpdated?.Invoke(VpnStatusMessages.EnablingDnsProtection);
-                            await EnableDnsLeakProtectionAsync(_adapter.Name, ip);
-
-                            OctopusEngine.Current.ResetTrafficCounters();
-                            OctopusEngine.Current.ArmTrafficWatchdog();
-
-                            OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
-                            UpdateState(AppVpnState.Connected);
-                            connected = true;
-
-                            return;
                         }
-                        catch (UnauthorizedAccessException ex)
-                        {
-                            lastException = ex;
-                            AppLogger.LogError($"[WINDOWS-VPN AUTH ERROR] Unauthorized access / invalid certificate: {ex.Message}", ex);
-                            break;
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLogger.LogError($"[WINDOWS-VPN ATTEMPT #{attempt} FAILED on {candidateIp}:{candidatePort}] {ex.GetType().Name}: {ex.Message}", ex);
-                            if (_cts != null)
-                            {
-                                await _cts.CancelAsync().ConfigureAwait(false);
-                            }
-                            await Task.Delay(60);
-                            try
-                            {
-                                _adapter?.Dispose();
-                                _adapter = null;
-                            }
-                            catch { }
-                            await OctopusEngine.Current.DisposeAsync();
-                            if (attempt < 2)
-                            {
-                                await Task.Delay(500);
-                            }
-                        }
-                    }
 
-                    if (connected)
-                    {
-                        break;
-                    }
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ApplyingNetworkSettings);
+                        _currentAssignedIp = ip;
+                        await SetAdapterConfigAsync(_adapter.Name, ip, "255.192.0.0", activeIpv6).ConfigureAwait(false);
+                        OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
+                    },
+                    ct: _cts.Token).ConfigureAwait(false);
 
-                    if (lastException is UnauthorizedAccessException)
-                    {
-                        break;
-                    }
-
-                    if (idx + 1 < serversToTry.Count)
-                    {
-                        OnLogUpdated?.Invoke(VpnStatusMessages.NodeUnavailableTryingBackup(candidateIp));
-                        await Task.Delay(300);
-                    }
-                }
-
-                if (!connected)
+                if (_isExplicitlyStopped || _adapter is null)
                 {
-                    if (_isExplicitlyStopped)
-                    {
-                        UpdateState(AppVpnState.Disconnected);
-                        return;
-                    }
-                    if (lastException is OperationCanceledException or TimeoutException)
-                    {
-                        var activePort = OctopusEngine.Current.ConnectedServerPort > 0 ? OctopusEngine.Current.ConnectedServerPort : serverPort;
-                        throw new TimeoutException($"Таймаут подключения: сервер {_currentServerIp}:{activePort} не ответил на TLS хэндшейк.");
-                    }
-                    throw lastException ?? new InvalidOperationException("Сервер не отвечает или пакеты блокируются (0 RX). Проверьте интернет или смените протокол.");
+                    UpdateState(AppVpnState.Disconnected);
+                    return;
                 }
+
+                var curTx = OctopusEngine.Current.TotalBytesSent;
+                var curRx = OctopusEngine.Current.TotalBytesReceived;
+                AppLogger.Log($"[WINDOWS-VPN] Circular ring connected on {activeStep.Kind} ({activeStep.Host}:{activeStep.Port}), TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu}");
+                OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
+
+                _trafficTask = Task.Run(() => ProcessTrafficAsync(_cts.Token));
+
+                OnLogUpdated?.Invoke(VpnStatusMessages.RedirectingTraffic);
+                await SetWindowsRoutesAsync(_adapter.Name, _currentServerIpsToRoute, _currentAssignedIp, true, activeIpv6).ConfigureAwait(false);
+                OnLogUpdated?.Invoke(VpnStatusMessages.EnablingDnsProtection);
+                await EnableDnsLeakProtectionAsync(_adapter.Name, _currentAssignedIp).ConfigureAwait(false);
+
+                OctopusEngine.Current.ResetTrafficCounters();
+                OctopusEngine.Current.ArmTrafficWatchdog();
+
+                OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
+                UpdateState(AppVpnState.Connected);
+            }
+            catch (OperationCanceledException) when (_isExplicitlyStopped)
+            {
+                UpdateState(AppVpnState.Disconnected);
             }
             catch (Exception ex)
             {
+                if (_cts is not null)
+                {
+                    await _cts.CancelAsync().ConfigureAwait(false);
+                }
+
+                try
+                {
+                    _adapter?.Dispose();
+                    _adapter = null;
+                }
+                catch { }
+
+                await OctopusEngine.Current.DisposeAsync().ConfigureAwait(false);
+
+                if (_isExplicitlyStopped)
+                {
+                    UpdateState(AppVpnState.Disconnected);
+                    return;
+                }
+
                 AppLogger.LogError($"[WINDOWS-VPN FATAL] Connection pipeline failed completely: {ex.Message}", ex);
                 UpdateState(AppVpnState.Error);
                 var errMsg = ex is TimeoutException || ex.InnerException is TimeoutException

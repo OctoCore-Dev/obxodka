@@ -10,7 +10,16 @@ public sealed partial class OctopusEngine
     public void ArmTrafficWatchdog()
     {
         Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
-        ScheduleSmartMtuScan(2500);
+        Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
+        if (_transport is ObxodkaWebSocketTransport or ObxodkaXhttpTransport)
+        {
+            //на облачных edge-каналах не бьем пачками зондов сразу после хэндшейка чтобы не триггерить тспу/waf
+            SmartMtuEngine.CurrentMtu = SmartMtuEngine.DefaultMtu;
+            _ = _transport?.SendMtuSyncAsync(SmartMtuEngine.DefaultMtu);
+            return;
+        }
+
+        ScheduleSmartMtuScan(4000);
     }
 
     //планирование отложенного интеллектуального замера mtu
@@ -199,19 +208,23 @@ public sealed partial class OctopusEngine
                         var elapsedMs = Environment.TickCount64 - armedTicks;
                         var bytesSentDuringStall = currentSent - rxStallStartSent;
 
-                        //периодическая проверка живучести канала эхо-зондом при накоплении задержки
-                        if (deadTicks >= 35 && deadTicks % 25 == 0)
+                        //ранний эхо-зонд при застое rx для быстрой проверки канала на любом протоколе
+                        if (deadTicks == 20 || (deadTicks >= 25 && deadTicks % 15 == 0))
                         {
                             _ = _transport?.SendPingProbeAsync();
                         }
 
-                        //раннее обнаружение заморозки прямого h2 соединения тспу на пороге 16-32 кб с бесшовным уходом на щит
-                        if (_transport is ObxodkaStreamTransport &&
-                            deadTicks >= 25 &&
-                            (currentSent >= 16384 || bytesSentDuringStall >= 8192))
+                        //раннее переключение по круговому кольцу для любого транспорта при нулевом rx (тспу/мертвый cloudflare edge)
+                        var shouldRotateEarly = (_transport is ObxodkaStreamTransport && deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192)) ||
+                                                (deadTicks >= 30 && bytesSentDuringStall >= 2048) ||
+                                                (deadTicks >= 40);
+                        if (shouldRotateEarly)
                         {
-                            var escalated = await TryEscalateToShieldAsync("DirectStreamByteCapFreeze", token).ConfigureAwait(false);
-                            if (escalated)
+                            var reason = _transport is ObxodkaStreamTransport
+                                ? "DirectStreamByteCapFreeze"
+                                : "MidSessionRxStall";
+                            var rotated = await TryRotateProtocolAsync(reason, token).ConfigureAwait(false);
+                            if (rotated)
                             {
                                 deadTicks = 0;
                                 lastSent = TotalBytesSent;
@@ -222,18 +235,27 @@ public sealed partial class OctopusEngine
                         }
 
                         var isInitialBlackhole = currentReceived < 5000 &&
-                                                 elapsedMs is >= 12000 and < 60000 &&
-                                                 (currentSent > 20000 || bytesSentDuringStall > 16384) &&
-                                                 deadTicks >= 45;
+                                                 elapsedMs is >= 10000 and < 60000 &&
+                                                 (currentSent > 12000 || bytesSentDuringStall > 8192) &&
+                                                 deadTicks >= 35;
 
                         var isDead = isInitialBlackhole ||
-                                     (_transport is ObxodkaStreamTransport && bytesSentDuringStall > 32768 && deadTicks >= 55) ||
-                                     (currentReceived < 5000 && deadTicks >= 70) ||
-                                     deadTicks >= 150;
+                                     (bytesSentDuringStall > 32768 && deadTicks >= 45) ||
+                                     (currentReceived < 5000 && deadTicks >= 55) ||
+                                     deadTicks >= 90;
 
                         if (isDead)
                         {
-                            AppLogger.LogWarning($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
+                            if (await TryRotateProtocolAsync("DeadConnectionRecovery", token).ConfigureAwait(false))
+                            {
+                                deadTicks = 0;
+                                lastSent = TotalBytesSent;
+                                lastReceived = TotalBytesReceived;
+                                rxStallStartSent = lastSent;
+                                continue;
+                            }
+
+                            AppLogger.LogWarning($"[ENGINE] Dead connection detected across entire ring. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
                             OnDeadConnectionDetected?.Invoke();
                             break;
                         }
@@ -242,6 +264,30 @@ public sealed partial class OctopusEngine
                     {
                         deadTicks = 0;
                         rxStallStartSent = currentSent;
+                    }
+                    else
+                    {
+                        //контроль тихой заморозки без активного tx (протухший keepalive/edge у cloudflare или тспу)
+                        var lastHealthy = Volatile.Read(ref _lastHealthyRxTicks);
+                        if (lastHealthy > 0)
+                        {
+                            var silenceSec = (Stopwatch.GetTimestamp() - lastHealthy) / (double)Stopwatch.Frequency;
+                            if (silenceSec >= 18.0 && (Environment.TickCount64 - armedTicks) >= 5000)
+                            {
+                                if (await TryRotateProtocolAsync("PongSilenceTimeout", token).ConfigureAwait(false))
+                                {
+                                    deadTicks = 0;
+                                    lastSent = TotalBytesSent;
+                                    lastReceived = TotalBytesReceived;
+                                    rxStallStartSent = lastSent;
+                                    continue;
+                                }
+                            }
+                            else if (silenceSec >= 14.0 && (deadTicks % 10 == 0))
+                            {
+                                _ = _transport?.SendPingProbeAsync();
+                            }
+                        }
                     }
 
                     windowTicks++;

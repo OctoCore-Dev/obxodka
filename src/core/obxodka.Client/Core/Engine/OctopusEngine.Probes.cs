@@ -3,7 +3,11 @@ namespace obxodka.Core;
 public sealed partial class OctopusEngine
 {
     //проверка двусторонней проходимости канала передачи данных
-    public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default)
+    public Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default) =>
+        VerifyDownlinkAsync(timeout, forceFreshProbe: false, ct);
+
+    //проверка двусторонней проходимости канала с опциональным требованием свежего ответа от нового транспорта
+    public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, bool forceFreshProbe, CancellationToken ct = default)
     {
         if (!IsConnected || _transport is null)
         {
@@ -21,7 +25,7 @@ public sealed partial class OctopusEngine
         var initialReceived = TotalBytesReceived;
         var initialSent = TotalBytesSent;
 
-        if (initialReceived > 0)
+        if (!forceFreshProbe && initialReceived > 0)
         {
             AppLogger.Log($"[PROBE SUCCESS] Downlink already active with {initialReceived}B received.");
             _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);

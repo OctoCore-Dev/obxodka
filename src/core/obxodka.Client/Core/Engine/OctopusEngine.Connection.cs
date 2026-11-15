@@ -107,6 +107,226 @@ public sealed partial class OctopusEngine
         return false;
     }
 
+    //подключение к vpn серверу по круговому конвейеру протоколов и серверов с обязательной проверкой rx > 0
+    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области", Justification = "Владение транспортом хранится в _transport и освобождается при замене или в DisposeAsync")]
+    public async Task<ProtocolRouteStep> ConnectRotationRingAsync(
+        IReadOnlyList<ProtocolRouteStep> ring,
+        Func<ProtocolRouteStep, CancellationToken, Task>? prepareTunnelBeforeVerifyAsync = null,
+        CancellationToken ct = default)
+    {
+        if (ring is null || ring.Count == 0)
+        {
+            throw new ArgumentException("Список протоколов и серверов пуст.", nameof(ring));
+        }
+
+        if (!IsUplinkAvailable)
+        {
+            throw new PhysicalNetworkUnavailableException("Отсутствует подключение к сети (Wi-Fi или сетевой кабель отключены).");
+        }
+
+        await EnsureClientCertLoadedAsync().ConfigureAwait(false);
+        _rotationRing = [.. ring];
+
+        Exception? lastException = null;
+        for (var i = 0; i < _rotationRing.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!IsUplinkAvailable)
+            {
+                throw new PhysicalNetworkUnavailableException("Подключение к физической сети потеряно.");
+            }
+
+            var step = _rotationRing[i];
+            ConnectedServerIp = step.Host;
+            ConnectedServerPort = step.Port;
+            ActiveTargetSni = step.TargetSni;
+            DynamicSslPublicKeyHash = step.ClearDynamicPinning ? null : DirectOriginCertHash;
+
+            await PrepareExternalEndpointBypassAsync(step, ct).ConfigureAwait(false);
+
+            SmartMtuEngine.CurrentMtu = SmartMtuEngine.InitialMtu;
+            ResetTrafficCounters();
+
+            using var attemptLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var oldCts = Interlocked.Exchange(ref _cts, CancellationTokenSource.CreateLinkedTokenSource(attemptLinkedCts.Token));
+            if (oldCts is not null)
+            {
+                try
+                {
+                    await oldCts.CancelAsync().ConfigureAwait(false);
+                    oldCts.Dispose();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
+
+            var stepToken = _cts.Token;
+            IVpnTransport? transport = null;
+            try
+            {
+                transport = ProtocolPipelineRegistry.CreateTransport(step);
+                if (_protectAction is not null)
+                {
+                    transport.ProtectSockets(_protectAction);
+                }
+
+                _transport = transport;
+                ActiveProtocol = transport.ProtocolName;
+                ActiveRays = step.Kind == TransportProtocolKind.ObxodkaStream ? 2 : 1;
+                WireTransportEvents(transport);
+
+                AppLogger.Log($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count}: {transport.ProtocolName} -> {step.Host}:{step.Port} (SNI={step.TargetSni ?? "none"})");
+
+                var (ip, ip6) = await transport.ConnectAsync(step.Host, _clientCert?.Thumbprint ?? "", stepToken).ConfigureAwait(false);
+                AssignedIp = ip;
+                AssignedIpV6 = ip6;
+
+                if (prepareTunnelBeforeVerifyAsync is not null)
+                {
+                    await prepareTunnelBeforeVerifyAsync(step, stepToken).ConfigureAwait(false);
+                }
+
+                //жесткая проверка двустороннего трафика: без реального rx/cmdpong шаг считается мертвым
+                var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), forceFreshProbe: true, ct: stepToken).ConfigureAwait(false);
+                if (!verified)
+                {
+                    AppLogger.LogWarning($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count} ({transport.ProtocolName} @ {step.Host}) returned 0 RX. Rotating...");
+                    if (transport is IHealthAwareTransport healthAware)
+                    {
+                        healthAware.ReportUnhealthyEndpoint();
+                    }
+
+                    if (!step.IsShield && step.Kind == TransportProtocolKind.ObxodkaStream)
+                    {
+                        MarkNodeByteCapped(step.Host);
+                    }
+
+                    lastException = new TimeoutException($"Протокол {transport.ProtocolName} ({step.Host}:{step.Port}) не получил ответных пакетов (0 RX).");
+                    await DisposeAttemptTransportAsync(transport).ConfigureAwait(false);
+                    continue;
+                }
+
+                _rotationStepIndex = i;
+                Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
+                AppLogger.Log($"[OCTOPUS-RING] Connected & verified (RX OK): {transport.ProtocolName} @ {step.Host}:{step.Port} -> IPv4={ip}, IPv6={ip6}");
+                StartTrafficMonitor();
+                ArmTrafficWatchdog();
+                return step;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                await DisposeAttemptTransportAsync(transport).ConfigureAwait(false);
+                throw;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not UnauthorizedAccessException)
+            {
+                lastException = ex;
+                AppLogger.LogWarning($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count} ({step.Kind} @ {step.Host}:{step.Port}) failed: {ex.Message}");
+                if (transport is IHealthAwareTransport healthAware)
+                {
+                    healthAware.ReportUnhealthyEndpoint();
+                }
+
+                await DisposeAttemptTransportAsync(transport).ConfigureAwait(false);
+            }
+        }
+
+        await DisposeAsync().ConfigureAwait(false);
+        throw lastException ?? new InvalidOperationException("Не удалось установить двустороннее соединение (0 RX) ни по одному из протоколов.");
+    }
+
+    //загрузка и валидация клиентского сертификата из сохранённой сессии
+    private async Task EnsureClientCertLoadedAsync()
+    {
+        var session = await AuthManager.LoadSessionAsync().ConfigureAwait(false);
+        if (string.IsNullOrEmpty(session.VpnConfig))
+        {
+            throw new InvalidOperationException("Сертификат VPN отсутствует. Авторизуйтесь заново.");
+        }
+
+        var certBytes = Convert.FromBase64String(session.VpnConfig);
+        try
+        {
+            var loadedCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+            Interlocked.Exchange(ref _clientCert, loadedCert)?.Dispose();
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException or PlatformNotSupportedException or ArgumentException)
+        {
+            AppLogger.LogWarning($"[VPN] Обнаружен устаревший сертификат: {ex.Message}. Требуется повторная авторизация.");
+            OnCertificateRevoked?.Invoke("Обнаружен устаревший сертификат. Пожалуйста, войдите снова.");
+            throw new UnauthorizedAccessException("Old certificate", ex);
+        }
+    }
+
+    //регистрация внешних ip адреса назначения для bypass-маршрута ос перед открытием сокета
+    private async Task PrepareExternalEndpointBypassAsync(ProtocolRouteStep step, CancellationToken ct)
+    {
+        HashSet<string> ips = new(StringComparer.OrdinalIgnoreCase);
+        RegisterServerEndpoint(step.Host);
+
+        if (IPAddress.TryParse(step.Host, out _))
+        {
+            _ = ips.Add(step.Host);
+        }
+        else
+        {
+            try
+            {
+                using var dnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                dnsCts.CancelAfter(TimeSpan.FromSeconds(2));
+                var resolved = await Dns.GetHostAddressesAsync(step.Host, dnsCts.Token).ConfigureAwait(false);
+                foreach (var addr in resolved)
+                {
+                    if (addr.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        var ipStr = addr.ToString();
+                        _ = ips.Add(ipStr);
+                        RegisterServerEndpoint(ipStr);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException)
+            {
+                AppLogger.LogWarning($"[OCTOPUS-DNS] DNS resolution failed for {step.Host}: {ex.Message}");
+            }
+        }
+
+        foreach (var relayIp in AppConfig.DirectRelayIps)
+        {
+            if (!string.IsNullOrWhiteSpace(relayIp))
+            {
+                _ = ips.Add(relayIp);
+                RegisterServerEndpoint(relayIp);
+            }
+        }
+
+        var hook = EnsureExternalHostRoutesAsync;
+        if (hook is not null && ips.Count > 0)
+        {
+            await hook([.. ips], ct).ConfigureAwait(false);
+        }
+    }
+
+    //безопасная очистка неудачного транспорта конкретной попытки кольца
+    private async Task DisposeAttemptTransportAsync(IVpnTransport? transport)
+    {
+        if (transport is null)
+        {
+            return;
+        }
+
+        _ = Interlocked.CompareExchange(ref _transport, null, transport);
+        try
+        {
+            await transport.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+        {
+            //подавление ошибки закрытия неудачного транспорта
+        }
+    }
+
     //подключение к vpn серверу и инициализация транспорта
     public async Task ConnectAsync(string serverIp, int serverPort, string? targetSni = null)
     {
@@ -208,6 +428,7 @@ public sealed partial class OctopusEngine
         transport.OnPacketReceived += (pkt, len) =>
         {
             _ = Interlocked.Add(ref _totalBytesReceived, len);
+            Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
             if (len > 600)
             {
                 _ = Interlocked.Increment(ref _largeRxPackets);
@@ -240,11 +461,15 @@ public sealed partial class OctopusEngine
         };
     }
 
-    //бесшовная горячая замена прямого h2 транспорта на облачный websocket щит без пересоздания tun интерфейса
+    //обратная совместимость: переключение на следующий живой протокол по кругу при заморозке
+    public Task<bool> TryEscalateToShieldAsync(string reason, CancellationToken ct = default) =>
+        TryRotateProtocolAsync(reason, ct);
+
+    //бесшовная круговая ротация протокола (obxodka stream -> websocket -> xhttp -> резервные узлы) с проверкой rx > 0
     [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области", Justification = "Владение передается в _transport через Interlocked.Exchange либо освобождается через DisposeAsync в finally")]
-    public async Task<bool> TryEscalateToShieldAsync(string reason, CancellationToken ct = default)
+    public async Task<bool> TryRotateProtocolAsync(string reason, CancellationToken ct = default)
     {
-        if (_transport is not ObxodkaStreamTransport || _clientCert is null || _cts is null || _cts.IsCancellationRequested)
+        if (_clientCert is null || _cts is null || _cts.IsCancellationRequested)
         {
             return false;
         }
@@ -257,85 +482,212 @@ public sealed partial class OctopusEngine
             return false;
         }
 
-        if (Interlocked.CompareExchange(ref _isEscalatingToShield, 1, 0) != 0)
+        if (!await _rotationGate.WaitAsync(0, ct).ConfigureAwait(false))
         {
             return false;
         }
 
-        ObxodkaWebSocketTransport? wsTransport = null;
+        _ = Interlocked.Exchange(ref _isEscalatingToShield, 1);
+        IVpnTransport? candidateTransport = null;
         try
         {
-            MarkNodeByteCapped(currentIp);
-            DynamicSslPublicKeyHash = null;
-
-            var shieldDomain = AppConfig.PrimaryDomain;
-            AppLogger.LogWarning($"[OCTOPUS-SHIELD] TSPU freeze detected ({reason}) on {currentIp}:{ConnectedServerPort}. Escalating seamlessly to Shield '{shieldDomain}'...");
-
-            wsTransport = new ObxodkaWebSocketTransport(443, shieldDomain, AssignedIp);
-            if (_protectAction is not null)
+            if (_rotationRing.Count == 0)
             {
-                wsTransport.ProtectSockets(_protectAction);
+                _rotationRing = SniEngine.BuildProtocolRotationRing(
+                    null,
+                    ConnectedServerIp,
+                    ConnectedServerPort > 0 ? ConnectedServerPort : 443,
+                    ActiveTargetSni,
+                    PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false));
             }
-            WireTransportEvents(wsTransport);
 
-            using var escalateTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct, escalateTimeoutCts.Token);
-
-            var (newIp, newIp6) = await wsTransport.ConnectAsync(shieldDomain, _clientCert.Thumbprint, linkedCts.Token).ConfigureAwait(false);
-
-            var oldTransport = Interlocked.Exchange(ref _transport, wsTransport);
-            wsTransport = null;
-
-            ActiveProtocol = "OBXODKA-WS";
-            ActiveRays = 1;
-            ConnectedServerIp = shieldDomain;
-            ConnectedServerPort = 443;
-            ActiveTargetSni = shieldDomain;
-            AssignedIp = newIp;
-            AssignedIpV6 = newIp6;
-            Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
-
-            if (oldTransport is not null)
+            if (_rotationRing.Count == 0)
             {
+                return false;
+            }
+
+            if (_transport is IHealthAwareTransport curHealthAware)
+            {
+                curHealthAware.ReportUnhealthyEndpoint();
+            }
+
+            if (_transport is ObxodkaStreamTransport && !string.IsNullOrWhiteSpace(currentIp))
+            {
+                MarkNodeByteCapped(currentIp);
+            }
+
+            var originalTransport = _transport;
+            var totalSteps = _rotationRing.Count;
+
+            for (var offset = 1; offset <= totalSteps; offset++)
+            {
+                if (_cts is null || _cts.IsCancellationRequested || ct.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                var candidateIdx = (_rotationStepIndex + offset) % totalSteps;
+                var nextStep = _rotationRing[candidateIdx];
+
+                //если прямой узел только что попал под лимит тспу, пропускаем его в текущем цикле и переходим к щиту/xhttp
+                if (nextStep.Kind == TransportProtocolKind.ObxodkaStream &&
+                    !nextStep.IsShield &&
+                    IsNodeByteCapped(nextStep.Host))
+                {
+                    continue;
+                }
+
+                DynamicSslPublicKeyHash = nextStep.ClearDynamicPinning ? null : DirectOriginCertHash;
+                await PrepareExternalEndpointBypassAsync(nextStep, ct).ConfigureAwait(false);
+
+                AppLogger.LogWarning($"[OCTOPUS-ROTATE] {reason}: trying step {candidateIdx + 1}/{totalSteps} ({nextStep.Kind} -> {nextStep.Host}:{nextStep.Port})");
+
+                candidateTransport = ProtocolPipelineRegistry.CreateTransport(nextStep, AssignedIp);
+                if (_protectAction is not null)
+                {
+                    candidateTransport.ProtectSockets(_protectAction);
+                }
+
+                WireTransportEvents(candidateTransport);
+
                 try
                 {
-                    await oldTransport.DisposeAsync().ConfigureAwait(false);
+                    using var rotateTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct, rotateTimeoutCts.Token);
+
+                    var (newIp, newIp6) = await candidateTransport.ConnectAsync(nextStep.Host, _clientCert.Thumbprint, linkedCts.Token).ConfigureAwait(false);
+
+                    //временно переключаем активный транспорт для честного живого эхо-зонда на новом канале
+                    _ = Interlocked.Exchange(ref _transport, candidateTransport);
+                    var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), forceFreshProbe: true, ct: linkedCts.Token).ConfigureAwait(false);
+                    if (!verified)
+                    {
+                        AppLogger.LogWarning($"[OCTOPUS-ROTATE] Candidate {nextStep.Kind} @ {nextStep.Host} yielded 0 RX. Advancing ring...");
+                        if (candidateTransport is IHealthAwareTransport badCandidate)
+                        {
+                            badCandidate.ReportUnhealthyEndpoint();
+                        }
+
+                        if (!nextStep.IsShield && nextStep.Kind == TransportProtocolKind.ObxodkaStream)
+                        {
+                            MarkNodeByteCapped(nextStep.Host);
+                        }
+
+                        _ = Interlocked.CompareExchange(ref _transport, originalTransport, candidateTransport);
+                        await candidateTransport.DisposeAsync().ConfigureAwait(false);
+                        candidateTransport = null;
+                        continue;
+                    }
+
+                    //новый канал подтвердил реальный rx/cmdpong: закрепляем переключение
+                    var swappedTransport = candidateTransport;
+                    candidateTransport = null;
+
+                    var prevIp = AssignedIp;
+                    _rotationStepIndex = candidateIdx;
+                    ActiveProtocol = swappedTransport.ProtocolName;
+                    ActiveRays = nextStep.Kind == TransportProtocolKind.ObxodkaStream ? 2 : 1;
+                    ConnectedServerIp = nextStep.Host;
+                    ConnectedServerPort = nextStep.Port;
+                    ActiveTargetSni = nextStep.TargetSni;
+                    AssignedIp = newIp;
+                    AssignedIpV6 = newIp6;
+                    Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
+                    Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
+
+                    if (!string.Equals(prevIp, newIp, StringComparison.OrdinalIgnoreCase))
+                    {
+                        OnTunnelIpChanged?.Invoke();
+                    }
+
+                    if (originalTransport is not null && !ReferenceEquals(originalTransport, swappedTransport))
+                    {
+                        try
+                        {
+                            await originalTransport.DisposeAsync().ConfigureAwait(false);
+                        }
+                        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+                        {
+                            //подавление ошибки закрытия предыдущего транспорта
+                        }
+                    }
+
+                    AppLogger.Log($"[OCTOPUS-ROTATE] Seamless switch succeeded! Active={ActiveProtocol} @ {ConnectedServerIp}:{ConnectedServerPort} (TUN={AssignedIp})");
+                    if (swappedTransport is ObxodkaStreamTransport)
+                    {
+                        ScheduleSmartMtuScan(1500);
+                    }
+                    else
+                    {
+                        SmartMtuEngine.CurrentMtu = SmartMtuEngine.DefaultMtu;
+                        _ = swappedTransport.SendMtuSyncAsync(SmartMtuEngine.DefaultMtu);
+                    }
+
+                    return true;
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or WebSocketException or HttpRequestException or InvalidOperationException or CryptographicException or ObjectDisposedException)
                 {
-                    //подавление ошибки закрытия предыдущего транспорта
+                    AppLogger.LogWarning($"[OCTOPUS-ROTATE] Step {nextStep.Kind} @ {nextStep.Host} failed: {ex.Message}");
+                    if (candidateTransport is IHealthAwareTransport badCandidate)
+                    {
+                        badCandidate.ReportUnhealthyEndpoint();
+                    }
+
+                    if (_transport == candidateTransport)
+                    {
+                        _ = Interlocked.CompareExchange(ref _transport, originalTransport, candidateTransport);
+                    }
+
+                    if (candidateTransport is not null)
+                    {
+                        try
+                        {
+                            await candidateTransport.DisposeAsync().ConfigureAwait(false);
+                        }
+                        catch (Exception disposeEx) when (disposeEx is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+                        {
+                        }
+                        candidateTransport = null;
+                    }
                 }
             }
 
-            AppLogger.Log($"[OCTOPUS-SHIELD] Seamless escalation complete! Tunnel preserved on {AssignedIp} via WebSocket Shield.");
-            ScheduleSmartMtuScan(1500);
-            return true;
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or WebSocketException or HttpRequestException or InvalidOperationException or CryptographicException or ObjectDisposedException)
-        {
-            AppLogger.LogWarning($"[OCTOPUS-SHIELD] Seamless escalation failed ({reason}): {ex.Message}");
             return false;
         }
         finally
         {
-            if (wsTransport is not null)
+            if (candidateTransport is not null)
             {
                 try
                 {
-                    await wsTransport.DisposeAsync().ConfigureAwait(false);
+                    await candidateTransport.DisposeAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
                 {
-                    //подавление ошибки закрытия резервного транспорта
                 }
             }
             Volatile.Write(ref _isEscalatingToShield, 0);
+            _ = _rotationGate.Release();
         }
     }
 
-    //реконнект с использованием сохраненных параметров активного соединения (ssot)
+    //реконнект с использованием сохраненных параметров или кругового конвейера протоколов (ssot)
     public async Task ReconnectAsync()
     {
+        if (_rotationRing.Count > 0)
+        {
+            var rotatedRing = new List<ProtocolRouteStep>(_rotationRing.Count);
+            var startIdx = (_rotationStepIndex + 1) % _rotationRing.Count;
+            for (var i = 0; i < _rotationRing.Count; i++)
+            {
+                rotatedRing.Add(_rotationRing[(startIdx + i) % _rotationRing.Count]);
+            }
+
+            await DisposeAsync().ConfigureAwait(false);
+            _ = await ConnectRotationRingAsync(rotatedRing).ConfigureAwait(false);
+            return;
+        }
+
         var ip = ConnectedServerIp;
         var port = ConnectedServerPort;
         var sni = ActiveTargetSni;

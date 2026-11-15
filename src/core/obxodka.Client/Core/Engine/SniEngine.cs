@@ -169,6 +169,11 @@ public static class SniEngine
                        string.Equals(server.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase) ||
                        IsShieldEndpoint(server.Ip, server.Ip);
 
+        if (!string.IsNullOrWhiteSpace(server.CertHash))
+        {
+            OctopusEngine.DirectOriginCertHash = server.CertHash;
+        }
+
         if (isShield)
         {
             OctopusEngine.DynamicSslPublicKeyHash = null;
@@ -176,7 +181,7 @@ public static class SniEngine
         }
         else
         {
-            OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(server.CertHash) ? server.CertHash : null;
+            OctopusEngine.DynamicSslPublicKeyHash = !string.IsNullOrWhiteSpace(server.CertHash) ? server.CertHash : OctopusEngine.DirectOriginCertHash;
             targetSni = server.Ip;
         }
 
@@ -200,7 +205,7 @@ public static class SniEngine
         return new SniTransportStrategy(isWebSocketMode, effectiveSni, clearPinning);
     }
 
-    //формирование списка кандидатов sni и портов для http2 транспорта
+    //формирование списка кандидатов sni и портов для http2 транспорта (dpi bypass в приоритете для быстрого старта в рф)
     public static List<SniStreamCandidate> BuildStreamCandidates(string serverIp, int serverPort, string? configuredSni)
     {
         //для прямого подключения zero-sni: целевой хост равен ip сервера (без отправки sni в tls)
@@ -210,24 +215,232 @@ public static class SniEngine
 
         int[] portCandidates = serverPort == 443
             ? [443, 8443, 2053]
-            : [serverPort, 443, 8443, 2053];
+            : [serverPort, 443, 8443];
 
-        var result = new List<SniStreamCandidate>(portCandidates.Length * 2);
+        var result = new List<SniStreamCandidate>(portCandidates.Length + 1);
         var attemptIndex = 0;
 
         foreach (var port in portCandidates)
         {
-            //прямой поток без dpi вмешательства
-            result.Add(new SniStreamCandidate(targetHost, port, false, RoutingHello.GetProfileForAttempt(attemptIndex++)));
-            //поток с l4 сегментацией
             result.Add(new SniStreamCandidate(targetHost, port, true, RoutingHello.GetProfileForAttempt(attemptIndex++)));
         }
 
+        //резервный прямой поток на случай если сегментация clienthello не требуется сетью
+        result.Add(new SniStreamCandidate(targetHost, portCandidates[0], false, RoutingHello.GetProfileForAttempt(attemptIndex)));
         return result;
     }
 
     //формирование списка кандидатов зеркал и sni для websocket транспорта
-    public static List<SniWebSocketCandidate> BuildWebSocketCandidates(string serverIp, int serverPort, string? configuredSni)
+    public static List<SniWebSocketCandidate> BuildWebSocketCandidates(string serverIp, int serverPort, string? configuredSni) =>
+        BuildEdgeCandidates(serverIp, serverPort, configuredSni, s_wsPaths);
+
+    //формирование списка кандидатов зеркал и путей для split-http (xhttp) транспорта
+    public static List<SniWebSocketCandidate> BuildXhttpCandidates(string serverIp, int serverPort, string? configuredSni) =>
+        BuildEdgeCandidates(serverIp, serverPort, configuredSni, s_streamPaths);
+
+    //формирование кругового маршрута протоколов: obxodka stream -> websocket -> xhttp -> резервные узлы -> по кругу
+    public static List<ProtocolRouteStep> BuildProtocolRotationRing(
+        IReadOnlyList<VpnServerDto>? servers,
+        string? primaryHost,
+        int primaryPort,
+        string? configuredSni,
+        bool forceWebSocket)
+    {
+        List<VpnServerDto> normalizedServers = servers is { Count: > 0 }
+            ? [.. servers]
+            : (string.IsNullOrWhiteSpace(primaryHost) ? [] : [new VpnServerDto(primaryHost, primaryPort > 0 ? primaryPort : 443, "", true, 0, null)]);
+
+        foreach (var srv in normalizedServers)
+        {
+            if (!string.IsNullOrWhiteSpace(srv.CertHash))
+            {
+                OctopusEngine.DirectOriginCertHash = srv.CertHash;
+                break;
+            }
+        }
+
+        List<ProtocolRouteStep> directStreamSteps = [];
+        List<ProtocolRouteStep> shieldWsSteps = [];
+        List<ProtocolRouteStep> shieldXhttpSteps = [];
+        HashSet<string> seenDirectHosts = new(StringComparer.OrdinalIgnoreCase);
+
+        void TryAddDirectServer(string host, int port, string? label)
+        {
+            if (string.IsNullOrWhiteSpace(host) || IsShieldEndpoint(host, host) || !seenDirectHosts.Add(host))
+            {
+                return;
+            }
+
+            directStreamSteps.Add(new ProtocolRouteStep(
+                Kind: TransportProtocolKind.ObxodkaStream,
+                Host: host,
+                Port: port > 0 ? port : 443,
+                TargetSni: null,
+                ClearDynamicPinning: false,
+                IsShield: false,
+                ServerLabel: label));
+        }
+
+        foreach (var srv in normalizedServers)
+        {
+            if (!IsShieldEndpoint(srv.Ip, srv.Ip) &&
+                !string.Equals(srv.Role, "shield", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(srv.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase))
+            {
+                TryAddDirectServer(srv.Ip, srv.Port, srv.Location);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(AppConfig.DirectServerIp) &&
+            !AppConfig.DirectServerIp.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
+        {
+            TryAddDirectServer(AppConfig.DirectServerIp, 443, "Direct Origin");
+        }
+
+        var preferredShieldHost = PickPreferredShieldHost(normalizedServers, configuredSni);
+        shieldWsSteps.Add(new ProtocolRouteStep(
+            Kind: TransportProtocolKind.ObxodkaWebSocket,
+            Host: preferredShieldHost,
+            Port: 443,
+            TargetSni: preferredShieldHost,
+            ClearDynamicPinning: true,
+            IsShield: true,
+            ServerLabel: "Cloudflare WS"));
+
+        shieldXhttpSteps.Add(new ProtocolRouteStep(
+            Kind: TransportProtocolKind.ObxodkaXhttp,
+            Host: preferredShieldHost,
+            Port: 443,
+            TargetSni: preferredShieldHost,
+            ClearDynamicPinning: true,
+            IsShield: true,
+            ServerLabel: "Cloudflare XHTTP"));
+
+        //резервный xhttp и ws напрямую к origin ip на случай полной блокировки всех cdn в регионе
+        foreach (var direct in directStreamSteps)
+        {
+            shieldXhttpSteps.Add(new ProtocolRouteStep(
+                Kind: TransportProtocolKind.ObxodkaXhttp,
+                Host: direct.Host,
+                Port: direct.Port,
+                TargetSni: direct.Host,
+                ClearDynamicPinning: false,
+                IsShield: false,
+                ServerLabel: $"{direct.ServerLabel ?? direct.Host} (XHTTP)"));
+        }
+
+        List<ProtocolRouteStep> ring = new(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count);
+        List<ProtocolRouteStep> penalizedDirect = [];
+
+        if (!forceWebSocket)
+        {
+            foreach (var step in directStreamSteps)
+            {
+                if (OctopusEngine.IsNodeByteCapped(step.Host))
+                {
+                    penalizedDirect.Add(step);
+                }
+                else
+                {
+                    ring.Add(step);
+                }
+            }
+        }
+
+        ring.AddRange(shieldWsSteps);
+        ring.AddRange(shieldXhttpSteps);
+
+        if (!forceWebSocket)
+        {
+            ring.AddRange(penalizedDirect);
+        }
+
+        return ring;
+    }
+
+    //выбор оптимального домена щита с приоритетом не-188.114 пула octocore.dev
+    private static string PickPreferredShieldHost(IReadOnlyList<VpnServerDto> servers, string? configuredSni)
+    {
+        var mirrors = GetPrioritizedMirrorHosts();
+        if (mirrors.Count > 0)
+        {
+            return mirrors[0];
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuredSni) && IsShieldEndpoint(configuredSni, configuredSni))
+        {
+            return configuredSni;
+        }
+
+        foreach (var s in servers)
+        {
+            if (IsShieldEndpoint(s.Ip, s.Ip))
+            {
+                return s.Ip;
+            }
+        }
+
+        return AppConfig.PrimaryDomain;
+    }
+
+    //сортировка зеркал: чередование пулов с приоритетом альтернативных корневых доменов перед primary (188.114.96.x)
+    private static List<string> GetPrioritizedMirrorHosts()
+    {
+        var primary = AppConfig.PrimaryDomain;
+        List<string> altPools = [];
+        List<string> primaryPool = [];
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+        void Classify(string? host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                return;
+            }
+
+            var trimmed = host.Trim();
+            if (!seen.Add(trimmed))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(primary) &&
+                (trimmed.Equals(primary, StringComparison.OrdinalIgnoreCase) ||
+                 trimmed.EndsWith($".{primary}", StringComparison.OrdinalIgnoreCase)))
+            {
+                primaryPool.Add(trimmed);
+            }
+            else
+            {
+                altPools.Add(trimmed);
+            }
+        }
+
+        foreach (var m in AppConfig.MirrorDomains)
+        {
+            Classify(m);
+        }
+        Classify(primary);
+
+        List<string> merged = new(altPools.Count + primaryPool.Count);
+        var maxCount = Math.Max(altPools.Count, primaryPool.Count);
+        for (var i = 0; i < maxCount; i++)
+        {
+            if (i < altPools.Count)
+            {
+                merged.Add(altPools[i]);
+            }
+            if (i < primaryPool.Count)
+            {
+                merged.Add(primaryPool[i]);
+            }
+        }
+
+        return merged;
+    }
+
+    //единый генератор кандидатов для облачных транспортов (ws и xhttp) с ротацией пулов и резервным выходом
+    private static List<SniWebSocketCandidate> BuildEdgeCandidates(string serverIp, int serverPort, string? configuredSni, string[] paths)
     {
         var isShield = IsShieldEndpoint(serverIp, configuredSni);
         var serverIsIp = IPAddress.TryParse(serverIp, out _);
@@ -237,18 +450,16 @@ public static class SniEngine
                               serverIp.Equals("::1", StringComparison.OrdinalIgnoreCase);
         var isDomainShieldMode = !isLocalLoopback && (isShield || !serverIsIp || sniIsDomain);
 
-        var activeServerHost = isShield
-            ? (sniIsDomain ? configuredSni! : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain))
-            : (sniIsDomain ? configuredSni! : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain));
+        var activeServerHost = sniIsDomain ? configuredSni! : (!serverIsIp ? serverIp : AppConfig.PrimaryDomain);
 
-        var result = new List<SniWebSocketCandidate>(10);
+        var result = new List<SniWebSocketCandidate>(12);
         var attemptIdx = 0;
 
         void AddCandidate(string serverHost, string targetSni, int port)
         {
             var hostIsIp = IPAddress.TryParse(serverHost, out _);
             var hostHeader = hostIsIp ? targetSni : serverHost;
-            var wsPath = s_wsPaths[attemptIdx % s_wsPaths.Length];
+            var routePath = paths[attemptIdx % paths.Length];
             var profile = RoutingHello.GetProfileForAttempt(attemptIdx++);
             result.Add(new SniWebSocketCandidate(
                 ServerHost: serverHost,
@@ -256,22 +467,23 @@ public static class SniEngine
                 HostHeader: hostHeader,
                 ConnectHost: hostHeader,
                 Port: port,
-                Path: wsPath,
+                Path: routePath,
                 BrowserProfile: profile));
         }
 
         if (isDomainShieldMode)
         {
-            //сначала основной домен щита затем чистые облачные зеркала на стандартном порту 443
-            AddCandidate(activeServerHost, activeServerHost, serverPort);
-
-            var mirrors = AppConfig.MirrorDomains;
-            var addedMirrorsOn443 = 0;
-            for (var mIdx = 0; mIdx < mirrors.Length && addedMirrorsOn443 < 5; mIdx++)
+            var prioritizedMirrors = GetPrioritizedMirrorHosts();
+            if (sniIsDomain)
             {
-                var mirror = mirrors[mIdx];
-                if (string.IsNullOrWhiteSpace(mirror) ||
-                    mirror.Equals(activeServerHost, StringComparison.OrdinalIgnoreCase))
+                AddCandidate(activeServerHost, activeServerHost, serverPort);
+            }
+
+            var addedMirrorsOn443 = 0;
+            for (var mIdx = 0; mIdx < prioritizedMirrors.Count && addedMirrorsOn443 < 7; mIdx++)
+            {
+                var mirror = prioritizedMirrors[mIdx];
+                if (sniIsDomain && serverPort == 443 && mirror.Equals(activeServerHost, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -280,14 +492,16 @@ public static class SniEngine
                 addedMirrorsOn443++;
             }
 
-            //альтернативные облачные порты cloudflare на случай фильтрации апгрейда на 443
-            var altHost8443 = mirrors.Length > 0 ? mirrors[0] : activeServerHost;
-            var altHost2053 = mirrors.Length > 1 ? mirrors[1] : activeServerHost;
+            var altHost8443 = prioritizedMirrors.Count > 0 ? prioritizedMirrors[0] : activeServerHost;
+            var altHost2053 = prioritizedMirrors.Count > 1 ? prioritizedMirrors[1] : activeServerHost;
             AddCandidate(altHost8443, altHost8443, 8443);
             AddCandidate(altHost2053, altHost2053, 2053);
 
             //аварийный прямой выход с zero-sni если заблокирована сама сеть cdn
-            AddCandidate(AppConfig.DirectServerIp, AppConfig.DirectServerIp, 443);
+            if (!string.IsNullOrWhiteSpace(AppConfig.DirectServerIp))
+            {
+                AddCandidate(AppConfig.DirectServerIp, AppConfig.DirectServerIp, 443);
+            }
             return result;
         }
 

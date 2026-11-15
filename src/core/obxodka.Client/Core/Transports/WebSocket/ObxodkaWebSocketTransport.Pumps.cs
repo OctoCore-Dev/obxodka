@@ -192,7 +192,6 @@ public sealed partial class ObxodkaWebSocketTransport
 
         try
         {
-            long wsTxBytes = 0;
             while (!ct.IsCancellationRequested)
             {
                 var firstItem = await _txQueue.DequeueAsync(ct).ConfigureAwait(false);
@@ -210,34 +209,14 @@ public sealed partial class ObxodkaWebSocketTransport
                     {
                         try
                         {
-                            var isMtu = length == 4 && packet[0] == 0xCC && packet[1] == 0xDD;
-                            var isBurstReq = length == 2 && packet[0] == 0xEE && packet[1] == 0x77;
-                            var isPong = length >= 2 && packet[0] == 0xEE && packet[1] == 0x88;
-                            var isDisconnect = length == 2 && packet[0] == 0xEE && packet[1] == 0x99;
-                            var isPingMarker = length >= 10 && packet[0] == 0xAA && packet[1] == 0xBB;
-                            var isPing = isPingMarker || length == 8;
+                            var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset, out var payloadLength);
 
-                            var cmd = isMtu
-                                ? ObxodkaFraming.CmdMtuSync
-                                : (isBurstReq
-                                    ? ObxodkaFraming.CmdMtuBurstRequest
-                                    : (isPong
-                                        ? ObxodkaFraming.CmdPong
-                                        : (isDisconnect
-                                            ? ObxodkaFraming.CmdDisconnect
-                                            : (isPing ? ObxodkaFraming.CmdPing : ObxodkaFraming.CmdData))));
-
-                            var payloadOffset = isMtu || isPong || isPingMarker ? 2 : 0;
-                            var payloadLength = isBurstReq || isDisconnect ? 0 : length - payloadOffset;
-
-                            var isEarly = (wsTxBytes + coalescedLen) < ObxodkaFraming.EarlyStageWindowBytes;
-                            var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, maxMtu: SmartMtuEngine.CurrentMtu, isEarlySession: isEarly);
+                            var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, maxMtu: SmartMtuEngine.CurrentMtu, isEarlySession: false);
                             var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
 
                             if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
                             {
                                 await ws.SendAsync(coalesceBuf.AsMemory(0, coalescedLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
-                                wsTxBytes += coalescedLen;
                                 coalescedLen = 0;
                             }
 
@@ -254,7 +233,6 @@ public sealed partial class ObxodkaWebSocketTransport
                                 {
                                     ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd, payloadSpan, paddingLen, _sessionKey);
                                     await ws.SendAsync(frame.AsMemory(0, totalLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
-                                    wsTxBytes += totalLen;
                                 }
                                 finally
                                 {
@@ -275,7 +253,6 @@ public sealed partial class ObxodkaWebSocketTransport
                 if (coalescedLen > 0)
                 {
                     await ws.SendAsync(coalesceBuf.AsMemory(0, coalescedLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
-                    wsTxBytes += coalescedLen;
                 }
             }
         }

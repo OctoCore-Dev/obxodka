@@ -670,14 +670,26 @@ public sealed partial class VpnView
             var orderedCandidates = new List<VpnServerDto> { targetServer };
             orderedCandidates.AddRange(servers.Where(s => s.Ip != targetServer.Ip));
 
-            var isShieldNode = SniEngine.ConfigureServerSecurity(targetServer, out _);
-            if (!isShieldNode && string.IsNullOrWhiteSpace(OctopusEngine.DynamicSslPublicKeyHash))
+            var directCertHash = orderedCandidates
+                .Select(s => s.CertHash)
+                .FirstOrDefault(h => !string.IsNullOrWhiteSpace(h));
+            if (!string.IsNullOrWhiteSpace(directCertHash))
+            {
+                OctopusEngine.DirectOriginCertHash = directCertHash;
+            }
+            else if (string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash))
             {
                 var (successHash, hashData, _) = await _apiService.GetCertHashAsync();
                 if (successHash && hashData is not null && !string.IsNullOrEmpty(hashData.Hash))
                 {
-                    OctopusEngine.DynamicSslPublicKeyHash = hashData.Hash;
+                    OctopusEngine.DirectOriginCertHash = hashData.Hash;
                 }
+            }
+
+            var isShieldNode = SniEngine.ConfigureServerSecurity(targetServer, out _);
+            if (!isShieldNode && string.IsNullOrWhiteSpace(OctopusEngine.DynamicSslPublicKeyHash) && !string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash))
+            {
+                OctopusEngine.DynamicSslPublicKeyHash = OctopusEngine.DirectOriginCertHash;
             }
             UpdateActiveNode(targetServer.Ip);
 
