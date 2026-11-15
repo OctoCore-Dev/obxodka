@@ -1,4 +1,3 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
 using Microsoft.Maui.Controls.Shapes;
 using Path = System.IO.Path;
 
@@ -7,25 +6,66 @@ namespace obxodka.Pages;
 //процедурные шейдеры skia, анимации лоадера, реактора, кристаллов и ауры
 public sealed partial class VpnView
 {
+    //обработка одного кадра анимации лоадера
+    private void StepLoaderFrame()
+    {
+        _loaderAngle += 1.6f;
+        if (CustomButtonRingImage is { IsVisible: true })
+        {
+            CustomButtonRingImage.Rotation = _loaderAngle * 0.45f % 360f;
+        }
+        LoaderCanvas?.InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратная синхронизация кадров лоадера через vsync экрана
+    private void OnLoaderVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _loaderLastVsyncTicks < 15)
+        {
+            return;
+        }
+        _loaderLastVsyncTicks = nowTicks;
+        StepLoaderFrame();
+    }
+#endif
+
+    //остановка цикла перерисовки лоадера
+    private void StopLoaderLoop()
+    {
+#if WINDOWS
+        if (_loaderVsyncActive)
+        {
+            _loaderVsyncActive = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnLoaderVsyncRendering;
+        }
+#else
+        _loaderTimer?.Stop();
+        _loaderTimer = null;
+#endif
+    }
+
     //запуск анимации лоадера и таймера частиц
     private void StartLoaderAnimation(bool animateEntrance = true)
     {
         _loaderStopwatch.Restart();
+#if WINDOWS
+        if (!_loaderVsyncActive)
+        {
+            _loaderLastVsyncTicks = 0;
+            _loaderVsyncActive = true;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnLoaderVsyncRendering;
+        }
+#else
         if (_loaderTimer is null)
         {
             _loaderTimer = Dispatcher.CreateTimer();
             _loaderTimer.Interval = TimeSpan.FromMilliseconds(16);
-            _loaderTimer.Tick += (_, _) =>
-            {
-                _loaderAngle += 1.6f;
-                if (CustomButtonRingImage is { IsVisible: true })
-                {
-                    CustomButtonRingImage.Rotation = _loaderAngle * 0.45f % 360f;
-                }
-                LoaderCanvas?.InvalidateSurface();
-            };
+            _loaderTimer.Tick += (_, _) => StepLoaderFrame();
             _loaderTimer.Start();
         }
+#endif
 
         LoaderCanvas.IsVisible = true;
 
@@ -56,8 +96,7 @@ public sealed partial class VpnView
     {
         if (LoaderCanvas is null)
         {
-            _loaderTimer?.Stop();
-            _loaderTimer = null;
+            StopLoaderLoop();
             _loaderStopwatch.Reset();
             return;
         }
@@ -77,15 +116,13 @@ public sealed partial class VpnView
             SafeFadeTo(LoaderCanvas, 0.0, 300, Easing.CubicIn, () =>
             {
                 LoaderCanvas.IsVisible = false;
-                _loaderTimer?.Stop();
-                _loaderTimer = null;
+                StopLoaderLoop();
                 _loaderStopwatch.Reset();
             });
         }
         else
         {
-            _loaderTimer?.Stop();
-            _loaderTimer = null;
+            StopLoaderLoop();
             _loaderStopwatch.Reset();
             LoaderCanvas.IsVisible = false;
             LoaderCanvas.Opacity = 0;
@@ -276,7 +313,12 @@ public sealed partial class VpnView
     {
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
-        if (_loaderTimer is null && _vpnService?.CurrentState != AppVpnState.Connected)
+#if WINDOWS
+        var isLoaderLoopRunning = _loaderVsyncActive;
+#else
+        var isLoaderLoopRunning = _loaderTimer is not null;
+#endif
+        if (!isLoaderLoopRunning && _vpnService?.CurrentState != AppVpnState.Connected)
         {
             return;
         }

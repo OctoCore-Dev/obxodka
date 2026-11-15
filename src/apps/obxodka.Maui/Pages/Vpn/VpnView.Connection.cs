@@ -314,10 +314,11 @@ public sealed partial class VpnView
             switch (state)
             {
                 case AppVpnState.Disconnected:
-                    if (!_isHotSwapping)
+                    if (_isHotSwapping)
                     {
-                        _isBusy = false;
+                        break;
                     }
+                    _isBusy = false;
                     _isErrorState = false;
                     _errorTransitionFactor = 0f;
                     StopLoaderAnimation(animateExit: true);

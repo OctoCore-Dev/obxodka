@@ -1,4 +1,3 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
 namespace obxodka.Pages;
 
 public sealed partial class VpnView : ContentView, IDisposable
@@ -42,8 +41,15 @@ public sealed partial class VpnView : ContentView, IDisposable
     private List<VpnServerDto> _cachedServers = [];
     private readonly Dictionary<string, long> _serverPings = [];
     private readonly Stopwatch _loaderStopwatch = new();
+#if WINDOWS
+    private bool _loaderVsyncActive;
+    private long _loaderLastVsyncTicks;
+    private bool _graphVsyncActive;
+    private long _graphLastVsyncTicks;
+#else
     private IDispatcherTimer? _loaderTimer;
     private IDispatcherTimer? _graphAnimTimer;
+#endif
     private double _targetSpeedUp, _targetSpeedDown;
     private double _smoothSpeedUp, _smoothSpeedDown;
     private double _smoothMaxSpeed = 1024.0;

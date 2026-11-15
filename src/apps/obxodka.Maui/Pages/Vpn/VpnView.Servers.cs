@@ -1,4 +1,3 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
 using Microsoft.Maui.Controls.Shapes;
 using Path = System.IO.Path;
 

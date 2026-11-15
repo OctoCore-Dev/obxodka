@@ -20,7 +20,12 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     private readonly SKPathBuilder _wavePathBuilder = new();
     private static readonly SKSamplingOptions s_samplingOptions = new(SKFilterMode.Linear);
 
+#if WINDOWS
+    private bool _vsyncSubscribed;
+    private long _lastVsyncTickMs;
+#else
     private IDispatcherTimer? _timer;
+#endif
     private MovementType _movementType = MovementType.Falling;
     private string _particleTypeName = "none";
     private string _screenOverlay = "none";
@@ -301,6 +306,37 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         InvalidateSurface();
     }
 
+    //обработка одного кадра физики частиц
+    private void StepAnimationFrame()
+    {
+        if (!IsVisible || !HasActiveVisuals())
+        {
+            return;
+        }
+
+        var now = _stopwatch.Elapsed.TotalSeconds;
+        var dt = (float)Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
+        _lastFrameSeconds = now;
+
+        UpdatePhysics((float)Width, (float)Height, dt);
+        InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратный такт перерисовки частиц по vsync экрана
+    private void OnVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _lastVsyncTickMs < 15)
+        {
+            return;
+        }
+
+        _lastVsyncTickMs = nowTicks;
+        StepAnimationFrame();
+    }
+#endif
+
     //запуск анимации кадров
     public void StartAnimation()
     {
@@ -310,24 +346,20 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             _lastFrameSeconds = _stopwatch.Elapsed.TotalSeconds;
         }
 
+#if WINDOWS
+        if (!_vsyncSubscribed)
+        {
+            _lastFrameSeconds = _stopwatch.Elapsed.TotalSeconds;
+            _lastVsyncTickMs = 0;
+            _vsyncSubscribed = true;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnVsyncRendering;
+        }
+#else
         if (_timer is null)
         {
             _timer = Dispatcher.CreateTimer();
             _timer.Interval = TimeSpan.FromMilliseconds(16);
-            _timer.Tick += (_, _) =>
-            {
-                if (!IsVisible || !HasActiveVisuals())
-                {
-                    return;
-                }
-
-                var now = _stopwatch.Elapsed.TotalSeconds;
-                var dt = (float)Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
-                _lastFrameSeconds = now;
-
-                UpdatePhysics((float)Width, (float)Height, dt);
-                InvalidateSurface();
-            };
+            _timer.Tick += (_, _) => StepAnimationFrame();
         }
 
         if (!_timer.IsRunning)
@@ -335,15 +367,24 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             _lastFrameSeconds = _stopwatch.Elapsed.TotalSeconds;
             _timer.Start();
         }
+#endif
     }
 
     //остановка анимации
     public void StopAnimation()
     {
+#if WINDOWS
+        if (_vsyncSubscribed)
+        {
+            _vsyncSubscribed = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnVsyncRendering;
+        }
+#else
         if (_timer?.IsRunning is true)
         {
             _timer.Stop();
         }
+#endif
     }
 
     //освобождение ресурсов канваса и шейдеров

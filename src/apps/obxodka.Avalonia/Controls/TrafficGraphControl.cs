@@ -11,12 +11,12 @@ public class TrafficGraphControl : Control
         set => SetValue(IsActiveProperty, value);
     }
 
-    private static readonly IPen t_gridPen = new Pen(new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)), 1, DashStyle.Dash);
-    private static readonly IPen t_upPen = new Pen(new SolidColorBrush(Color.Parse("#9F6FF0")), 2);
-    private static readonly IPen t_downPen = new Pen(new SolidColorBrush(Color.Parse("#00E5FF")), 2);
+    private static readonly IPen s_gridPen = new Pen(new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)), 1, DashStyle.Dash);
+    private static readonly IPen s_upPen = new Pen(new SolidColorBrush(Color.Parse("#9F6FF0")), 2);
+    private static readonly IPen s_downPen = new Pen(new SolidColorBrush(Color.Parse("#00E5FF")), 2);
 
-    private static readonly IBrush t_upSolidBrush = new SolidColorBrush(Color.Parse("#9F6FF0"));
-    private static readonly IBrush t_downSolidBrush = new SolidColorBrush(Color.Parse("#00E5FF"));
+    private static readonly IBrush s_upSolidBrush = new SolidColorBrush(Color.Parse("#9F6FF0"));
+    private static readonly IBrush s_downSolidBrush = new SolidColorBrush(Color.Parse("#00E5FF"));
 
     private readonly DispatcherTimer _animationTimer;
     private double _timePhase;
@@ -75,16 +75,16 @@ public class TrafficGraphControl : Control
         for (int i = 1; i <= 3; i++)
         {
             double y = height * (i / 4.0);
-            context.DrawLine(t_gridPen, new Point(0, y), new Point(width, y));
+            context.DrawLine(s_gridPen, new Point(0, y), new Point(width, y));
         }
 
         // Draw streaming upload packets (purple, bottom curve)
         DrawStreamingWave(
             context,
-            strokePen: t_upPen,
+            strokePen: s_upPen,
             fillStartColor: Color.FromArgb(55, 159, 111, 240),
             glowColor: Color.FromArgb(90, 159, 111, 240),
-            solidBrush: t_upSolidBrush,
+            solidBrush: s_upSolidBrush,
             isUpload: true,
             width: width,
             height: height,
@@ -95,10 +95,10 @@ public class TrafficGraphControl : Control
         // Draw streaming download packets (cyan, top curve)
         DrawStreamingWave(
             context,
-            strokePen: t_downPen,
+            strokePen: s_downPen,
             fillStartColor: Color.FromArgb(75, 0, 229, 255),
             glowColor: Color.FromArgb(120, 0, 229, 255),
-            solidBrush: t_downSolidBrush,
+            solidBrush: s_downSolidBrush,
             isUpload: false,
             width: width,
             height: height,

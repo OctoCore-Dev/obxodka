@@ -1,4 +1,3 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
 using Microsoft.Maui.Controls.Shapes;
 using Path = System.IO.Path;
 
@@ -7,13 +6,98 @@ namespace obxodka.Pages;
 //сплайновый график скорости и счетчики трафика на skia canvas
 public sealed partial class VpnView
 {
-    //запуск таймера интерполяции и отрисовки графика трафика
+    //обработка одного кадра интерполяции и перерисовки графика скорости
+    private void StepGraphFrame()
+    {
+        if (!IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
+        {
+            return;
+        }
+
+        var now = (float)_graphStopwatch.Elapsed.TotalSeconds;
+        var dt = Math.Clamp(now - _lastGraphTickTime, 0.001f, 0.1f);
+        _lastGraphTickTime = now;
+
+        _pulsePhase += dt * 5.5f;
+        if (_pulsePhase > MathF.PI * 2)
+        {
+            _pulsePhase -= MathF.PI * 2;
+        }
+
+        var speedLerp = 1.0 - Math.Exp(-8.0 * dt);
+        _smoothSpeedUp += (_targetSpeedUp - _smoothSpeedUp) * speedLerp;
+        _smoothSpeedDown += (_targetSpeedDown - _smoothSpeedDown) * speedLerp;
+
+        lock (_graphSamples)
+        {
+            if (now - _lastSampleTime >= 0.05f || _graphSamples.Count == 0)
+            {
+                _graphSamples.Add(new GraphSample(now, (float)_smoothSpeedUp, (float)_smoothSpeedDown));
+                _lastSampleTime = now;
+
+                var cutoff = now - (TimeWindowSeconds + 1.0f);
+                var removeCount = 0;
+                while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
+                {
+                    removeCount++;
+                }
+
+                if (removeCount > 0)
+                {
+                    _graphSamples.RemoveRange(0, removeCount);
+                }
+            }
+
+            var peak = 1024.0;
+            for (var i = 0; i < _graphSamples.Count; i++)
+            {
+                var s = _graphSamples[i];
+                if (s.SpeedUp > peak)
+                {
+                    peak = s.SpeedUp;
+                }
+
+                if (s.SpeedDown > peak)
+                {
+                    peak = s.SpeedDown;
+                }
+            }
+
+            var peakLerp = 1.0 - Math.Exp(-4.0 * dt);
+            _smoothMaxSpeed += (peak - _smoothMaxSpeed) * peakLerp;
+        }
+
+        TrafficGraphCanvas.InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратный такт перерисовки графика скорости по vsync экрана
+    private void OnGraphVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _graphLastVsyncTicks < 15)
+        {
+            return;
+        }
+        _graphLastVsyncTicks = nowTicks;
+        StepGraphFrame();
+    }
+#endif
+
+    //запуск цикла интерполяции и отрисовки графика трафика
     private void StartGraphAnimation()
     {
+#if WINDOWS
+        if (_graphVsyncActive)
+        {
+            return;
+        }
+#else
         if (_graphAnimTimer is not null)
         {
             return;
         }
+#endif
 
         _graphStopwatch.Restart();
         lock (_graphSamples)
@@ -24,82 +108,35 @@ public sealed partial class VpnView
 
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;
-        _smoothSpeedUp = 0;
+        _targetSpeedUp = _smoothSpeedUp = 0;
         _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
 
+#if WINDOWS
+        _graphLastVsyncTicks = 0;
+        _graphVsyncActive = true;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnGraphVsyncRendering;
+#else
         _graphAnimTimer = Dispatcher.CreateTimer();
         _graphAnimTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _graphAnimTimer.Tick += (_, _) =>
-        {
-            if (!IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
-            {
-                return;
-            }
-
-            var now = (float)_graphStopwatch.Elapsed.TotalSeconds;
-            var dt = Math.Clamp(now - _lastGraphTickTime, 0.001f, 0.1f);
-            _lastGraphTickTime = now;
-
-            _pulsePhase += dt * 5.5f;
-            if (_pulsePhase > MathF.PI * 2)
-            {
-                _pulsePhase -= MathF.PI * 2;
-            }
-
-            var speedLerp = 1.0 - Math.Exp(-8.0 * dt);
-            _smoothSpeedUp += (_targetSpeedUp - _smoothSpeedUp) * speedLerp;
-            _smoothSpeedDown += (_targetSpeedDown - _smoothSpeedDown) * speedLerp;
-
-            lock (_graphSamples)
-            {
-                if (now - _lastSampleTime >= 0.05f || _graphSamples.Count == 0)
-                {
-                    _graphSamples.Add(new GraphSample(now, (float)_smoothSpeedUp, (float)_smoothSpeedDown));
-                    _lastSampleTime = now;
-
-                    var cutoff = now - (TimeWindowSeconds + 1.0f);
-                    var removeCount = 0;
-                    while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
-                    {
-                        removeCount++;
-                    }
-
-                    if (removeCount > 0)
-                    {
-                        _graphSamples.RemoveRange(0, removeCount);
-                    }
-                }
-
-                var peak = 1024.0;
-                for (var i = 0; i < _graphSamples.Count; i++)
-                {
-                    var s = _graphSamples[i];
-                    if (s.SpeedUp > peak)
-                    {
-                        peak = s.SpeedUp;
-                    }
-
-                    if (s.SpeedDown > peak)
-                    {
-                        peak = s.SpeedDown;
-                    }
-                }
-
-                var peakLerp = 1.0 - Math.Exp(-4.0 * dt);
-                _smoothMaxSpeed += (peak - _smoothMaxSpeed) * peakLerp;
-            }
-
-            TrafficGraphCanvas.InvalidateSurface();
-        };
+        _graphAnimTimer.Tick += (_, _) => StepGraphFrame();
         _graphAnimTimer.Start();
+#endif
     }
 
     //остановка анимации графика скорости
     private void StopGraphAnimation()
     {
+#if WINDOWS
+        if (_graphVsyncActive)
+        {
+            _graphVsyncActive = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnGraphVsyncRendering;
+        }
+#else
         _graphAnimTimer?.Stop();
         _graphAnimTimer = null;
+#endif
         _graphStopwatch.Reset();
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;

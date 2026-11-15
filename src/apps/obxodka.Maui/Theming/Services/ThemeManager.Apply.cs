@@ -28,14 +28,7 @@ public sealed partial class ThemeManager
         }
         else
         {
-            try
-            {
-                MainThread.InvokeOnMainThreadAsync(() => InjectThemeResources(manifest)).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                //подавление ошибок вызова в основном потоке
-            }
+            MainThread.BeginInvokeOnMainThread(() => InjectThemeResources(manifest));
         }
 
         ActiveTheme = manifest;

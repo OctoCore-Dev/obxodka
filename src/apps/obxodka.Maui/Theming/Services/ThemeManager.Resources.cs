@@ -54,14 +54,7 @@ public sealed partial class ThemeManager
         }
         else
         {
-            try
-            {
-                _ = MainThread.InvokeOnMainThreadAsync(CaptureResourcesInternal).Wait(TimeSpan.FromSeconds(2));
-            }
-            catch
-            {
-                //подавление ошибок захвата ресурсов
-            }
+            MainThread.BeginInvokeOnMainThread(CaptureResourcesInternal);
         }
     }
 
@@ -553,13 +546,6 @@ public sealed partial class ThemeManager
         }
     }
 
-    public static void ApplyVisualTreeCardOpacity(VisualElement? root, Color bgSurface, Color? bgElevated = null)
-    {
-        _ = root;
-        _ = bgSurface;
-        _ = bgElevated;
-    }
-
     public void ResetToDefault()
     {
         if (MainThread.IsMainThread)
@@ -568,14 +554,7 @@ public sealed partial class ThemeManager
         }
         else
         {
-            try
-            {
-                MainThread.InvokeOnMainThreadAsync(ResetDefaultResources).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                //подавление ошибок сброса в основном потоке
-            }
+            MainThread.BeginInvokeOnMainThread(ResetDefaultResources);
         }
 
         ActiveTheme = null;
