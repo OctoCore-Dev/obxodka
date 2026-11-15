@@ -39,6 +39,31 @@ public static class ObxodkaFraming
         }
     }
 
+    //вычисление sha256 без аллокаций промежуточного буфера для коротких строк
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ComputeUtf8Sha256(string formatted, Span<byte> digest)
+    {
+        var maxBytes = Encoding.UTF8.GetMaxByteCount(formatted.Length);
+        if (maxBytes <= 512)
+        {
+            Span<byte> input = stackalloc byte[512];
+            var written = Encoding.UTF8.GetBytes(formatted, input);
+            _ = SHA256.HashData(input[..written], digest);
+            return;
+        }
+
+        var rented = ArrayPool<byte>.Shared.Rent(maxBytes);
+        try
+        {
+            var written = Encoding.UTF8.GetBytes(formatted, rented);
+            _ = SHA256.HashData(rented.AsSpan(0, written), digest);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
     //вычисление сессионного ключа на основе отпечатка сертификата, индекса луча и соли
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint DeriveSessionKey(string? thumbprint, int ray, uint sessionSeed)
@@ -48,11 +73,9 @@ public static class ObxodkaFraming
             return 0u;
         }
 
-        Span<byte> input = stackalloc byte[128];
         var formatted = $"OBX-V7:{thumbprint.Trim().ToUpperInvariant()}:{ray}:{sessionSeed:X8}";
-        var written = Encoding.UTF8.GetBytes(formatted, input);
         Span<byte> digest = stackalloc byte[32];
-        _ = SHA256.HashData(input[..written], digest);
+        ComputeUtf8Sha256(formatted, digest);
         var derived = BinaryPrimitives.ReadUInt32LittleEndian(digest);
         return derived == 0 ? 0xA57E4C1Fu : derived;
     }
@@ -66,11 +89,9 @@ public static class ObxodkaFraming
             return string.Empty;
         }
 
-        Span<byte> input = stackalloc byte[192];
         var formatted = $"OBX-V7-AUTH:{thumbprint.Trim().ToUpperInvariant()}:{ray}:{sessionSeed:X8}:{timestampUnixSeconds}:7F4A9C2E1B8D6035";
-        var written = Encoding.UTF8.GetBytes(formatted, input);
         Span<byte> digest = stackalloc byte[32];
-        _ = SHA256.HashData(input[..written], digest);
+        ComputeUtf8Sha256(formatted, digest);
         return Convert.ToHexString(digest[..8]);
     }
 
@@ -82,6 +103,11 @@ public static class ObxodkaFraming
         if (len <= 0)
         {
             return;
+        }
+
+        if (len > s_baseMask.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(payload), $"Payload length {len} exceeds maximum mask size {s_baseMask.Length}");
         }
 
         ref var dstRef = ref MemoryMarshal.GetReference(payload);
@@ -248,10 +274,20 @@ public static class ObxodkaFraming
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteFrame(Span<byte> destination, byte command, ReadOnlySpan<byte> payload, int paddingLen, uint sessionKey = 0)
     {
+        if (paddingLen < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(paddingLen), "Padding length cannot be negative");
+        }
+
         var computedTotal = HeaderSize + payload.Length + paddingLen;
         if (computedTotal > MaxFrameSize || payload.Length > MaxFramePayloadSize)
         {
             throw new ArgumentOutOfRangeException(nameof(payload), $"Frame total size {computedTotal} exceeds maximum allowed size {MaxFrameSize}");
+        }
+
+        if (destination.Length < computedTotal)
+        {
+            throw new ArgumentOutOfRangeException(nameof(destination), $"Destination length {destination.Length} is smaller than frame size {computedTotal}");
         }
 
         var salt = (byte)RandomNumberGenerator.GetInt32(0, 256);
@@ -280,8 +316,17 @@ public static class ObxodkaFraming
 
         if (paddingLen > 0)
         {
-            var noiseOffset = GetRandomInt(0, s_noiseBuffer.Length - paddingLen);
-            s_noiseBuffer.AsSpan(noiseOffset, paddingLen).CopyTo(destination.Slice(HeaderSize + payloadLen, paddingLen));
+            var padDest = destination.Slice(HeaderSize + payloadLen, paddingLen);
+            var remaining = paddingLen;
+            var destOffset = 0;
+            while (remaining > 0)
+            {
+                var chunk = Math.Min(remaining, s_noiseBuffer.Length);
+                var noiseOffset = GetRandomInt(0, s_noiseBuffer.Length - chunk);
+                s_noiseBuffer.AsSpan(noiseOffset, chunk).CopyTo(padDest.Slice(destOffset, chunk));
+                destOffset += chunk;
+                remaining -= chunk;
+            }
         }
     }
 }

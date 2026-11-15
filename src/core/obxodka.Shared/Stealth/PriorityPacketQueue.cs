@@ -30,6 +30,11 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryEnqueue(byte[] buffer, int length)
     {
+        if (buffer is null || length <= 0 || buffer.Length < length)
+        {
+            return false;
+        }
+
         _ = Interlocked.Increment(ref _inflight);
         try
         {
@@ -90,8 +95,6 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 {
                     return item;
                 }
-
-                _ = _semaphore.Release();
             }
         }
         catch (ObjectDisposedException)
@@ -113,8 +116,6 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 {
                     return true;
                 }
-
-                _ = _semaphore.Release();
             }
         }
         catch (ObjectDisposedException)
@@ -157,19 +158,6 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     //чистка памяти при отключении: сдать все буферы обратно в пул
     public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
     {
-        try
-        {
-            while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
-            {
-                //сброс счетчика семафора до нуля
-                continue;
-            }
-        }
-        catch (ObjectDisposedException)
-        {
-            //семафор уже освобожден при закрытии очереди
-        }
-
         while (_high.TryDequeue(out var highItem))
         {
             _ = Interlocked.Decrement(ref _count);
@@ -189,6 +177,19 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         }
 
         _ = Interlocked.Exchange(ref _count, 0);
+
+        try
+        {
+            while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
+            {
+                //сброс счетчика семафора до нуля
+                continue;
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            //семафор уже освобожден при закрытии очереди
+        }
     }
 
     //определение управляющих и зондирующих кадров протокола (ping, pong, mtu sync, burst, probes)
