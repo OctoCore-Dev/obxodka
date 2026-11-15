@@ -14,9 +14,9 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         : Color.FromArgb("#EF4444");
 
     private bool _isTestingSpeed;
+    private bool _isUpdating;
     private CancellationTokenSource? _speedTestCts;
 #if WINDOWS
-    private bool _isUpdating;
     private readonly Action? _windowActivatedHandler;
 #endif
 
@@ -24,10 +24,8 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     {
         InitializeComponent();
 
-        AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
-        KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
+        SyncSwitchesFromPreferences();
 #if WINDOWS
-        RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
         _windowActivatedHandler = () =>
         {
             if (IsVisible)
@@ -39,6 +37,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         _ = SyncWindowsStartupStateAsync();
 #else
         RunOnStartupCard.IsVisible = false;
+        RuAutoBypassCard.IsVisible = false;
 #endif
 
         UpdateSelectionUI();
@@ -100,13 +99,87 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         MainContentGrid.MaximumWidthRequest = safeWidth;
     }
 
+    //синхронизация состояния тумблеров с хранилищем настроек
+    private void SyncSwitchesFromPreferences()
+    {
+        _isUpdating = true;
+        try
+        {
+            AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
+            KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
+            ForceCloudflareToggle.IsToggled = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+            var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+            BlockIpv6Toggle.IsToggled = blockIpv6;
+            OctopusEngine.Current.Pipeline.BlockIpv6Traffic = blockIpv6;
+#if WINDOWS
+            RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
+            RuAutoBypassToggle.IsToggled = Preferences.Get(AppPreferenceKeys.BypassRuSites, true);
+#endif
+        }
+        finally
+        {
+            _isUpdating = false;
+        }
+    }
+
     //сохранение настройки автоподключения
-    private void OnAutoReconnectToggled(object? sender, ToggledEventArgs e) =>
-        Preferences.Set(AppPreferenceKeys.AutoReconnect, e.Value);
+    private void OnAutoReconnectToggled(object? sender, ToggledEventArgs e)
+    {
+        if (!_isUpdating)
+        {
+            Preferences.Set(AppPreferenceKeys.AutoReconnect, e.Value);
+        }
+    }
 
     //сохранение настройки аварийного отключения сети
-    private void OnKillSwitchToggled(object? sender, ToggledEventArgs e) =>
-        Preferences.Set(AppPreferenceKeys.KillSwitch, e.Value);
+    private void OnKillSwitchToggled(object? sender, ToggledEventArgs e)
+    {
+        if (!_isUpdating)
+        {
+            Preferences.Set(AppPreferenceKeys.KillSwitch, e.Value);
+        }
+    }
+
+    //принудительное включение или отключение режима cloudflare websocket
+    private void OnForceCloudflareToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.ForceWebSocket, e.Value);
+        UpdateSelectionUI();
+    }
+
+    //включение или отключение блокировки ipv6 трафика в конвейере и при следующем подключении
+    private void OnBlockIpv6Toggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.BlockIpv6, e.Value);
+        OctopusEngine.Current.Pipeline.BlockIpv6Traffic = e.Value;
+        UpdateSelectionUI();
+    }
+
+    //включение или отключение авто-обхода российских доменов и подсетей на windows
+    private void OnRuAutoBypassToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+#if WINDOWS
+        Preferences.Set(AppPreferenceKeys.BypassRuSites, e.Value);
+        Platforms.Windows.AppManager.SyncPolicyFromPreferences();
+#else
+        Preferences.Set(AppPreferenceKeys.BypassRuSites, e.Value);
+#endif
+    }
 
     //переключение автозагрузки приложения с операционной системой
     private void OnRunOnStartupToggled(object? sender, ToggledEventArgs e)
@@ -297,8 +370,7 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
     //актуализация настроек при показе страницы
     public void OnAppearing()
     {
-        AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
-        KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
+        SyncSwitchesFromPreferences();
 #if WINDOWS
         _ = SyncWindowsStartupStateAsync();
 #endif
@@ -314,9 +386,18 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         await this.PlayCardsEntranceAsync(30, 240);
     }
 
-    //отображение активного сетевого протокола
-    private void UpdateSelectionUI() =>
-        CurrentSelectionLabel.Text = "[ obxodka Stream • HTTP/2 ]";
+    //отображение активного сетевого протокола и режима стека ip
+    private void UpdateSelectionUI()
+    {
+        var forceWs = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+        var blockV6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+        var proto = forceWs
+            ? "Cloudflare WebSocket • 443"
+            : OctopusEngine.Current.IsConnected
+                ? OctopusEngine.Current.ActiveProtocolDisplayName
+                : "obxodka Stream • HTTP/2";
+        CurrentSelectionLabel.Text = blockV6 ? $"[ {proto} • IPv4 Only ]" : $"[ {proto} ]";
+    }
 
     //применение цветов фона и границ карточек настроек
     public void UpdateCardOpacity()
@@ -332,6 +413,12 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         AutoReconnectCard.Stroke = borderSubtle;
         KillSwitchCard.BackgroundColor = bgSurface;
         KillSwitchCard.Stroke = borderSubtle;
+        ForceCloudflareCard.BackgroundColor = bgSurface;
+        ForceCloudflareCard.Stroke = borderSubtle;
+        BlockIpv6Card.BackgroundColor = bgSurface;
+        BlockIpv6Card.Stroke = borderSubtle;
+        RuAutoBypassCard.BackgroundColor = bgSurface;
+        RuAutoBypassCard.Stroke = borderSubtle;
         RunOnStartupCard.BackgroundColor = bgSurface;
         RunOnStartupCard.Stroke = borderSubtle;
         SpeedTestCard.BackgroundColor = bgSurface;

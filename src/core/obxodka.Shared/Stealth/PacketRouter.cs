@@ -43,8 +43,9 @@ public static class PacketRouter
 
             var flagsAndOffset = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(6, 2));
             var fragOffset = flagsAndOffset & 0x1FFF;
+            var isMoreFragments = (flagsAndOffset & 0x2000) != 0;
 
-            if (fragOffset > 0)
+            if (fragOffset > 0 || isMoreFragments)
             {
                 if (protocol is 1 or 17)
                 {

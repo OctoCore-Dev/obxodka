@@ -237,7 +237,7 @@ public sealed partial class ObxodkaStreamTransport
             {
                 using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(token, pushToken);
                 var pumpToken = pumpCts.Token;
-                var coalesceBuf = ArrayPool<byte>.Shared.Rent(65536);
+                var coalesceBuf = ArrayPool<byte>.Shared.Rent(262144);
 
                 try
                 {
@@ -328,7 +328,7 @@ public sealed partial class ObxodkaStreamTransport
                             }
 
                             batchCount++;
-                            hasItem = batchCount < 128 && txQueue.TryDequeue(out item);
+                            hasItem = batchCount < 256 && txQueue.TryDequeue(out item);
                         }
 
                         if (coalescedLen > 0)
@@ -338,7 +338,10 @@ public sealed partial class ObxodkaStreamTransport
                             _ = Interlocked.Add(ref raySharedBytes, coalescedLen);
                         }
 
-                        await stream.FlushAsync(pumpToken).ConfigureAwait(false);
+                        if (txQueue.Count == 0)
+                        {
+                            await stream.FlushAsync(pumpToken).ConfigureAwait(false);
+                        }
                     }
                 }
                 catch (OperationCanceledException)
@@ -546,6 +549,10 @@ public sealed partial class ObxodkaStreamTransport
                             if (payloadLen >= 2)
                             {
                                 var ackMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan[..2]);
+                                if (_pendingMtuSyncAcks.TryRemove(ackMtu, out var ackTcs))
+                                {
+                                    _ = ackTcs.TrySetResult(true);
+                                }
                                 AppLogger.Log($"[OBXODKA-STREAM] Server confirmed locked MTU {ackMtu}B");
                             }
                         }

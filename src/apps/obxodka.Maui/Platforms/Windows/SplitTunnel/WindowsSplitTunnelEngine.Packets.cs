@@ -55,6 +55,18 @@ internal static partial class WindowsSplitTunnelEngine
         adapter.SendPacket(resp);
     }
 
+    //мгновенный сброс исходящего ipv6 tcp-соединения в режиме принудительной блокировки ipv6 (только ipv4)
+    internal static bool TryRejectIpv6Packet(byte[] origPacket, int length, WintunAdapter adapter)
+    {
+        if (length >= 60 && (origPacket[0] >> 4) == 6 && origPacket[6] == 6)
+        {
+            SendIpv6TcpReset(origPacket.AsSpan(0, length), adapter);
+            return true;
+        }
+
+        return false;
+    }
+
     //генерация и отправка ipv6 tcp rst для сброса сессии исключенного приложения
     private static void SendIpv6TcpReset(ReadOnlySpan<byte> origPacket, WintunAdapter adapter)
     {

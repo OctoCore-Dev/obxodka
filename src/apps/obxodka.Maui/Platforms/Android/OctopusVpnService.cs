@@ -132,7 +132,7 @@ public sealed partial class OctopusVpnService : VpnService
         {
             try
             {
-                await AndroidVpnService.Instance.StopVpnAsync().ConfigureAwait(false);
+                await AndroidVpnService.Orchestrator.StopVpnAsync().ConfigureAwait(false);
             }
             catch { }
         });
@@ -175,12 +175,9 @@ public sealed partial class OctopusVpnService : VpnService
         }
     }
 
-    //привязка платформенной защиты сокетов к транспортным фабрикам ядра
-    public static void HookProtection()
-    {
-        ObxodkaStreamTransport.OnSocketCreated = sock => ProtectSocket(sock);
-        ObxodkaWebSocketTransport.OnSocketCreated = sock => ProtectSocket(sock);
-    }
+    //привязка платформенной защиты сокетов к ядру
+    public static void HookProtection() =>
+        OctopusEngine.Current.ProtectTransportSockets(sock => ProtectSocket(sock));
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
@@ -202,8 +199,6 @@ public sealed partial class OctopusVpnService : VpnService
 
         OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
         OctopusEngine.Current.OnPacketReceived += InjectPacketToAndroid;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
 
         _ = ServiceReadyTcs?.TrySetResult(this);
 
@@ -335,10 +330,7 @@ public sealed partial class OctopusVpnService : VpnService
                     _lastActiveNetworkId = netId;
                     Volatile.Write(ref _lastReconnectTicks, now);
                     AppLogger.Log($"[NETWORK ROAMING] Physical network changed to {netId}. Delegating seamless reconnect to engine.");
-                    if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
-                    {
-                        AndroidVpnService.Instance.TriggerImmediateReconnect();
-                    }
+                    AndroidVpnService.Instance.NotifyPlatformNetworkChanged();
                 }
                 else
                 {
@@ -385,9 +377,6 @@ public sealed partial class OctopusVpnService : VpnService
             }
         }
     }
-
-    private void HandleEngineDrop() =>
-        AndroidVpnService.Instance.HandleEngineDrop();
 
     private void CreateNotificationChannel()
     {
@@ -449,7 +438,14 @@ public sealed partial class OctopusVpnService : VpnService
             return;
         }
 
-        if (Math.Abs(clampedMtu - _currentTunMtu) < 20)
+        if (clampedMtu <= _currentTunMtu)
+        {
+            //при снижении mtu конвейер PacketPipeline сам зажимает tcp mss и фрагментирует пакеты без разрыва активных сокетов tun0
+            AppLogger.Log($"[VPN MTU] Applying downshifted MTU {clampedMtu}B in PacketPipeline without tearing down active tun0 ({_currentTunMtu}B).");
+            return;
+        }
+
+        if (clampedMtu - _currentTunMtu < 20)
         {
             return;
         }
@@ -517,8 +513,9 @@ public sealed partial class OctopusVpnService : VpnService
                     .SetBlocking(true)
                     .AddRoute("0.0.0.0", 0);
 
+                var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
                 var ip6 = OctopusEngine.Current.AssignedIpV6;
-                var effectiveV6 = (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
+                var effectiveV6 = !blockIpv6 && !string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6
                     ? ip6
                     : "fd00::2";
 
@@ -553,13 +550,16 @@ public sealed partial class OctopusVpnService : VpnService
                     _ = builder.AddDnsServer(dns);
                 }
 
-                foreach (var dns6 in DnsDefaults.TunnelDnsServersIPv6)
+                if (!blockIpv6)
                 {
-                    try
+                    foreach (var dns6 in DnsDefaults.TunnelDnsServersIPv6)
                     {
-                        _ = builder.AddDnsServer(dns6);
+                        try
+                        {
+                            _ = builder.AddDnsServer(dns6);
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
 
                 var bypassed = new AppManager().GetBypassedPackages();
@@ -780,7 +780,6 @@ public sealed partial class OctopusVpnService : VpnService
         _isTunRunning = false;
 
         OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
 
         var cts = _vpnCts;
         _vpnCts = null;

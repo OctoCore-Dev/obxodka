@@ -16,7 +16,7 @@ public sealed class ApiService(HttpClient client)
         {
             var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
             var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-            ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+            OctopusEngine.Current.ProtectSocket(socket);
             try
             {
                 await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
@@ -91,7 +91,7 @@ public sealed class ApiService(HttpClient client)
 
                 targetIp ??= IPAddress.Parse("1.1.1.1");
                 var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+                OctopusEngine.Current.ProtectSocket(socket);
                 try
                 {
                     await socket.ConnectAsync(new IPEndPoint(targetIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
@@ -283,7 +283,7 @@ public sealed class ApiService(HttpClient client)
                 foreach (var port in fallbackPorts)
                 {
                     var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
+                    OctopusEngine.Current.ProtectSocket(socket);
                     try
                     {
                         using var portCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);

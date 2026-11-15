@@ -97,8 +97,6 @@ public sealed partial class OctopusEngine
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                    EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
@@ -109,8 +107,6 @@ public sealed partial class OctopusEngine
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                    EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
@@ -130,22 +126,12 @@ public sealed partial class OctopusEngine
                 EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
                 AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server.");
             }
-            else
-            {
-                _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
-            }
             return deltaRx > 0 && deltaTx > 0;
         }
         catch (OperationCanceledException)
         {
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
-            if (deltaRx > 0)
-            {
-                _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
-            }
             return deltaRx > 0 && deltaTx > 0;
         }
         finally

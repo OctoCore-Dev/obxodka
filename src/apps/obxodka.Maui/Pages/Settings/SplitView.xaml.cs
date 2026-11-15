@@ -380,6 +380,9 @@ public sealed partial class SplitView : ContentView
 
     public async Task PlayEntranceAnimationAsync()
     {
+#if WINDOWS
+        LoadWindowsSitesAndPresetsState();
+#endif
         ResetHeaderToVisible();
         Opacity = 1;
         TranslationY = 0;

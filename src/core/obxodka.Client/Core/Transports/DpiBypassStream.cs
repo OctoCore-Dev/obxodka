@@ -169,38 +169,40 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
-    //асинхронная запись с разделением sni при первом вызове
-    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    //асинхронная запись с разделением sni при первом вызове без аллокации автомата на последующих записях
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+        !_bypassEnabled || !_firstWrite || buffer.Length <= 32
+            ? _innerStream.WriteAsync(buffer, cancellationToken)
+            : WriteFirstWithBypassAsync(buffer, cancellationToken);
+
+    //асинхронная нарезка первого clienthello для обхода dpi
+    private async ValueTask WriteFirstWithBypassAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
     {
-        if (_bypassEnabled && _firstWrite && buffer.Length > 32)
+        _firstWrite = false;
+        if (TryDetermineSplitPoints(buffer.Span, out var split1, out var delay1))
         {
-            _firstWrite = false;
-            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var delay1))
+            if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer.Span))
             {
-                if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer.Span))
-                {
-                    await WriteTlsRecordFragmentsAsync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                //сегментация l4 tcp: отправка первой части clienthello, пауза и отправка остатка
-                AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
-                await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-                if (delay1 > 0)
-                {
-                    await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
-                }
-
-                await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await WriteTlsRecordFragmentsAsync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
+            //сегментация l4 tcp: отправка первой части clienthello, пауза и отправка остатка
+            AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
+            await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+            if (delay1 > 0)
+            {
+                await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
+            }
+
+            await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return;
         }
 
+        AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
         await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 

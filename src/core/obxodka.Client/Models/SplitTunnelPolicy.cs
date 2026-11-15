@@ -180,9 +180,6 @@ public sealed class SplitTunnelPolicy
     {
         "speedtest.ru",
         "spb.speedtest.ru",
-        "speedtest.net",
-        "spb.speedtest.net",
-        "fast.com",
         "selectel.ru",
         "selectel.net",
         "rostelecom.ru",
@@ -225,8 +222,8 @@ public sealed class SplitTunnelPolicy
     //направлять ли абсолютно все сайты в зонах .ru, .su, .рф в обход туннеля
     public bool BypassAllRuTlds { get; set; } = true;
 
-    //направлять ли серверы замера скорости и телеком-провайдеров в обход туннеля
-    public bool BypassRuSpeedtest { get; set; } = true;
+    //направлять ли серверы замера скорости рф в обход туннеля (по умолчанию отключено для точного теста vpn)
+    public bool BypassRuSpeedtest { get; set; }
 
     //пользовательские IP-адреса и подсети для прямого подключения
     public List<string> CustomBypassIps { get; set; } = [];

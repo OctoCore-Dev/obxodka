@@ -178,4 +178,19 @@ public class SplitTunnelPolicyTests
         var updatedSnapshot = policy.GetActiveBypassRoutes();
         Assert.Equal(2, updatedSnapshot.Count);
     }
+
+    [Fact]
+    public void BypassRuSpeedtest_DisabledByDefault_AndSpeedtestDomainsRoutedThroughVpn()
+    {
+        var policy = new SplitTunnelPolicy();
+
+        Assert.False(policy.BypassRuSpeedtest);
+        Assert.False(policy.IsDomainBypassed("speedtest.net"));
+        Assert.False(policy.IsDomainBypassed("www.speedtest.net"));
+        Assert.False(policy.IsDomainBypassed("spb.speedtest.net"));
+        Assert.False(policy.IsDomainBypassed("fast.com"));
+        Assert.False(policy.IsDomainBypassed("speed.cloudflare.com"));
+        Assert.False(policy.IsDomainBypassed("whoer.net"));
+        Assert.False(policy.IsDomainBypassed("browserleaks.com"));
+    }
 }

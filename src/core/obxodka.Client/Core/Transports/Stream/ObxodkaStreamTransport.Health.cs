@@ -325,7 +325,7 @@ public sealed partial class ObxodkaStreamTransport
             buf[10] = BuildRxAliveMask(Stopwatch.GetTimestamp(), maxSilenceMs: 3500, includePreferredFlags: true);
             RandomNumberGenerator.Fill(buf.AsSpan(11, size - 11));
 
-            var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Math.Clamp(Volatile.Read(ref _preferredRay), 0, 1);
+            var targetRay = SelectHealthyProbeRay();
             if (!_txChannels[targetRay].TryEnqueue(buf, size))
             {
                 ArrayPool<byte>.Shared.Return(buf);
@@ -462,20 +462,97 @@ public sealed partial class ObxodkaStreamTransport
         }
     }
 
-    //синхронизация значения mtu с сервером
-    public Task SendMtuSyncAsync(int mtu)
+    //выбор живого луча для управляющих и mtu зондов с учетом предпочтительного канала
+    private int SelectHealthyProbeRay()
     {
-        var buf = ArrayPool<byte>.Shared.Rent(4);
-        buf[0] = 0xCC;
-        buf[1] = 0xDD;
-        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(2, 2), (ushort)mtu);
-        var targetRay = Volatile.Read(ref _activeRays) > 1 ? 0 : Math.Clamp(Volatile.Read(ref _preferredRay), 0, 1);
-        if (!_txChannels[targetRay].TryEnqueue(buf, 4))
+        var pref = Math.Clamp(Volatile.Read(ref _preferredRay), 0, 1);
+        var prefRx = pref == 0 ? Volatile.Read(ref _lastRxTicks0) : Volatile.Read(ref _lastRxTicks1);
+        if (prefRx > 0)
         {
-            ArrayPool<byte>.Shared.Return(buf);
+            return pref;
         }
 
-        return Task.CompletedTask;
+        var alt = pref == 0 ? 1 : 0;
+        var altRx = alt == 0 ? Volatile.Read(ref _lastRxTicks0) : Volatile.Read(ref _lastRxTicks1);
+        return altRx > 0
+            ? alt
+            : (Volatile.Read(ref _activeRays) > 1 ? pref : 0);
+    }
+
+    //синхронизация значения mtu с сервером и ожидание подтверждения
+    public async Task SendMtuSyncAsync(int mtu)
+    {
+        if (!IsConnected || _cts is { IsCancellationRequested: true })
+        {
+            return;
+        }
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (_pendingMtuSyncAcks.TryRemove(mtu, out var staleTcs))
+            {
+                _ = staleTcs.TrySetResult(false);
+            }
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pendingMtuSyncAcks[mtu] = tcs;
+
+            var buf = ArrayPool<byte>.Shared.Rent(4);
+            buf[0] = 0xCC;
+            buf[1] = 0xDD;
+            BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(2, 2), (ushort)mtu);
+            var targetRay = SelectHealthyProbeRay();
+            if (!_txChannels[targetRay].TryEnqueue(buf, 4))
+            {
+                ArrayPool<byte>.Shared.Return(buf);
+                _ = _pendingMtuSyncAcks.TryRemove(mtu, out _);
+                return;
+            }
+
+            try
+            {
+                var sessionToken = _cts?.Token ?? CancellationToken.None;
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(sessionToken);
+                timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(1500));
+                using var reg = timeoutCts.Token.Register(() => tcs.TrySetResult(false));
+                if (await tcs.Task.ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            finally
+            {
+                if (_pendingMtuSyncAcks.TryGetValue(mtu, out var registered) && ReferenceEquals(registered, tcs))
+                {
+                    _ = _pendingMtuSyncAcks.TryRemove(mtu, out _);
+                }
+            }
+
+            if (_cts is { IsCancellationRequested: true } || !IsConnected)
+            {
+                return;
+            }
+        }
+    }
+
+    //отмена ожидающих служебных зондов и подтверждений при остановке
+    private void CancelPendingControlWaiters()
+    {
+        foreach (var kvp in _pendingMtuProbes)
+        {
+            if (_pendingMtuProbes.TryRemove(kvp.Key, out var tcs))
+            {
+                _ = tcs.TrySetCanceled();
+            }
+        }
+
+        foreach (var kvp in _pendingMtuSyncAcks)
+        {
+            if (_pendingMtuSyncAcks.TryRemove(kvp.Key, out var tcs))
+            {
+                _ = tcs.TrySetCanceled();
+            }
+        }
     }
 
     //освобождение синхронных ресурсов
@@ -488,6 +565,7 @@ public sealed partial class ObxodkaStreamTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
+        CancelPendingControlWaiters();
         _cts?.Cancel();
         for (var i = 0; i < _txChannels.Length; i++)
         {
@@ -511,6 +589,7 @@ public sealed partial class ObxodkaStreamTransport
 
         _disposed = true;
         Volatile.Write(ref _connected, false);
+        CancelPendingControlWaiters();
         using var cts = Interlocked.Exchange(ref _cts, null);
         if (cts != null)
         {

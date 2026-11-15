@@ -144,7 +144,9 @@ public sealed partial class OctopusEngine
 
             await PrepareExternalEndpointBypassAsync(step, ct).ConfigureAwait(false);
 
-            SmartMtuEngine.CurrentMtu = SmartMtuEngine.InitialMtu;
+            SmartMtuEngine.CurrentMtu = step.Kind == TransportProtocolKind.ObxodkaStream
+                ? SmartMtuEngine.InitialMtu
+                : SmartMtuEngine.DefaultMtu;
             ResetTrafficCounters();
 
             using var attemptLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -644,8 +646,7 @@ public sealed partial class OctopusEngine
                     }
                     else
                     {
-                        SmartMtuEngine.CurrentMtu = SmartMtuEngine.DefaultMtu;
-                        _ = swappedTransport.SendMtuSyncAsync(SmartMtuEngine.DefaultMtu);
+                        LockEdgeTransportMtu(swappedTransport);
                     }
 
                     return true;
@@ -735,10 +736,20 @@ public sealed partial class OctopusEngine
     }
 
     //установка платформенного обработчика защиты сокетов
-    public void ProtectTransportSockets(Action<Socket> protectAction)
+    public void ProtectTransportSockets(Action<Socket>? protectAction)
     {
         _protectAction = protectAction;
-        _transport?.ProtectSockets(protectAction);
+        if (protectAction is not null)
+        {
+            _transport?.ProtectSockets(ProtectSocket);
+        }
+    }
+
+    //единая централизованная защита сокетов всех транспортов и зондов через активный платформенный адаптер
+    public void ProtectSocket(Socket socket)
+    {
+        ArgumentNullException.ThrowIfNull(socket);
+        _protectAction?.Invoke(socket);
     }
 
     //асинхронное освобождение ресурсов движка

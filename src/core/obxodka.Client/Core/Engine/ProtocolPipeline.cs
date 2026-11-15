@@ -51,13 +51,15 @@ public static class ProtocolPipelineRegistry
     public static bool TryGetFactory(TransportProtocolKind kind, [NotNullWhen(true)] out ITransportProtocolFactory? factory) =>
         s_factories.TryGetValue(kind, out factory);
 
-    //создание экземпляра транспорта для указанного шага кругового маршрута
+    //создание экземпляра транспорта для указанного шага кругового маршрута с автозащитой сокетов
     public static IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp = null)
     {
         ArgumentNullException.ThrowIfNull(step);
-        return s_factories.TryGetValue(step.Kind, out var factory)
+        var transport = s_factories.TryGetValue(step.Kind, out var factory)
             ? factory.CreateTransport(step, preferredAssignedIp)
             : throw new NotSupportedException($"Транспортный протокол '{step.Kind}' не зарегистрирован в конвейере.");
+        transport.ProtectSockets(OctopusEngine.Current.ProtectSocket);
+        return transport;
     }
 }
 

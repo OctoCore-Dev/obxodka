@@ -7,6 +7,7 @@ public sealed partial class OctopusEngine
     private int _isScanningMtu;
 
     //взвод сторожевого таймера контроля зависания трафика
+    //включение фонового сторожевого контроля трафика и калибровки mtu
     public void ArmTrafficWatchdog()
     {
         Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
@@ -14,12 +15,37 @@ public sealed partial class OctopusEngine
         if (_transport is ObxodkaWebSocketTransport or ObxodkaXhttpTransport)
         {
             //на облачных edge-каналах не бьем пачками зондов сразу после хэндшейка чтобы не триггерить тспу/waf
-            SmartMtuEngine.CurrentMtu = SmartMtuEngine.DefaultMtu;
-            _ = _transport?.SendMtuSyncAsync(SmartMtuEngine.DefaultMtu);
+            LockEdgeTransportMtu(_transport);
             return;
         }
 
         ScheduleSmartMtuScan(4000);
+    }
+
+    //фиксация безопасного mtu 1280 для облачных транспортов с синхронизацией ос и сервера
+    private void LockEdgeTransportMtu(IVpnTransport? transport)
+    {
+        if (transport is null)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            const int targetMtu = SmartMtuEngine.DefaultMtu;
+            try
+            {
+                SmartMtuEngine.CurrentMtu = targetMtu;
+                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(targetMtu));
+                await transport.SendMtuSyncAsync(targetMtu).ConfigureAwait(false);
+                OnMtuUpdated?.Invoke(targetMtu);
+                EmitStatus(VpnStatusMessages.MtuLocked(targetMtu));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                AppLogger.LogWarning($"[SMART MTU] Edge MTU lock sync error: {ex.Message}");
+            }
+        });
     }
 
     //планирование отложенного интеллектуального замера mtu

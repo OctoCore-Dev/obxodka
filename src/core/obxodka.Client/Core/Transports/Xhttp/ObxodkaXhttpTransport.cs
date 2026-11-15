@@ -107,10 +107,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                         SendBufferSize = 4194304,
                         ReceiveBufferSize = 4194304
                     };
-                    OnSocketCreated?.Invoke(socket);
-                    ObxodkaWebSocketTransport.OnSocketCreated?.Invoke(socket);
-                    ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-                    _protectAction?.Invoke(socket);
+                    (_protectAction ?? OnSocketCreated ?? OctopusEngine.Current.ProtectSocket).Invoke(socket);
 
                     try
                     {

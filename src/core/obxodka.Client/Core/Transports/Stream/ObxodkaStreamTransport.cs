@@ -117,6 +117,9 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
     //ожидающие подтверждения зонды проверки mtu
     private readonly ConcurrentDictionary<long, TaskCompletionSource<int>> _pendingMtuProbes = new();
 
+    //ожидающие подтверждения синхронизации mtu от сервера
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<bool>> _pendingMtuSyncAcks = new();
+
     //список полученных тестовых размеров mtu
     private readonly List<int> _receivedBurstMtus = [];
 
@@ -190,8 +193,7 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                 socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 10);
                 socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 3);
                 socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
-                OnSocketCreated?.Invoke(socket);
-                _protectAction?.Invoke(socket);
+                (_protectAction ?? OnSocketCreated ?? OctopusEngine.Current.ProtectSocket).Invoke(socket);
 
                 AppLogger.Log($"[TCP] Dialing socket to {connectTarget} (ServerIp={serverIp}, Port={effectivePort}, Browser={browserProfile})...");
                 var sw = Stopwatch.StartNew();

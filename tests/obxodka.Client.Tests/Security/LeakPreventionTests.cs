@@ -80,4 +80,127 @@ public class LeakPreventionTests
         Assert.True(IPAddress.IsLoopback(loopback));
         Assert.False(IPAddress.IsLoopback(publicVpnServer));
     }
+
+    [Fact]
+    public void DnsDefaults_ProvidesValidIpv4AndIpv6ResolversWithoutLoopback()
+    {
+        Assert.NotEmpty(DnsDefaults.TrustedDnsServers);
+        Assert.NotEmpty(DnsDefaults.TunnelDnsServersIPv6);
+        Assert.Contains(DnsDefaults.PrimaryDns, DnsDefaults.TrustedDnsServers);
+        Assert.Contains(DnsDefaults.SecondaryDns, DnsDefaults.TrustedDnsServers);
+        Assert.Contains(DnsDefaults.PrimaryDnsV6, DnsDefaults.TunnelDnsServersIPv6);
+        Assert.Contains(DnsDefaults.SecondaryDnsV6, DnsDefaults.TunnelDnsServersIPv6);
+
+        foreach (var v4 in DnsDefaults.TrustedDnsServers)
+        {
+            Assert.True(IPAddress.TryParse(v4, out var addr));
+            Assert.Equal(AddressFamily.InterNetwork, addr.AddressFamily);
+            Assert.False(IPAddress.IsLoopback(addr));
+        }
+
+        foreach (var v6 in DnsDefaults.TunnelDnsServersIPv6)
+        {
+            Assert.True(IPAddress.TryParse(v6, out var addr));
+            Assert.Equal(AddressFamily.InterNetworkV6, addr.AddressFamily);
+            Assert.False(IPAddress.IsLoopback(addr));
+        }
+    }
+
+    [Fact]
+    public async Task LoopbackTunnel_UploadAndDownloadFramingThroughput_Exceeds200MbpsAsync()
+    {
+        const int packetSize = 1340;
+        const int totalPackets = 4096; //~5.5 MB
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        using var client = new TcpClient { NoDelay = true };
+        var acceptTask = listener.AcceptTcpClientAsync();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var server = await acceptTask;
+        server.NoDelay = true;
+        listener.Stop();
+
+        await using var clientStream = client.GetStream();
+        await using var serverStream = server.GetStream();
+
+        var sessionKey = ObxodkaFraming.DeriveSessionKey("loopback-bench", 0, 0x12345678u);
+        var samplePacket = new byte[packetSize];
+        samplePacket[0] = 0x45;
+        BinaryPrimitives.WriteUInt16BigEndian(samplePacket.AsSpan(2, 2), (ushort)packetSize);
+        samplePacket[9] = 6;
+        samplePacket[12] = 100;
+        samplePacket[13] = 64;
+        samplePacket[15] = 2;
+        samplePacket[16] = 1;
+        samplePacket[17] = 1;
+        samplePacket[18] = 1;
+        samplePacket[19] = 1;
+
+        var sw = Stopwatch.StartNew();
+        var rxTask = Task.Run(async () =>
+        {
+            var received = 0;
+            var recvBuf = new byte[65536];
+            var pending = 0;
+            while (received < totalPackets)
+            {
+                var n = await serverStream.ReadAsync(recvBuf.AsMemory(pending));
+                if (n <= 0)
+                {
+                    break;
+                }
+
+                pending += n;
+                var offset = 0;
+                while (pending - offset >= ObxodkaFraming.HeaderSize)
+                {
+                    if (!ObxodkaFraming.TryDecodeHeader(recvBuf.AsSpan(offset, ObxodkaFraming.HeaderSize), out var totalLen, out var payloadLen, out _, out var salt, sessionKey))
+                    {
+                        throw new InvalidOperationException("Loopback framing decode failed");
+                    }
+
+                    if (pending - offset < totalLen)
+                    {
+                        break;
+                    }
+
+                    ObxodkaFraming.UnmaskPayload(recvBuf.AsSpan(offset + ObxodkaFraming.HeaderSize, payloadLen), salt, sessionKey);
+                    received++;
+                    offset += totalLen;
+                }
+
+                if (offset > 0 && offset < pending)
+                {
+                    Buffer.BlockCopy(recvBuf, offset, recvBuf, 0, pending - offset);
+                }
+                pending -= offset;
+            }
+            return received;
+        });
+
+        var coalesce = new byte[262144];
+        var sent = 0;
+        while (sent < totalPackets)
+        {
+            var batchOffset = 0;
+            while (sent < totalPackets && batchOffset + ObxodkaFraming.HeaderSize + packetSize <= coalesce.Length)
+            {
+                var frameLen = ObxodkaFraming.HeaderSize + packetSize;
+                ObxodkaFraming.WriteFrame(coalesce.AsSpan(batchOffset, frameLen), ObxodkaFraming.CmdData, samplePacket, 0, sessionKey);
+                batchOffset += frameLen;
+                sent++;
+            }
+            await clientStream.WriteAsync(coalesce.AsMemory(0, batchOffset));
+        }
+        await clientStream.FlushAsync();
+
+        var receivedCount = await rxTask;
+        sw.Stop();
+
+        Assert.Equal(totalPackets, receivedCount);
+        var mbps = (totalPackets * (double)packetSize * 8.0) / (sw.Elapsed.TotalSeconds * 1_000_000.0);
+        Assert.True(mbps > 200.0, $"Expected >200 Mbps wire framing throughput, got {mbps:F1} Mbps");
+    }
 }

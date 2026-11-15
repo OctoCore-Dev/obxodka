@@ -10,6 +10,8 @@ public static class AppPreferenceKeys
     public const string UseTelemetry = "use_telemetry";
     public const string AdblockLastSyncTicks = "adblock_last_sync_ticks";
     public const string ForceWebSocket = "ForceWebSocket";
+    public const string BlockIpv6 = "BlockIpv6";
+    public const string BypassRuSites = "obxodka_win_preset_rutlds";
     public const string UserEmail = "user_email";
     public const string UserIsLogged = "user_is_logged";
     public const string UserSubUntil = "user_sub_until";

@@ -6,6 +6,12 @@ public sealed class PacketPipeline(OctopusEngine engine)
 {
     private readonly OctopusEngine _engine = engine;
 
+    //блокировать ли исходящий ipv6-трафик (режим только ipv4 для предотвращения любых ipv6-проверок)
+    public bool BlockIpv6Traffic { get; set; }
+
+    //делегат мгновенного локального отклонения заблокированного ipv6-пакета (например tcp rst)
+    public Func<byte[], int, bool>? Ipv6BlockResponder { get; set; }
+
     //делегат перехвата платформенного раздельного туннелирования (split tunnel)
     public Func<byte[], int, bool>? SplitTunnelInterceptor { get; set; }
 
@@ -17,6 +23,10 @@ public sealed class PacketPipeline(OctopusEngine engine)
 
     //делегат обратной доставки пакета в виртуальный сетевой интерфейс ос (wintun / android tun)
     public Action<byte[], int>? LocalDelivery { get; set; }
+
+    //проверка нужно ли блокировать исходящий ipv6 пакет в режиме только ipv4
+    public bool ShouldDropIpv6Packet(ReadOnlySpan<byte> packet) =>
+        BlockIpv6Traffic && packet.Length > 0 && (packet[0] >> 4) == 6;
 
     //обработка исходящего l3-пакета из сетевого стека ос (uplink)
     public void ProcessOutgoingPacket(byte[] inputBuf, int length, IVpnTransport? transport)
@@ -32,6 +42,15 @@ public sealed class PacketPipeline(OctopusEngine engine)
         //этап 1: фильтрация петель трафика к vpn серверу
         if (_engine.IsServerDestination(span, length))
         {
+            ArrayPool<byte>.Shared.Return(inputBuf);
+            return;
+        }
+
+        //этап 1.5: опциональная блокировка исходящего ipv6-трафика (режим только ipv4)
+        var version = inputBuf[0] >> 4;
+        if (ShouldDropIpv6Packet(span))
+        {
+            _ = Ipv6BlockResponder?.Invoke(inputBuf, length);
             ArrayPool<byte>.Shared.Return(inputBuf);
             return;
         }
@@ -64,7 +83,6 @@ public sealed class PacketPipeline(OctopusEngine engine)
         //этап 5: смарт-нарезка пакетов превышающих mtu туннеля (без ложных icmp сбоев в сокеты игр)
         if (length > currentMtu)
         {
-            var version = inputBuf[0] >> 4;
             if (version == 4)
             {
                 //нарезаем на валидные ipv4 фрагменты с уникальным id и отправляем напрямую в сокет

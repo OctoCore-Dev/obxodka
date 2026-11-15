@@ -2,110 +2,27 @@ using obxodka.Core.Models;
 
 namespace obxodka.Platforms.Windows;
 
-//управление жизненным циклом и состоянием vpn сервиса windows
+//платформенный драйвер windows (wintun, маршруты и защита от утечек) для единого оркестратора vpn
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService : IVpnService, IDisposable
+internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDisposable
 {
-    private CancellationTokenSource? _cts;
     private WintunAdapter? _adapter;
     private Task? _trafficTask;
 
-    public AppVpnState CurrentState { get; private set; } = AppVpnState.Disconnected;
-    public bool IsRunning => CurrentState == AppVpnState.Connected;
-
-    public event Action<AppVpnState>? OnStateChanged;
-    public event Action<string>? OnLogUpdated;
-    public event Action<string>? OnErrorOccurred;
-    public event Action<AppTrafficStats>? OnTrafficUpdated = delegate { };
-    public event Action<string>? OnForceLogoutRequested;
-
-    private string _currentServerIp = "";
-    private readonly List<string> _currentServerIpsToRoute = [];
-    private bool _isExplicitlyStopped;
-    private List<VpnServerDto> _fallbackServers = [];
-    private int _currentServerIndex;
-    private int _isHandlingDeadConnection;
-    private int _isHandlingDrop;
-    private string _currentAssignedIp = "";
-    private readonly SemaphoreSlim _vpnGate = new(1, 1);
-    private readonly Action<string> _statusMessageHandler;
-    private readonly Action<string> _certRevokedHandler;
-    private readonly Action<long, long> _trafficUpdatedHandler;
-    private readonly EventHandler _processExitHandler;
-    private long _lastTrafficSent;
-    private long _lastTrafficReceived;
-    private long _lastTrafficTicks;
     public static SplitTunnelPolicy SplitTunnelPolicy => WindowsSplitTunnelEngine.Policy;
+
+    public bool SupportsKillSwitch => true;
+
+    public event Action? OnPlatformNetworkChanged
+    {
+        add { }
+        remove { }
+    }
 
     public WindowsVpnService()
     {
         AppManager.SyncPolicyFromPreferences();
-        OctopusEngine.Current.ProtectTransportSockets(BindSocketToPhysicalAdapter);
-        ObxodkaStreamTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
-        ObxodkaWebSocketTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
-        ObxodkaXhttpTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
-        OctopusEngine.Current.EnsureExternalHostRoutesAsync = EnsureHostRoutesBatchAsync;
-
-        _statusMessageHandler = msg => OnLogUpdated?.Invoke(msg);
-        _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
-        _trafficUpdatedHandler = HandleEngineTrafficUpdated;
-        _processExitHandler = (_, _) =>
-        {
-            try
-            {
-                _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
-            }
-            catch { }
-        };
-
-        OctopusEngine.Current.OnStatusMessage += _statusMessageHandler;
         _ = Task.Run(CleanupStaleRoutesAsync);
-        AppDomain.CurrentDomain.ProcessExit += _processExitHandler;
-        OctopusEngine.OnCertificateRevoked += _certRevokedHandler;
-        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
-        OctopusEngine.Current.OnTrafficUpdated += _trafficUpdatedHandler;
-        OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
-        OctopusEngine.Current.OnMtuUpdated += HandleMtuUpdated;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
-        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
-        OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
-        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
-        OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
-        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
-        OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
-        OctopusEngine.Current.OnTunnelIpChanged -= HandleTunnelIpChanged;
-        OctopusEngine.Current.OnTunnelIpChanged += HandleTunnelIpChanged;
-    }
-
-    //трансляция счетчиков трафика ядра в событие интерфейса vpn сервиса
-    private void HandleEngineTrafficUpdated(long sentBytes, long receivedBytes)
-    {
-        var nowTicks = Environment.TickCount64;
-        var prevTicks = Interlocked.Exchange(ref _lastTrafficTicks, nowTicks);
-        var prevSent = Interlocked.Exchange(ref _lastTrafficSent, sentBytes);
-        var prevReceived = Interlocked.Exchange(ref _lastTrafficReceived, receivedBytes);
-
-        if (prevTicks <= 0 || nowTicks <= prevTicks)
-        {
-            return;
-        }
-
-        var elapsedSec = (nowTicks - prevTicks) / 1000.0;
-        var upBps = sentBytes >= prevSent ? (long)((sentBytes - prevSent) / elapsedSec) : 0;
-        var downBps = receivedBytes >= prevReceived ? (long)((receivedBytes - prevReceived) / elapsedSec) : 0;
-        OnTrafficUpdated?.Invoke(new AppTrafficStats
-        {
-            UploadSpeedBps = upBps,
-            DownloadSpeedBps = downBps
-        });
-    }
-
-    //обновление внутреннего состояния vpn сервиса
-    private void UpdateState(AppVpnState state)
-    {
-        CurrentState = state;
-        OnStateChanged?.Invoke(state);
     }
 
     //запуск системной утилиты с таймаутом
@@ -165,23 +82,9 @@ internal sealed partial class WindowsVpnService : IVpnService, IDisposable
         }
     }
 
-    //освобождение ресурсов vpn сервиса
+    //освобождение ресурсов windows-драйвера
     public void Dispose()
     {
-        AppDomain.CurrentDomain.ProcessExit -= _processExitHandler;
-        OctopusEngine.Current.OnStatusMessage -= _statusMessageHandler;
-        OctopusEngine.OnCertificateRevoked -= _certRevokedHandler;
-        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
-        OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
-        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
-        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
-        OctopusEngine.Current.OnTunnelIpChanged -= HandleTunnelIpChanged;
-        OctopusEngine.Current.EnsureExternalHostRoutesAsync = null;
-        _ = StopVpnAsync();
-        _cts?.Dispose();
-        _vpnGate.Dispose();
         _adapter?.Dispose();
         _adapter = null;
     }

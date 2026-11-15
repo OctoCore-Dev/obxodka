@@ -259,7 +259,7 @@ public sealed class MainActivity : MauiAppCompatActivity
             }
             else
             {
-                AndroidVpnService.Instance.SetError("Пользователь отклонил запрос на подключение");
+                AndroidVpnService.Orchestrator.ReportError("Пользователь отклонил запрос на подключение");
             }
         }
         else if (requestCode == VpnCustomRequestCode)

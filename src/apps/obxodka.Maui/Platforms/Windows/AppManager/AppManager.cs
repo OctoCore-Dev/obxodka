@@ -9,7 +9,7 @@ public sealed partial class AppManager : IAppManager
     public const string PresetBanksKey = "obxodka_win_preset_banks";
     public const string PresetMediaKey = "obxodka_win_preset_media";
     public const string PresetMarketKey = "obxodka_win_preset_market";
-    public const string PresetRuTldsKey = "obxodka_win_preset_rutlds";
+    public const string PresetRuTldsKey = AppPreferenceKeys.BypassRuSites;
     public const string CustomRulesKey = "obxodka_win_custom_rules";
 
     private List<AppInfoItem>? _cachedApps;

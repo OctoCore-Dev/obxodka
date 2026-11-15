@@ -81,7 +81,8 @@ internal static partial class MauiProgram
                 certificateAudit: new WindowsCertificateAuditService(),
                 notification: new WindowsNotificationService());
 
-            builder.Services.AddSingleton<IVpnService, WindowsVpnService>();
+            builder.Services.AddSingleton<ITunnelPlatformAdapter, WindowsVpnService>();
+            builder.Services.AddSingleton<IVpnService>(sp => new VpnSessionOrchestrator(sp.GetRequiredService<ITunnelPlatformAdapter>()));
             builder.Services.AddSingleton<IAppManager, AppManager>();
             builder.Services.AddSingleton<IAppUpdaterService, WindowsAppUpdaterService>();
         }
@@ -170,7 +171,8 @@ internal static partial class MauiProgram
     [SupportedOSPlatform("android29.0")]
     private static void RegisterAndroidServices(IServiceCollection services)
     {
-        _ = services.AddSingleton<IVpnService>(_ => AndroidVpnService.Instance);
+        var orchestrator = AndroidVpnService.Orchestrator;
+        _ = services.AddSingleton<IVpnService>(_ => orchestrator);
         _ = services.AddSingleton<IAppManager, AppManager>();
         _ = services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();
         _ = services.AddSingleton<IQrScannerService, AndroidQrScannerService>();

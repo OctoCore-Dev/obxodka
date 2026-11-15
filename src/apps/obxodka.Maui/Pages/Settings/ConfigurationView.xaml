@@ -150,6 +150,8 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Border
@@ -239,9 +241,143 @@
                     </Border>
 
                     <Border
-                        x:Name="RunOnStartupCard"
+                        x:Name="ForceCloudflareCard"
                         Grid.Row="{OnIdiom Desktop=1,
+                                           Phone=2}"
+                        Grid.Column="0"
+                        Padding="{OnIdiom Desktop='12,10',
+                                          Phone='16'}"
+                        HeightRequest="{OnIdiom Desktop=66,
+                                                Default=-1}"
+                        Style="{StaticResource NeoCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=GlobeShield24}"
+                                IconColor="{DynamicResource Accent}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=13,
+                                                       Default=15}"
+                                    LineBreakMode="TailTruncation"
+                                    Text="Только через Cloudflare" />
+                                <Label
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Принудительный WebSocket CDN." />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="ForceCloudflareToggle"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                Toggled="OnForceCloudflareToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="BlockIpv6Card"
+                        Grid.Row="{OnIdiom Desktop=1,
+                                           Phone=3}"
+                        Grid.Column="{OnIdiom Desktop=1,
+                                              Phone=0}"
+                        Padding="{OnIdiom Desktop='12,10',
+                                          Phone='16'}"
+                        HeightRequest="{OnIdiom Desktop=66,
+                                                Default=-1}"
+                        Style="{StaticResource NeoCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Shield24}"
+                                IconColor="{DynamicResource PrimaryBright}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=13,
+                                                       Default=15}"
+                                    LineBreakMode="TailTruncation"
+                                    Text="Режим только IPv4" />
+                                <Label
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Блокирует IPv6 и утечки Teredo." />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="BlockIpv6Toggle"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                Toggled="OnBlockIpv6Toggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="RuAutoBypassCard"
+                        Grid.Row="{OnIdiom Desktop=2,
                                            Phone=4}"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="{OnIdiom Desktop=2,
+                                                  Phone=1}"
+                        Padding="{OnIdiom Desktop='12,10',
+                                          Phone='16'}"
+                        HeightRequest="{OnIdiom Desktop=66,
+                                                Default=-1}"
+                        IsVisible="{OnIdiom Desktop=True,
+                                            Phone=False}"
+                        Style="{StaticResource NeoCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Globe24}"
+                                IconColor="{DynamicResource Success}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=13,
+                                                       Default=15}"
+                                    LineBreakMode="TailTruncation"
+                                    Text="Полный обход РФ" />
+                                <Label
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Пускать домены .ru и РФ-сервисы мимо VPN (Split Tunnel)." />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="RuAutoBypassToggle"
+                                Grid.Column="2"
+                                IsToggled="True"
+                                Toggled="OnRuAutoBypassToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="RunOnStartupCard"
+                        Grid.Row="{OnIdiom Desktop=3,
+                                           Phone=5}"
                         Grid.Column="0"
                         Grid.ColumnSpan="{OnIdiom Desktop=2,
                                                   Phone=1}"
@@ -287,8 +423,8 @@
 
                     <Border
                         x:Name="SpeedTestCard"
-                        Grid.Row="{OnIdiom Desktop=2,
-                                           Phone=2}"
+                        Grid.Row="{OnIdiom Desktop=4,
+                                           Phone=6}"
                         Grid.Column="0"
                         Grid.ColumnSpan="{OnIdiom Desktop=2,
                                                   Phone=1}"
@@ -348,8 +484,8 @@
 
                     <Border
                         x:Name="ThemesSettingsCard"
-                        Grid.Row="{OnIdiom Desktop=3,
-                                           Phone=3}"
+                        Grid.Row="{OnIdiom Desktop=5,
+                                           Phone=7}"
                         Grid.Column="0"
                         Grid.ColumnSpan="{OnIdiom Desktop=2,
                                                   Phone=1}"

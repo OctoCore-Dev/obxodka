@@ -9,6 +9,7 @@ internal sealed partial class WindowsVpnService
     {
         //конфигурация сквозного конвейера обработки пакетов
         var pipeline = OctopusEngine.Current.Pipeline;
+        pipeline.Ipv6BlockResponder = (buf, len) => _adapter is { } ad && WindowsSplitTunnelEngine.TryRejectIpv6Packet(buf, len, ad);
         pipeline.SplitTunnelInterceptor = (buf, len) => _adapter is { } ad && WindowsSplitTunnelEngine.TryInterceptOutgoingPacket(buf, len, ad);
         pipeline.IngressInspector = (span, len) => WindowsSplitTunnelEngine.InspectIncomingPacketFromVpn(span, len);
         pipeline.AdBlockFilter = (buf, len) => DnsAdBlocker.ProcessPacket(buf, len);

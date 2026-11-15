@@ -65,8 +65,7 @@ public sealed partial class OctopusEngine
         {
             using var cts = new CancellationTokenSource(timeoutMs);
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-            ObxodkaWebSocketTransport.OnSocketCreated?.Invoke(socket);
+            Current.ProtectSocket(socket);
             //прямой опрос глобального anycast ip cloudflare/google минуя dns кэш
             await socket.ConnectAsync(IPAddress.Parse("1.1.1.1"), 443, cts.Token).ConfigureAwait(false);
             return true;
@@ -78,8 +77,7 @@ public sealed partial class OctopusEngine
             {
                 using var cts2 = new CancellationTokenSource(timeoutMs);
                 using var socket2 = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket2);
-                ObxodkaWebSocketTransport.OnSocketCreated?.Invoke(socket2);
+                Current.ProtectSocket(socket2);
                 await socket2.ConnectAsync(IPAddress.Parse("77.88.55.242"), 443, cts2.Token).ConfigureAwait(false);
                 return true;
             }

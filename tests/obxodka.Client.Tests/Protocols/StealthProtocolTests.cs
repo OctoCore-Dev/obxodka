@@ -975,4 +975,48 @@ public sealed class StealthProtocolTests
             return ValueTask.CompletedTask;
         }
     }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void PacketRouterIpv4Fragments_HashAllFragmentsToSamePrimaryRay_RegardlessOfOffset(int activeRays)
+    {
+        for (ushort ipId = 0x1000; ipId < 0x1020; ipId++)
+        {
+            var frag1 = new byte[1280];
+            frag1[0] = 0x45;
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(2, 2), 1280);
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(4, 2), ipId);
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(6, 2), 0x2000); //mf=1, offset=0
+            frag1[9] = 6;
+            frag1[12] = 100;
+            frag1[13] = 64;
+            frag1[14] = 0;
+            frag1[15] = 2;
+            frag1[16] = 151;
+            frag1[17] = 101;
+            frag1[18] = 1;
+            frag1[19] = 69;
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(20, 2), (ushort)(40000 + ipId));
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(22, 2), 443);
+
+            var frag2 = new byte[200];
+            frag2[0] = 0x45;
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(2, 2), 200);
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(4, 2), ipId);
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(6, 2), 157); //mf=0, offset>0
+            frag2[9] = 6;
+            frag1.AsSpan(12, 8).CopyTo(frag2.AsSpan(12, 8));
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(20, 2), 0xDEAD);
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(22, 2), 0xBEEF);
+
+            PacketRouter.GetRays(frag1.AsSpan(), activeRays, out var ray1, out var sec1);
+            PacketRouter.GetRays(frag2.AsSpan(), activeRays, out var ray2, out var sec2);
+
+            Assert.Equal(ray1, ray2);
+            Assert.Equal(-1, sec1);
+            Assert.Equal(-1, sec2);
+        }
+    }
 }
