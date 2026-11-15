@@ -1,9 +1,9 @@
 namespace obxodka.Client.Tests;
 
-[Trait("Category", "Unit")]
 public class WebSocketTransportTests
 {
     [Fact]
+    [Trait("Category", "Unit")]
     public void ObxodkaWebSocketTransportInitializesWithCorrectProtocolNameAndDefaults()
     {
         using var transport = new ObxodkaWebSocketTransport(443, AppConfig.PrimaryDomain);
@@ -17,6 +17,10 @@ public class WebSocketTransportTests
     [Trait("Category", "Live")]
     public async Task ObxodkaWebSocketTransportCanHandshakeWithLiveServerAsync()
     {
+        if (Environment.GetEnvironmentVariable("OBXODKA_RUN_LIVE_TESTS") != "1")
+        {
+            return;
+        }
         using var transport = new ObxodkaWebSocketTransport(443, AppConfig.PrimaryDomain);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var dummyThumbprint = "0123456789ABCDEF0123456789ABCDEF";

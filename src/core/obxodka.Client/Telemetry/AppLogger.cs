@@ -55,7 +55,9 @@ public static class AppLogger
     {
         try
         {
-            var logDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "logs");
+            var logDir = obxodka.Client.Telemetry.TelemetryFilter.IsTestEnvironment
+                ? Path.Join(Path.GetTempPath(), "obxodka_test_logs")
+                : Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "logs");
             _ = Directory.CreateDirectory(logDir);
 
             LogFilePath = Path.Join(logDir, "client.log");
