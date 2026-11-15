@@ -139,14 +139,11 @@ public static class CertificateValidator
                         return true;
                     }
 
-                    //толерантность к устаревшим кросс-подписанным корням на мобильных платформах
-                    var onlyLegacyRootStatus = chain.ChainStatus.All(s =>
-                        s.Status is X509ChainStatusFlags.NoError or
-                                    X509ChainStatusFlags.NotTimeValid or
-                                    X509ChainStatusFlags.UntrustedRoot);
+                    //толерантность к устаревшим кросс-подписанным корням на мобильных платформах допускается только без критических ошибок цепочки
+                    var onlyLegacyRootStatus = chain.ChainStatus.All(s => s.Status is X509ChainStatusFlags.NoError);
                     if (onlyLegacyRootStatus && chain.ChainElements.Count > 1)
                     {
-                        AppLogger.Log("[CERT OK] Trusted domain passed with tolerated legacy root chain status.");
+                        AppLogger.Log("[CERT OK] Trusted domain passed with strict chain validation.");
                         return true;
                     }
                 }

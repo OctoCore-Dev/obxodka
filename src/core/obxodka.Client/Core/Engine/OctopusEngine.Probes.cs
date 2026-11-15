@@ -62,7 +62,10 @@ public sealed partial class OctopusEngine
                 var cycle = Interlocked.Increment(ref probeCycle);
                 try
                 {
-                    await _transport.SendPingProbeAsync().ConfigureAwait(false);
+                    if (_transport is { } activeTransport)
+                    {
+                        await activeTransport.SendPingProbeAsync().ConfigureAwait(false);
+                    }
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException or InvalidOperationException)
                 {

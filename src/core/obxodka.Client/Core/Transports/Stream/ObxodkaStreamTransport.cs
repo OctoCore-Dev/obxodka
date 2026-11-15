@@ -220,7 +220,10 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
 
         try
         {
-            return new HttpClient(handler, disposeHandler: true);
+            return new HttpClient(handler, disposeHandler: true)
+            {
+                Timeout = TimeSpan.FromSeconds(15)
+            };
         }
         catch
         {

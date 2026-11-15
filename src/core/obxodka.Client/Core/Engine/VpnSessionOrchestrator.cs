@@ -275,7 +275,13 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         }
         finally
         {
-            _ = _vpnGate.Release();
+            try
+            {
+                _ = _vpnGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 

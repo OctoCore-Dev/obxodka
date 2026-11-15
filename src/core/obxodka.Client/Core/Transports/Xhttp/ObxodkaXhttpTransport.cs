@@ -256,37 +256,57 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                 lastEx = ex;
                 AppLogger.LogWarning($"[OBXODKA-XHTTP] Candidate #{cIdx + 1}/{candidates.Count} '{candidate.ServerHost}:{candidate.Port}' failed: {ex.Message}");
                 ReportUnhealthyEndpoint();
-
-                if (!ownershipTransferred)
-                {
-                    downResp?.Dispose();
-                    upClient?.Dispose();
-                    downInvoker?.Dispose();
-                }
-
-                using var attemptTokenSource = Interlocked.Exchange(ref _cts, null);
-                if (attemptTokenSource is not null)
-                {
-                    await attemptTokenSource.CancelAsync().ConfigureAwait(false);
-                }
-
-                var loopTasks = _activeLoopTasks;
-                _activeLoopTasks = [];
-                if (loopTasks.Length > 0)
-                {
-                    try
-                    {
-                        await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromMilliseconds(800), CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch { }
-                }
-
-                Interlocked.Exchange(ref _downlinkInvoker, null)?.Dispose();
-                Interlocked.Exchange(ref _uplinkClient, null)?.Dispose();
+                await CleanupFailedAttemptAsync(downResp, upClient, downInvoker, ownershipTransferred).ConfigureAwait(false);
+            }
+            catch
+            {
+                ReportUnhealthyEndpoint();
+                await CleanupFailedAttemptAsync(downResp, upClient, downInvoker, ownershipTransferred).ConfigureAwait(false);
+                throw;
             }
         }
 
         throw lastEx ?? new TimeoutException("XHTTP connection failed across all candidates.");
+    }
+
+    //освобождение ресурсов и дренирование пула при неудачной попытке подключения xhttp
+    private async Task CleanupFailedAttemptAsync(HttpResponseMessage? downResp, HttpClient? upClient, HttpMessageInvoker? downInvoker, bool ownershipTransferred)
+    {
+        Volatile.Write(ref _connected, false);
+        using var attemptTokenSource = Interlocked.Exchange(ref _cts, null);
+        if (attemptTokenSource is not null)
+        {
+            await attemptTokenSource.CancelAsync().ConfigureAwait(false);
+        }
+
+        var loopTasks = _activeLoopTasks;
+        _activeLoopTasks = [];
+        if (loopTasks.Length > 0)
+        {
+            try
+            {
+                await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromMilliseconds(800), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or HttpRequestException or IOException or ObjectDisposedException or InvalidOperationException)
+            {
+                //подавление ожидаемых ошибок остановки фоновых задач
+            }
+        }
+
+        _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
+        if (!ownershipTransferred)
+        {
+            downResp?.Dispose();
+            upClient?.Dispose();
+            downInvoker?.Dispose();
+        }
+        else
+        {
+            downResp?.Dispose();
+        }
+
+        Interlocked.Exchange(ref _downlinkInvoker, null)?.Dispose();
+        Interlocked.Exchange(ref _uplinkClient, null)?.Dispose();
     }
 
     private async Task ReaderLoopAsync(HttpResponseMessage response, Stream stream, uint sessionKey, CancellationToken ct)

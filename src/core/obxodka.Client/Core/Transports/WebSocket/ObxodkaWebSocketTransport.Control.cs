@@ -209,20 +209,22 @@ public sealed partial class ObxodkaWebSocketTransport
         }
         var loopTasks = _activeLoopTasks;
         _activeLoopTasks = [];
+        var loopsCompleted = loopTasks.Length == 0;
         if (loopTasks.Length > 0)
         {
             try
             {
                 await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+                loopsCompleted = true;
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
             {
                 //игнорируем таймаут ожидания завершения фоновых циклов
             }
         }
-        _txQueue.Dispose();
         _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
-        if (_webSocket is { State: WebSocketState.Open })
+        _txQueue.Dispose();
+        if (loopsCompleted && _webSocket is { State: WebSocketState.Open })
         {
             try
             {

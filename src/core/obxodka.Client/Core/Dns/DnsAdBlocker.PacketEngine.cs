@@ -192,6 +192,8 @@ public static partial class DnsAdBlocker
         var flags = isNxDomain ? (ushort)0x8183 : (ushort)0x8180;
         BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(2, 2), flags);
         BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), (isAaaa || isNxDomain) ? (ushort)0 : (ushort)1);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(8, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(10, 2), 0);
 
         if (!isAaaa && !isNxDomain)
         {

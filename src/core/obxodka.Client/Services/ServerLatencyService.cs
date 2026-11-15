@@ -65,6 +65,7 @@ public static class ServerLatencyService
                 NoDelay = true
             };
 
+            OctopusEngine.Current.ProtectSocket(socket);
             var port = server.Port > 0 ? server.Port : 443;
             await socket.ConnectAsync(new IPEndPoint(resolvedIp, port), cts.Token).ConfigureAwait(false);
             sw.Stop();

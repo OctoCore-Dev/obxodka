@@ -149,8 +149,8 @@ public sealed partial class OctopusEngine
                 : SmartMtuEngine.DefaultMtu;
             ResetTrafficCounters();
 
-            using var attemptLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var oldCts = Interlocked.Exchange(ref _cts, CancellationTokenSource.CreateLinkedTokenSource(attemptLinkedCts.Token));
+            var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var oldCts = Interlocked.Exchange(ref _cts, sessionCts);
             if (oldCts is not null)
             {
                 try
@@ -163,7 +163,7 @@ public sealed partial class OctopusEngine
                 }
             }
 
-            var stepToken = _cts.Token;
+            var stepToken = sessionCts.Token;
             var stepProtocol = FormatStepProtocolName(step);
             IVpnTransport? transport = null;
             try

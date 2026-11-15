@@ -280,46 +280,48 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             catch (Exception ex) when (!ct.IsCancellationRequested && pIdx + 1 < candidates.Count)
             {
                 lastEx = ex;
-                Volatile.Write(ref _connected, false);
-                _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
                 AppLogger.LogWarning($"[OBXODKA-WS] Port {candidatePort} (Profile {ActiveBrowserProfile}) failed: {ex.Message}. Trying next candidate...");
-                using var retryCts = Interlocked.Exchange(ref _cts, null);
-                var loopTasks = _activeLoopTasks;
-                _activeLoopTasks = [];
-                try
-                {
-                    if (retryCts is not null)
-                    {
-                        await retryCts.CancelAsync().ConfigureAwait(false);
-                    }
-                    if (loopTasks.Length > 0)
-                    {
-                        await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    //подавление ожидаемой отмены фоновых задач попытки
-                }
-                catch (TimeoutException)
-                {
-                    //подавление таймаута ожидания фоновых задач при смене порта
-                }
-                _webSocket = null;
-                _wsInvoker = null;
-                DisposeAttemptTransport(ws, invoker);
+                await CleanupFailedAttemptAsync(ws, invoker, ownershipTransferred).ConfigureAwait(false);
             }
             catch
             {
-                if (!ownershipTransferred)
-                {
-                    DisposeAttemptTransport(ws, invoker);
-                }
+                await CleanupFailedAttemptAsync(ws, invoker, ownershipTransferred).ConfigureAwait(false);
                 throw;
             }
         }
 
         throw lastEx ?? new TimeoutException("WebSocket connection failed across all candidate ports.");
+    }
+
+    //освобождение ресурсов и дренирование пула при неудачной попытке подключения
+    private async Task CleanupFailedAttemptAsync(ClientWebSocket? ws, HttpMessageInvoker? invoker, bool ownershipTransferred)
+    {
+        Volatile.Write(ref _connected, false);
+        using var retryCts = Interlocked.Exchange(ref _cts, null);
+        var loopTasks = _activeLoopTasks;
+        _activeLoopTasks = [];
+        try
+        {
+            if (retryCts is not null)
+            {
+                await retryCts.CancelAsync().ConfigureAwait(false);
+            }
+            if (loopTasks.Length > 0)
+            {
+                await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            //подавление ожидаемой отмены фоновых задач попытки
+        }
+        _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
+        _webSocket = null;
+        _wsInvoker = null;
+        if (!ownershipTransferred || ws is not null || invoker is not null)
+        {
+            DisposeAttemptTransport(ws, invoker);
+        }
     }
 
     //создание и настройка клиентского сокета websocket для попытки подключения

@@ -257,17 +257,26 @@ public sealed partial class ObxodkaStreamTransport
 
         _inspector.RecordTx(ray0, nowTs);
 
+        //хеджирование дублированием во второй рабочий луч до передачи основного буфера в очередь, чтобы избежать гонки возврата в пул
+        byte[]? dup = null;
+        if (duplicateRay is 0 or 1 && duplicateRay != ray0)
+        {
+            dup = ArrayPool<byte>.Shared.Rent(length);
+            Buffer.BlockCopy(packet, 0, dup, 0, length);
+        }
+
         if (!_txChannels[ray0].TryEnqueue(packet, length))
         {
             ArrayPool<byte>.Shared.Return(packet);
+            if (dup is not null)
+            {
+                ArrayPool<byte>.Shared.Return(dup);
+            }
             return;
         }
 
-        //хеджирование дублированием во второй рабочий луч ray 0 или ray 1
-        if (duplicateRay is 0 or 1 && duplicateRay != ray0)
+        if (dup is not null)
         {
-            var dup = ArrayPool<byte>.Shared.Rent(length);
-            Buffer.BlockCopy(packet, 0, dup, 0, length);
             _inspector.RecordTx(duplicateRay, nowTs);
             if (!_txChannels[duplicateRay].TryEnqueue(dup, length))
             {
