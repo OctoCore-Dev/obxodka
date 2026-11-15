@@ -168,7 +168,7 @@ internal sealed partial class WindowsVpnService
                         OctopusEngine.Current.ResetTrafficCounters();
                         OctopusEngine.Current.ArmTrafficWatchdog();
                         UpdateState(AppVpnState.Connected);
-                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestored);
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ProtocolSwitched(OctopusEngine.Current.ActiveProtocolDisplayName));
                         return;
                     }
                 }
@@ -419,7 +419,7 @@ internal sealed partial class WindowsVpnService
                             ? step.Host
                             : (_currentServerIpsToRoute.FirstOrDefault() ?? targetIp);
                         _currentServerIp = resolvedStepIp;
-                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToNode(step.Host, step.Port));
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingWithProtocol(step.Host, step.Port, OctopusEngine.Current.ActiveProtocolDisplayName));
 
                         var ip = OctopusEngine.Current.AssignedIp;
                         var ipv6 = OctopusEngine.Current.AssignedIpV6;

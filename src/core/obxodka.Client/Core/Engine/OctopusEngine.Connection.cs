@@ -162,6 +162,7 @@ public sealed partial class OctopusEngine
             }
 
             var stepToken = _cts.Token;
+            var stepProtocol = FormatStepProtocolName(step);
             IVpnTransport? transport = null;
             try
             {
@@ -173,9 +174,12 @@ public sealed partial class OctopusEngine
 
                 _transport = transport;
                 ActiveProtocol = transport.ProtocolName;
+                ActiveProtocolDisplayName = stepProtocol;
                 ActiveRays = step.Kind == TransportProtocolKind.ObxodkaStream ? 2 : 1;
+                OnProtocolChanged?.Invoke();
                 WireTransportEvents(transport);
 
+                EmitStatus(VpnStatusMessages.TryingProtocol(stepProtocol, i + 1, _rotationRing.Count));
                 AppLogger.Log($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count}: {transport.ProtocolName} -> {step.Host}:{step.Port} (SNI={step.TargetSni ?? "none"})");
 
                 var (ip, ip6) = await transport.ConnectAsync(step.Host, _clientCert?.Thumbprint ?? "", stepToken).ConfigureAwait(false);
@@ -203,6 +207,11 @@ public sealed partial class OctopusEngine
                     }
 
                     lastException = new TimeoutException($"Протокол {transport.ProtocolName} ({step.Host}:{step.Port}) не получил ответных пакетов (0 RX).");
+                    if (i + 1 < _rotationRing.Count)
+                    {
+                        EmitStatus(VpnStatusMessages.ProtocolUnavailableSwitching(stepProtocol, FormatStepProtocolName(_rotationRing[i + 1])));
+                    }
+
                     await DisposeAttemptTransportAsync(transport).ConfigureAwait(false);
                     continue;
                 }
@@ -226,6 +235,11 @@ public sealed partial class OctopusEngine
                 if (transport is IHealthAwareTransport healthAware)
                 {
                     healthAware.ReportUnhealthyEndpoint();
+                }
+
+                if (i + 1 < _rotationRing.Count)
+                {
+                    EmitStatus(VpnStatusMessages.ProtocolUnavailableSwitching(stepProtocol, FormatStepProtocolName(_rotationRing[i + 1])));
                 }
 
                 await DisposeAttemptTransportAsync(transport).ConfigureAwait(false);
@@ -412,7 +426,9 @@ public sealed partial class OctopusEngine
         }
         _transport = transport;
         ActiveProtocol = transport.ProtocolName;
+        ActiveProtocolDisplayName = VpnStatusMessages.FormatProtocolName(transport.ProtocolName, strategy.UseWebSocket);
         ActiveRays = strategy.UseWebSocket ? 1 : 2;
+        OnProtocolChanged?.Invoke();
         WireTransportEvents(transport);
 
         var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
@@ -518,6 +534,7 @@ public sealed partial class OctopusEngine
 
             var originalTransport = _transport;
             var totalSteps = _rotationRing.Count;
+            string? failedCandidateName = null;
 
             for (var offset = 1; offset <= totalSteps; offset++)
             {
@@ -540,6 +557,10 @@ public sealed partial class OctopusEngine
                 DynamicSslPublicKeyHash = nextStep.ClearDynamicPinning ? null : DirectOriginCertHash;
                 await PrepareExternalEndpointBypassAsync(nextStep, ct).ConfigureAwait(false);
 
+                var nextProtocolName = FormatStepProtocolName(nextStep);
+                EmitStatus(failedCandidateName is null
+                    ? VpnStatusMessages.RotatingProtocol(nextProtocolName)
+                    : VpnStatusMessages.ProtocolUnavailableSwitching(failedCandidateName, nextProtocolName));
                 AppLogger.LogWarning($"[OCTOPUS-ROTATE] {reason}: trying step {candidateIdx + 1}/{totalSteps} ({nextStep.Kind} -> {nextStep.Host}:{nextStep.Port})");
 
                 candidateTransport = ProtocolPipelineRegistry.CreateTransport(nextStep, AssignedIp);
@@ -573,6 +594,7 @@ public sealed partial class OctopusEngine
                             MarkNodeByteCapped(nextStep.Host);
                         }
 
+                        failedCandidateName = nextProtocolName;
                         _ = Interlocked.CompareExchange(ref _transport, originalTransport, candidateTransport);
                         await candidateTransport.DisposeAsync().ConfigureAwait(false);
                         candidateTransport = null;
@@ -586,6 +608,7 @@ public sealed partial class OctopusEngine
                     var prevIp = AssignedIp;
                     _rotationStepIndex = candidateIdx;
                     ActiveProtocol = swappedTransport.ProtocolName;
+                    ActiveProtocolDisplayName = nextProtocolName;
                     ActiveRays = nextStep.Kind == TransportProtocolKind.ObxodkaStream ? 2 : 1;
                     ConnectedServerIp = nextStep.Host;
                     ConnectedServerPort = nextStep.Port;
@@ -594,6 +617,7 @@ public sealed partial class OctopusEngine
                     AssignedIpV6 = newIp6;
                     Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
                     Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
+                    OnProtocolChanged?.Invoke();
 
                     if (!string.Equals(prevIp, newIp, StringComparison.OrdinalIgnoreCase))
                     {
@@ -612,6 +636,7 @@ public sealed partial class OctopusEngine
                         }
                     }
 
+                    EmitStatus(VpnStatusMessages.ProtocolSwitched(nextProtocolName));
                     AppLogger.Log($"[OCTOPUS-ROTATE] Seamless switch succeeded! Active={ActiveProtocol} @ {ConnectedServerIp}:{ConnectedServerPort} (TUN={AssignedIp})");
                     if (swappedTransport is ObxodkaStreamTransport)
                     {
@@ -627,6 +652,7 @@ public sealed partial class OctopusEngine
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or WebSocketException or HttpRequestException or InvalidOperationException or CryptographicException or ObjectDisposedException)
                 {
+                    failedCandidateName = nextProtocolName;
                     AppLogger.LogWarning($"[OCTOPUS-ROTATE] Step {nextStep.Kind} @ {nextStep.Host} failed: {ex.Message}");
                     if (candidateTransport is IHealthAwareTransport badCandidate)
                     {
@@ -754,6 +780,15 @@ public sealed partial class OctopusEngine
         }
 
         GC.SuppressFinalize(this);
+    }
+
+    //получение понятного названия протокола для шага кругового конвейера
+    private static string FormatStepProtocolName(ProtocolRouteStep step)
+    {
+        var rawName = ProtocolPipelineRegistry.TryGetFactory(step.Kind, out var factory)
+            ? factory.DisplayName
+            : step.Kind.ToString();
+        return VpnStatusMessages.FormatProtocolName(rawName, step.IsShield);
     }
 
     //синхронное освобождение ресурсов движка

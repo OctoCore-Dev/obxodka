@@ -6,6 +6,10 @@ namespace obxodka.Pages;
 //стейт-машин подключения vpn, обработка ошибок, ip адреса и индикаторов
 public sealed partial class VpnView
 {
+    //обработка смены активного протокола туннеля
+    private void HandleProtocolChanged() =>
+        UpdateActiveNode(_activeConnectedNode);
+
     //обработка событий системного лога vpn
     private void HandleVpnLog(string logMsg) =>
         MainThread.BeginInvokeOnMainThread(() => StatusLabel.Text = logMsg);
@@ -57,9 +61,12 @@ public sealed partial class VpnView
 
             if (_vpnService.CurrentState == AppVpnState.Connected && OctopusEngine.Current is { } engine)
             {
-                var rayTag = engine.ActiveProtocol == "OBXODKA-WS"
-                    ? "WS"
-                    : $"{engine.ActiveRays}L";
+                var rayTag = engine.ActiveProtocol switch
+                {
+                    "OBXODKA-WS" => "WS",
+                    "OBXODKA-XHTTP" => "XHTTP",
+                    _ => $"{engine.ActiveRays}L"
+                };
                 displayHost = $"{displayHost} • {rayTag}";
             }
 

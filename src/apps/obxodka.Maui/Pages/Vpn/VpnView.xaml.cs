@@ -235,11 +235,13 @@ public sealed partial class VpnView : ContentView, IDisposable
         _vpnService.OnErrorOccurred -= HandleVpnError;
         _vpnService.OnLogUpdated -= HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
+        OctopusEngine.Current.OnProtocolChanged -= HandleProtocolChanged;
 
         _vpnService.OnStateChanged += HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred += HandleVpnError;
         _vpnService.OnLogUpdated += HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated += HandlePingUpdated;
+        OctopusEngine.Current.OnProtocolChanged += HandleProtocolChanged;
 
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         OctopusEngine.Current.OnTrafficUpdated += OnTrafficUpdated;
@@ -259,6 +261,7 @@ public sealed partial class VpnView : ContentView, IDisposable
         }
 
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
+        OctopusEngine.Current.OnProtocolChanged -= HandleProtocolChanged;
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
 

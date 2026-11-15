@@ -55,6 +55,20 @@ public static class VpnStatusMessages
     public static string ConnectingToNode(string host, int port) => $"Подключение к {host}:{port}...";
     public static string ConnectingToServer(string host, int port) => $"Подключение к серверу {host}:{port}...";
     public static string ConnectingWithProtocol(string host, int port, string protocolName) => $"Подключение к {host}:{port} ({protocolName})...";
+    public static string TryingProtocol(string protocolName, int step, int total) => $"Подключение через {protocolName} ({step}/{total})...";
+    public static string RotatingProtocol(string nextProtocol) => $"Переподключение протокола на {nextProtocol}...";
+    public static string ProtocolUnavailableSwitching(string failedProtocol, string nextProtocol) => $"Нет отклика от {failedProtocol} (0 RX). Переключение на {nextProtocol}...";
+    public static string ProtocolSwitched(string protocolName) => $"Переключено на протокол {protocolName}.";
+
+    //преобразование внутреннего идентификатора протокола в понятное пользователю название
+    public static string FormatProtocolName(string? protocolName, bool isShield = false) =>
+        protocolName switch
+        {
+            "OBXODKA-STREAM" or "ObxodkaStream" => "Obxodka Stream",
+            "OBXODKA-WS" or "ObxodkaWebSocket" => isShield ? "Cloudflare WS" : "WebSocket",
+            "OBXODKA-XHTTP" or "ObxodkaXhttp" => isShield ? "Cloudflare XHTTP" : "Direct XHTTP",
+            _ => string.IsNullOrWhiteSpace(protocolName) ? "Obxodka" : protocolName
+        };
     public static string IpAssigned(string ip) => $"Получен IP: {ip}";
     public static string InitializingAdapter(string adapterName) => $"Инициализация адаптера ({adapterName})...";
     public static string StartingAdapter(string adapterName) => $"Запуск адаптера ({adapterName})...";

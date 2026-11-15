@@ -83,6 +83,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     //событие смены внутреннего ip туннеля при бесшовной ротации протокола
     public event Action? OnTunnelIpChanged;
 
+    //событие смены активного транспортного протокола
+    public event Action? OnProtocolChanged;
+
     //число активных лучей туннеля
     public int ActiveRays { get; private set; } = 2;
 
@@ -138,6 +141,9 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     //название текущего активного протокола
     public string ActiveProtocol { get; private set; } = "AUTO";
+
+    //человекочитаемое название текущего активного протокола
+    public string ActiveProtocolDisplayName { get; private set; } = "Obxodka";
 
     //активное имя sni маскировки
     public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ?? (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? string.Empty;

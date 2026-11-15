@@ -170,7 +170,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                         OctopusEngine.Current.ResetTrafficCounters();
                         OctopusEngine.Current.ArmTrafficWatchdog();
                         ChangeState(AppVpnState.Connected);
-                        OnLogUpdated?.Invoke(VpnStatusMessages.ConnectionRestoredTls);
+                        OnLogUpdated?.Invoke(VpnStatusMessages.ProtocolSwitched(OctopusEngine.Current.ActiveProtocolDisplayName));
                         return;
                     }
                 }
@@ -500,7 +500,7 @@ internal sealed class AndroidVpnService : IVpnService, IDisposable
                     _currentServerIp = IPAddress.TryParse(step.Host, out _)
                         ? step.Host
                         : (OctopusEngine.Current.ConnectedServerIp ?? step.Host);
-                    OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingToServer(step.Host, step.Port));
+                    OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingWithProtocol(step.Host, step.Port, OctopusEngine.Current.ActiveProtocolDisplayName));
 
                     var svc = vpnService ?? OctopusVpnService.Instance;
                     var tunOk = svc?.EstablishTun() ?? false;

@@ -167,6 +167,19 @@ public sealed class ProtocolRotationAndXhttpTests
         Assert.True(streamCandidates[0].EnableDpiBypass);
     }
 
+    [Fact]
+    public void VpnStatusMessagesFormatsProtocolRotationStatuses()
+    {
+        Assert.Equal("Obxodka Stream", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-STREAM", isShield: false));
+        Assert.Equal("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-WS", isShield: true));
+        Assert.Equal("Cloudflare XHTTP", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP", isShield: true));
+        Assert.Equal("Direct XHTTP", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP", isShield: false));
+        Assert.Contains("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.TryingProtocol("Cloudflare WS", 2, 4), StringComparison.Ordinal);
+        Assert.Contains("Cloudflare XHTTP", obxodka.Client.Localization.VpnStatusMessages.ProtocolUnavailableSwitching("Obxodka Stream", "Cloudflare XHTTP"), StringComparison.Ordinal);
+        Assert.Contains("Direct XHTTP", obxodka.Client.Localization.VpnStatusMessages.RotatingProtocol("Direct XHTTP"), StringComparison.Ordinal);
+        Assert.Contains("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.ProtocolSwitched("Cloudflare WS"), StringComparison.Ordinal);
+    }
+
     private sealed class StubProtocolFactory(TransportProtocolKind kind, string displayName) : ITransportProtocolFactory
     {
         public TransportProtocolKind Kind { get; } = kind;
