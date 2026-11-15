@@ -8,6 +8,8 @@ internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDispo
 {
     private WintunAdapter? _adapter;
     private Task? _trafficTask;
+    private Action? _platformNetworkChanged;
+    private long _lastNetChangeTicks;
 
     public static SplitTunnelPolicy SplitTunnelPolicy => WindowsSplitTunnelEngine.Policy;
 
@@ -15,14 +17,28 @@ internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDispo
 
     public event Action? OnPlatformNetworkChanged
     {
-        add { }
-        remove { }
+        add => _platformNetworkChanged += value;
+        remove => _platformNetworkChanged -= value;
     }
 
     public WindowsVpnService()
     {
         AppManager.SyncPolicyFromPreferences();
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += OnSystemNetworkAddressChanged;
         _ = Task.Run(CleanupStaleRoutesAsync);
+    }
+
+    //уведомление оркестратора о смене системного сетевого адреса с защитой от дребезга
+    private void OnSystemNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref _lastNetChangeTicks) < 500)
+        {
+            return;
+        }
+
+        _ = Interlocked.Exchange(ref _lastNetChangeTicks, now);
+        _platformNetworkChanged?.Invoke();
     }
 
     //запуск системной утилиты с таймаутом
@@ -85,6 +101,7 @@ internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDispo
     //освобождение ресурсов windows-драйвера
     public void Dispose()
     {
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= OnSystemNetworkAddressChanged;
         _adapter?.Dispose();
         _adapter = null;
     }

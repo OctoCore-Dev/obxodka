@@ -102,7 +102,10 @@ internal sealed partial class WindowsVpnService
     public async Task HandlePhysicalUplinkLostAsync()
     {
         ResetSavedPhysicalGateway();
-        await CleanupStaleRoutesAsync().ConfigureAwait(false);
+        if (!Preferences.Get(AppPreferenceKeys.KillSwitch, true))
+        {
+            await CleanupStaleRoutesAsync().ConfigureAwait(false);
+        }
     }
 
     public async Task ShutdownTunnelAsync(IReadOnlyList<string> serverIps, string assignedIpv4, bool keepKillSwitch)

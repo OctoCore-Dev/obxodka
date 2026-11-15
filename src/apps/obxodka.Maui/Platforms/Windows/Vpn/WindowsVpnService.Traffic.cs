@@ -40,11 +40,10 @@ internal sealed partial class WindowsVpnService
                     {
                         for (var i = 0; i < count; i++)
                         {
-                            processed = i;
                             var (buf, len) = batch[i];
+                            processed = i + 1;
                             OctopusEngine.Current.SendPacketFromPool(buf, len);
                         }
-                        processed = count;
                     }
                     finally
                     {

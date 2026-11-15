@@ -171,6 +171,11 @@ internal static partial class WindowsSplitTunnelEngine
             return false;
         }
 
+        if (b0 == 100 && (b1 & 0xC0) == 64)
+        {
+            return false;
+        }
+
         if (b0 == 169 && b1 == 254)
         {
             return false;

@@ -330,13 +330,13 @@ internal sealed partial class WintunAdapter : IDisposable
                     catch { }
                     _adapter = IntPtr.Zero;
                 }
-            }
 
-        try
-        {
-            _stopEvent.Dispose();
-        }
-        catch { }
+                try
+                {
+                    _stopEvent.Dispose();
+                }
+                catch { }
+            }
     }
 }
 

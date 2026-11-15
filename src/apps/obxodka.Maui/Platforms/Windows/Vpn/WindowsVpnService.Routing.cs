@@ -315,7 +315,14 @@ internal sealed partial class WindowsVpnService
                         }
                     }
 
-                    socket.SetSocketOption(SocketOptionLevel.IPv6, (SocketOptionName)ipUnicastIf, ifIndex);
+                    try
+                    {
+                        socket.SetSocketOption(SocketOptionLevel.IPv6, (SocketOptionName)ipUnicastIf, ifIndex);
+                    }
+                    catch (SocketException)
+                    {
+                        //игнорируем если стек ipv6 отключен или не поддерживает привязку к интерфейсу
+                    }
                 }
             }
 
@@ -327,13 +334,21 @@ internal sealed partial class WindowsVpnService
             var localIp = s_savedPhysicalLocalIp;
             if (localIp is not null && !IPAddress.IsLoopback(localIp))
             {
-                if (socket.AddressFamily == AddressFamily.InterNetwork && localIp.AddressFamily == AddressFamily.InterNetwork)
+                try
                 {
-                    socket.Bind(new IPEndPoint(localIp, 0));
+                    if (socket.AddressFamily == AddressFamily.InterNetwork && localIp.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        socket.Bind(new IPEndPoint(localIp, 0));
+                    }
+                    else if (socket.AddressFamily == AddressFamily.InterNetworkV6 && socket.DualMode && localIp.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        socket.Bind(new IPEndPoint(localIp.MapToIPv6(), 0));
+                    }
                 }
-                else if (socket.AddressFamily == AddressFamily.InterNetworkV6 && socket.DualMode && localIp.AddressFamily == AddressFamily.InterNetwork)
+                catch (SocketException)
                 {
-                    socket.Bind(new IPEndPoint(localIp.MapToIPv6(), 0));
+                    //сбрасываем устаревший локальный ip при роуминге для безопасного переподбора
+                    s_savedPhysicalLocalIp = null;
                 }
             }
         }

@@ -325,7 +325,7 @@ internal static partial class WindowsSplitTunnelEngine
         MemoryMarshal.Write(gwBytes, in gwUint);
         var gwIp = new IPAddress(gwBytes);
 
-        IPAddress[] dnsServers = [gwIp, IPAddress.Parse("77.88.8.8"), IPAddress.Parse("77.88.8.1")];
+        IPAddress[] dnsServers = [IPAddress.Parse("77.88.8.8"), IPAddress.Parse("77.88.8.1"), gwIp];
 
         foreach (var dnsIp in dnsServers)
         {

@@ -320,39 +320,75 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
         }
     }
 
+    //проверка доверенного https-источника для загрузки и открытия релиза
+    private static bool IsTrustedUpdateUri(string? url, [NotNullWhen(true)] out Uri? uri)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            uri = null;
+            return false;
+        }
+
+        var host = uri.Host;
+        var trustedHost =
+            host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            host.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase);
+
+        if (!trustedHost)
+        {
+            uri = null;
+            return false;
+        }
+
+        return true;
+    }
+
     //загрузка верификация sha256 и запуск установщика обновления с github
     private static async Task DownloadAndInstallGitHubUpdateAsync(string? url, string version, string? expectedSha256)
     {
-        if (string.IsNullOrWhiteSpace(url))
+        if (!IsTrustedUpdateUri(url, out var updateUri))
         {
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                AppLogger.LogError($"[UPDATE-SECURITY ALERT] Untrusted update URL blocked: {url}");
+            }
             _ = await Launcher.OpenAsync(new Uri($"https://github.com/{GitHubRepo}/releases/latest"));
             return;
         }
 
-        if (url.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        if (updateUri.AbsolutePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            var tempPath = Path.Combine(Path.GetTempPath(), $"Obxodka-Setup-v{version}.exe");
+            var updateDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "updates");
+            _ = Directory.CreateDirectory(updateDir);
+            var safeVersion = string.Concat(version.Where(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_'));
+            if (string.IsNullOrEmpty(safeVersion))
+            {
+                safeVersion = "latest";
+            }
+            var installerPath = Path.Combine(updateDir, $"Obxodka-Setup-v{safeVersion}.exe");
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                using var req = new HttpRequestMessage(HttpMethod.Get, updateUri);
                 req.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
 
                 using var resp = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
                 {
-                    await using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    await using (var fs = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None))
                     {
                         await resp.Content.CopyToAsync(fs).ConfigureAwait(false);
                     }
 
                     //строгая проверка контрольной суммы sha256 перед запуском инсталлятора
-                    var computedHash = await ComputeFileSha256Async(tempPath).ConfigureAwait(false);
+                    var computedHash = await ComputeFileSha256Async(installerPath).ConfigureAwait(false);
                     AppLogger.Log($"[UPDATE-SECURITY] Downloaded installer SHA256: {computedHash}");
 
                     if (string.IsNullOrWhiteSpace(expectedSha256))
                     {
                         AppLogger.LogError("[UPDATE-SECURITY ALERT] Missing SHA256 checksum in GitHub release metadata. Aborting installer launch and deleting file.");
-                        TryDeleteFile(tempPath);
+                        TryDeleteFile(installerPath);
 
                         MainThread.BeginInvokeOnMainThread(async () =>
                             await NeoAlert.ShowAsync(
@@ -365,7 +401,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                     if (!string.Equals(computedHash, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
                     {
                         AppLogger.LogError($"[UPDATE-SECURITY ALERT] Checksum mismatch! Expected: {expectedSha256}, Actual: {computedHash}. Deleting file.");
-                        TryDeleteFile(tempPath);
+                        TryDeleteFile(installerPath);
 
                         MainThread.BeginInvokeOnMainThread(async () =>
                             await NeoAlert.ShowAsync(
@@ -377,22 +413,36 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
 
                     AppLogger.Log("[UPDATE-SECURITY] SHA256 checksum verified successfully.");
 
-                    //проверка встроенной подписи authenticode при ее наличии у установщика
-                    var sigStatus = CheckAuthenticodeSignature(tempPath);
-                    if (sigStatus == AuthenticodeCheckStatus.InvalidSignature)
+                    //проверка встроенной подписи authenticode перед запуском инсталлятора
+                    var sigStatus = CheckAuthenticodeSignature(installerPath);
+                    if (sigStatus is AuthenticodeCheckStatus.InvalidSignature or AuthenticodeCheckStatus.Unsigned)
                     {
-                        AppLogger.LogError("[UPDATE-SECURITY ALERT] Installer Authenticode signature is corrupted or invalid. Blocking launch.");
-                        TryDeleteFile(tempPath);
+                        AppLogger.LogError($"[UPDATE-SECURITY ALERT] Installer Authenticode signature invalid or missing ({sigStatus}). Blocking launch.");
+                        TryDeleteFile(installerPath);
 
                         MainThread.BeginInvokeOnMainThread(async () =>
                             await NeoAlert.ShowAsync(
                                 "Ошибка безопасности",
-                                "Цифровая подпись установщика повреждена. Запуск обновления заблокирован.",
+                                "Цифровая подпись установщика отсутствует или повреждена. Запуск обновления заблокирован.",
                                 "OK"));
                         return;
                     }
 
-                    _ = Process.Start(new ProcessStartInfo(tempPath)
+                    //корректная остановка активного vpn перед перезапуском в установщик
+                    try
+                    {
+                        var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                        if (vpnService is not null && vpnService.CurrentState != AppVpnState.Disconnected)
+                        {
+                            await vpnService.StopVpnAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception stopEx)
+                    {
+                        AppLogger.LogWarning($"[UPDATE CLEANUP WARN] Failed to stop VPN before restart: {stopEx.Message}");
+                    }
+
+                    _ = Process.Start(new ProcessStartInfo(installerPath)
                     {
                         UseShellExecute = true
                     });
@@ -404,11 +454,11 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             catch (Exception ex)
             {
                 AppLogger.LogError($"[DOWNLOAD INSTALLER ERROR] {ex.Message}", ex);
-                TryDeleteFile(tempPath);
+                TryDeleteFile(installerPath);
             }
         }
 
-        _ = await Launcher.OpenAsync(new Uri(url));
+        _ = await Launcher.OpenAsync(updateUri);
     }
 
     //безопасное удаление временного файла установщика

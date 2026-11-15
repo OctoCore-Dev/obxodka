@@ -619,12 +619,19 @@ internal sealed partial class WindowsVpnService
     }
 
     //последовательная подмена ipv4 и ipv6 dns на физическом адаптере
-    private static async Task ApplyAdapterDnsOverrideAsync(string nicName)
+    private static async Task ApplyAdapterDnsOverrideAsync(string nicName, bool includeIpv6 = true)
     {
         var (v4SetCode, v4SetOut) = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{nicName}\" static {DnsDefaults.PrimaryDns} primary validate=no", timeoutMs: 3000).ConfigureAwait(false);
         var (v4AddCode, v4AddOut) = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{nicName}\" {DnsDefaults.SecondaryDns} index=2 validate=no", timeoutMs: 3000).ConfigureAwait(false);
-        var (v6SetCode, v6SetOut) = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{nicName}\" static {DnsDefaults.PrimaryDnsV6} primary validate=no", timeoutMs: 3000).ConfigureAwait(false);
-        var (v6AddCode, v6AddOut) = await RunCmdAsync("netsh", $"interface ipv6 add dnsservers name=\"{nicName}\" {DnsDefaults.SecondaryDnsV6} index=2 validate=no", timeoutMs: 3000).ConfigureAwait(false);
+        var v6SetCode = 0;
+        var v6SetOut = "";
+        var v6AddCode = 0;
+        var v6AddOut = "";
+        if (includeIpv6)
+        {
+            (v6SetCode, v6SetOut) = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{nicName}\" static {DnsDefaults.PrimaryDnsV6} primary validate=no", timeoutMs: 3000).ConfigureAwait(false);
+            (v6AddCode, v6AddOut) = await RunCmdAsync("netsh", $"interface ipv6 add dnsservers name=\"{nicName}\" {DnsDefaults.SecondaryDnsV6} index=2 validate=no", timeoutMs: 3000).ConfigureAwait(false);
+        }
         if (v4SetCode != 0 || v4AddCode != 0 || v6SetCode != 0 || v6AddCode != 0)
         {
             AppLogger.LogWarning($"[DNS-LEAK NIC WARN] '{nicName}': v4=({v4SetCode},{v4AddCode}) {v4SetOut.Trim()} {v4AddOut.Trim()} | v6=({v6SetCode},{v6AddCode}) {v6SetOut.Trim()} {v6AddOut.Trim()}");
@@ -677,7 +684,7 @@ internal sealed partial class WindowsVpnService
             await BackupAdapterDnsIfNeededAsync(physIndices, GetVpnDnsLeakBackupPath(), includeIpv6: true).ConfigureAwait(false);
             foreach (var nicName in physNames)
             {
-                tasks.Add(ApplyAdapterDnsOverrideAsync(nicName));
+                tasks.Add(ApplyAdapterDnsOverrideAsync(nicName, hasTunV6));
             }
 
             var nrptServers = hasTunV6

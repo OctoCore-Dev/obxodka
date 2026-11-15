@@ -6,6 +6,7 @@ namespace obxodka.Platforms.Windows;
 //безопасное хранилище конфиденциальных данных на базе windows dpapi и пользовательского реестра
 public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure") : ISecureStorageService
 {
+    private static readonly byte[] s_entropy = "OBXODKA-DPAPI-V1"u8.ToArray();
     private readonly string _subKey = $@"Software\{subKey}";
 
     //извлечение и расшифровка значения через dpapi
@@ -22,7 +23,16 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
         try
         {
             var data = Convert.FromBase64String(encryptedValue);
-            var decrypted = ProtectedData.Unprotect(data, null, DataProtectionScope.CurrentUser);
+            byte[] decrypted;
+            try
+            {
+                decrypted = ProtectedData.Unprotect(data, s_entropy, DataProtectionScope.CurrentUser);
+            }
+            catch (CryptographicException)
+            {
+                //обратная совместимость со значениями, сохраненными без энтропии
+                decrypted = ProtectedData.Unprotect(data, null, DataProtectionScope.CurrentUser);
+            }
             return Task.FromResult<string?>(System.Text.Encoding.UTF8.GetString(decrypted));
         }
         catch
@@ -36,7 +46,7 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
     {
         var sanitizedKey = SanitizeKey(key);
         var data = System.Text.Encoding.UTF8.GetBytes(value);
-        var encrypted = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
+        var encrypted = ProtectedData.Protect(data, s_entropy, DataProtectionScope.CurrentUser);
         var base64 = Convert.ToBase64String(encrypted);
 
         using var regKey = Registry.CurrentUser.CreateSubKey($@"{_subKey}\{sanitizedKey}");
@@ -67,6 +77,9 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
         catch { }
     }
 
-    private static string SanitizeKey(string key) =>
-        string.Concat(key.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-' or '.'));
+    private static string SanitizeKey(string key)
+    {
+        var clean = string.Concat(key.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-' or '.'));
+        return string.IsNullOrEmpty(clean) ? "_empty_" : clean;
+    }
 }
