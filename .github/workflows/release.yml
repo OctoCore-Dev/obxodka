@@ -835,7 +835,7 @@ jobs:
           echo "body_file=$(realpath release_body.md)" >> $GITHUB_OUTPUT
 
       - name: "[RELEASE] Publish GitHub Release & Attach Assets"
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.check-version.outputs.tag }}
           name: ${{ needs.check-version.outputs.release_title }}
