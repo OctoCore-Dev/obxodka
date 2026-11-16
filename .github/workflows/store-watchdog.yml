@@ -41,7 +41,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "[SETUP] .NET 10 SDK"
         uses: actions/setup-dotnet@v6

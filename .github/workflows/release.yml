@@ -74,7 +74,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 5
 
@@ -174,7 +174,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -224,7 +224,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows')
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
@@ -369,7 +369,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android')
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
@@ -524,7 +524,7 @@ jobs:
 
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "[SETUP] .NET 10 SDK"
         uses: actions/setup-dotnet@v6
@@ -641,7 +641,7 @@ jobs:
 
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "[SETUP] .NET 10 SDK"
         uses: actions/setup-dotnet@v6
@@ -787,7 +787,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -860,7 +860,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
