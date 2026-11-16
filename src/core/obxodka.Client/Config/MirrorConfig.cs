@@ -38,7 +38,7 @@ public static class MirrorConfig
         var mirrors = BootstrapConfig.Mirrors;
         var directUrl = AppConfig.DirectApiBaseUrl;
 
-        List<string> urls = new(mirrors.Length + 2);
+        List<string> urls = [with(mirrors.Length + 2)];
         foreach (var m in mirrors)
         {
             urls.Add($"https://{m.TrimEnd('/')}/");

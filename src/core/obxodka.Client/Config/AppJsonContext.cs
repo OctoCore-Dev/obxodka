@@ -24,6 +24,7 @@ namespace obxodka.Config;
 [JsonSerializable(typeof(SyncRequestDto))]
 [JsonSerializable(typeof(MessageResponse))]
 [JsonSerializable(typeof(PaymentLinkResponse))]
+[JsonSerializable(typeof(PaymentSyncResponse))]
 [JsonSerializable(typeof(object), TypeInfoPropertyName = "JsonObject")]
 [JsonSerializable(typeof(CertHashResponse))]
 [JsonSerializable(typeof(GooglePurchaseVerifyRequest))]

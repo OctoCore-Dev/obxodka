@@ -262,7 +262,7 @@ public static class SniEngine
         List<ProtocolRouteStep> directStreamSteps = [];
         List<ProtocolRouteStep> shieldWsSteps = [];
         List<ProtocolRouteStep> shieldXhttpSteps = [];
-        HashSet<string> seenDirectHosts = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seenDirectHosts = [with(StringComparer.OrdinalIgnoreCase)];
 
         void TryAddDirectServer(string host, int port, string? label)
         {
@@ -329,7 +329,7 @@ public static class SniEngine
                 ServerLabel: $"{direct.ServerLabel ?? direct.Host} (XHTTP)"));
         }
 
-        List<ProtocolRouteStep> ring = new(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count);
+        List<ProtocolRouteStep> ring = [with(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
         List<ProtocolRouteStep> penalizedDirect = [];
 
         if (!forceWebSocket)
@@ -389,7 +389,7 @@ public static class SniEngine
         var primary = AppConfig.PrimaryDomain;
         List<string> altPools = [];
         List<string> primaryPool = [];
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seen = [with(StringComparer.OrdinalIgnoreCase)];
 
         void Classify(string? host)
         {
@@ -422,7 +422,7 @@ public static class SniEngine
         }
         Classify(primary);
 
-        List<string> merged = new(altPools.Count + primaryPool.Count);
+        List<string> merged = [with(altPools.Count + primaryPool.Count)];
         var maxCount = Math.Max(altPools.Count, primaryPool.Count);
         for (var i = 0; i < maxCount; i++)
         {

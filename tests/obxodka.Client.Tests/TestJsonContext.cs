@@ -13,6 +13,7 @@ namespace obxodka.Client.Tests;
 [JsonSerializable(typeof(EmailAuthRequest))]
 [JsonSerializable(typeof(EmailVerifyRequest))]
 [JsonSerializable(typeof(PaymentLinkResponse))]
+[JsonSerializable(typeof(PaymentSyncResponse))]
 [JsonSerializable(typeof(MessageResponse))]
 [JsonSerializable(typeof(VpnServerDto))]
 [JsonSerializable(typeof(TelemetryDto))]

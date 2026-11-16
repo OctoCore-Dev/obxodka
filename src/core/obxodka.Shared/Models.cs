@@ -160,7 +160,16 @@ public sealed record CreateInvoiceRequest(
     [property: JsonPropertyName("amount")] decimal Amount,
     [property: JsonPropertyName("offerId")] string? OfferId = null,
     [property: JsonPropertyName("returnUrl")] string? ReturnUrl = null,
-    [property: JsonPropertyName("autoCreateUser")] bool AutoCreateUser = false);
+    [property: JsonPropertyName("autoCreateUser")] bool AutoCreateUser = false,
+    [property: JsonPropertyName("currency")] string Currency = "RUB",
+    [property: JsonPropertyName("paymentMethod")] string? PaymentMethod = null);
+
+//результат сверки незавершенных платежей пользователя
+public sealed record PaymentSyncResponse(
+    [property: JsonPropertyName("credited")] bool Credited,
+    [property: JsonPropertyName("balanceSeconds")] long BalanceSeconds,
+    [property: JsonPropertyName("pendingCount")] int PendingCount,
+    [property: JsonPropertyName("message")] string? Message = null);
 
 // запрос от клиента к серверу
 public sealed record GooglePurchaseVerifyRequest(string ProductId, string PurchaseToken, string? OrderId);

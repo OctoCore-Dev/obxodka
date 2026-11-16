@@ -12,7 +12,7 @@ public static class AppLogger
         });
 
     private static readonly Lock s_lock = new();
-    private static readonly List<string> s_recentLogs = new(250);
+    private static readonly List<string> s_recentLogs = [with(250)];
     private static StreamWriter? s_writer;
     private static bool s_isInitialized;
     private static long s_currentFileBytes;

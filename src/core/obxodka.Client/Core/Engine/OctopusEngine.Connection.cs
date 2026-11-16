@@ -278,7 +278,7 @@ public sealed partial class OctopusEngine
     //регистрация внешних ip адреса назначения для bypass-маршрута ос перед открытием сокета
     private async Task PrepareExternalEndpointBypassAsync(ProtocolRouteStep step, CancellationToken ct)
     {
-        HashSet<string> ips = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> ips = [with(StringComparer.OrdinalIgnoreCase)];
         RegisterServerEndpoint(step.Host);
 
         if (IPAddress.TryParse(step.Host, out _))

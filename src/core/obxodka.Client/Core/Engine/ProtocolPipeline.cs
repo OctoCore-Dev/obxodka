@@ -132,7 +132,7 @@ internal static class EdgeEndpointHealth
             return addresses;
         }
 
-        List<IPAddress> healthy = new(addresses.Length);
+        List<IPAddress> healthy = [with(addresses.Length)];
         List<IPAddress> penalized = [];
 
         foreach (var addr in addresses)
@@ -151,7 +151,7 @@ internal static class EdgeEndpointHealth
             ? Math.Abs(Interlocked.Increment(ref s_rotationCounter)) % healthy.Count
             : 0;
 
-        List<IPAddress> ordered = new(addresses.Length);
+        List<IPAddress> ordered = [with(addresses.Length)];
         for (var i = 0; i < healthy.Count; i++)
         {
             ordered.Add(healthy[(i + shift) % healthy.Count]);

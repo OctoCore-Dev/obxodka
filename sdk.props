@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <DotNetMajorVersion>10</DotNetMajorVersion>
+    <DotNetMajorVersion>11</DotNetMajorVersion>
     <DotNetSdkChannel>$(DotNetMajorVersion).0.x</DotNetSdkChannel>
     <NetTargetFramework>net$(DotNetMajorVersion).0</NetTargetFramework>
     <AndroidTargetFramework>$(NetTargetFramework)-android</AndroidTargetFramework>

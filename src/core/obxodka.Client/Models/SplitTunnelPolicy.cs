@@ -196,9 +196,9 @@ public sealed class SplitTunnelPolicy
 
     //объект синхронизации для потокобезопасного доступа к изменяемым коллекциям
     private readonly Lock _sync = new();
-    private HashSet<string> _bypassedExeNames = new(StringComparer.OrdinalIgnoreCase);
-    private HashSet<string> _bypassedExePaths = new(StringComparer.OrdinalIgnoreCase);
-    private HashSet<string> _customDomains = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _bypassedExeNames = [with(StringComparer.OrdinalIgnoreCase)];
+    private HashSet<string> _bypassedExePaths = [with(StringComparer.OrdinalIgnoreCase)];
+    private HashSet<string> _customDomains = [with(StringComparer.OrdinalIgnoreCase)];
     private readonly List<BypassRouteEntry> _activeBypassRoutes = [];
 
     //включена ли политика раздельного туннелирования

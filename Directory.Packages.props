@@ -6,19 +6,19 @@
   <ItemGroup>
     <!-- Core & Shared -->
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="11.0.0" />
     <PackageVersion Include="PacketDotNet" Version="1.4.8" />
 
     <!-- MAUI UI & Platform -->
     <PackageVersion Include="AathifMahir.Maui.MauiIcons.Fluent" Version="6.0.0" />
-    <PackageVersion Include="CommunityToolkit.Maui" Version="15.0.1" />
-    <PackageVersion Include="CommunityToolkit.Maui.MediaElement" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.110" />
-    <PackageVersion Include="Plugin.InAppBilling" Version="10.0.0" />
+    <PackageVersion Include="CommunityToolkit.Maui" Version="17.0.0" />
+    <PackageVersion Include="CommunityToolkit.Maui.MediaElement" Version="12.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Maui.Controls" Version="11.0.10" />
+    <PackageVersion Include="Plugin.InAppBilling" Version="11.0.1" />
     <PackageVersion Include="SkiaSharp.Views.Maui.Controls" Version="4.156.1" />
-    <PackageVersion Include="System.Management" Version="10.0.12" />
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+    <PackageVersion Include="System.Management" Version="11.0.0" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
     <PackageVersion Include="WinUIEx" Version="2.9.3" />
 
     <!-- AndroidX & Play Services -->

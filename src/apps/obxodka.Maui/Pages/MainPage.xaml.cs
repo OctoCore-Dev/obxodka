@@ -1230,8 +1230,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
                 MainContentContainer.Margin = new Thickness(0);
 
-                _ = Color.TryParse(e.Manifest.Core.Colors.Primary, out var primary);
-                _ = Color.TryParse(e.Manifest.Core.Colors.Accent, out var accent);
+                _ = Color.TryParse(e.Manifest.Core.Colors.Primary ?? string.Empty, out var primary);
+                _ = Color.TryParse(e.Manifest.Core.Colors.Accent ?? string.Empty, out var accent);
                 _activeParticleSpritePaths = e.ParticleSpritePaths;
                 _activeVfx = e.Manifest.Vfx;
                 _activeParticlePrimary = primary;

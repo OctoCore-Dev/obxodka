@@ -307,7 +307,7 @@ internal static partial class WindowsSplitTunnelEngine
     }
 
     //получение имени исполняемого файла и полного пути процесса по его pid
-    private static unsafe bool TryGetProcessInfo(uint pid, out string exeName, out string fullPath)
+    private static bool TryGetProcessInfo(uint pid, out string exeName, out string fullPath)
     {
         exeName = string.Empty;
         fullPath = string.Empty;

@@ -582,11 +582,20 @@ public sealed class ApiService(HttpClient client)
         where TResponse : class =>
         await SendRequestAsync(HttpMethod.Post, url, body, requestInfo, responseInfo, includeAuth, ct).ConfigureAwait(false);
 
-    //генерация ссылки на оплату
-    public async Task<(bool Success, string? Url, string? Error)> GeneratePaymentLinkAsync(decimal amount, string currency = "RUB", CancellationToken ct = default)
+    //генерация ссылки на оплату с выбором валюты и способа оплаты
+    public async Task<(bool Success, string? Url, string? Error)> GeneratePaymentLinkAsync(
+        decimal amount,
+        string currency = "RUB",
+        string? paymentMethod = null,
+        CancellationToken ct = default)
     {
         var amountStr = amount.ToString(CultureInfo.InvariantCulture);
         var url = $"api/payment/generate?amount={amountStr}&currency={Uri.EscapeDataString(currency)}";
+        if (!string.IsNullOrWhiteSpace(paymentMethod))
+        {
+            url += $"&method={Uri.EscapeDataString(paymentMethod)}";
+        }
+
         var (success, data, error) = await SendRequestAsync<object, PaymentLinkResponse>(
             HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, includeAuth: true, ct: ct);
 
@@ -597,6 +606,11 @@ public sealed class ApiService(HttpClient client)
 
         return (false, null, error ?? "Unknown error generating payment link");
     }
+
+    //сверка незавершенных платежей пользователя с платежным шлюзом
+    public async Task<(bool Success, PaymentSyncResponse? Data, string? Error)> SyncPendingPaymentsAsync(CancellationToken ct = default) =>
+        await SendRequestAsync<object, PaymentSyncResponse>(
+            HttpMethod.Get, "api/payment/sync-pending", null, null, AppJsonContext.Default.PaymentSyncResponse, includeAuth: true, ct: ct).ConfigureAwait(false);
 
     //получение профиля пользователя
     public async Task<(bool Success, UserProfileResponse? Data, string? Error)> GetProfileAsync(int maxRetries = 2, CancellationToken ct = default)
