@@ -8,6 +8,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
     private readonly IAppManager _appManager;
     private readonly IAppUpdaterService? _appUpdaterService;
     private readonly ThemeManager _themeManager;
+    private readonly IQrScannerService? _qrScanner;
     private CancellationTokenSource? _vpnCts;
     public long RemainingSeconds { get; private set; }
     private string _activeTab = "";
@@ -15,6 +16,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
     private bool _isDecorationsFaded;
     private bool _isThemeVideoActive;
     private bool _isWindowActive = true;
+    private bool _isVpnTabInitialized;
+    private int _startupHandled;
     private int _isSyncingBalance;
     private long _lastEngineBytesSent;
     private long _lastEngineBytesReceived;
@@ -26,6 +29,17 @@ public sealed partial class MainPage : ContentPage, IDisposable
     private ThemeVfx? _activeVfx;
     private Color _activeParticlePrimary = Colors.Transparent;
     private Color _activeParticleAccent = Colors.Transparent;
+    private ThemeAppliedEventArgs? _lastAppliedThemeArgs;
+
+    private AuthView? _tabContentAuth;
+    private VpnView? _tabContentVpn;
+    private ConfigurationView? _tabContentConfiguration;
+    private ProfileView? _tabContentProfile;
+    private DevicesView? _tabContentDevices;
+    private SplitView? _tabContentSplit;
+    private DeleteAccountView? _tabContentDelete;
+    private PaymentView? _tabContentPayment;
+    private ThemeStoreView? _tabContentThemeStore;
 
     public IVpnService VpnService { get; }
 
@@ -45,23 +59,9 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _appManager = appManager;
         _themeManager = themeManager;
         _appUpdaterService = appUpdaterService;
+        _qrScanner = qrScanner;
         BindingContext = this;
-
-        TabContentAuth.Initialize(this, _apiService, qrScanner);
-
-        TabContentDelete.Initialize(this, _apiService);
-        TabContentDelete.CancelRequested += OnDeleteCancelRequested;
-        TabContentDelete.AccountDeleted += OnAccountDeletedAsync;
-
-        TabContentDevices.Initialize(this, _apiService);
-        TabContentSplit.Initialize(this, _appManager);
-        TabContentPayment.Initialize(this, _apiService);
         DesktopSidebar.Initialize(_appUpdaterService);
-        TabContentProfile.Initialize(this, _themeManager, _apiService);
-
-        TabContentThemeStore.Initialize(_themeManager);
-        TabContentThemeStore.BackRequested += (_, _) => _ = SwitchTabAsync("configuration");
-        TabContentConfiguration.ThemesRequested += (_, _) => _ = SwitchTabAsync("themes");
 
         _themeManager.OnThemeApplied += HandleThemeApplied;
         _themeManager.OnThemeReset += HandleThemeReset;
@@ -72,15 +72,33 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _themeManager.ParallaxEnabledChanged += OnThemeParallaxEnabledChanged;
         _themeManager.CardOpacityChanged += OnCardOpacityChanged;
         _themeManager.GlowIntensityChanged += OnGlowIntensityChanged;
+
+        //создаем только одну стартовую вкладку до восстановления темы, остальные загружаем лениво
+        var isLikelyLogged = PlatformServices.Preferences.Get(AppPreferenceKeys.UserIsLogged, false);
+        var initialTab = isLikelyLogged ? "vpn" : "auth";
+        var initialView = EnsureTabCreated(initialTab);
+
         _themeManager.RestoreActiveThemeAtStartup();
         UpdateAllViewsOpacity();
 
-        TabContentProfile.LogoutRequested += OnProfileLogoutRequestedAsync;
-        TabContentProfile.BuyTokensRequested += OnBuyTokensRequested;
-        TabContentProfile.BalanceRefreshRequested += OnProfileBalanceRefreshRequestedAsync;
-
-        TabContentPayment.PaymentCompleted += OnPaymentCompletedAsync;
-        TabContentPayment.PaymentCancelled += OnPaymentCancelled;
+        if (!SplashOverlay.IsVisible)
+        {
+            _activeTab = initialTab;
+            initialView.Opacity = 1.0;
+            initialView.IsVisible = true;
+            if (isLikelyLogged)
+            {
+                RemainingSeconds = ReadCachedRemainingSeconds();
+                UpdateBalanceUI();
+                DesktopSidebar.UpdateActiveTab("vpn");
+                MobileBottomBar.UpdateActiveTab("vpn");
+            }
+            else
+            {
+                DesktopSidebar.HideSidebar();
+                MobileBottomBar.HideSidebar();
+            }
+        }
 
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
         VpnService.OnForceLogoutRequested += HandleForceLogout;
@@ -213,7 +231,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         App.WindowDeactivated -= OnWindowDeactivated;
         App.DeepLinkLoginReceived -= OnDeepLinkLoginReceived;
 
-        TabContentVpn.UnsubscribeEvents();
+        _tabContentVpn?.UnsubscribeEvents();
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
         VpnService.OnStateChanged -= OnVpnStateChangedForTheme;
         OctopusEngine.Current.OnTrafficUpdated -= OnEngineTrafficUpdated;
@@ -231,14 +249,30 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _themeManager.CardOpacityChanged -= OnCardOpacityChanged;
         _themeManager.GlowIntensityChanged -= OnGlowIntensityChanged;
 
-        TabContentDelete.CancelRequested -= OnDeleteCancelRequested;
-        TabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
-        TabContentProfile.LogoutRequested -= OnProfileLogoutRequestedAsync;
-        TabContentProfile.BuyTokensRequested -= OnBuyTokensRequested;
-        TabContentProfile.BalanceRefreshRequested -= OnProfileBalanceRefreshRequestedAsync;
-        TabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
-        TabContentPayment.PaymentCancelled -= OnPaymentCancelled;
-        TabContentPayment.StopPaymentPolling();
+        if (_tabContentConfiguration is not null)
+        {
+            _tabContentConfiguration.ThemesRequested -= OnConfigurationThemesRequested;
+            _tabContentConfiguration.Dispose();
+        }
+        _tabContentThemeStore?.BackRequested -= OnThemeStoreBackRequested;
+        _tabContentVpn?.Dispose();
+        if (_tabContentDelete is not null)
+        {
+            _tabContentDelete.CancelRequested -= OnDeleteCancelRequested;
+            _tabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
+        }
+        if (_tabContentProfile is not null)
+        {
+            _tabContentProfile.LogoutRequested -= OnProfileLogoutRequestedAsync;
+            _tabContentProfile.BuyTokensRequested -= OnBuyTokensRequestedAsync;
+            _tabContentProfile.BalanceRefreshRequested -= OnProfileBalanceRefreshRequestedAsync;
+        }
+        if (_tabContentPayment is not null)
+        {
+            _tabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
+            _tabContentPayment.PaymentCancelled -= OnPaymentCancelled;
+            _tabContentPayment.StopPaymentPolling();
+        }
         DesktopSidebar.NavTapped -= OnSidebarNavTapped;
         DesktopSidebar.LogoutTapped -= OnSidebarLogoutTappedAsync;
         MobileBottomBar.NavTapped -= OnBottomBarNavTapped;
@@ -265,10 +299,36 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     public Task TriggerBalanceSyncAsync() => SyncBalanceFromServerAsync();
 
-    private void OnBuyTokensRequested(object? sender, EventArgs e)
+    private void OnConfigurationThemesRequested(object? sender, EventArgs e) =>
+        _ = SwitchTabAsync("themes");
+
+    private void OnThemeStoreBackRequested(object? sender, EventArgs e) =>
+        _ = SwitchTabAsync("configuration");
+
+    private static long ReadCachedRemainingSeconds()
     {
-        _ = SwitchTabAsync("payment");
-        TabContentPayment.LoadPaymentPage();
+        var bal = PlatformServices.Preferences.Get(AppPreferenceKeys.UserBalanceSec, 0L);
+        if (bal > 0)
+        {
+            return bal;
+        }
+
+        var subTicks = PlatformServices.Preferences.Get(AppPreferenceKeys.UserSubUntil, 0L);
+        if (subTicks <= 0)
+        {
+            return 0;
+        }
+
+        var until = new DateTime(subTicks, DateTimeKind.Utc);
+        return until > DateTime.UtcNow
+            ? Math.Max(0, (long)(until - DateTime.UtcNow).TotalSeconds)
+            : 0;
+    }
+
+    private async void OnBuyTokensRequestedAsync(object? sender, EventArgs e)
+    {
+        await SwitchTabAsync("payment");
+        _tabContentPayment?.LoadPaymentPage();
     }
 
     private async void OnPaymentCompletedAsync(object? sender, EventArgs e)
@@ -307,7 +367,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 await SwitchTabAsync("auth");
             }
 
-            await TabContentAuth.HandleDeepLinkLoginAsync(email, code);
+            if (_tabContentAuth is not null)
+            {
+                await _tabContentAuth.HandleDeepLinkLoginAsync(email, code);
+            }
         });
 
     private void HandleForceLogout(string message)
@@ -385,7 +448,15 @@ public sealed partial class MainPage : ContentPage, IDisposable
     {
         base.OnAppearing();
 
-        _ = AnimateSplashIconAsync();
+        if (Interlocked.CompareExchange(ref _startupHandled, 1, 0) != 0)
+        {
+            return;
+        }
+
+        if (SplashOverlay.IsVisible)
+        {
+            _ = AnimateSplashIconAsync();
+        }
 
         _ = Task.Run(async () =>
         {
@@ -398,6 +469,22 @@ public sealed partial class MainPage : ContentPage, IDisposable
             {
                 AppLogger.LogError("[AUTH LOAD ERROR]", ex);
             }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (_appUpdaterService is not null)
+                    {
+                        await Task.Delay(2500);
+                        await _appUpdaterService.CheckForUpdatesAsync(manualCheck: false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.LogWarning($"[AUTO UPDATE CHECK] {ex.Message}");
+                }
+            });
 
             MainThread.BeginInvokeOnMainThread(async () =>
             {
@@ -416,41 +503,55 @@ public sealed partial class MainPage : ContentPage, IDisposable
 #endif
                 }
 
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        if (_appUpdaterService is not null)
-                        {
-                            await Task.Delay(2500);
-                            await _appUpdaterService.CheckForUpdatesAsync(manualCheck: false);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.LogWarning($"[AUTO UPDATE CHECK] {ex.Message}");
-                    }
-                });
-
                 if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
                 {
-                    await SwitchToAppAfterAuthAsync();
-                    HandlePendingTileAction();
+                    if (_activeTab == "vpn")
+                    {
+                        ApplySessionBalance(session);
+                        HandlePendingTileAction();
+                        await SyncBalanceFromServerAsync(session);
+                    }
+                    else
+                    {
+                        await SwitchToAppAfterAuthAsync(session);
+                        HandlePendingTileAction();
+                    }
                 }
                 else
                 {
-                    DesktopSidebar.HideSidebar();
-                    MobileBottomBar.HideSidebar();
-                    await SwitchTabAsync("auth");
-                    _ = TabContentAuth.PlayEntranceAnimationAsync();
-                    if (App.PendingDeepLinkLogin is { } pendingLogin)
+                    if (_activeTab != "auth")
+                    {
+                        DesktopSidebar.HideSidebar();
+                        MobileBottomBar.HideSidebar();
+                        await SwitchTabAsync("auth", animate: SplashOverlay.IsVisible);
+                    }
+                    if (SplashOverlay.IsVisible)
+                    {
+                        _ = _tabContentAuth?.PlayEntranceAnimationAsync();
+                    }
+                    if (App.PendingDeepLinkLogin is { } pendingLogin && _tabContentAuth is not null)
                     {
                         App.PendingDeepLinkLogin = null;
-                        await TabContentAuth.HandleDeepLinkLoginAsync(pendingLogin.Email, pendingLogin.Code);
+                        await _tabContentAuth.HandleDeepLinkLoginAsync(pendingLogin.Email, pendingLogin.Code);
                     }
                 }
             });
         });
+    }
+
+    private void ApplySessionBalance(UserSession? session)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        RemainingSeconds = session.BalanceSeconds > 0
+            ? session.BalanceSeconds
+            : (session.SubscriptionUntil is { } until && until > DateTime.UtcNow
+                ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
+                : 0);
+        UpdateBalanceUI();
     }
 
     protected override void OnDisappearing()
@@ -474,39 +575,24 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
     }
 
-    public async Task SwitchToAppAfterAuthAsync()
+    public async Task SwitchToAppAfterAuthAsync(UserSession? preloadedSession = null)
     {
-        var session = await AuthManager.LoadSessionAsync();
-        if (session is not null)
+        var session = preloadedSession ?? await AuthManager.LoadSessionAsync();
+        ApplySessionBalance(session);
+
+        if (_tabContentAuth is { IsVisible: true })
         {
-            RemainingSeconds = session.BalanceSeconds > 0
-                ? session.BalanceSeconds
-                : (session.SubscriptionUntil is { } until && until > DateTime.UtcNow
-                    ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
-                    : 0);
-            UpdateBalanceUI();
+            _ = _tabContentAuth.FadeToAsync(0, 300);
+            await Task.Delay(300);
         }
 
-        _ = TabContentAuth.FadeToAsync(0, 300);
-        await Task.Delay(300);
-
-        TabContentVpn.Initialize(this, VpnService, _apiService);
-        _ = SwitchTabAsync("vpn");
+        var animateEntrance = _activeTab == "auth" || SplashOverlay.IsVisible;
+        await SwitchTabAsync("vpn", animate: animateEntrance);
 
         var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
         var isWide = _isWideLayout ?? AdaptiveLayoutHelper.IsWideLayout(Width, isDesktopOrTablet);
         _isWideLayout = isWide;
         ApplyAdaptiveLayout(isWide);
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(800);
-                _ = await _appManager.GetInstalledAppsAsync();
-            }
-            catch { }
-        });
 
         await SyncBalanceFromServerAsync(session);
     }
@@ -520,7 +606,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
 
         App.PendingTileAction = false;
-        TabContentVpn.TriggerTileToggle();
+        (EnsureTabCreated("vpn") as VpnView)?.TriggerTileToggle();
     }
 
     private async Task HandleLogoutClickAsync()
@@ -538,7 +624,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         {
             await cts.CancelAsync().ConfigureAwait(false);
         }
-        TabContentVpn.UnsubscribeEvents();
+        _tabContentVpn?.UnsubscribeEvents();
         _ = Task.Run(async () =>
         {
             try
@@ -550,7 +636,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         await AuthManager.ClearSessionAsync();
         AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-        TabContentVpn.UpdateActiveNode();
+        _tabContentVpn?.UpdateActiveNode();
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -590,7 +676,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
     }
 
-    public async Task SwitchTabAsync(string tab)
+    public async Task SwitchTabAsync(string tab, bool animate = true)
     {
         if (_activeTab == tab)
         {
@@ -600,7 +686,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         var prevTab = _activeTab;
         if (prevTab == "payment")
         {
-            TabContentPayment.StopPaymentPolling();
+            _tabContentPayment?.StopPaymentPolling();
         }
 
         _activeTab = tab;
@@ -609,71 +695,288 @@ public sealed partial class MainPage : ContentPage, IDisposable
         MobileBottomBar.UpdateActiveTab(tab);
 
         var outgoing = GetTabContent(prevTab);
-        var incoming = GetTabContent(tab);
-        await UIAnimations.SwitchViewAsync(outgoing, incoming);
+        var incoming = EnsureTabCreated(tab);
+        await UIAnimations.SwitchViewAsync(outgoing, incoming, animate);
         UpdateAllViewsOpacity();
 
         switch (tab)
         {
             case "vpn":
-                TabContentVpn.ForceLayoutWidth();
-                _ = TabContentVpn.PlayEntranceAnimationAsync();
-                _ = SyncBalanceFromServerAsync();
+                _tabContentVpn?.ForceLayoutWidth();
+                if (animate)
+                {
+                    _ = _tabContentVpn?.PlayEntranceAnimationAsync();
+                    if (!string.IsNullOrEmpty(prevTab))
+                    {
+                        _ = SyncBalanceFromServerAsync();
+                    }
+                }
                 break;
             case "configuration":
-                TabContentConfiguration.ForceLayoutWidth();
-                TabContentConfiguration.OnAppearing();
-                _ = TabContentConfiguration.PlayEntranceAnimationAsync();
+                _tabContentConfiguration?.ForceLayoutWidth();
+                _tabContentConfiguration?.OnAppearing();
+                if (animate)
+                {
+                    _ = _tabContentConfiguration?.PlayEntranceAnimationAsync();
+                }
                 break;
             case "profile":
-                TabContentProfile.ForceLayoutWidth();
+                _tabContentProfile?.ForceLayoutWidth();
                 var session = await AuthManager.LoadSessionAsync();
-                TabContentProfile.UpdateProfileInfo(session);
-                TabContentProfile.UpdateBalance(RemainingSeconds);
-                _ = TabContentProfile.LoadReferralCodeAsync();
-                _ = TabContentProfile.PlayEntranceAnimationAsync();
+                _tabContentProfile?.UpdateProfileInfo(session);
+                _tabContentProfile?.UpdateBalance(RemainingSeconds);
+                if (_tabContentProfile is not null)
+                {
+                    _ = _tabContentProfile.LoadReferralCodeAsync();
+                    if (animate)
+                    {
+                        _ = _tabContentProfile.PlayEntranceAnimationAsync();
+                    }
+                }
                 _ = SyncBalanceFromServerAsync(session);
                 break;
             case "devices":
-                TabContentDevices.ForceLayoutWidth();
-                _ = TabContentDevices.PlayEntranceAnimationAsync();
-                _ = TabContentDevices.LoadDevicesAsync();
+                _tabContentDevices?.ForceLayoutWidth();
+                if (_tabContentDevices is not null)
+                {
+                    if (animate)
+                    {
+                        _ = _tabContentDevices.PlayEntranceAnimationAsync();
+                    }
+                    _ = _tabContentDevices.LoadDevicesAsync();
+                }
                 break;
             case "split":
-                TabContentSplit.ForceLayoutWidth();
-                _ = TabContentSplit.PlayEntranceAnimationAsync();
-                _ = TabContentSplit.LoadSplitAppsAsync();
+                _tabContentSplit?.ForceLayoutWidth();
+                if (_tabContentSplit is not null)
+                {
+                    if (animate)
+                    {
+                        _ = _tabContentSplit.PlayEntranceAnimationAsync();
+                    }
+                    _ = _tabContentSplit.LoadSplitAppsAsync();
+                }
                 break;
             case "auth":
-                _ = TabContentAuth.PlayEntranceAnimationAsync();
+                if (animate)
+                {
+                    _ = _tabContentAuth?.PlayEntranceAnimationAsync();
+                }
                 break;
             case "delete":
-                _ = TabContentDelete.PlayEntranceAnimationAsync();
+                if (animate)
+                {
+                    _ = _tabContentDelete?.PlayEntranceAnimationAsync();
+                }
                 break;
             case "payment":
-                _ = TabContentPayment.PlayEntranceAnimationAsync();
+                if (animate)
+                {
+                    _ = _tabContentPayment?.PlayEntranceAnimationAsync();
+                }
                 break;
             case "themes":
-                TabContentThemeStore.ForceLayoutWidth();
-                _ = TabContentThemeStore.PlayEntranceAnimationAsync();
-                _ = TabContentThemeStore.LoadCatalogAsync();
+                _tabContentThemeStore?.ForceLayoutWidth();
+                if (_tabContentThemeStore is not null)
+                {
+                    if (animate)
+                    {
+                        _ = _tabContentThemeStore.PlayEntranceAnimationAsync();
+                    }
+                    _ = _tabContentThemeStore.LoadCatalogAsync();
+                }
                 break;
             default:
                 break;
         }
     }
 
+    //ленивое создание и инициализация вкладки только при первом обращении
+    private View EnsureTabCreated(string tab)
+    {
+        switch (tab)
+        {
+            case "vpn":
+                if (_tabContentVpn is null)
+                {
+                    _tabContentVpn = new VpnView { IsVisible = false };
+                    MainContentContainer.Children.Add(_tabContentVpn);
+                }
+                if (!_isVpnTabInitialized)
+                {
+                    _isVpnTabInitialized = true;
+                    _tabContentVpn.Initialize(this, VpnService, _apiService);
+                    ApplyInitialDecorations(_tabContentVpn);
+                    if (_lastAppliedThemeArgs is { } themeArgs)
+                    {
+                        ApplyThemeToVpnTab(_tabContentVpn, themeArgs);
+                        _tabContentVpn.SetCardFrameVisibility(_themeManager.FramesEnabled);
+                    }
+                    _tabContentVpn.UpdateBalanceUI(TimeFormatHelper.FormatSeconds(RemainingSeconds, false));
+                }
+                return _tabContentVpn;
+
+            case "auth":
+                if (_tabContentAuth is null)
+                {
+                    _tabContentAuth = new AuthView { IsVisible = false };
+                    _tabContentAuth.Initialize(this, _apiService, _qrScanner);
+                    ApplyInitialDecorations(_tabContentAuth);
+                    MainContentContainer.Children.Add(_tabContentAuth);
+                }
+                return _tabContentAuth;
+
+            case "configuration":
+                if (_tabContentConfiguration is null)
+                {
+                    _tabContentConfiguration = new ConfigurationView { IsVisible = false };
+                    _tabContentConfiguration.ThemesRequested += OnConfigurationThemesRequested;
+                    ApplyInitialDecorations(_tabContentConfiguration);
+                    MainContentContainer.Children.Add(_tabContentConfiguration);
+                }
+                return _tabContentConfiguration;
+
+            case "profile":
+                if (_tabContentProfile is null)
+                {
+                    _tabContentProfile = new ProfileView { IsVisible = false };
+                    _tabContentProfile.Initialize(this, _themeManager, _apiService);
+                    _tabContentProfile.LogoutRequested += OnProfileLogoutRequestedAsync;
+                    _tabContentProfile.BuyTokensRequested += OnBuyTokensRequestedAsync;
+                    _tabContentProfile.BalanceRefreshRequested += OnProfileBalanceRefreshRequestedAsync;
+                    _tabContentProfile.UpdateBalance(RemainingSeconds);
+                    ApplyInitialDecorations(_tabContentProfile);
+                    MainContentContainer.Children.Add(_tabContentProfile);
+                }
+                return _tabContentProfile;
+
+            case "devices":
+                if (_tabContentDevices is null)
+                {
+                    _tabContentDevices = new DevicesView { IsVisible = false };
+                    _tabContentDevices.Initialize(this, _apiService);
+                    ApplyInitialDecorations(_tabContentDevices);
+                    MainContentContainer.Children.Add(_tabContentDevices);
+                }
+                return _tabContentDevices;
+
+            case "split":
+                if (_tabContentSplit is null)
+                {
+                    _tabContentSplit = new SplitView { IsVisible = false };
+                    _tabContentSplit.Initialize(this, _appManager);
+                    ApplyInitialDecorations(_tabContentSplit);
+                    MainContentContainer.Children.Add(_tabContentSplit);
+                }
+                return _tabContentSplit;
+
+            case "delete":
+                if (_tabContentDelete is null)
+                {
+                    _tabContentDelete = new DeleteAccountView { IsVisible = false };
+                    _tabContentDelete.Initialize(this, _apiService);
+                    _tabContentDelete.CancelRequested += OnDeleteCancelRequested;
+                    _tabContentDelete.AccountDeleted += OnAccountDeletedAsync;
+                    ApplyInitialDecorations(_tabContentDelete);
+                    MainContentContainer.Children.Add(_tabContentDelete);
+                }
+                return _tabContentDelete;
+
+            case "payment":
+                if (_tabContentPayment is null)
+                {
+                    _tabContentPayment = new PaymentView { IsVisible = false };
+                    _tabContentPayment.Initialize(this, _apiService);
+                    _tabContentPayment.PaymentCompleted += OnPaymentCompletedAsync;
+                    _tabContentPayment.PaymentCancelled += OnPaymentCancelled;
+                    ApplyInitialDecorations(_tabContentPayment);
+                    MainContentContainer.Children.Add(_tabContentPayment);
+                }
+                return _tabContentPayment;
+
+            case "themes":
+                if (_tabContentThemeStore is null)
+                {
+                    _tabContentThemeStore = new ThemeStoreView { IsVisible = false };
+                    _tabContentThemeStore.Initialize(_themeManager);
+                    _tabContentThemeStore.BackRequested += OnThemeStoreBackRequested;
+                    ApplyInitialDecorations(_tabContentThemeStore);
+                    MainContentContainer.Children.Add(_tabContentThemeStore);
+                }
+                return _tabContentThemeStore;
+
+            default:
+                return EnsureTabCreated("vpn");
+        }
+    }
+
+    //применение актуальных отступов и темы на лениво созданную вкладку
+    private void ApplyInitialDecorations(VisualElement view)
+    {
+        if (_lastAppliedTopInset > 0)
+        {
+            var safeTop = Math.Max(0, _lastAppliedTopInset);
+            switch (view)
+            {
+                case VpnView v:
+                    v.SetHeaderTopInset(safeTop);
+                    break;
+                case ConfigurationView c:
+                    c.SetHeaderTopInset(safeTop);
+                    break;
+                case SplitView s:
+                    s.SetHeaderTopInset(safeTop);
+                    break;
+                case ProfileView p:
+                    p.SetHeaderTopInset(safeTop);
+                    break;
+                case ThemeStoreView ts:
+                    ts.SetHeaderTopInset(safeTop);
+                    break;
+                case DevicesView d:
+                    d.SetHeaderTopInset(safeTop);
+                    break;
+                case AuthView a:
+                    a.SetHeaderTopInset(safeTop);
+                    break;
+                case PaymentView pm:
+                    pm.SetHeaderTopInset(safeTop);
+                    break;
+                case DeleteAccountView da:
+                    da.SetHeaderTopInset(safeTop);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        UpdateAllViewsOpacity();
+    }
+
+    private static void ApplyThemeToVpnTab(VpnView vpn, ThemeAppliedEventArgs e) =>
+        vpn.ApplyThemeButton(
+            e.ButtonImageIdlePath,
+            e.ButtonImageConnectingPath,
+            e.ButtonImageActivePath,
+            e.ButtonImageErrorPath,
+            e.ButtonVideoIdlePath,
+            e.ButtonVideoConnectingPath,
+            e.ButtonVideoActivePath,
+            e.ButtonVideoErrorPath,
+            e.CardFramePath,
+            e.ButtonRingPath);
+
     private View? GetTabContent(string? tab) => tab switch
     {
-        "auth" => TabContentAuth,
-        "vpn" => TabContentVpn,
-        "configuration" => TabContentConfiguration,
-        "profile" => TabContentProfile,
-        "devices" => TabContentDevices,
-        "payment" => TabContentPayment,
-        "split" => TabContentSplit,
-        "delete" => TabContentDelete,
-        "themes" => TabContentThemeStore,
+        "auth" => _tabContentAuth,
+        "vpn" => _tabContentVpn,
+        "configuration" => _tabContentConfiguration,
+        "profile" => _tabContentProfile,
+        "devices" => _tabContentDevices,
+        "payment" => _tabContentPayment,
+        "split" => _tabContentSplit,
+        "delete" => _tabContentDelete,
+        "themes" => _tabContentThemeStore,
         _ => null
     };
 
@@ -775,37 +1078,37 @@ public sealed partial class MainPage : ContentPage, IDisposable
         MainThread.BeginInvokeOnMainThread(UpdateAllViewsOpacity);
 
     private void OnGlowIntensityChanged(double glow) =>
-        MainThread.BeginInvokeOnMainThread(() => TabContentVpn?.OnThemeChanged());
+        MainThread.BeginInvokeOnMainThread(() => _tabContentVpn?.OnThemeChanged());
 
     private void UpdateAllViewsOpacity()
     {
-        TabContentVpn?.UpdateCardOpacity();
+        _tabContentVpn?.UpdateCardOpacity();
         DesktopSidebar?.UpdateCardOpacity();
         MobileBottomBar?.UpdateCardOpacity();
-        TabContentConfiguration?.UpdateCardOpacity();
-        TabContentProfile?.UpdateCardOpacity();
-        TabContentThemeStore?.UpdateCardOpacity();
-        TabContentDevices?.UpdateCardOpacity();
-        TabContentPayment?.UpdateCardOpacity();
-        TabContentDelete?.UpdateCardOpacity();
-        TabContentSplit?.UpdateCardOpacity();
-        TabContentAuth?.UpdateCardOpacity();
+        _tabContentConfiguration?.UpdateCardOpacity();
+        _tabContentProfile?.UpdateCardOpacity();
+        _tabContentThemeStore?.UpdateCardOpacity();
+        _tabContentDevices?.UpdateCardOpacity();
+        _tabContentPayment?.UpdateCardOpacity();
+        _tabContentDelete?.UpdateCardOpacity();
+        _tabContentSplit?.UpdateCardOpacity();
+        _tabContentAuth?.UpdateCardOpacity();
     }
 
     private void NotifyViewsThemeChanged()
     {
         UpdateAllViewsOpacity();
-        TabContentVpn?.OnThemeChanged();
-        TabContentConfiguration?.OnThemeChanged();
-        TabContentSplit?.OnThemeChanged();
+        _tabContentVpn?.OnThemeChanged();
+        _tabContentConfiguration?.OnThemeChanged();
+        _tabContentSplit?.OnThemeChanged();
         DesktopSidebar?.OnThemeChanged();
         MobileBottomBar?.OnThemeChanged();
-        TabContentProfile?.OnThemeChanged();
-        TabContentThemeStore?.OnThemeChanged();
-        TabContentDevices?.OnThemeChanged();
-        TabContentPayment?.OnThemeChanged();
-        TabContentDelete?.OnThemeChanged();
-        TabContentAuth?.OnThemeChanged();
+        _tabContentProfile?.OnThemeChanged();
+        _tabContentThemeStore?.OnThemeChanged();
+        _tabContentDevices?.OnThemeChanged();
+        _tabContentPayment?.OnThemeChanged();
+        _tabContentDelete?.OnThemeChanged();
+        _tabContentAuth?.OnThemeChanged();
         NeoDialog?.OnThemeChanged();
     }
 
@@ -852,6 +1155,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private void HandleThemeApplied(ThemeAppliedEventArgs e)
     {
+        _lastAppliedThemeArgs = e;
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             try
@@ -941,17 +1245,10 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     _themeManager.ParticlesEnabled,
                     e.ScreenOverlayPath);
 
-                TabContentVpn?.ApplyThemeButton(
-                    e.ButtonImageIdlePath,
-                    e.ButtonImageConnectingPath,
-                    e.ButtonImageActivePath,
-                    e.ButtonImageErrorPath,
-                    e.ButtonVideoIdlePath,
-                    e.ButtonVideoConnectingPath,
-                    e.ButtonVideoActivePath,
-                    e.ButtonVideoErrorPath,
-                    e.CardFramePath,
-                    e.ButtonRingPath);
+                if (_tabContentVpn is not null)
+                {
+                    ApplyThemeToVpnTab(_tabContentVpn, e);
+                }
 
                 try
                 {
@@ -1036,6 +1333,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
     private void HandleThemeReset()
     {
+        _lastAppliedThemeArgs = null;
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             try
@@ -1102,7 +1400,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 ThemeBackgroundVideo.Source = null;
                 ThemeBackgroundVideoDimmer.IsVisible = false;
 
-                TabContentVpn?.ResetThemeButton();
+                _tabContentVpn?.ResetThemeButton();
                 NotifyViewsThemeChanged();
             }
             catch (Exception ex)
@@ -1320,22 +1618,22 @@ public sealed partial class MainPage : ContentPage, IDisposable
         MobileBottomBar.ApplyBottomInset(bottom);
 
         var safeTop = Math.Max(0, top);
-        TabContentVpn?.SetHeaderTopInset(safeTop);
-        TabContentConfiguration?.SetHeaderTopInset(safeTop);
-        TabContentSplit?.SetHeaderTopInset(safeTop);
-        TabContentProfile?.SetHeaderTopInset(safeTop);
-        TabContentThemeStore?.SetHeaderTopInset(safeTop);
-        TabContentDevices?.SetHeaderTopInset(safeTop);
-        TabContentAuth?.SetHeaderTopInset(safeTop);
-        TabContentPayment?.SetHeaderTopInset(safeTop);
-        TabContentDelete?.SetHeaderTopInset(safeTop);
+        _tabContentVpn?.SetHeaderTopInset(safeTop);
+        _tabContentConfiguration?.SetHeaderTopInset(safeTop);
+        _tabContentSplit?.SetHeaderTopInset(safeTop);
+        _tabContentProfile?.SetHeaderTopInset(safeTop);
+        _tabContentThemeStore?.SetHeaderTopInset(safeTop);
+        _tabContentDevices?.SetHeaderTopInset(safeTop);
+        _tabContentAuth?.SetHeaderTopInset(safeTop);
+        _tabContentPayment?.SetHeaderTopInset(safeTop);
+        _tabContentDelete?.SetHeaderTopInset(safeTop);
     }
 
     private void UpdateBalanceUI()
     {
         var timeText = TimeFormatHelper.FormatSeconds(RemainingSeconds, false);
-        TabContentVpn.UpdateBalanceUI(timeText);
-        TabContentProfile.UpdateBalance(RemainingSeconds);
+        _tabContentVpn?.UpdateBalanceUI(timeText);
+        _tabContentProfile?.UpdateBalance(RemainingSeconds);
     }
 
     private void OnAppResumed() =>
@@ -1373,7 +1671,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 catch { }
             }
 
-            TabContentVpn?.OnWindowFocusChanged(true);
+            _tabContentVpn?.OnWindowFocusChanged(true);
             if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
             {
                 _ = SyncBalanceFromServerAsync();
@@ -1410,7 +1708,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     catch { }
                 }
 
-                TabContentVpn?.OnWindowFocusChanged(false);
+                _tabContentVpn?.OnWindowFocusChanged(false);
             }
         });
     }
@@ -1441,7 +1739,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
             ThemeScreenFrameOverlay.IsVisible = enabled && hasFrame;
             ThemeDecorationsContainer.IsVisible = enabled && (hasFrame || _hasThemeCornerDecorations);
             ThemeParticles.InvalidateSurface();
-            TabContentVpn?.SetCardFrameVisibility(enabled);
+            _tabContentVpn?.SetCardFrameVisibility(enabled);
         });
     }
 
@@ -1499,7 +1797,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     catch { }
                 }
 
-                TabContentVpn?.OnWindowFocusChanged(true);
+                _tabContentVpn?.OnWindowFocusChanged(true);
             }
             else if (!alwaysPlay && !_isWindowActive)
             {
@@ -1521,7 +1819,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                     catch { }
                 }
 
-                TabContentVpn?.OnWindowFocusChanged(false);
+                _tabContentVpn?.OnWindowFocusChanged(false);
             }
         });
     }
@@ -1591,7 +1889,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
                             : 0);
 
                     UpdateBalanceUI();
-                    TabContentVpn.UpdateBalanceUI(
+                    _tabContentVpn?.UpdateBalanceUI(
                         TimeFormatHelper.FormatSeconds(RemainingSeconds, false),
                         VpnView.FormatBytes(profile.TotalBytesUsed));
                 });
@@ -1752,13 +2050,13 @@ public sealed partial class MainPage : ContentPage, IDisposable
     private void OnSidebarDimmerTapped(object? sender, EventArgs e)
     {
         ThemeAudioService.PlayClick();
-        if (TabContentVpn?.IsServerModalOpen == true)
+        if (_tabContentVpn?.IsServerModalOpen == true)
         {
-            _ = TabContentVpn.CloseServerModalAsync();
+            _ = _tabContentVpn.CloseServerModalAsync();
         }
-        if (TabContentThemeStore?.IsPreviewModalOpen == true)
+        if (_tabContentThemeStore?.IsPreviewModalOpen == true)
         {
-            _ = TabContentThemeStore.ClosePreviewModalAsync();
+            _ = _tabContentThemeStore.ClosePreviewModalAsync();
         }
     }
 

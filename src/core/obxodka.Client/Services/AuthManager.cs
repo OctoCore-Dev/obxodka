@@ -85,9 +85,13 @@ public sealed class AuthManager
                 return s_cachedSession;
             }
 
-            var jwt = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserJwt).ConfigureAwait(false) ?? string.Empty;
-            var pass = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserPassword).ConfigureAwait(false) ?? string.Empty;
-            var vpnConf = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserVpnConfig).ConfigureAwait(false) ?? string.Empty;
+            var jwtTask = PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserJwt);
+            var passTask = PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserPassword);
+            var vpnConfTask = PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserVpnConfig);
+            var values = await Task.WhenAll(jwtTask, passTask, vpnConfTask).ConfigureAwait(false);
+            var jwt = values[0] ?? string.Empty;
+            var pass = values[1] ?? string.Empty;
+            var vpnConf = values[2] ?? string.Empty;
             var subTicks = PlatformServices.Preferences.Get(AppPreferenceKeys.UserSubUntil, 0L);
             var balanceSec = PlatformServices.Preferences.Get(AppPreferenceKeys.UserBalanceSec, 0L);
 

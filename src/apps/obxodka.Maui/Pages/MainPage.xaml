@@ -184,16 +184,6 @@
                     <SwipeGestureRecognizer Direction="Left" Swiped="OnContentSwipedLeft" />
                     <SwipeGestureRecognizer Direction="Right" Swiped="OnContentSwipedRight" />
                 </Grid.GestureRecognizers>
-
-                <views:AuthView x:Name="TabContentAuth" IsVisible="False" />
-                <views:VpnView x:Name="TabContentVpn" IsVisible="False" />
-                <views:ConfigurationView x:Name="TabContentConfiguration" IsVisible="False" />
-                <views:ProfileView x:Name="TabContentProfile" IsVisible="False" />
-                <views:DevicesView x:Name="TabContentDevices" IsVisible="False" />
-                <views:SplitView x:Name="TabContentSplit" IsVisible="False" />
-                <views:DeleteAccountView x:Name="TabContentDelete" IsVisible="False" />
-                <views:PaymentView x:Name="TabContentPayment" IsVisible="False" />
-                <views:ThemeStoreView x:Name="TabContentThemeStore" IsVisible="False" />
             </Grid>
 
             <views:MobileSidebarView

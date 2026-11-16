@@ -170,7 +170,7 @@ public static partial class UIAnimations
         element.TranslationY = 0;
     }
 
-    public static async Task SwitchViewAsync(VisualElement? outgoing, VisualElement? incoming)
+    public static async Task SwitchViewAsync(VisualElement? outgoing, VisualElement? incoming, bool animate = true)
     {
         if (outgoing == incoming)
         {
@@ -202,6 +202,13 @@ public static partial class UIAnimations
         incoming.Scale = 1.0;
         incoming.TranslationY = 0;
         incoming.TranslationX = 0;
+        if (!animate)
+        {
+            incoming.Opacity = 1.0;
+            incoming.IsVisible = true;
+            return;
+        }
+
         incoming.Opacity = 0;
         incoming.IsVisible = true;
         _ = incoming.FadeToAsync(1.0, 160, Easing.CubicOut);

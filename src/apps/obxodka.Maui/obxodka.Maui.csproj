@@ -37,7 +37,8 @@
 	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))) and $(TargetFramework.Contains('-android'))">
 		<RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
 		<RunAOTCompilation>false</RunAOTCompilation>
-		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+		<AndroidEnableProfiledAot Condition="'$(Configuration)' == 'Release'">true</AndroidEnableProfiledAot>
+		<AndroidEnableProfiledAot Condition="'$(Configuration)' != 'Release'">false</AndroidEnableProfiledAot>
 		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 		<UseNativeHttpHandler>true</UseNativeHttpHandler>
 		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' != 'true'">8G</JavaMaximumHeapSize>
