@@ -329,8 +329,24 @@ public static class SniEngine
                 ServerLabel: $"{direct.ServerLabel ?? direct.Host} (XHTTP)"));
         }
 
-        List<ProtocolRouteStep> ring = [with(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
         List<ProtocolRouteStep> penalizedDirect = [];
+        List<ProtocolRouteStep> penalizedDirectXhttp = [];
+
+        //резервный xhttp напрямую к origin ip, если прямой узел еще не заблокирован, выносим в конец кольца после щитов
+        List<ProtocolRouteStep> directXhttpSteps = [];
+        foreach (var step in shieldXhttpSteps)
+        {
+            if (!step.IsShield && OctopusEngine.IsNodeByteCapped(step.Host))
+            {
+                penalizedDirectXhttp.Add(step);
+            }
+            else
+            {
+                directXhttpSteps.Add(step);
+            }
+        }
+
+        List<ProtocolRouteStep> ring = [with(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
 
         if (!forceWebSocket)
         {
@@ -348,10 +364,11 @@ public static class SniEngine
         }
 
         ring.AddRange(shieldWsSteps);
-        ring.AddRange(shieldXhttpSteps);
+        ring.AddRange(directXhttpSteps);
 
         if (!forceWebSocket)
         {
+            ring.AddRange(penalizedDirectXhttp);
             ring.AddRange(penalizedDirect);
         }
 

@@ -63,6 +63,11 @@ internal sealed partial class WindowsVpnService
 
         if (!serverOk)
         {
+            if (internetOk)
+            {
+                //прямой ip уже не отвечает при рабочем интернете — сразу штрафуем его, чтобы стартовать с cloudflare без 12с простоя
+                OctopusEngine.MarkNodeByteCapped(AppConfig.DirectServerIp);
+            }
             OctopusEngine.Current.EmitStatus(VpnStatusMessages.MainNodeUnavailableDirectly);
         }
 

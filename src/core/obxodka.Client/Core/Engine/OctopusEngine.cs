@@ -92,8 +92,23 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     //флаг активности соединения
     public bool IsConnected => _transport is { IsConnected: true };
 
+    private volatile uint _assignedIpUint = BinaryPrimitives.ReadUInt32BigEndian([10, 8, 0, 2]);
+
     //выделенный сервером ipv4 адрес клиента
-    public string AssignedIp { get; private set; } = "10.8.0.2";
+    public string AssignedIp
+    {
+        get;
+        private set
+        {
+            field = value;
+            _assignedIpUint = IPAddress.TryParse(value, out var parsed) && parsed.AddressFamily == AddressFamily.InterNetwork
+                ? BinaryPrimitives.ReadUInt32BigEndian(parsed.GetAddressBytes())
+                : 0u;
+        }
+    } = "10.8.0.2";
+
+    //ipv4 адрес клиента в сетевом порядке байт для быстрой проверки источника пакетов в конвейере
+    internal uint AssignedIpUint => _assignedIpUint;
 
     //выделенный сервером ipv6 адрес клиента
     public string AssignedIpV6 { get; private set; } = "fd00::2";
@@ -210,17 +225,20 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     private void DeliverLocalPacket(byte[] packet, int length) =>
         OnPacketReceived?.Invoke(packet, length);
 
-    //отправка пакета напрямую из пула памяти через центральный конвейер обработки
-    public void SendPacketFromPool(byte[] inputBuf, int length)
+    //учет реально принятого в туннель исходящего пакета для статистики и сторожа застоя
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void RecordOutgoingPacketBytes(int length)
     {
         _ = Interlocked.Add(ref _totalBytesSent, length);
         if (length > SmartMtuEngine.DefaultMtu)
         {
             _ = Interlocked.Increment(ref _largeTxPackets);
         }
-
-        Pipeline.ProcessOutgoingPacket(inputBuf, length, _transport);
     }
+
+    //отправка пакета напрямую из пула памяти через центральный конвейер обработки
+    public void SendPacketFromPool(byte[] inputBuf, int length) =>
+        Pipeline.ProcessOutgoingPacket(inputBuf, length, _transport);
 
     //асинхронная обертка отправки пакета из пула для совместимости
     public Task SendPacketFromPoolAsync(byte[] inputBuf, int length)

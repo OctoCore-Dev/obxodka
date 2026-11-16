@@ -211,10 +211,33 @@ public static class AppLogger
         var item = new LogItem(DateTime.Now, "WARN", message);
         AddToRecentLogs($"[{item.Timestamp:HH:mm:ss.fff}] [WARN] {message}");
         _ = s_channel.Writer.TryWrite(item);
+        ForwardToTelemetry("WARN", message, null);
     }
 
     //запись ошибок в журнал логов
-    public static void LogError(string message, Exception? ex = null)
+    public static void LogError(string message, Exception? ex = null) =>
+        LogErrorInternal(message, ex, telemetryLevel: "ERROR");
+
+    //запись фатального падения процесса в crash.log
+    public static void LogCrash(string message, Exception? ex = null)
+    {
+        LogErrorInternal(message, ex, telemetryLevel: "FATAL");
+        try
+        {
+            var fullMessage = ex != null
+                ? $"{message} | Exception: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}"
+                : message;
+            var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH] {fullMessage}\n";
+            File.AppendAllText(CrashLogFilePath, crashEntry);
+        }
+        catch (Exception logEx) when (logEx is not OutOfMemoryException)
+        {
+            //подавление ошибки записи аварийного лога на диск
+        }
+    }
+
+    //внутренняя запись ошибки с единой пересылкой в телеметрию и sentry
+    private static void LogErrorInternal(string message, Exception? ex, string telemetryLevel)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
@@ -228,24 +251,28 @@ public static class AppLogger
         var item = new LogItem(DateTime.Now, "ERROR", fullMessage);
         AddToRecentLogs($"[{item.Timestamp:HH:mm:ss.fff}] [ERROR] {fullMessage}");
         _ = s_channel.Writer.TryWrite(item);
+        ForwardToTelemetry(telemetryLevel, message, ex);
     }
 
-    //запись фатального падения процесса в crash.log
-    public static void LogCrash(string message, Exception? ex = null)
+    //пересылка предупреждений, ошибок и сбоев в серверный шлюз sentry без блокировки вызывающего потока
+    private static void ForwardToTelemetry(string level, string message, Exception? ex)
     {
-        LogError(message, ex);
-        try
+        if (obxodka.Client.Telemetry.TelemetryFilter.IsTestEnvironment)
         {
-            var fullMessage = ex != null
-                ? $"{message} | Exception: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}"
-                : message;
-            var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH] {fullMessage}\n";
-            File.AppendAllText(CrashLogFilePath, crashEntry);
+            return;
         }
-        catch (Exception logEx) when (logEx is not OutOfMemoryException)
+
+        if (message.Contains("[TELEMETRY", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("api/Vpn/telemetry", StringComparison.OrdinalIgnoreCase))
         {
-            //подавление ошибки записи аварийного лога на диск
+            return;
         }
+
+        var platformTag = OperatingSystem.IsWindows()
+            ? "WINDOWS"
+            : (OperatingSystem.IsAndroid() ? "ANDROID" : "CLIENT");
+        var formatted = $"[{platformTag}] [{level}] {message}";
+        obxodka.Client.Telemetry.TelemetryService.Instance.EnqueueError(formatted, ex);
     }
 
     //получение последних строк для интерфейса

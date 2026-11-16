@@ -234,19 +234,23 @@ public sealed partial class OctopusEngine
                         var elapsedMs = Environment.TickCount64 - armedTicks;
                         var bytesSentDuringStall = currentSent - rxStallStartSent;
 
-                        //ранний эхо-зонд при застое rx для быстрой проверки канала на любом протоколе
-                        if (deadTicks == 20 || (deadTicks >= 25 && deadTicks % 15 == 0))
+                        //ранний эхо-зонд при застое rx для быстрой проверки канала (на облачных каналах зондируем на 3с и 5с)
+                        var isDirectStream = _transport is ObxodkaStreamTransport;
+                        var sendActivePing = isDirectStream
+                            ? (deadTicks == 20 || (deadTicks >= 25 && deadTicks % 15 == 0))
+                            : (deadTicks == 15 || deadTicks == 25 || (deadTicks >= 35 && deadTicks % 15 == 0));
+                        if (sendActivePing)
                         {
                             _ = _transport?.SendPingProbeAsync();
                         }
 
-                        //раннее переключение по круговому кольцу для любого транспорта при нулевом rx (тспу/мертвый cloudflare edge)
-                        var shouldRotateEarly = (_transport is ObxodkaStreamTransport && deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192)) ||
-                                                (deadTicks >= 30 && bytesSentDuringStall >= 2048) ||
-                                                (deadTicks >= 40);
+                        //раннее переключение по круговому кольцу: для прямого потока при тспу 5с, для облачных щитов 9с с подтвержденным провалом пинга
+                        var shouldRotateEarly = isDirectStream
+                            ? (deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192))
+                            : ((deadTicks >= 45 && bytesSentDuringStall >= 4096) || deadTicks >= 55);
                         if (shouldRotateEarly)
                         {
-                            var reason = _transport is ObxodkaStreamTransport
+                            var reason = isDirectStream
                                 ? "DirectStreamByteCapFreeze"
                                 : "MidSessionRxStall";
                             var rotated = await TryRotateProtocolAsync(reason, token).ConfigureAwait(false);
@@ -263,11 +267,11 @@ public sealed partial class OctopusEngine
                         var isInitialBlackhole = currentReceived < 5000 &&
                                                  elapsedMs is >= 10000 and < 60000 &&
                                                  (currentSent > 12000 || bytesSentDuringStall > 8192) &&
-                                                 deadTicks >= 35;
+                                                 deadTicks >= (isDirectStream ? 35 : 55);
 
                         var isDead = isInitialBlackhole ||
-                                     (bytesSentDuringStall > 32768 && deadTicks >= 45) ||
-                                     (currentReceived < 5000 && deadTicks >= 55) ||
+                                     (bytesSentDuringStall > 32768 && deadTicks >= (isDirectStream ? 45 : 65)) ||
+                                     (currentReceived < 5000 && deadTicks >= (isDirectStream ? 55 : 70)) ||
                                      deadTicks >= 90;
 
                         if (isDead)

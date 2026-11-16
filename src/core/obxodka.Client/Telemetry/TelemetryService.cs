@@ -83,8 +83,8 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         }
     }
 
-    //запись ошибки в очередь отправки
-    public async ValueTask TrackErrorAsync(string message, Exception? ex = null, CancellationToken ct = default)
+    //запись ошибки в очередь отправки без аллокаций valuetask
+    internal void EnqueueError(string message, Exception? ex = null)
     {
         if (!IsTelemetryEnabled || !TelemetryFilter.ShouldSendToServer(message, ex))
         {
@@ -101,7 +101,14 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
 
         var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
         _ = _channel.Writer.TryWrite(dto);
-        await ValueTask.CompletedTask;
+    }
+
+    //запись ошибки в очередь отправки
+    public ValueTask TrackErrorAsync(string message, Exception? ex = null, CancellationToken ct = default)
+    {
+        _ = ct;
+        EnqueueError(message, ex);
+        return ValueTask.CompletedTask;
     }
 
     //запись фатального падения приложения в crash.log

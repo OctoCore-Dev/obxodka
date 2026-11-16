@@ -59,7 +59,10 @@ public sealed class ProtocolRotationAndXhttpTests
 
             Assert.Equal(TransportProtocolKind.ObxodkaWebSocket, ring[0].Kind);
             Assert.Equal(TransportProtocolKind.ObxodkaXhttp, ring[1].Kind);
+            Assert.True(ring[1].IsShield);
             Assert.Equal(TransportProtocolKind.ObxodkaStream, ring[^1].Kind);
+            var directXhttpIndex = ring.FindIndex(s => s.Kind == TransportProtocolKind.ObxodkaXhttp && !s.IsShield);
+            Assert.True(directXhttpIndex > 1);
         }
         finally
         {

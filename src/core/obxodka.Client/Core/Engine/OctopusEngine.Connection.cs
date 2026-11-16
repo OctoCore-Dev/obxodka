@@ -6,6 +6,45 @@ public sealed partial class OctopusEngine
     private volatile byte[][] _serverIpv6Array = [];
     private readonly Lock _serverIpsLock = new();
 
+    //добавление уже известных ip адресов сервера в таблицу исключений без блокирующего dns
+    private void RegisterServerIpAddresses(IEnumerable<IPAddress> addresses)
+    {
+        lock (_serverIpsLock)
+        {
+            var v4List = _serverIpv4Array.ToList();
+            var v6List = _serverIpv6Array.ToList();
+            var changed = false;
+
+            foreach (var ip in addresses)
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    var u = BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
+                    if (!v4List.Contains(u))
+                    {
+                        v4List.Add(u);
+                        changed = true;
+                    }
+                }
+                else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    var b = ip.GetAddressBytes();
+                    if (!v6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
+                    {
+                        v6List.Add(b);
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                _serverIpv4Array = [.. v4List];
+                _serverIpv6Array = [.. v6List];
+            }
+        }
+    }
+
     //регистрация ip адресов сервера для исключения из туннеля во избежание петель маршрутизации
     public void RegisterServerEndpoint(string serverIp)
     {
@@ -14,59 +53,21 @@ public sealed partial class OctopusEngine
             return;
         }
 
-        lock (_serverIpsLock)
+        try
         {
-            try
+            if (IPAddress.TryParse(serverIp, out var directIp))
             {
-                var v4List = _serverIpv4Array.ToList();
-                var v6List = _serverIpv6Array.ToList();
-                var changed = false;
-
-                void Add(IPAddress ip)
-                {
-                    if (ip.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        var u = BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
-                        if (!v4List.Contains(u))
-                        {
-                            v4List.Add(u);
-                            changed = true;
-                        }
-                    }
-                    else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-                    {
-                        var b = ip.GetAddressBytes();
-                        if (!v6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
-                        {
-                            v6List.Add(b);
-                            changed = true;
-                        }
-                    }
-                }
-
-                if (IPAddress.TryParse(serverIp, out var directIp))
-                {
-                    Add(directIp);
-                }
-                else
-                {
-                    var addrs = Dns.GetHostAddresses(serverIp);
-                    foreach (var addr in addrs)
-                    {
-                        Add(addr);
-                    }
-                }
-
-                if (changed)
-                {
-                    _serverIpv4Array = [.. v4List];
-                    _serverIpv6Array = [.. v6List];
-                }
+                RegisterServerIpAddresses([directIp]);
             }
-            catch (Exception ex) when (ex is SocketException or ArgumentException or NotSupportedException)
+            else
             {
-                //подавление ошибки обновления адресов сервера
+                var addrs = Dns.GetHostAddresses(serverIp);
+                RegisterServerIpAddresses(addrs);
             }
+        }
+        catch (Exception ex) when (ex is SocketException or ArgumentException or NotSupportedException)
+        {
+            //подавление ошибки обновления адресов сервера
         }
     }
 
@@ -275,14 +276,14 @@ public sealed partial class OctopusEngine
         }
     }
 
-    //регистрация внешних ip адреса назначения для bypass-маршрута ос перед открытием сокета
+    //регистрация внешних ip адреса назначения для bypass-маршрута ос перед открытием сокета без синхронной блокировки dns
     private async Task PrepareExternalEndpointBypassAsync(ProtocolRouteStep step, CancellationToken ct)
     {
         HashSet<string> ips = [with(StringComparer.OrdinalIgnoreCase)];
-        RegisterServerEndpoint(step.Host);
 
-        if (IPAddress.TryParse(step.Host, out _))
+        if (IPAddress.TryParse(step.Host, out var literalIp))
         {
+            RegisterServerIpAddresses([literalIp]);
             _ = ips.Add(step.Host);
         }
         else
@@ -290,15 +291,14 @@ public sealed partial class OctopusEngine
             try
             {
                 using var dnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                dnsCts.CancelAfter(TimeSpan.FromSeconds(2));
-                var resolved = await Dns.GetHostAddressesAsync(step.Host, dnsCts.Token).ConfigureAwait(false);
+                dnsCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
+                var resolved = await ApiService.ResolveAllHostsAntiPoisonAsync(step.Host, dnsCts.Token).ConfigureAwait(false);
+                RegisterServerIpAddresses(resolved);
                 foreach (var addr in resolved)
                 {
                     if (addr.AddressFamily == AddressFamily.InterNetwork)
                     {
-                        var ipStr = addr.ToString();
-                        _ = ips.Add(ipStr);
-                        RegisterServerEndpoint(ipStr);
+                        _ = ips.Add(addr.ToString());
                     }
                 }
             }
@@ -310,10 +310,10 @@ public sealed partial class OctopusEngine
 
         foreach (var relayIp in AppConfig.DirectRelayIps)
         {
-            if (!string.IsNullOrWhiteSpace(relayIp))
+            if (!string.IsNullOrWhiteSpace(relayIp) && IPAddress.TryParse(relayIp, out var relayParsed))
             {
                 _ = ips.Add(relayIp);
-                RegisterServerEndpoint(relayIp);
+                RegisterServerIpAddresses([relayParsed]);
             }
         }
 
@@ -548,9 +548,9 @@ public sealed partial class OctopusEngine
                 var candidateIdx = (_rotationStepIndex + offset) % totalSteps;
                 var nextStep = _rotationRing[candidateIdx];
 
-                //если прямой узел только что попал под лимит тспу, пропускаем его в текущем цикле и переходим к щиту/xhttp
-                if (nextStep.Kind == TransportProtocolKind.ObxodkaStream &&
-                    !nextStep.IsShield &&
+                //если прямой узел не отвечает в префлайте или попал под лимит тспу, пропускаем прямые шаги и чередуем щиты
+                if (!nextStep.IsShield &&
+                    (nextStep.Kind is TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaXhttp) &&
                     IsNodeByteCapped(nextStep.Host))
                 {
                     continue;

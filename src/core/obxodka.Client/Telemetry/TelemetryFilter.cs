@@ -54,6 +54,13 @@ public static class TelemetryFilter
             return false;
         }
 
+        //предотвращаем рекурсивную отправку ошибок самой телеметрии
+        if (message.Contains("[TELEMETRY", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("api/Vpn/telemetry", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         //отсеиваем отмену пользователем
         if (ex is OperationCanceledException or TaskCanceledException)
         {
