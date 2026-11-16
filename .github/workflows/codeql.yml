@@ -76,7 +76,7 @@ jobs:
             $proj = $entry[0]
             $tfm = $entry[1]
             if ($tfm -ne "") {
-              dotnet build $proj -f $tfm -c Release
+              dotnet build $proj -f $tfm -c Release -p:BuildWindowsOnly=true
             } else {
               dotnet build $proj -c Release
             }

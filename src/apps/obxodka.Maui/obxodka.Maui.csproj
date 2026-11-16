@@ -11,8 +11,8 @@
   <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
     <WindowsPackageType>$(PackageMode)</WindowsPackageType>
     <Configurations>Debug;Release</Configurations>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == ''">$(WindowsTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' != ''">$(WindowsTargetFramework)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == '' and '$(BuildWindowsOnly)' != 'true'">$(WindowsTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and ('$(RuntimeIdentifier)' != '' or '$(BuildWindowsOnly)' == 'true')">$(WindowsTargetFramework)</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">$(AndroidTargetFramework)</TargetFrameworks>
     <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">$(MacCatalystTargetFramework);$(IosTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
     <OutputType>Exe</OutputType>

@@ -417,6 +417,7 @@ jobs:
           }
 
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
+            -p:BuildWindowsOnly=true `
             -p:PackageMode=MSIX `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
@@ -461,6 +462,7 @@ jobs:
 
           Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
+            -p:BuildWindowsOnly=true `
             -p:PackageMode=None `
             -p:WindowsPackageType=None `
             -p:GenerateAppxPackageOnBuild=false `
