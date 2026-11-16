@@ -12,7 +12,15 @@ public sealed partial class VpnView
 
     //обработка событий системного лога vpn
     private void HandleVpnLog(string logMsg) =>
-        MainThread.BeginInvokeOnMainThread(() => StatusLabel.Text = logMsg);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_vpnService is null ||
+                _vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Disconnecting or AppVpnState.Error)
+            {
+                return;
+            }
+            StatusLabel.Text = logMsg;
+        });
 
     //переподключение по нажатию в системном уведомлении
     private void HandleNotificationReconnect()

@@ -13,6 +13,64 @@ internal sealed partial class WindowsVpnService
     private static readonly SemaphoreSlim s_adapterConfigLock = new(1, 1);
     private static volatile bool s_ipv6RoutesApplied;
 
+    //проверка реального изменения активного физического адаптера, его локального ip или шлюза
+    private static bool HasPhysicalNetworkSnapshotChanged()
+    {
+        var savedIf = s_savedPhysicalIfIndex;
+        var savedGw = s_savedPhysicalGateway;
+        var savedLocal = s_savedPhysicalLocalIp;
+        if (savedIf <= 0 || string.IsNullOrWhiteSpace(savedGw))
+        {
+            return false;
+        }
+
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up ||
+                    nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                    IsConflictingAdapter(nic) ||
+                    nic.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase) ||
+                    nic.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (TryGetIpv4IfIndex(nic) != savedIf)
+                {
+                    continue;
+                }
+
+                var props = nic.GetIPProperties();
+                var hasMatchingGw = props.GatewayAddresses.Any(g =>
+                    g.Address.AddressFamily == AddressFamily.InterNetwork &&
+                    string.Equals(g.Address.ToString(), savedGw, StringComparison.Ordinal));
+                if (!hasMatchingGw)
+                {
+                    return true;
+                }
+
+                if (savedLocal is not null)
+                {
+                    var hasMatchingIp = props.UnicastAddresses.Any(u => u.Address.Equals(savedLocal));
+                    if (!hasMatchingIp)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     //сброс кэшированных параметров физического интерфейса при обрыве или смене сети
     private static void ResetSavedPhysicalGateway()
     {
@@ -221,6 +279,7 @@ internal sealed partial class WindowsVpnService
     //обновление mtu адаптера под текущий потолок ядра octopus
     private static async Task UpdateAdapterMtuAsync(string adapterName, int mtu)
     {
+        using var suppressScope = SuppressNetworkChanges(2000);
         var lockAcquired = false;
         try
         {

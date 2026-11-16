@@ -13,6 +13,7 @@ internal sealed partial class WindowsVpnService
     public async Task CleanupBeforeConnectAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        using var suppressScope = SuppressNetworkChanges();
         AppManager.SyncPolicyFromPreferences();
         await CleanupStaleRoutesAsync().ConfigureAwait(false);
         LogNetworkDiagnostics();
@@ -43,6 +44,7 @@ internal sealed partial class WindowsVpnService
     {
         _ = step;
         _ = mtu;
+        using var suppressScope = SuppressNetworkChanges();
         if (_adapter is null || _adapter.IsDisposed)
         {
             _adapter = await Task.Run(() => new WintunAdapter("Obxodka", "Obxodka"), ct).ConfigureAwait(false);
@@ -68,6 +70,7 @@ internal sealed partial class WindowsVpnService
             return;
         }
 
+        using var suppressScope = SuppressNetworkChanges();
         await SetWindowsRoutesAsync(adapter.Name, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
         await EnableDnsLeakProtectionAsync(adapter.Name, assignedIpv4).ConfigureAwait(false);
     }
@@ -82,6 +85,7 @@ internal sealed partial class WindowsVpnService
             return;
         }
 
+        using var suppressScope = SuppressNetworkChanges();
         await SetAdapterConfigAsync(adapter.Name, assignedIpv4, "255.192.0.0", assignedIpv6).ConfigureAwait(false);
         await SetWindowsRoutesAsync(adapter.Name, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
         await EnableDnsLeakProtectionAsync(adapter.Name, assignedIpv4).ConfigureAwait(false);
@@ -115,6 +119,7 @@ internal sealed partial class WindowsVpnService
             return;
         }
 
+        using var suppressScope = SuppressNetworkChanges();
         var adapterName = _adapter?.Name ?? "Obxodka";
 
         await DisableDnsLeakProtectionAsync().ConfigureAwait(false);

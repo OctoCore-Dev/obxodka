@@ -159,4 +159,21 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
         Assert.True(PlatformServices.Preferences.Get(AppPreferenceKeys.BypassRuSites, true));
         Assert.False(PlatformServices.Preferences.Get(AppPreferenceKeys.BlockIpv6, false));
     }
+
+    [Fact]
+    public async Task StopVpnAsync_IgnoresSubsequentPlatformNetworkChangedAndLateLogsAsync()
+    {
+        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, hookProcessExit: false);
+        var logsAfterStop = new List<string>();
+
+        await orchestrator.StopVpnAsync();
+        orchestrator.OnLogUpdated += logsAfterStop.Add;
+
+        _adapterMock.Raise(a => a.OnPlatformNetworkChanged += null);
+        orchestrator.TriggerImmediateReconnect();
+        await Task.Delay(350);
+
+        Assert.Equal(AppVpnState.Disconnected, orchestrator.CurrentState);
+        Assert.Empty(logsAfterStop);
+    }
 }

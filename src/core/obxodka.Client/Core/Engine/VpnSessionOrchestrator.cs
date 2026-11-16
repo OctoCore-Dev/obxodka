@@ -36,7 +36,15 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         _adapter = adapter;
         _engine = engine ?? OctopusEngine.Current;
 
-        _statusMessageHandler = msg => OnLogUpdated?.Invoke(msg);
+        _statusMessageHandler = msg =>
+        {
+            if (Volatile.Read(ref _isExplicitlyStopped) != 0 ||
+                CurrentState is AppVpnState.Disconnected or AppVpnState.Disconnecting)
+            {
+                return;
+            }
+            OnLogUpdated?.Invoke(msg);
+        };
         _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
         _mtuUpdatedHandler = HandleMtuUpdated;
         _trafficUpdatedHandler = HandleEngineTrafficUpdated;
@@ -95,14 +103,38 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         StartVpnAsync(serverIp, serverPort, null);
 
     //единый конвейер запуска vpn-подключения через круговое кольцо протоколов и серверов
-    public async Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers)
+    public Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers) =>
+        StartVpnCoreAsync(serverIp, serverPort, fallbackServers, isUserInitiated: true, callerEpoch: null);
+
+    //фоновый перезапуск после обрыва/роуминга, не нарушающий ручную остановку пользователем
+    private Task StartBackgroundReconnectAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers, long callerEpoch) =>
+        StartVpnCoreAsync(serverIp, serverPort, fallbackServers, isUserInitiated: false, callerEpoch: callerEpoch);
+
+    private async Task StartVpnCoreAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers, bool isUserInitiated, long? callerEpoch)
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
             return;
         }
 
+        if (!isUserInitiated && (Volatile.Read(ref _isExplicitlyStopped) != 0 || (callerEpoch is { } preEp && IsSessionStale(preEp))))
+        {
+            return;
+        }
+
         await _vpnGate.WaitAsync().ConfigureAwait(false);
+        if (!isUserInitiated && (Volatile.Read(ref _isExplicitlyStopped) != 0 || Volatile.Read(ref _disposed) != 0 || (callerEpoch is { } lockEp && IsSessionStale(lockEp))))
+        {
+            try
+            {
+                _ = _vpnGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            return;
+        }
+
         var epoch = Interlocked.Increment(ref _sessionEpoch);
         try
         {
@@ -308,7 +340,14 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             lockTaken = await _vpnGate.WaitAsync(5000).ConfigureAwait(false);
             if (!lockTaken)
             {
-                AppLogger.LogWarning("[WARN] StopVpnAsync timed out waiting for gate lock.");
+                AppLogger.LogWarning("[WARN] StopVpnAsync timed out waiting for gate lock. Forcing engine teardown...");
+                try
+                {
+                    await _engine.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(800)).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
             }
 
             OnLogUpdated?.Invoke(VpnStatusMessages.DisconnectingVpn);
@@ -330,8 +369,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
             try
             {
-                var disposeTask = _engine.DisposeAsync().AsTask();
-                _ = await Task.WhenAny(disposeTask, Task.Delay(1200)).ConfigureAwait(false);
+                await _engine.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(1200)).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -379,7 +417,9 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
     //единый быстрый реконнект при смене физической сети (wifi -> lte / роуминг)
     public void TriggerImmediateReconnect()
     {
-        if (Volatile.Read(ref _isExplicitlyStopped) != 0 || string.IsNullOrEmpty(_currentServerIp))
+        if (Volatile.Read(ref _isExplicitlyStopped) != 0 ||
+            CurrentState is AppVpnState.Disconnected or AppVpnState.Disconnecting ||
+            string.IsNullOrEmpty(_currentServerIp))
         {
             return;
         }
@@ -444,11 +484,11 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                     }
                 }
 
-                if (!ct.IsCancellationRequested && !IsSessionStale(epoch))
+                if (!ct.IsCancellationRequested && !IsSessionStale(epoch) && Volatile.Read(ref _isExplicitlyStopped) == 0)
                 {
                     AppLogger.Log("[NETWORK ROAMING] Fast reconnect attempts exhausted. Initiating server failover...");
                     var port = _engine.ConnectedServerPort > 0 ? _engine.ConnectedServerPort : 443;
-                    await StartVpnAsync(_currentServerIp, port, _fallbackServers).ConfigureAwait(false);
+                    await StartBackgroundReconnectAsync(_currentServerIp, port, _fallbackServers, epoch).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -467,6 +507,11 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
     private void HandlePlatformNetworkChanged()
     {
+        if (Volatile.Read(ref _isExplicitlyStopped) != 0)
+        {
+            return;
+        }
+
         if (CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
         {
             TriggerImmediateReconnect();
@@ -570,7 +615,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             if (PlatformServices.Preferences.Get(AppPreferenceKeys.AutoReconnect, true))
             {
                 var targetPort = _engine.ConnectedServerPort > 0 ? _engine.ConnectedServerPort : 443;
-                await StartVpnAsync(_currentServerIp, targetPort, _fallbackServers).ConfigureAwait(false);
+                await StartBackgroundReconnectAsync(_currentServerIp, targetPort, _fallbackServers, epoch).ConfigureAwait(false);
             }
             else
             {

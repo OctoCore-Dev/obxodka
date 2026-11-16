@@ -145,10 +145,27 @@ public sealed partial class VpnView
         _smoothSpeedUp = 0;
         _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
+        _lastBytesSent = 0;
+        _lastBytesReceived = 0;
 
         lock (_graphSamples)
         {
             _graphSamples.Clear();
+        }
+
+        void ResetTrafficLabels()
+        {
+            TrafficUpLabel?.Text = "0 B/s";
+            TrafficDownLabel?.Text = "0 B/s";
+        }
+
+        if (MainThread.IsMainThread)
+        {
+            ResetTrafficLabels();
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(ResetTrafficLabels);
         }
 
         TrafficGraphCanvas?.InvalidateSurface();
@@ -157,6 +174,11 @@ public sealed partial class VpnView
     //обработка поступления новых счетчиков трафика
     private void OnTrafficUpdated(long bytesSent, long bytesReceived)
     {
+        if (_vpnService?.CurrentState != AppVpnState.Connected)
+        {
+            return;
+        }
+
         var now = DateTime.Now;
         var elapsed = (now - _lastTrafficUpdate).TotalSeconds;
         if (elapsed <= 0.05)
@@ -176,6 +198,10 @@ public sealed partial class VpnView
 
         PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(200), () =>
         {
+            if (_vpnService?.CurrentState != AppVpnState.Connected)
+            {
+                return;
+            }
             TrafficUpLabel.Text = $"{FormatBytes(sentSpeed)}/s";
             TrafficDownLabel.Text = $"{FormatBytes(recvSpeed)}/s";
         });
