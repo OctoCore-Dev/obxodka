@@ -151,6 +151,25 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
         Assert.Equal(expectedDrop, pipeline.ShouldDropIpv6Packet(packet));
     }
 
+    [Theory]
+    [InlineData(new byte[] { 192, 168, 0, 52 }, new byte[] { 1, 1, 1, 1 }, true)]
+    [InlineData(new byte[] { 10, 8, 0, 2 }, new byte[] { 224, 0, 0, 251 }, true)]
+    [InlineData(new byte[] { 10, 8, 0, 2 }, new byte[] { 1, 1, 1, 1 }, false)]
+    public void PacketPipeline_ShouldDropOutgoingIpv4Noise_RejectsForeignSrcAndMulticast(
+        byte[] srcIp,
+        byte[] dstIp,
+        bool expectedDrop)
+    {
+        var pipeline = new PacketPipeline(OctopusEngine.Current);
+        var packet = new byte[28];
+        packet[0] = 0x45;
+        packet[9] = 17;
+        srcIp.CopyTo(packet.AsSpan(12, 4));
+        dstIp.CopyTo(packet.AsSpan(16, 4));
+
+        Assert.Equal(expectedDrop, pipeline.ShouldDropOutgoingIpv4Noise(packet));
+    }
+
     [Fact]
     public void PreferenceKeys_SsotConstantsMatchExpectedDefaults()
     {

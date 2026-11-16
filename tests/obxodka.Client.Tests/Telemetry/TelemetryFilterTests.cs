@@ -89,4 +89,12 @@ public sealed class TelemetryFilterTests
     {
         Assert.True(TelemetryFilter.IsTestEnvironment);
     }
+
+    [Fact]
+    public void ShouldSendToServer_FiltersTelemetryRecursionAndAllowsWarnings()
+    {
+        Assert.False(TelemetryFilter.ShouldSendToServer("[WINDOWS] [WARN] [TELEMETRY] Send failed"));
+        Assert.False(TelemetryFilter.ShouldSendToServer("[ERROR] POST api/Vpn/telemetry timed out"));
+        Assert.True(TelemetryFilter.ShouldSendToServer("[WINDOWS] [WARN] [OCTOPUS-ROTATE] MidSessionRxStall: trying step 2/4"));
+    }
 }

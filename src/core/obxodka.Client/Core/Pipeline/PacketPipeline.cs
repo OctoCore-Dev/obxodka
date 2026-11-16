@@ -28,6 +28,25 @@ public sealed class PacketPipeline(OctopusEngine engine)
     public bool ShouldDropIpv6Packet(ReadOnlySpan<byte> packet) =>
         BlockIpv6Traffic && packet.Length > 0 && (packet[0] >> 4) == 6;
 
+    //проверка отбрасывания мультикаста и пакетов от старых сокетов с чужим локальным ip до туннеля
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool ShouldDropOutgoingIpv4Noise(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 20 || (packet[0] >> 4) != 4)
+        {
+            return false;
+        }
+
+        var dstFirstOctet = packet[16];
+        if (dstFirstOctet is 0 or >= 224)
+        {
+            return true;
+        }
+
+        var assignedIpUint = _engine.AssignedIpUint;
+        return assignedIpUint != 0 && BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(12, 4)) != assignedIpUint;
+    }
+
     //обработка исходящего l3-пакета из сетевого стека ос (uplink)
     public void ProcessOutgoingPacket(byte[] inputBuf, int length, IVpnTransport? transport)
     {
@@ -39,15 +58,21 @@ public sealed class PacketPipeline(OctopusEngine engine)
 
         var span = inputBuf.AsSpan(0, length);
 
-        //этап 1: фильтрация петель трафика к vpn серверу
+        //этап 1: фильтрация петель трафика к vpn серверу, широковещательных пакетов и чужих source ip
         if (_engine.IsServerDestination(span, length))
         {
             ArrayPool<byte>.Shared.Return(inputBuf);
             return;
         }
 
-        //этап 1.5: опциональная блокировка исходящего ipv6-трафика (режим только ipv4)
         var version = inputBuf[0] >> 4;
+        if (ShouldDropOutgoingIpv4Noise(span))
+        {
+            ArrayPool<byte>.Shared.Return(inputBuf);
+            return;
+        }
+
+        //этап 1.5: опциональная блокировка исходящего ipv6-трафика (режим только ipv4)
         if (ShouldDropIpv6Packet(span))
         {
             _ = Ipv6BlockResponder?.Invoke(inputBuf, length);
@@ -76,7 +101,8 @@ public sealed class PacketPipeline(OctopusEngine engine)
             return;
         }
 
-        //этап 4: оптимизация tcp mss под текущий mtu туннеля
+        //этап 4: оптимизация tcp mss под текущий mtu туннеля и учет реально уходящего в туннель трафика
+        _engine.RecordOutgoingPacketBytes(length);
         var currentMtu = SmartMtuEngine.CurrentMtu;
         SmartMtuEngine.ClampTcpMss(span, currentMtu);
 

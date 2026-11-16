@@ -40,8 +40,11 @@ public sealed partial class OctopusEngine
             if (len > 0)
             {
                 var proto = len >= 20 ? ((pkt[0] >> 4) == 4 ? $"IPv4(proto={pkt[9]})" : "IPv6") : "NonIP";
-                AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
-                _ = tcs.TrySetResult(true);
+                if (!forceFreshProbe || IsFreshProbeReplyPacket(pkt, len))
+                {
+                    AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
+                    _ = tcs.TrySetResult(true);
+                }
             }
         }
 
@@ -96,7 +99,7 @@ public sealed partial class OctopusEngine
             var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
             while (Stopwatch.GetTimestamp() < deadline && !linkedCts.IsCancellationRequested)
             {
-                if (TotalBytesReceived > initialReceived)
+                if (tcs.Task.IsCompletedSuccessfully || (!forceFreshProbe && TotalBytesReceived > initialReceived))
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
@@ -119,6 +122,11 @@ public sealed partial class OctopusEngine
 
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
+            if (tcs.Task.IsCompletedSuccessfully)
+            {
+                EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(deltaTx, deltaRx));
+                return true;
+            }
             if (deltaTx <= 0)
             {
                 EmitStatus(VpnStatusMessages.TxTransmissionFailed);
@@ -129,19 +137,47 @@ public sealed partial class OctopusEngine
                 EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
                 AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server.");
             }
-            return deltaRx > 0 && deltaTx > 0;
+            return !forceFreshProbe && deltaRx > 0 && deltaTx > 0;
         }
         catch (OperationCanceledException)
         {
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
-            return deltaRx > 0 && deltaTx > 0;
+            return tcs.Task.IsCompletedSuccessfully || (!forceFreshProbe && deltaRx > 0 && deltaTx > 0);
         }
         finally
         {
             OnProbePacketInspect -= OnPacket;
             OnPingUpdated -= OnPing;
         }
+    }
+
+    //проверка является ли входящий пакет ответным сигналом зонда, а не старым фоновым udp из очереди сервера
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsFreshProbeReplyPacket(byte[] pkt, int len)
+    {
+        if (len < 20 || (pkt[0] >> 4) != 4)
+        {
+            return false;
+        }
+
+        var proto = pkt[9];
+        if (proto == 1)
+        {
+            return true;
+        }
+
+        if (proto == 17)
+        {
+            var ihl = (pkt[0] & 0x0F) * 4;
+            if (ihl >= 20 && len >= ihl + 8)
+            {
+                var srcPort = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(ihl, 2));
+                return srcPort == 53;
+            }
+        }
+
+        return false;
     }
 
     //сборка легковесного icmp ping пакета для зондирования
