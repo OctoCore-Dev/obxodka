@@ -42,8 +42,14 @@ public sealed partial class OctopusVpnService : VpnService
             return doubleCheck;
         }
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
-        return completed == tcs.Task ? await tcs.Task.ConfigureAwait(false) : Instance;
+        try
+        {
+            return await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs)).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return Instance;
+        }
     }
 
 #pragma warning disable CA2213

@@ -163,7 +163,7 @@ public sealed class ApiService(HttpClient client)
 
         //сначала опрашиваем шифрованный doh чтобы исключить публичные заглушки провайдера на udp 53
         var dohResolvers = DnsDefaults.DohResolvers;
-        var results = new List<IPAddress>(4);
+        List<IPAddress> results = [with(4)];
 
         for (var i = 0; i < dohResolvers.Length; i++)
         {

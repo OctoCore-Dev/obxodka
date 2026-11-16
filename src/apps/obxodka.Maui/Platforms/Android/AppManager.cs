@@ -44,7 +44,7 @@ public sealed class AppManager : IAppManager
             _ = mainIntent.AddCategory(Intent.CategoryLauncher);
 
             var resolveInfos = pm.QueryIntentActivities(mainIntent, 0);
-            var seenPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> seenPackages = [with(StringComparer.OrdinalIgnoreCase)];
             var pendingIcons = new List<(ApplicationInfo appInfo, string pkgName, string iconPath)>();
 
             if (resolveInfos is not null)

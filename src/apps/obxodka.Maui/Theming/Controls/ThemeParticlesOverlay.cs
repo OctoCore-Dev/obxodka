@@ -138,7 +138,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     //конфигурация эффектов темы с одиночным спрайтом
     public void Configure(string? spritePath, ThemeVfx? vfx, Color? primaryColor, Color? accentColor)
     {
-        IEnumerable<string>? paths = !string.IsNullOrWhiteSpace(spritePath) ? [spritePath] : null;
+        IEnumerable<string>? paths = !string.IsNullOrWhiteSpace(spritePath) ? (string[])[spritePath] : null;
         Configure(paths, vfx, primaryColor, accentColor, particlesEnabled: true);
     }
 

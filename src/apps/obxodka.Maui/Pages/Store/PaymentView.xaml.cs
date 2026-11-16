@@ -32,7 +32,7 @@ public sealed partial class PaymentView : ContentView
         CardsScrollView.Scrolled += (s, e) =>
             CardStackScrollHelper.ApplyToChildren(
                 CardsScrollView,
-                [PendingPaymentBanner, Card300, Card500, Card1000, CardConstructor, PaymentInfoCard],
+                (IView[])[PendingPaymentBanner, Card300, Card500, Card1000, CardConstructor, PaymentInfoCard],
                 zone: 65.0,
                 minScale: 0.92,
                 power: 2.5);

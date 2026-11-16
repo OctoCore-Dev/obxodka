@@ -14,12 +14,13 @@ public sealed class WindowsCertificateAuditService : ICertificateAuditService
         "Министерство цифрового развития"
     ];
 
-    private static readonly HashSet<string> s_knownRussianRootThumbprints = new(
+    private static readonly HashSet<string> s_knownRussianRootThumbprints =
     [
+        with(StringComparer.OrdinalIgnoreCase),
         "4B4791C5364860B73C06D3381FA2CC9EE330DC3E",
         "71EA6F4F24B5CA91D3EC5BE867E411F589255EC3",
         "934E62A4D048E71887ADAB0F622D109F0868F001"
-    ], StringComparer.OrdinalIgnoreCase);
+    ];
 
     //проверка хранилищ текущего пользователя и локального компьютера
     public Task<CertificateAuditResult> CheckCertificatesAsync()

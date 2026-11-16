@@ -110,7 +110,7 @@ public static class DnsAdBlockRuleManager
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
 
-            var lines = new List<string>(1024);
+            List<string> lines = [with(1024)];
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
             {
                 lines.Add(line);

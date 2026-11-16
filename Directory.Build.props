@@ -45,6 +45,7 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Features>strict</Features>
+    <Features Condition="'$(DotNetMajorVersion)' == '11'">$(Features);runtime-async=on</Features>
     <WarningLevel>9999</WarningLevel>
     <Version Condition="'$(Version)' == ''">4.8.6</Version>
     <IsTrimmable Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</IsTrimmable>

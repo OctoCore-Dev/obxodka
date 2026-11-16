@@ -1,17 +1,35 @@
 namespace obxodka.Dialogs;
 
+//закрытая иерархия тонов диалога с проверкой полноты перебора в компиляторе c# 15
+public closed record DialogTone
+{
+    public static DialogTone Update { get; } = new DialogUpdateTone();
+    public static DialogTone Delete { get; } = new DialogDeleteTone();
+    public static DialogTone Error { get; } = new DialogErrorTone();
+    public static DialogTone Warning { get; } = new DialogWarningTone();
+    public static DialogTone Success { get; } = new DialogSuccessTone();
+    public static DialogTone Info { get; } = new DialogInfoTone();
+}
+
+public sealed record DialogUpdateTone : DialogTone;
+public sealed record DialogDeleteTone : DialogTone;
+public sealed record DialogErrorTone : DialogTone;
+public sealed record DialogWarningTone : DialogTone;
+public sealed record DialogSuccessTone : DialogTone;
+public sealed record DialogInfoTone : DialogTone;
+
 public partial class NeoDialog : ContentView
 {
     private TaskCompletionSource<bool>? _dialogTcs;
-    private string _lastTitle = string.Empty;
+    private DialogTone _lastTone = DialogTone.Info;
 
     public NeoDialog() => InitializeComponent();
 
     public void OnThemeChanged()
     {
-        if (IsVisible && !string.IsNullOrEmpty(_lastTitle))
+        if (IsVisible)
         {
-            ConfigureDialogStyling(_lastTitle);
+            ConfigureDialogStyling(_lastTone);
         }
     }
 
@@ -19,12 +37,14 @@ public partial class NeoDialog : ContentView
         string title,
         string message,
         string? acceptText = null,
-        string cancelText = "OK")
+        string cancelText = "OK",
+        DialogTone? tone = null)
     {
         _ = _dialogTcs?.TrySetResult(false);
         var tcs = new TaskCompletionSource<bool>();
         _dialogTcs = tcs;
-        _lastTitle = title;
+        var resolvedTone = tone ?? ResolveTone(title);
+        _lastTone = resolvedTone;
 
         MainThread.BeginInvokeOnMainThread(async () =>
         {
@@ -41,7 +61,7 @@ public partial class NeoDialog : ContentView
                 Grid.SetColumn(AcceptButton, isConfirm ? 1 : 0);
                 Grid.SetColumnSpan(AcceptButton, isConfirm ? 1 : 2);
 
-                ConfigureDialogStyling(title);
+                ConfigureDialogStyling(resolvedTone);
                 ThemeAudioService.PlayNotification();
 
                 IsVisible = true;
@@ -65,26 +85,41 @@ public partial class NeoDialog : ContentView
     }
 
     public Task<bool> ShowErrorAsync(string title, string message, string buttonText = "OK") =>
-        ShowAsync(title, message, null, buttonText);
+        ShowAsync(title, message, null, buttonText, DialogTone.Error);
 
     public Task<bool> ShowUpdateAsync(string title, string message, string acceptText = "Обновить", string cancelText = "Позже") =>
-        ShowAsync(title, message, acceptText, cancelText);
+        ShowAsync(title, message, acceptText, cancelText, DialogTone.Update);
 
     public Task<bool> ShowSuccessAsync(string title, string message, string buttonText = "OK") =>
-        ShowAsync(title, message, null, buttonText);
+        ShowAsync(title, message, null, buttonText, DialogTone.Success);
 
-    private void ConfigureDialogStyling(string title)
+    private static DialogTone ResolveTone(string title)
     {
         var lower = title.ToLowerInvariant();
-        (DialogMauiIcon.Icon, var color, var dim) = lower switch
+        return lower switch
         {
-            _ when lower.Contains("обновлен") || lower.Contains("update") => (FluentIcons.Rocket24, "Accent", "AccentDim"),
-            _ when lower.Contains("удал") => (FluentIcons.Delete24, "Error", "ErrorDim"),
-            _ when lower.Contains("ошибк") || lower.Contains("сбой") || lower.Contains("нет интернета") => (FluentIcons.DismissCircle24, "Error", "ErrorDim"),
-            _ when lower.Contains("внимани") || lower.Contains("лимит") => (FluentIcons.Warning24, "Warning", "WarningDim"),
-            _ when lower.Contains("успех") || lower.Contains("наград") || lower.Contains("поздравля") || lower.Contains("скопирован") || lower.Contains("отлично") => (FluentIcons.CheckmarkCircle24, "Success", "SuccessDim"),
-            _ => (FluentIcons.Info24, "Primary", "PrimaryDim")
+            _ when lower.Contains("обновлен") || lower.Contains("update") => DialogTone.Update,
+            _ when lower.Contains("удал") => DialogTone.Delete,
+            _ when lower.Contains("ошибк") || lower.Contains("сбой") || lower.Contains("нет интернета") || lower.Contains("нет подключения") || lower.Contains("нет доступа") => DialogTone.Error,
+            _ when lower.Contains("внимани") || lower.Contains("лимит") => DialogTone.Warning,
+            _ when lower.Contains("успех") || lower.Contains("наград") || lower.Contains("поздравля") || lower.Contains("скопирован") || lower.Contains("отлично") => DialogTone.Success,
+            _ => DialogTone.Info
         };
+    }
+
+    private void ConfigureDialogStyling(DialogTone tone)
+    {
+#pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
+        (DialogMauiIcon.Icon, var color, var dim) = tone switch
+        {
+            DialogUpdateTone => (FluentIcons.Rocket24, "Accent", "AccentDim"),
+            DialogDeleteTone => (FluentIcons.Delete24, "Error", "ErrorDim"),
+            DialogErrorTone => (FluentIcons.DismissCircle24, "Error", "ErrorDim"),
+            DialogWarningTone => (FluentIcons.Warning24, "Warning", "WarningDim"),
+            DialogSuccessTone => (FluentIcons.CheckmarkCircle24, "Success", "SuccessDim"),
+            DialogInfoTone => (FluentIcons.Info24, "Primary", "PrimaryDim")
+        };
+#pragma warning restore IDE0072
         SetDialogGlow(color, dim);
     }
 

@@ -293,8 +293,8 @@ public sealed class SplitTunnelPolicy
     //установка списка исполняемых файлов и пакетов приложений, направляемых в обход VPN
     public void SetBypassedExecutables(IEnumerable<string> packagesOrPaths)
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> names = [with(StringComparer.OrdinalIgnoreCase)];
+        HashSet<string> paths = [with(StringComparer.OrdinalIgnoreCase)];
 
         foreach (var raw in packagesOrPaths)
         {
@@ -336,8 +336,8 @@ public sealed class SplitTunnelPolicy
     //парсинг и сохранение пользовательских правил (IP-адреса, подсети, доменные имена и URL)
     public void SetCustomRules(IEnumerable<string> rawRules)
     {
-        var domains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var ips = new List<string>();
+        HashSet<string> domains = [with(StringComparer.OrdinalIgnoreCase)];
+        List<string> ips = [];
 
         foreach (var raw in rawRules)
         {
@@ -541,7 +541,7 @@ public sealed class SplitTunnelPolicy
     //получение списка популярных доменов для предварительного прогрева DNS и маршрутизации
     public List<string> GetSeedDomainsToPreResolve()
     {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> result = [with(StringComparer.OrdinalIgnoreCase)];
         if (!Enabled)
         {
             return [];

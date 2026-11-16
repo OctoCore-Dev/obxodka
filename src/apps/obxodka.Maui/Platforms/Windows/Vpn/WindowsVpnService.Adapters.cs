@@ -111,8 +111,8 @@ internal sealed partial class WindowsVpnService
     //сбор активных физических сетевых адаптеров хоста (без loopback, wintun и сторонних vpn)
     private static (HashSet<int> Indices, HashSet<string> Names) GetPhysicalNetworkAdapterTargets(bool includeAllActive = false)
     {
-        var targetIndices = new HashSet<int>();
-        var targetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<int> targetIndices = [];
+        HashSet<string> targetNames = [with(StringComparer.OrdinalIgnoreCase)];
 
         var (_, physIfIndex) = GetDefaultGatewayInfo();
         if (physIfIndex > 0)

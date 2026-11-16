@@ -57,7 +57,7 @@ public static partial class DnsAdBlocker
     {
         if (mergeWithDefaults)
         {
-            var merged = new HashSet<string>(s_defaultBlockedDomains ?? [], StringComparer.OrdinalIgnoreCase);
+            HashSet<string> merged = [with(StringComparer.OrdinalIgnoreCase), .. s_defaultBlockedDomains ?? []];
             merged.UnionWith(domains);
             s_rules = new RuleSet(merged);
         }
@@ -74,14 +74,14 @@ public static partial class DnsAdBlocker
     //добавление одного домена в белый список
     public static void AddToWhitelist(string domain)
     {
-        var current = new HashSet<string>(s_whitelist.Set, StringComparer.OrdinalIgnoreCase) { domain };
+        HashSet<string> current = [with(StringComparer.OrdinalIgnoreCase), .. s_whitelist.Set, domain];
         s_whitelist = new RuleSet(current);
     }
 
     //удаление одного домена из белого списка
     public static void RemoveFromWhitelist(string domain)
     {
-        var current = new HashSet<string>(s_whitelist.Set, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> current = [with(StringComparer.OrdinalIgnoreCase), .. s_whitelist.Set];
         _ = current.Remove(domain);
         s_whitelist = new RuleSet(current);
     }

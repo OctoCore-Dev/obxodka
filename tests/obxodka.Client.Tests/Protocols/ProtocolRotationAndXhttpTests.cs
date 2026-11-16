@@ -183,6 +183,23 @@ public sealed class ProtocolRotationAndXhttpTests
         Assert.Contains("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.ProtocolSwitched("Cloudflare WS"), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("OBXODKA-STREAM", 4, "4L")]
+    [InlineData("OBXODKA-WS", 1, "WS")]
+    [InlineData("OBXODKA-XHTTP", 1, "XHTTP")]
+    [InlineData("AUTO", 2, "2L")]
+    public void ProtocolPipelineRegistryResolveActiveTagExhaustivelyFormatsProtocols(string protocolName, int activeRays, string expected)
+    {
+        var formatted = ProtocolPipelineRegistry.ResolveActiveTag(protocolName, activeRays) switch
+        {
+            StreamTransportTag stream => $"{stream.ActiveRays}L",
+            WebSocketTransportTag => "WS",
+            XhttpTransportTag => "XHTTP"
+        };
+
+        Assert.Equal(expected, formatted);
+    }
+
     private sealed class StubProtocolFactory(TransportProtocolKind kind, string displayName) : ITransportProtocolFactory
     {
         public TransportProtocolKind Kind { get; } = kind;

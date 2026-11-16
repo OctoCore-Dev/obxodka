@@ -99,7 +99,7 @@ public static partial class StoreVersionParser
             : body;
 
         var lines = sourceText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var cleanedLines = new List<string>(lines.Length);
+        List<string> cleanedLines = [with(lines.Length)];
         var insideCodeBlock = false;
 
         foreach (var line in lines)

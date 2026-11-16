@@ -14,8 +14,9 @@ public sealed partial class AppManager : IAppManager
 
     private List<AppInfoItem>? _cachedApps;
 
-    private static readonly HashSet<string> s_ignoredExeNames = new(
+    private static readonly HashSet<string> s_ignoredExeNames =
     [
+        with(StringComparer.OrdinalIgnoreCase),
         "obxodka.exe",
         "obxodka.Maui.exe",
         "obxodka.Shared.exe",
@@ -53,7 +54,7 @@ public sealed partial class AppManager : IAppManager
         "setup.exe",
         "update.exe",
         "updater.exe"
-    ], StringComparer.OrdinalIgnoreCase);
+    ];
 
     private static readonly string[] s_defaultBypassedExes =
     [

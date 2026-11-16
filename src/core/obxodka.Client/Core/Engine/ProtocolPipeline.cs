@@ -1,5 +1,17 @@
 namespace obxodka.Core;
 
+//закрытая иерархия активного транспорта для типобезопасного отображения лучей в c# 15
+public closed record ActiveTransportTag;
+public sealed record StreamTransportTag(int ActiveRays) : ActiveTransportTag;
+public sealed record WebSocketTransportTag : ActiveTransportTag
+{
+    public static WebSocketTransportTag Instance { get; } = new();
+}
+public sealed record XhttpTransportTag : ActiveTransportTag
+{
+    public static XhttpTransportTag Instance { get; } = new();
+}
+
 //поддерживаемые типы транспортных протоколов туннеля
 public enum TransportProtocolKind
 {
@@ -50,6 +62,15 @@ public static class ProtocolPipelineRegistry
     //получение зарегистрированной фабрики
     public static bool TryGetFactory(TransportProtocolKind kind, [NotNullWhen(true)] out ITransportProtocolFactory? factory) =>
         s_factories.TryGetValue(kind, out factory);
+
+    //разрешение активного тега транспорта для ui без строковых костылей
+    public static ActiveTransportTag ResolveActiveTag(string? protocolName, int activeRays) =>
+        protocolName switch
+        {
+            "OBXODKA-WS" => WebSocketTransportTag.Instance,
+            "OBXODKA-XHTTP" => XhttpTransportTag.Instance,
+            _ => new StreamTransportTag(activeRays)
+        };
 
     //создание экземпляра транспорта для указанного шага кругового маршрута с автозащитой сокетов
     public static IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp = null)

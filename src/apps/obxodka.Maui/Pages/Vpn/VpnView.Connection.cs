@@ -69,12 +69,14 @@ public sealed partial class VpnView
 
             if (_vpnService.CurrentState == AppVpnState.Connected && OctopusEngine.Current is { } engine)
             {
-                var rayTag = engine.ActiveProtocol switch
+#pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
+                var rayTag = ProtocolPipelineRegistry.ResolveActiveTag(engine.ActiveProtocol, engine.ActiveRays) switch
                 {
-                    "OBXODKA-WS" => "WS",
-                    "OBXODKA-XHTTP" => "XHTTP",
-                    _ => $"{engine.ActiveRays}L"
+                    StreamTransportTag stream => $"{stream.ActiveRays}L",
+                    WebSocketTransportTag => "WS",
+                    XhttpTransportTag => "XHTTP"
                 };
+#pragma warning restore IDE0072
                 displayHost = $"{displayHost} • {rayTag}";
             }
 

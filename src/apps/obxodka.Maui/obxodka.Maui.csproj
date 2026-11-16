@@ -22,7 +22,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>preview</LangVersion>
-    <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
+    <MauiXamlInflator>SourceGen</MauiXamlInflator>
     <DefaultItemExcludes>$(DefaultItemExcludes);obxodka.Shared\**;obxodka.Client.Tests\**;obxodka.UITests\**;obxodka.Benchmarks\**;diagnostics\**</DefaultItemExcludes>
   </PropertyGroup>
 

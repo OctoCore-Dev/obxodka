@@ -39,7 +39,7 @@ public sealed partial class ThemeStorageService
     //сбор всех относительных путей файлов ресурсов темы из манифеста
     public static IEnumerable<string> EnumerateAssetPaths(ThemeManifest manifest)
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "icon.png" };
+        HashSet<string> set = [with(StringComparer.OrdinalIgnoreCase), "icon.png"];
 
         void Add(string? path)
         {
