@@ -13,6 +13,8 @@ public static class UITestHelper
         var baseDir = AppContext.BaseDirectory;
         var candidates = new[]
         {
+            Path.Join(baseDir, "..", "..", "..", "..", "bin", "Release", "net11.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
+            Path.Join(baseDir, "..", "..", "..", "..", "bin", "Debug", "net11.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
             Path.Join(baseDir, "..", "..", "..", "..", "bin", "Release", "net10.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
             Path.Join(baseDir, "..", "..", "..", "..", "bin", "Debug", "net10.0-windows10.0.19041.0", "win-x64", "obxodka.exe"),
             Path.Join(baseDir, "obxodka.exe")

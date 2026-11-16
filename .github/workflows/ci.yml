@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - develop
+      - feat/dotnet11
     paths-ignore:
       - '**.md'
       - '.gitignore'
@@ -15,6 +16,7 @@ on:
     branches:
       - develop
       - main
+      - feat/dotnet11
     paths-ignore:
       - '**.md'
       - '.gitignore'
@@ -51,10 +53,10 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[SECURITY] Secret & Key Leak Guard (Gitleaks Open-Source)"
         run: |
@@ -125,10 +127,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] Cache NuGet Packages"
         uses: actions/cache@v6
@@ -170,13 +172,13 @@ jobs:
       matrix:
         include:
           - id: android
-            name: "[BUILD] Android MAUI Client (net10.0-android)"
+            name: "[BUILD] Android MAUI Client (net11.0-android)"
             os: ubuntu-latest
           - id: windows
-            name: "[BUILD] Windows MAUI Client (net10.0-windows)"
+            name: "[BUILD] Windows MAUI Client (net11.0-windows)"
             os: windows-latest
           - id: avalonia
-            name: "[BUILD] Cross-Platform Desktop (Avalonia net10.0)"
+            name: "[BUILD] Cross-Platform Desktop (Avalonia net11.0)"
             os: ubuntu-latest
 
     steps:
@@ -191,17 +193,17 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
-      - name: "[SETUP-JAVA] Setup Java JDK 17 (Android only)"
+      - name: "[SETUP-JAVA] Setup Java JDK 21 (Android only)"
         if: matrix.id == 'android'
         uses: actions/setup-java@v4
         with:
           distribution: "microsoft"
-          java-version: "17"
+          java-version: "21"
 
-      - name: "[SETUP-DOTNET] Setup .NET 10 SDK"
+      - name: "[SETUP-DOTNET] Setup .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] Cache NuGet Packages"
         uses: actions/cache@v6
@@ -221,11 +223,11 @@ jobs:
 
       - name: "[COMPILE-ANDROID] Build Android MAUI Package"
         if: matrix.id == 'android'
-        run: dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release -p:EnableMauiLinux=true
+        run: dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-android -c Release -p:EnableMauiLinux=true
 
       - name: "[COMPILE-WINDOWS] Build Windows MAUI Package"
         if: matrix.id == 'windows'
-        run: dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release
+        run: dotnet build src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release
 
       - name: "[COMPILE-AVALONIA] Build Cross-Platform Avalonia App"
         if: matrix.id == 'avalonia'
@@ -246,10 +248,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] Cache NuGet Packages"
         uses: actions/cache@v6
@@ -288,14 +290,14 @@ jobs:
 
           | Stage | Check / Target | Result | Platform / Engine |
           |:---|:---|:---:|:---|
-          | 🧹 **Hygiene** | Code Style, Secrets (Gitleaks) & Core Build | ${{ needs.compile-hygiene.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Linux Ubuntu (.NET 10) |
+          | 🧹 **Hygiene** | Code Style, Secrets (Gitleaks) & Core Build | ${{ needs.compile-hygiene.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Linux Ubuntu (.NET 11) |
           | 📱 **Android Policy** | Google Play 2026 Security & Manifest Audit | ${{ needs.compile-hygiene.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Google AOSP Security Spec |
-          | ⚡ **Core Tests** | Unit, Stealth & Protocol Suite (508 tests) | ${{ needs.fast-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Linux Ubuntu (.NET 10) |
+          | ⚡ **Core Tests** | Unit, Stealth & Protocol Suite | ${{ needs.fast-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Linux Ubuntu (.NET 11) |
           | 🛡️ **Vulnerabilities** | NuGet CVE Dependency Audit | ${{ needs.fast-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | GitHub Advisory Database |
-          | 📱 **Android Build** | Android MAUI (`net10.0-android`) | ${{ needs.build-matrix.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Android Workload (JDK 17) |
-          | 🪟 **Windows Build** | Windows MAUI (`net10.0-windows10.0.19041.0`) | ${{ needs.build-matrix.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Windows Desktop Workload |
-          | 🖥️ **Desktop Build** | Avalonia UI Client (`net10.0`) | ${{ needs.build-matrix.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Multi-Platform Avalonia |
-          | 🧪 **Desktop Smoke** | Windows Sanity & UI Smoke Test | ${{ needs.smoke-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Windows Runner (.NET 10) |
+          | 📱 **Android Build** | Android MAUI (`net11.0-android`) | ${{ needs.build-matrix.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Android Workload (JDK 21) |
+          | 🪟 **Windows Build** | Windows MAUI (`net11.0-windows10.0.19041.0`) | ${{ needs.build-matrix.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Windows Desktop Workload |
+          | 🖥️ **Desktop Build** | Avalonia UI Client (`net11.0`) | ${{ needs.build-matrix.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Multi-Platform Avalonia |
+          | 🧪 **Desktop Smoke** | Windows Sanity & UI Smoke Test | ${{ needs.smoke-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | Windows Runner (.NET 11) |
 
           ---
           *Triggered by commit \`${{ github.sha }}\` on branch \`${{ github.ref_name }}\` by @${{ github.actor }}.*

@@ -6,6 +6,7 @@ on:
       - main
       - master
       - develop
+      - feat/dotnet11
     paths-ignore:
       - '**.md'
       - '.gitignore'
@@ -115,8 +116,8 @@ jobs:
             if [ -n "$PREV_PROPS" ]; then
               PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
               if [ -n "$PREV_BUILD" ] && [ "$CUR_BUILD" -le "$PREV_BUILD" ] 2>/dev/null; then
-                if [ "${{ github.ref_name }}" = "develop" ]; then
-                  echo -e "${CYAN}[INFO] Build number ($CUR_BUILD) <= previous commit ($PREV_BUILD) on develop.${RESET}"
+                if [ "${{ github.ref_name }}" = "develop" ] || [ "${{ github.ref_name }}" = "feat/dotnet11" ]; then
+                  echo -e "${CYAN}[INFO] Build number ($CUR_BUILD) <= previous commit ($PREV_BUILD) on ${{ github.ref_name }}.${RESET}"
                   echo -e "${CYAN}[INFO] Regular code push: skipping automated release pipeline.${RESET}"
                   echo "should_release=false" >> $GITHUB_OUTPUT
                   exit 0
@@ -139,7 +140,7 @@ jobs:
           TAG_NAME="v$CUR_VER"
           REL_TITLE="Obxodka v$CUR_VER (Build $CUR_BUILD)"
 
-          if [ "$BRANCH" = "develop" ]; then
+          if [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
             IS_DEV="true"
             TAG_NAME="v$CUR_VER-build.$CUR_BUILD"
             REL_TITLE="Obxodka v$CUR_VER Pre-Release (Build $CUR_BUILD)"
@@ -183,10 +184,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] NuGet Package Dependencies"
         uses: actions/cache@v6
@@ -229,16 +230,16 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: "[SETUP] Microsoft OpenJDK 17"
+      - name: "[SETUP] Microsoft OpenJDK 21"
         uses: actions/setup-java@v4
         with:
           distribution: "microsoft"
-          java-version: "17"
+          java-version: "21"
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] NuGet Package Dependencies"
         uses: actions/cache@v6
@@ -305,7 +306,7 @@ jobs:
           echo -e "${CYAN}  [BUILD] COMPILING ANDROID APP BUNDLE (AAB)${RESET}"
           echo -e "${CYAN}============================================================${RESET}"
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-android -c Release \
             -p:EnableMauiLinux=true \
             $SIGNING_ARGS \
             $EXTRA_ARGS
@@ -314,7 +315,7 @@ jobs:
           echo -e "${CYAN}  [BUILD] COMPILING STANDALONE APK${RESET}"
           echo -e "${CYAN}============================================================${RESET}"
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-android -c Release \
             -p:EnableMauiLinux=true \
             -p:AndroidPackageFormat=apk \
             $SIGNING_ARGS \
@@ -379,10 +380,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] NuGet Package Dependencies"
         uses: actions/cache@v6
@@ -415,7 +416,7 @@ jobs:
             $extraArgs += "-p:DefineConstants=TESTING_BUILD"
           }
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
             -p:PackageMode=MSIX `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
@@ -459,7 +460,7 @@ jobs:
           if (-not $ver) { $ver = "6.0.8" }
 
           Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
             -p:PackageMode=None `
             -p:WindowsPackageType=None `
             -p:GenerateAppxPackageOnBuild=false `
@@ -520,16 +521,18 @@ jobs:
     env:
       PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
       PLAY_PACKAGE_NAME: ${{ secrets.PLAY_PACKAGE_NAME || 'com.octocore.obxodka' }}
-      ANDROID_TRACK: ${{ inputs.android_track || (github.ref_name == 'develop' && 'internal' || 'production') }}
+      ANDROID_TRACK: ${{ inputs.android_track || ((github.ref_name == 'main' || github.ref_name == 'master') && 'production' || 'internal') }}
 
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v7
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 10 + 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: "[TOOL] Install OctoPublisher Global Tool"
         run: |
@@ -643,10 +646,12 @@ jobs:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v7
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 10 + 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: "[TOOL] Install OctoPublisher Global Tool"
         shell: pwsh
@@ -892,7 +897,7 @@ jobs:
           | 6 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} (${{ needs.check-version.outputs.is_prerelease == 'true' && 'Pre-Release' || 'Production' }}) |
 
           ---
-          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 10.*
+          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 11.*
           EOF
 
       - name: "[CHANGELOG] Update CHANGELOG.md"
