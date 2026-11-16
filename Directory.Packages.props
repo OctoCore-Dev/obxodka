@@ -6,7 +6,7 @@
   <ItemGroup>
     <!-- Core & Shared -->
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="11.0.0" />
     <PackageVersion Include="PacketDotNet" Version="1.4.8" />
 
     <!-- MAUI UI & Platform -->
