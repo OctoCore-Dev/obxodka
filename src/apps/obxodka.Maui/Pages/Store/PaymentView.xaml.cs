@@ -13,6 +13,7 @@ public sealed partial class PaymentView : ContentView
     private bool _isUpdatingAmountControls;
     private int _selectedCustomAmount = 300;
     private string _selectedCurrency = "RUB";
+    private string _selectedPaymentMethod = TariffCalculator.MethodSbp;
 
     public const string ProductId300 = "obxodka_300_hours";
     public const string ProductId500 = "obxodka_500_hours";
@@ -99,14 +100,58 @@ public sealed partial class PaymentView : ContentView
     private void OnCurrencyUsdClicked(object? sender, EventArgs e) => SetCurrency("USD");
     private void OnCurrencyEurClicked(object? sender, EventArgs e) => SetCurrency("EUR");
 
+    private void OnMethodFirstClicked(object? sender, EventArgs e) =>
+        SetPaymentMethod(_selectedCurrency == "RUB" ? TariffCalculator.MethodSbp : TariffCalculator.MethodCard);
+
+    private void OnMethodSecondClicked(object? sender, EventArgs e) =>
+        SetPaymentMethod(_selectedCurrency == "RUB" ? TariffCalculator.MethodCard : TariffCalculator.MethodPayPal);
+
     private void SetCurrency(string currency)
     {
         _selectedCurrency = currency;
+        _selectedPaymentMethod = currency == "RUB"
+            ? (_selectedPaymentMethod is TariffCalculator.MethodSbp or TariffCalculator.MethodCard ? _selectedPaymentMethod : TariffCalculator.MethodSbp)
+            : (_selectedPaymentMethod is TariffCalculator.MethodCard or TariffCalculator.MethodPayPal ? _selectedPaymentMethod : TariffCalculator.MethodCard);
+
         UpdateCurrencySwitcherUI();
+        UpdateMethodSwitcherUI();
         UpdateCurrencyCardsUI();
     }
 
+    private void SetPaymentMethod(string method)
+    {
+        _selectedPaymentMethod = method;
+        UpdateMethodSwitcherUI();
+        UpdateCurrencyCardsUI();
+        UpdateCalculatedHoursUI(_selectedCustomAmount);
+    }
+
     private void UpdateCurrencySwitcherUI()
+    {
+        StyleSelectorPill(BtnCurrencyRub, _selectedCurrency == "RUB");
+        StyleSelectorPill(BtnCurrencyUsd, _selectedCurrency == "USD");
+        StyleSelectorPill(BtnCurrencyEur, _selectedCurrency == "EUR");
+    }
+
+    private void UpdateMethodSwitcherUI()
+    {
+        if (_selectedCurrency == "RUB")
+        {
+            BtnMethodFirst.Text = "⚡ СБП (QR / банк)";
+            BtnMethodSecond.Text = "💳 Карта РФ";
+            StyleSelectorPill(BtnMethodFirst, _selectedPaymentMethod == TariffCalculator.MethodSbp);
+            StyleSelectorPill(BtnMethodSecond, _selectedPaymentMethod == TariffCalculator.MethodCard);
+        }
+        else
+        {
+            BtnMethodFirst.Text = "💳 Карта СНГ / мира";
+            BtnMethodSecond.Text = "🅿️ PayPal";
+            StyleSelectorPill(BtnMethodFirst, _selectedPaymentMethod == TariffCalculator.MethodCard);
+            StyleSelectorPill(BtnMethodSecond, _selectedPaymentMethod == TariffCalculator.MethodPayPal);
+        }
+    }
+
+    private static void StyleSelectorPill(Button btn, bool isActive)
     {
         var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgCol)
             ? bgCol
@@ -124,105 +169,106 @@ public sealed partial class PaymentView : ContentView
             ? fmName
             : "SegoeUI-SemiBold";
 
-        void StylePill(Button btn, bool isActive)
-        {
-            btn.BackgroundColor = isActive ? bgSurface : Colors.Transparent;
-            btn.BorderColor = isActive ? accent : Colors.Transparent;
-            btn.BorderWidth = isActive ? 1 : 0;
-            btn.TextColor = isActive ? accent : textSecondary;
-            btn.FontFamily = isActive ? fontBold : fontMedium;
-        }
-
-        StylePill(BtnCurrencyRub, _selectedCurrency == "RUB");
-        StylePill(BtnCurrencyUsd, _selectedCurrency == "USD");
-        StylePill(BtnCurrencyEur, _selectedCurrency == "EUR");
+        btn.BackgroundColor = isActive ? bgSurface : Colors.Transparent;
+        btn.BorderColor = isActive ? accent : Colors.Transparent;
+        btn.BorderWidth = isActive ? 1 : 0;
+        btn.TextColor = isActive ? accent : textSecondary;
+        btn.FontFamily = isActive ? fontBold : fontMedium;
     }
+
+    private string GetSelectedMethodDisplayName() => _selectedPaymentMethod switch
+    {
+        TariffCalculator.MethodSbp => "СБП",
+        TariffCalculator.MethodPayPal => "PayPal",
+        _ => _selectedCurrency == "RUB" ? "Карта РФ" : "Карта"
+    };
 
     private void UpdateCurrencyCardsUI()
     {
         var isDesktop = DeviceInfo.Idiom == DeviceIdiom.Desktop;
+        var methodLabel = GetSelectedMethodDisplayName();
 
         if (_selectedCurrency == "USD")
         {
-            PaymentSubtitleLabel.Text = "Международная оплата через Apple Pay, Google Pay и карты всех стран";
-            PaymentMethodsHintLabel.Text = "Способы оплаты: Apple Pay • Google Pay • Карты всех стран (Visa, MC) • PayPal";
+            PaymentSubtitleLabel.Text = "Международная оплата для СНГ и мира: карты Visa/MC и PayPal";
+            PaymentMethodsHintLabel.Text = "Способы оплаты: Карта СНГ / мира (Visa, Mastercard) • PayPal";
 
             Card1TitleLabel.Text = "СТАРТОВЫЙ (+50%)";
             Card1PriceLabel.Text = "$5";
             Card1HoursLabel.Text = "750 часов (+250ч бонус)";
-            Card1SubtitleLabel.Text = "Apple Pay, Google Pay или зарубежная карта. Без ограничений.";
-            Btn300.Text = "Купить за $5 (Apple/Google Pay)";
+            Card1SubtitleLabel.Text = "Карты СНГ / зарубежных банков или PayPal. Без ограничений.";
+            Btn300.Text = $"Купить за $5 ({methodLabel})";
 
             Card2TitleLabel.Text = "ОПТИМАЛЬНЫЙ";
             Card2BadgeLabel.Text = "ХИТ +120%";
             Card2PriceLabel.Text = "$10";
             Card2HoursLabel.Text = "2200 часов (+1200ч бонус)";
             Card2SubtitleLabel.Text = "Самый популярный тариф для стриминга, YouTube 4K и игр.";
-            Btn500.Text = "Купить за $10 (Apple/Google Pay)";
+            Btn500.Text = $"Купить за $10 ({methodLabel})";
 
             Card3TitleLabel.Text = "МАКСИМУМ (VIP x2.35)";
             Card3PriceLabel.Text = "$20";
             Card3HoursLabel.Text = "4700 часов (+2700ч бонус)";
             Card3SubtitleLabel.Text = "Максимальный пакет для семьи и всех устройств (до 5 одновременно).";
-            Btn1000.Text = "Купить за $20 (Apple/Google Pay)";
+            Btn1000.Text = $"Купить за $20 ({methodLabel})";
 
             ChipPreset99.Text = "$5 (750ч)";
             ChipPreset250.Text = "$7 (1050ч)";
             ChipPreset300.Text = "$10 (2200ч)";
-            ChipPreset500.Text = "$15 (3450ч)";
+            ChipPreset500.Text = "$15 (3300ч)";
             ChipPreset1000.Text = "$20 (4700ч)";
             ChipPreset2000.Text = "$50 (12 000ч)";
             ChipPreset5000.Text = "$100 (24 000ч)";
 
             CustomCurrencyUnitLabel.Text = "$";
-            ConstructorSubtitleLabel.Text = "От $5 до $100. Поддержка Apple Pay, Google Pay и карт всех стран мира";
+            ConstructorSubtitleLabel.Text = "От $5 до $100. Поддержка карт СНГ/мира (Visa, MC) и PayPal";
             CustomAmountSlider.Minimum = 5;
             CustomAmountSlider.Maximum = 100;
             SetCustomAmount(10, updateEntry: true, updateSlider: true);
 
-            PaymentInfoNoticeLabel.Text = "При оплате через Apple Pay, Google Pay или зарубежной картой зачисление происходит моментально. Lava.top поддерживает карты любых стран, включая Беларусь, Казахстан, ЕС и США.";
+            PaymentInfoNoticeLabel.Text = "Поддерживаются PayPal и карты Visa/Mastercard банков Казахстана, Узбекистана, Армении, Грузии, ЕС и неподсанкционных банков Беларуси (должны быть включены международные платежи в USD). Карты Белкарт и подсанкционных банков могут отклоняться банком-эмитентом.";
             CardConstructor.IsVisible = true;
             PaymentInfoCard.IsVisible = true;
         }
         else if (_selectedCurrency == "EUR")
         {
-            PaymentSubtitleLabel.Text = "Международная оплата через Apple Pay, Google Pay и европейские карты";
-            PaymentMethodsHintLabel.Text = "Способы оплаты: Apple Pay • Google Pay • Карты Европы и мира (Visa, MC) • PayPal";
+            PaymentSubtitleLabel.Text = "Международная оплата для Европы, СНГ и мира: карты Visa/MC и PayPal";
+            PaymentMethodsHintLabel.Text = "Способы оплаты: Карта Европы и СНГ (Visa, Mastercard) • PayPal";
 
             Card1TitleLabel.Text = "СТАРТОВЫЙ (+50%)";
             Card1PriceLabel.Text = "5 €";
             Card1HoursLabel.Text = "750 часов (+250ч бонус)";
-            Card1SubtitleLabel.Text = "Apple Pay, Google Pay или европейская карта. Без ограничений.";
-            Btn300.Text = "Купить за 5 € (Apple/Google Pay)";
+            Card1SubtitleLabel.Text = "Европейская / зарубежная карта или PayPal. Без ограничений.";
+            Btn300.Text = $"Купить за 5 € ({methodLabel})";
 
             Card2TitleLabel.Text = "ОПТИМАЛЬНЫЙ";
             Card2BadgeLabel.Text = "ХИТ +120%";
             Card2PriceLabel.Text = "10 €";
             Card2HoursLabel.Text = "2200 часов (+1200ч бонус)";
             Card2SubtitleLabel.Text = "Самый популярный тариф для стриминга, YouTube 4K и игр.";
-            Btn500.Text = "Купить за 10 € (Apple/Google Pay)";
+            Btn500.Text = $"Купить за 10 € ({methodLabel})";
 
             Card3TitleLabel.Text = "МАКСИМУМ (VIP x2.35)";
             Card3PriceLabel.Text = "20 €";
             Card3HoursLabel.Text = "4700 часов (+2700ч бонус)";
             Card3SubtitleLabel.Text = "Максимальный пакет для семьи и всех устройств (до 5 одновременно).";
-            Btn1000.Text = "Купить за 20 € (Apple/Google Pay)";
+            Btn1000.Text = $"Купить за 20 € ({methodLabel})";
 
             ChipPreset99.Text = "5 € (750ч)";
             ChipPreset250.Text = "7 € (1050ч)";
             ChipPreset300.Text = "10 € (2200ч)";
-            ChipPreset500.Text = "15 € (3450ч)";
+            ChipPreset500.Text = "15 € (3300ч)";
             ChipPreset1000.Text = "20 € (4700ч)";
             ChipPreset2000.Text = "50 € (12 000ч)";
             ChipPreset5000.Text = "100 € (24 000ч)";
 
             CustomCurrencyUnitLabel.Text = "€";
-            ConstructorSubtitleLabel.Text = "От 5 € до 100 €. Поддержка Apple Pay, Google Pay и карт банков Европы и мира";
+            ConstructorSubtitleLabel.Text = "От 5 € до 100 €. Поддержка карт банков Европы и СНГ и PayPal";
             CustomAmountSlider.Minimum = 5;
             CustomAmountSlider.Maximum = 100;
             SetCustomAmount(10, updateEntry: true, updateSlider: true);
 
-            PaymentInfoNoticeLabel.Text = "При оплате через Apple Pay, Google Pay или европейской картой зачисление происходит моментально. Lava.top поддерживает карты любых стран, включая Беларусь, Казахстан, ЕС и США.";
+            PaymentInfoNoticeLabel.Text = "Поддерживаются PayPal и карты Visa/Mastercard банков Европы, Казахстана, Узбекистана, Армении, Грузии и неподсанкционных банков Беларуси (должны быть включены международные платежи в EUR). Карты Белкарт и подсанкционных банков могут отклоняться банком-эмитентом.";
             CardConstructor.IsVisible = true;
             PaymentInfoCard.IsVisible = true;
         }
@@ -237,13 +283,13 @@ public sealed partial class PaymentView : ContentView
             PaymentInfoCard.IsVisible = false;
 #else
             PaymentSubtitleLabel.Text = "Оплата через СБП и банковские карты РФ — часы не сгорают, когда VPN выключен";
-            Btn300.Text = "Купить за 300 ₽ (СБП / Карта)";
-            Btn500.Text = "Купить за 500 ₽ (СБП / Карта)";
-            Btn1000.Text = "Купить за 1000 ₽ (СБП / Карта)";
+            Btn300.Text = $"Купить за 300 ₽ ({methodLabel})";
+            Btn500.Text = $"Купить за 500 ₽ ({methodLabel})";
+            Btn1000.Text = $"Купить за 1000 ₽ ({methodLabel})";
             CardConstructor.IsVisible = isDesktop;
             PaymentInfoCard.IsVisible = isDesktop;
 #endif
-            PaymentMethodsHintLabel.Text = "Способы оплаты: СБП • Карты банков РФ • T-Pay • SberPay";
+            PaymentMethodsHintLabel.Text = "Способы оплаты: СБП (QR / банк РФ) • Карты банков РФ (Мир, Visa, MC)";
 
             Card1TitleLabel.Text = "СТАРТОВЫЙ";
             Card1PriceLabel.Text = "300 ₽";
@@ -275,7 +321,7 @@ public sealed partial class PaymentView : ContentView
             CustomAmountSlider.Maximum = 10000;
             SetCustomAmount(300, updateEntry: true, updateSlider: true);
 
-            PaymentInfoNoticeLabel.Text = "При оплате картой РФ или через СБП межбанковская проверка может занимать от 2 до 15 минут (статус «Покупка обрабатывается» в банке). Время начисляется на баланс автоматически сразу после подтверждения платежной системой.";
+            PaymentInfoNoticeLabel.Text = "При оплате через СБП открывается прямая ссылка на приложение вашего банка РФ. При оплате картой РФ межбанковская проверка может занимать от 2 до 15 минут; время начисляется автоматически.";
         }
     }
 
@@ -286,70 +332,12 @@ public sealed partial class PaymentView : ContentView
             return (0, 0, 0, "0% БОНУС");
         }
 
-        if (_selectedCurrency is "USD" or "EUR")
-        {
-            var effectiveRub = amount * 100;
-            var totalHours = amount switch
-            {
-                5 => 750,
-                7 => 1050,
-                10 => 2200,
-                15 => 3450,
-                20 => 4700,
-                50 => 12000,
-                100 => 24000,
-                >= 50 => (int)(effectiveRub * 2.4m),
-                >= 20 => (int)(effectiveRub * 2.35m),
-                >= 10 => (int)(effectiveRub * 2.2m),
-                >= 5 => (int)(effectiveRub * 1.5m),
-                _ => (int)(effectiveRub * 1.17m)
-            };
-            var baseHours = amount * 100;
-            var bonusHours = Math.Max(0, totalHours - baseHours);
-            var badge = amount switch
-            {
-                >= 50 => "+140% БОНУС",
-                >= 20 => "+135% БОНУС",
-                >= 10 => "+120% БОНУС",
-                >= 5 => "+50% БОНУС",
-                _ => "+17% БОНУС"
-            };
-            return (totalHours, baseHours, bonusHours, badge);
-        }
-        else
-        {
-            var totalHours = amount switch
-            {
-                99 or 100 => 100,
-                249 or 250 => 260,
-                300 => 350,
-                500 => 750,
-                1000 => 2200,
-                2000 => 4700,
-                5000 => 12000,
-                >= 5000 => (int)(amount * 2.4m),
-                >= 2000 => (int)(amount * 2.35m),
-                >= 1000 => (int)(amount * 2.2m),
-                >= 500 => (int)(amount * 1.5m),
-                >= 300 => (int)(amount * 1.17m),
-                _ => amount
-            };
+        var tariff = TariffCalculator.Calculate(amount, _selectedCurrency);
+        var badge = tariff.BonusPercent > 0
+            ? $"+{tariff.BonusPercent}% БОНУС"
+            : (tariff.BonusHours > 0 ? $"+{tariff.BonusHours}ч БОНУС" : "БЕЗ БОНУСА");
 
-            var bonusHours = Math.Max(0, totalHours - amount);
-            var badge = amount switch
-            {
-                >= 5000 => "+140% БОНУС",
-                >= 2000 => "+135% БОНУС",
-                >= 1000 => "+120% БОНУС",
-                >= 500 => "+50% БОНУС",
-                >= 300 => "+17% БОНУС",
-                249 or 250 => "+10ч БОНУС",
-                99 => "+1ч БОНУС",
-                _ => "БЕЗ БОНУСА"
-            };
-
-            return (totalHours, amount, bonusHours, badge);
-        }
+        return (tariff.TotalHours, tariff.BaseHours, tariff.BonusHours, badge);
     }
 
     private void SetCustomAmount(int amount, bool updateEntry, bool updateSlider)
@@ -393,21 +381,22 @@ public sealed partial class PaymentView : ContentView
     {
         var (total, baseHours, bonus, badge) = CalculateHours(amount);
         ConstructorBonusBadge.Text = badge;
+        var methodLabel = GetSelectedMethodDisplayName();
         if (_selectedCurrency is "USD" or "EUR")
         {
             CalculatedHoursLabel.Text = bonus > 0
                 ? $"Начислим: {total} часов ({baseHours}ч база + {bonus}ч бонус)"
                 : $"Начислим: {total} часов (1 ед. = 100ч)";
             BtnCustomLava.Text = _selectedCurrency == "USD"
-                ? $"Оплатить ${amount} (Apple/Google Pay)"
-                : $"Оплатить {amount} € (Apple/Google Pay)";
+                ? $"Оплатить ${amount} ({methodLabel})"
+                : $"Оплатить {amount} € ({methodLabel})";
         }
         else
         {
             CalculatedHoursLabel.Text = bonus > 0
                 ? $"Начислим: {total} часов ({baseHours}ч база + {bonus}ч бонус)"
                 : $"Начислим: {total} часов (1 ₽ = 1 час)";
-            BtnCustomLava.Text = $"Оплатить {amount} ₽ (Lava.top)";
+            BtnCustomLava.Text = $"Оплатить {amount} ₽ ({methodLabel})";
         }
     }
 
@@ -700,16 +689,17 @@ public sealed partial class PaymentView : ContentView
         try
         {
             var baseline = _parent.RemainingSeconds;
-            var (success, payUrl, error) = await _apiService.GeneratePaymentLinkAsync(amount, _selectedCurrency);
+            var (success, payUrl, error) = await _apiService.GeneratePaymentLinkAsync(amount, _selectedCurrency, _selectedPaymentMethod);
             if (success && !string.IsNullOrEmpty(payUrl))
             {
                 _baselineBalanceSeconds = baseline;
                 PendingPaymentBanner.IsVisible = true;
+                var methodLabel = GetSelectedMethodDisplayName();
                 PendingPaymentStatusLabel.Text = _selectedCurrency switch
                 {
-                    "USD" => $"Счет на ${amount:0} открыт в браузере (Apple Pay, Google Pay, карты). После оплаты баланс обновится автоматически.",
-                    "EUR" => $"Счет на {amount:0} € открыт в браузере (Apple Pay, Google Pay, карты). После оплаты баланс обновится автоматически.",
-                    _ => $"Счет на {amount:0} ₽ открыт в браузере. После оплаты баланс обновится автоматически."
+                    "USD" => $"Счет на ${amount:0} ({methodLabel}) открыт в браузере. После оплаты баланс обновится автоматически.",
+                    "EUR" => $"Счет на {amount:0} € ({methodLabel}) открыт в браузере. После оплаты баланс обновится автоматически.",
+                    _ => $"Счет на {amount:0} ₽ ({methodLabel}) открыт в браузере. После оплаты баланс обновится автоматически."
                 };
                 StartPaymentPolling(baseline);
                 _ = await Launcher.OpenAsync(new Uri(payUrl));
@@ -775,6 +765,7 @@ public sealed partial class PaymentView : ContentView
     {
         try
         {
+            _ = await _apiService.SyncPendingPaymentsAsync();
             var (success, profile, _) = await _apiService.GetProfileAsync();
             if (success && profile is not null && profile.BalanceSeconds > baselineSeconds)
             {

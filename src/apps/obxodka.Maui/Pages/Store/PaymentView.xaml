@@ -37,6 +37,8 @@
                 Padding="3"
                 BackgroundColor="{DynamicResource BgElevated}"
                 HorizontalOptions="Center"
+                IsVisible="{OnPlatform Android=False,
+                                       Default=True}"
                 Stroke="{DynamicResource BorderSubtle}"
                 StrokeShape="RoundRectangle 8"
                 StrokeThickness="1">
@@ -89,13 +91,58 @@
                 </Grid>
             </Border>
 
+            <Border
+                x:Name="MethodSwitcherBorder"
+                Margin="0,2,0,0"
+                Padding="3"
+                BackgroundColor="{DynamicResource BgElevated}"
+                HorizontalOptions="Center"
+                IsVisible="{OnPlatform Android=False,
+                                       Default=True}"
+                Stroke="{DynamicResource BorderSubtle}"
+                StrokeShape="RoundRectangle 8"
+                StrokeThickness="1">
+                <Grid ColumnDefinitions="154, 154" ColumnSpacing="4">
+                    <Button
+                        x:Name="BtnMethodFirst"
+                        Grid.Column="0"
+                        Padding="8,0"
+                        BackgroundColor="{DynamicResource BgSurface}"
+                        BorderColor="{DynamicResource Accent}"
+                        BorderWidth="1"
+                        Clicked="OnMethodFirstClicked"
+                        CornerRadius="6"
+                        FontFamily="{DynamicResource AppFontBold}"
+                        FontSize="12"
+                        HeightRequest="32"
+                        MinimumHeightRequest="0"
+                        Text="⚡ СБП (QR / банк)"
+                        TextColor="{DynamicResource Accent}" />
+                    <Button
+                        x:Name="BtnMethodSecond"
+                        Grid.Column="1"
+                        Padding="8,0"
+                        BackgroundColor="Transparent"
+                        BorderColor="Transparent"
+                        BorderWidth="0"
+                        Clicked="OnMethodSecondClicked"
+                        CornerRadius="6"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="12"
+                        HeightRequest="32"
+                        MinimumHeightRequest="0"
+                        Text="💳 Карта РФ"
+                        TextColor="{DynamicResource TextSecondary}" />
+                </Grid>
+            </Border>
+
             <Label
                 x:Name="PaymentMethodsHintLabel"
                 FontSize="11"
                 HorizontalOptions="Center"
                 HorizontalTextAlignment="Center"
                 Style="{StaticResource LabelMuted}"
-                Text="Способы оплаты: СБП • Карты банков РФ • T-Pay • SberPay" />
+                Text="Способы оплаты: СБП • Карты банков РФ" />
         </VerticalStackLayout>
 
         <ScrollView

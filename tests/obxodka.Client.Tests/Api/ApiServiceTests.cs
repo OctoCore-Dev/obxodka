@@ -121,6 +121,63 @@ public partial class ApiServiceTests : IDisposable
         Assert.Equal("jwt_token_sample", data.Token);
     }
 
+    [Fact]
+    public async Task GeneratePaymentLinkAsyncIncludesCurrencyAndMethodAsync()
+    {
+        Uri? capturedUri = null;
+        using var response = new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.OK,
+            Content = new StringContent("""{"url":"https://app.lava.top/test"}""", Encoding.UTF8, "application/json")
+        };
+
+        _ = _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedUri = req.RequestUri)
+            .ReturnsAsync(response);
+
+        var (success, url, error) = await _apiService.GeneratePaymentLinkAsync(10m, "USD", TariffCalculator.MethodPayPal);
+
+        Assert.True(success);
+        Assert.Null(error);
+        Assert.Equal("https://app.lava.top/test", url);
+        Assert.NotNull(capturedUri);
+        Assert.Contains("amount=10", capturedUri.Query);
+        Assert.Contains("currency=USD", capturedUri.Query);
+        Assert.Contains("method=PAYPAL", capturedUri.Query);
+    }
+
+    [Fact]
+    public async Task SyncPendingPaymentsAsyncDeserializesResponseAsync()
+    {
+        using var response = new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.OK,
+            Content = new StringContent("""{"credited":true,"balanceSeconds":2703600,"pendingCount":0}""", Encoding.UTF8, "application/json")
+        };
+
+        _ = _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(response);
+
+        var (success, data, error) = await _apiService.SyncPendingPaymentsAsync();
+
+        Assert.True(success);
+        Assert.Null(error);
+        Assert.NotNull(data);
+        Assert.True(data.Credited);
+        Assert.Equal(2703600L, data.BalanceSeconds);
+        Assert.Equal(0, data.PendingCount);
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
