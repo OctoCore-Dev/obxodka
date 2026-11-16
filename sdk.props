@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <DotNetMajorVersion>10</DotNetMajorVersion>
+    <DotNetSdkChannel>$(DotNetMajorVersion).0.x</DotNetSdkChannel>
+    <NetTargetFramework>net$(DotNetMajorVersion).0</NetTargetFramework>
+    <AndroidTargetFramework>$(NetTargetFramework)-android</AndroidTargetFramework>
+    <WindowsTargetFramework>$(NetTargetFramework)-windows10.0.19041.0</WindowsTargetFramework>
+    <IosTargetFramework>$(NetTargetFramework)-ios</IosTargetFramework>
+    <MacCatalystTargetFramework>$(NetTargetFramework)-maccatalyst</MacCatalystTargetFramework>
+    <DotNetLangVersion Condition="'$(DotNetMajorVersion)' == '11'">preview</DotNetLangVersion>
+    <DotNetLangVersion Condition="'$(DotNetLangVersion)' == ''">14</DotNetLangVersion>
+  </PropertyGroup>
+</Project>

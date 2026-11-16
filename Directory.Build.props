@@ -1,5 +1,6 @@
 <Project>
   <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)sdk.props" Condition="Exists('$(MSBuildThisFileDirectory)sdk.props')" />
   <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.local" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.local')" />
   <PropertyGroup>
     <IsWindows Condition="'$([MSBuild]::IsOSPlatform(&quot;Windows&quot;))' == 'true' or '$(OS)' == 'Windows_NT'">true</IsWindows>
@@ -38,7 +39,8 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>14</LangVersion>
+    <LangVersion Condition="'$(DotNetLangVersion)' != ''">$(DotNetLangVersion)</LangVersion>
+    <LangVersion Condition="'$(DotNetLangVersion)' == ''">14</LangVersion>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>

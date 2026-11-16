@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('linux')) and '$(EnableMauiLinux)' != 'true' and !$(TargetFramework.Contains('-android'))">
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$(NetTargetFramework)</TargetFramework>
     <UseMaui>false</UseMaui>
     <OutputType>Library</OutputType>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
@@ -11,10 +11,10 @@
   <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
     <WindowsPackageType>$(PackageMode)</WindowsPackageType>
     <Configurations>Debug;Release</Configurations>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == ''">net10.0-windows10.0.19041.0;net10.0-android</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' != ''">net10.0-windows10.0.19041.0</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">net10.0-android</TargetFrameworks>
-    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">net10.0-maccatalyst;net10.0-ios;net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == ''">$(WindowsTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' != ''">$(WindowsTargetFramework)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">$(AndroidTargetFramework)</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">$(MacCatalystTargetFramework);$(IosTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>obxodka.Maui</RootNamespace>
     <UseMaui>true</UseMaui>
@@ -36,9 +36,10 @@
 
 	<PropertyGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))) and $(TargetFramework.Contains('-android'))">
 		<RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
-		<RunAOTCompilation>false</RunAOTCompilation>
-		<AndroidEnableProfiledAot Condition="'$(Configuration)' == 'Release'">true</AndroidEnableProfiledAot>
-		<AndroidEnableProfiledAot Condition="'$(Configuration)' != 'Release'">false</AndroidEnableProfiledAot>
+		<RunAOTCompilation Condition="'$(Configuration)' == 'Release' and '$(DotNetMajorVersion)' != '11'">true</RunAOTCompilation>
+		<RunAOTCompilation Condition="'$(Configuration)' != 'Release' and '$(DotNetMajorVersion)' != '11'">false</RunAOTCompilation>
+		<AndroidEnableProfiledAot Condition="'$(Configuration)' == 'Release' and '$(DotNetMajorVersion)' != '11'">true</AndroidEnableProfiledAot>
+		<AndroidEnableProfiledAot Condition="'$(Configuration)' != 'Release' and '$(DotNetMajorVersion)' != '11'">false</AndroidEnableProfiledAot>
 		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 		<UseNativeHttpHandler>true</UseNativeHttpHandler>
 		<JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' != 'true'">8G</JavaMaximumHeapSize>
@@ -85,30 +86,30 @@
 	</ItemGroup>
 
 <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))">
-    <PackageReference Include="AathifMahir.Maui.MauiIcons.Fluent" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.110" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.12" />
-    <PackageReference Include="Plugin.InAppBilling" Version="10.0.0" />
-    <PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="4.153.1" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
-    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="10.0.0" />
-    <PackageReference Include="WinUIEx" Version="2.9.3" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
-    <PackageReference Include="System.Management" Version="10.0.12" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
+    <PackageReference Include="AathifMahir.Maui.MauiIcons.Fluent" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Maui.Controls" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
+    <PackageReference Include="Plugin.InAppBilling" />
+    <PackageReference Include="SkiaSharp.Views.Maui.Controls" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="CommunityToolkit.Maui" />
+    <PackageReference Include="CommunityToolkit.Maui.MediaElement" />
+    <PackageReference Include="WinUIEx" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
+    <PackageReference Include="System.Management" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
 </ItemGroup>
 
   <ItemGroup Condition="(!$([MSBuild]::IsOSPlatform('linux')) or '$(EnableMauiLinux)' == 'true' or $(TargetFramework.Contains('-android'))) and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
-    <PackageReference Include="Xamarin.AndroidX.Activity.Ktx" Version="1.13.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Ktx" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" Version="1.5.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" Version="116.1.0.17" />
+    <PackageReference Include="Xamarin.AndroidX.Activity.Ktx" />
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Ktx" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" />
+    <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" />
     <ProguardConfiguration Include="Platforms\Android\proguard.cfg" />
   </ItemGroup>
 
