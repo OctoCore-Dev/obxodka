@@ -13,6 +13,8 @@
 .agents/**
 skills-lock.json
 .gemini/
+.idea/
+CODEBASE_MAP.md
 .claude/
 tools/halloween_video_studio/
 tools/temp_*
