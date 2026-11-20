@@ -3,12 +3,6 @@ namespace obxodka.Shared.Themes;
 //сервис управления локальным хранилищем тем, распаковки и загрузки ассетов
 public sealed partial class ThemeStorageService
 {
-    //путь к директории хранения установленных тем
-    public string ThemesDirectory { get; }
-
-    //последняя зафиксированная ошибка операций
-    public string? LastError { get; private set; }
-
     //идентификатор встроенной сезонной хэллоуин темы
     public const string SeasonalHalloweenThemeId = "halloween_seasonal_default";
 
@@ -17,6 +11,12 @@ public sealed partial class ThemeStorageService
         ThemesDirectory = themesDirectory ?? GetDefaultThemesDirectory();
         _ = Directory.CreateDirectory(ThemesDirectory);
     }
+
+    //путь к директории хранения установленных тем
+    public string ThemesDirectory { get; }
+
+    //последняя зафиксированная ошибка операций
+    public string? LastError { get; private set; }
 
     //получение стандартной директории тем в данных приложения
     public static string GetDefaultThemesDirectory() =>
@@ -32,8 +32,8 @@ public sealed partial class ThemeStorageService
         }
 
         foreach (var manifestPath in Directory.GetDirectories(ThemesDirectory)
-            .Select(dir => Path.Join(dir, "theme.json"))
-            .Where(File.Exists))
+                     .Select(dir => Path.Join(dir, "theme.json"))
+                     .Where(File.Exists))
         {
             try
             {

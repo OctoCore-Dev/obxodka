@@ -1,34 +1,32 @@
-namespace obxodka.Platforms.Android;
+using Android.Net;
+
+namespace obxodka;
 
 //платформенный драйвер android для оркестратора vpn-сессии
-[SupportedOSPlatform("android29.0")]
+[SupportedOSPlatform("android30.0")]
 internal sealed class AndroidVpnService : ITunnelPlatformAdapter
 {
-    public static AndroidVpnService Instance { get; } = new();
-
-    public static VpnSessionOrchestrator Orchestrator { get; } = new(Instance, hookProcessExit: false);
-
     private AndroidVpnService()
     {
     }
 
+    public static AndroidVpnService Instance { get; } = new();
+
+    public static VpnSessionOrchestrator Orchestrator { get; } = new(Instance, hookProcessExit: false);
+
     public bool SupportsKillSwitch => false;
 
     public event Action? OnPlatformNetworkChanged;
-
-    //оповещение оркестратора о смене или появлении физической сети на android
-    internal void NotifyPlatformNetworkChanged() =>
-        OnPlatformNetworkChanged?.Invoke();
 
     public string? DetectConflictingVpn() => null;
 
     public Task<string?> RunNetworkPreflightAsync() =>
         Task.FromResult<string?>(null);
 
-    //запрос системного разрешения vpnservice и запуск foreground-службы android
+    //запрос системного разрешения vpn service и запуск foreground-службы android
     public async Task<bool> PreparePermissionsAndStartServiceAsync(CancellationToken ct)
     {
-        var intent = global::Android.Net.VpnService.Prepare(Platform.AppContext);
+        var intent = VpnService.Prepare(Platform.AppContext);
         if (intent is not null)
         {
             var granted = await MainActivity.RequestVpnPermissionAsync(intent).ConfigureAwait(false);
@@ -39,7 +37,7 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         }
 
         MainActivity.StartVpnService();
-        _ = await OctopusVpnService.WaitForServiceReadyAsync(4000).ConfigureAwait(false)
+        _ = await OctopusVpnService.WaitForServiceReadyAsync().ConfigureAwait(false)
             ?? throw new InvalidOperationException("Не удалось запустить системную службу VPN.");
         return true;
     }
@@ -53,6 +51,13 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
     //защита исходящего транспортного сокета через VpnService.protect(fd)
     public void BindPhysicalSocket(Socket socket) =>
         _ = OctopusVpnService.ProtectSocket(socket);
+
+    public void UpdateAdapterMtu(int mtu) =>
+        OctopusVpnService.Instance?.OnMtuUpdated(mtu);
+
+
+    public Task HandlePhysicalUplinkLostAsync() =>
+        Task.CompletedTask;
 
     //поднятие виртуального tun0 интерфейса перед проверкой дуплекса канала
     public async Task ApplyTunnelInterfaceAsync(
@@ -92,16 +97,10 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         return Task.CompletedTask;
     }
 
-    public void UpdateAdapterMtu(int mtu) =>
-        OctopusVpnService.Instance?.OnMtuUpdated(mtu);
-
     public void StartPacketPump(CancellationToken ct)
     {
         //цикл чтения и записи пакетов tun0 уже запущен внутри EstablishTun
     }
-
-    public Task HandlePhysicalUplinkLostAsync() =>
-        Task.CompletedTask;
 
     //остановка нативной службы tun0 на android
     public Task ShutdownTunnelAsync(IReadOnlyList<string> serverIps, string assignedIpv4, bool keepKillSwitch)
@@ -112,8 +111,14 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         }
         catch
         {
+            // ignored
         }
 
         return Task.CompletedTask;
     }
+
+
+    //оповещение оркестратора о смене или появлении физической сети на android
+    internal void NotifyPlatformNetworkChanged() =>
+        OnPlatformNetworkChanged?.Invoke();
 }

@@ -3,7 +3,7 @@ namespace obxodka.Client.Telemetry;
 //сервис отправки отчетов об ошибках и падениях на сервер
 public sealed class TelemetryService : ITelemetryService, IDisposable
 {
-    public static TelemetryService Instance { get; } = new();
+    private static readonly TimeSpan s_minSendInterval = TimeSpan.FromSeconds(30);
 
     private readonly Channel<TelemetryDto> _channel =
         Channel.CreateBounded<TelemetryDto>(new BoundedChannelOptions(50)
@@ -15,13 +15,16 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private long _lastSendTicks;
-    private static readonly TimeSpan s_minSendInterval = TimeSpan.FromSeconds(30);
+
+    public TelemetryService() => _ = Task.Run(ProcessQueueAsync);
+    public static TelemetryService Instance { get; } = new();
+
+    //освобождение ресурсов
+    public void Dispose() => _sendLock.Dispose();
 
     //включена ли отправка отчетов в настройках
     public bool IsTelemetryEnabled =>
         PlatformServices.Preferences.Get(AppPreferenceKeys.UseTelemetry, true);
-
-    public TelemetryService() => _ = Task.Run(ProcessQueueAsync);
 
     //отправка лога сбоев прошлой сессии при запуске
     public async ValueTask FlushPreviousSessionCrashLogAsync(CancellationToken ct = default)
@@ -61,7 +64,8 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
                 return;
             }
 
-            var firstLine = text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Previous Session Crash";
+            var firstLine = text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ??
+                            "Previous Session Crash";
             var message = firstLine.Length > 1024 ? firstLine[..1024] : firstLine;
             var stackTrace = text.Length > 4096 ? text[..4096] : text;
 
@@ -69,7 +73,8 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
             var appVersion = typeof(TelemetryService).Assembly.GetName().Version?.ToString(3) ?? "2.0.0";
             var email = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, string.Empty);
 
-            var dto = new TelemetryDto(hwid, appVersion, message, stackTrace, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
+            var dto = new TelemetryDto(hwid, appVersion, message, stackTrace, string.IsNullOrWhiteSpace(email) ? null : email,
+                AppConfig.EnvironmentName);
 
             var sent = await SendToServerDirectAsync(dto, ct).ConfigureAwait(false);
             if (sent)
@@ -80,6 +85,55 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             //сбой отправки не должен ломать запуск программы
+        }
+    }
+
+    //запись ошибки в очередь отправки
+    public ValueTask TrackErrorAsync(string message, Exception? ex = null, CancellationToken ct = default)
+    {
+        _ = ct;
+        EnqueueError(message, ex);
+        return ValueTask.CompletedTask;
+    }
+
+    //запись фатального падения приложения в crash.log
+    public async ValueTask TrackFatalCrashAsync(string message, string? stackTrace = null, CancellationToken ct = default)
+    {
+        try
+        {
+            //запись в файл crash.log на случай падения процесса
+            var entry =
+                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH]\nMessage: {message}\nStackTrace:\n{stackTrace}\n----------------------------------------\n";
+            await File.AppendAllTextAsync(AppLogger.CrashLogFilePath, entry, ct).ConfigureAwait(false);
+
+            //попытка отправить сразу если есть сеть
+            if (IsTelemetryEnabled && PlatformServices.Connectivity.NetworkAccess != AppNetworkAccess.None &&
+                TelemetryFilter.ShouldSendToServer(message))
+            {
+                var hwid = DeviceHelper.Hwid;
+                var appVersion = typeof(TelemetryService).Assembly.GetName().Version?.ToString(3) ?? "2.0.0";
+                var email = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, string.Empty);
+
+                var safeMsg = message.Length > 1024 ? message[..1024] : message;
+                var safeStack = stackTrace ?? string.Empty;
+                if (safeStack.Length > 4096)
+                {
+                    safeStack = safeStack[..4096];
+                }
+
+                var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email,
+                    AppConfig.EnvironmentName);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                var sent = await SendToServerDirectAsync(dto, cts.Token).ConfigureAwait(false);
+                if (sent && File.Exists(AppLogger.CrashLogFilePath))
+                {
+                    File.Delete(AppLogger.CrashLogFilePath);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            //подавление ошибки отправки сохраненного аварийного лога
         }
     }
 
@@ -99,54 +153,9 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         var stack = ex?.ToString() ?? string.Empty;
         var safeStack = stack.Length > 4096 ? stack[..4096] : stack;
 
-        var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
+        var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email,
+            AppConfig.EnvironmentName);
         _ = _channel.Writer.TryWrite(dto);
-    }
-
-    //запись ошибки в очередь отправки
-    public ValueTask TrackErrorAsync(string message, Exception? ex = null, CancellationToken ct = default)
-    {
-        _ = ct;
-        EnqueueError(message, ex);
-        return ValueTask.CompletedTask;
-    }
-
-    //запись фатального падения приложения в crash.log
-    public async ValueTask TrackFatalCrashAsync(string message, string? stackTrace = null, CancellationToken ct = default)
-    {
-        try
-        {
-            //запись в файл crash.log на случай падения процесса
-            var entry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH]\nMessage: {message}\nStackTrace:\n{stackTrace}\n----------------------------------------\n";
-            await File.AppendAllTextAsync(AppLogger.CrashLogFilePath, entry, ct).ConfigureAwait(false);
-
-            //попытка отправить сразу если есть сеть
-            if (IsTelemetryEnabled && PlatformServices.Connectivity.NetworkAccess != AppNetworkAccess.None && TelemetryFilter.ShouldSendToServer(message))
-            {
-                var hwid = DeviceHelper.Hwid;
-                var appVersion = typeof(TelemetryService).Assembly.GetName().Version?.ToString(3) ?? "2.0.0";
-                var email = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, string.Empty);
-
-                var safeMsg = message.Length > 1024 ? message[..1024] : message;
-                var safeStack = stackTrace ?? string.Empty;
-                if (safeStack.Length > 4096)
-                {
-                    safeStack = safeStack[..4096];
-                }
-
-                var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email, AppConfig.EnvironmentName);
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                var sent = await SendToServerDirectAsync(dto, cts.Token).ConfigureAwait(false);
-                if (sent && File.Exists(AppLogger.CrashLogFilePath))
-                {
-                    File.Delete(AppLogger.CrashLogFilePath);
-                }
-            }
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            //подавление ошибки отправки сохраненного аварийного лога
-        }
     }
 
     //фоновая обработка очереди отправки
@@ -193,7 +202,8 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(6));
             return await ApiService.Shared.PostTelemetryAsync(dto, timeoutCts.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException
+                                       or OperationCanceledException or InvalidOperationException)
         {
             return false;
         }
@@ -202,7 +212,4 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
             _ = _sendLock.Release();
         }
     }
-
-    //освобождение ресурсов
-    public void Dispose() => _sendLock.Dispose();
 }

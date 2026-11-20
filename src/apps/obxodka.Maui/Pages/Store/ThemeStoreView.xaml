@@ -1,6 +1,7 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.ThemeStoreView"
+    x:Class="obxodka.Pages.Store.ThemeStoreView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
@@ -269,7 +270,7 @@
                     x:Name="FilterChipsScrollView"
                     HorizontalScrollBarVisibility="Never"
                     Orientation="Horizontal">
-                    <HorizontalStackLayout x:Name="FilterChipsLayout" Spacing="8">
+                    <HorizontalStackLayout Spacing="8">
                         <Border
                             x:Name="ChipFilterAll"
                             Padding="14,7"
@@ -650,13 +651,11 @@
                         </Grid>
 
                         <BoxView
-                            x:Name="SepVfxParallax"
                             HeightRequest="1"
                             Color="{DynamicResource BorderSubtle}" />
 
                         <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <Border
-                                x:Name="BadgeParallax"
                                 Grid.Column="0"
                                 BackgroundColor="{DynamicResource PrimaryDim}"
                                 HeightRequest="36"
@@ -665,7 +664,6 @@
                                 VerticalOptions="Center"
                                 WidthRequest="36">
                                 <mi:MauiIcon
-                                    x:Name="IconParallax"
                                     HorizontalOptions="Center"
                                     Icon="{mi:Fluent Icon=Glance24}"
                                     IconColor="{DynamicResource PrimaryBright}"

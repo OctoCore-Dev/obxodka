@@ -170,7 +170,7 @@ jobs:
   # ============================================================
   run-tests:
     name: "[TESTS] Automated Client xUnit Suite"
-    needs: [check-version]
+    needs: [ check-version ]
     if: needs.check-version.outputs.should_release != 'false'
     runs-on: windows-latest
     steps:
@@ -218,7 +218,7 @@ jobs:
   # ============================================================
   build-android:
     name: "[BUILD-ANDROID] MAUI AAB & APK Packages"
-    needs: [check-version, run-tests]
+    needs: [ check-version, run-tests ]
     runs-on: ubuntu-latest
     if: |
       (needs.check-version.outputs.should_release != 'false') &&
@@ -363,7 +363,7 @@ jobs:
   # ============================================================
   build-windows:
     name: "[BUILD-WINDOWS] MAUI MSIX & Setup EXE"
-    needs: [check-version, run-tests]
+    needs: [ check-version, run-tests ]
     runs-on: windows-latest
     if: |
       (needs.check-version.outputs.should_release != 'false') &&
@@ -509,7 +509,7 @@ jobs:
   # ============================================================
   deploy-android:
     name: "[PUBLISH-ANDROID] Google Play Console (OctoPublisher)"
-    needs: [check-version, build-android]
+    needs: [ check-version, build-android ]
     runs-on: ubuntu-latest
     outputs:
       deploy_state: ${{ steps.publish-play.outputs.deploy_state }}
@@ -626,7 +626,7 @@ jobs:
   # ============================================================
   deploy-windows:
     name: "[PUBLISH-WINDOWS] Microsoft Partner Center (OctoPublisher)"
-    needs: [check-version, build-windows]
+    needs: [ check-version, build-windows ]
     runs-on: windows-latest
     outputs:
       deploy_state: ${{ steps.publish-mstore.outputs.deploy_state }}
@@ -786,7 +786,7 @@ jobs:
   # ============================================================
   create-release:
     name: "[RELEASE] GitHub Production Distribution"
-    needs: [check-version, build-android, build-windows, deploy-android, deploy-windows]
+    needs: [ check-version, build-android, build-windows, deploy-android, deploy-windows ]
     if: |
       always() &&
       (needs.check-version.outputs.should_release != 'false') &&
@@ -862,7 +862,7 @@ jobs:
   # ============================================================
   telemetry-summary:
     name: "[SUMMARY] Pipeline Telemetry & Status"
-    needs: [check-version, run-tests, build-android, build-windows, deploy-android, deploy-windows, create-release]
+    needs: [ check-version, run-tests, build-android, build-windows, deploy-android, deploy-windows, create-release ]
     if: always()
     runs-on: ubuntu-latest
     steps:

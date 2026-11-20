@@ -9,26 +9,26 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" />
-    <PackageReference Include="Microsoft.Extensions.Http" />
-    <PackageReference Include="PacketDotNet" />
+    <PackageReference Include="CommunityToolkit.Mvvm"/>
+    <PackageReference Include="Microsoft.Extensions.Http"/>
+    <PackageReference Include="PacketDotNet"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj" />
-    <EmbeddedResource Include="..\..\..\servers.json" LogicalName="obxodka.servers.json" />
+    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj"/>
+    <EmbeddedResource Include="..\..\..\servers.json" LogicalName="obxodka.servers.json"/>
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="obxodka.Client" />
-    <Using Include="obxodka.Client.Platforms" />
+    <Using Include="obxodka.Client"/>
+    <Using Include="obxodka.Client.Platforms"/>
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="obxodka.Maui" />
-    <InternalsVisibleTo Include="obxodka.Avalonia" />
-    <InternalsVisibleTo Include="obxodka.Client.Tests" />
-    <InternalsVisibleTo Include="obxodka.Benchmarks" />
+    <InternalsVisibleTo Include="obxodka.Maui"/>
+    <InternalsVisibleTo Include="obxodka.Avalonia"/>
+    <InternalsVisibleTo Include="obxodka.Client.Tests"/>
+    <InternalsVisibleTo Include="obxodka.Benchmarks"/>
   </ItemGroup>
 
 </Project>

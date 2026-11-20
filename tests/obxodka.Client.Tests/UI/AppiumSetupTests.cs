@@ -1,12 +1,11 @@
 namespace obxodka.Client.Tests.UI;
 
 [Trait("Category", "UI")]
-public partial class AppiumSetupTests : IDisposable
+public class AppiumSetupTests : IDisposable
 {
-    private WindowsDriver? _session;
-
     private const string WindowsApplicationDriverUrl = "http://127.0.0.1:4723";
-    private static readonly string t_appId = UITestHelper.ResolveAppPath();
+    private static readonly string s_tAppId = UiTestHelper.ResolveAppPath();
+    private WindowsDriver? _session;
 
     public AppiumSetupTests()
     {
@@ -14,7 +13,7 @@ public partial class AppiumSetupTests : IDisposable
         {
             var appiumOptions = new AppiumOptions
             {
-                App = t_appId,
+                App = s_tAppId,
                 DeviceName = "WindowsPC"
             };
             _session = new WindowsDriver(new Uri(WindowsApplicationDriverUrl), appiumOptions);
@@ -24,6 +23,14 @@ public partial class AppiumSetupTests : IDisposable
         {
             _session = null;
         }
+    }
+
+    public void Dispose()
+    {
+        _session?.Quit();
+        _session?.Dispose();
+        _session = null;
+        GC.SuppressFinalize(this);
     }
 
     [Fact]
@@ -36,13 +43,5 @@ public partial class AppiumSetupTests : IDisposable
 
         var title = _session.Title;
         Assert.Contains("obxodka", title, StringComparison.OrdinalIgnoreCase);
-    }
-
-    public void Dispose()
-    {
-        _session?.Quit();
-        _session?.Dispose();
-        _session = null;
-        GC.SuppressFinalize(this);
     }
 }

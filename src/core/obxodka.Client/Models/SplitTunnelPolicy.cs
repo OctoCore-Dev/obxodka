@@ -9,197 +9,57 @@ public sealed class SplitTunnelPolicy
     //список официальных государственных доменов РФ, блокирующих доступ из зарубежных IP
     private static readonly FrozenSet<string> s_ruGovDomains = new[]
     {
-        "gosuslugi.ru",
-        "esia.gosuslugi.ru",
-        "gu-st.ru",
-        "mos.ru",
-        "emias.info",
-        "emiass.info",
-        "nalog.ru",
-        "nalog.gov.ru",
-        "lkfl2.nalog.ru",
-        "pfr.gov.ru",
-        "sfr.gov.ru",
-        "pochta.ru",
-        "rzd.ru",
-        "spb.ru",
-        "gov.ru",
-        "kremlin.ru",
-        "government.ru",
-        "duma.gov.ru",
-        "council.gov.ru",
-        "cbr.ru",
-        "roskomnadzor.gov.ru",
-        "eais.rkn.gov.ru",
-        "fssp.gov.ru",
-        "gibdd.ru",
-        "mvd.gov.ru",
-        "customs.gov.ru",
-        "sudrf.ru",
-        "zakupki.gov.ru",
-        "genproc.gov.ru",
-        "rosreestr.gov.ru",
-        "fas.gov.ru",
-        "fedresurs.ru",
-        "crpt.ru",
-        "честныйзнак.рф",
-        "xn--80ajghhoc2ajlc1b.xn--p1ai"
+        "gosuslugi.ru", "esia.gosuslugi.ru", "gu-st.ru", "mos.ru", "emias.info", "emiass.info", "nalog.ru", "nalog.gov.ru",
+        "lkfl2.nalog.ru", "pfr.gov.ru", "sfr.gov.ru", "pochta.ru", "rzd.ru", "spb.ru", "gov.ru", "kremlin.ru", "government.ru",
+        "duma.gov.ru", "council.gov.ru", "cbr.ru", "roskomnadzor.gov.ru", "eais.rkn.gov.ru", "fssp.gov.ru", "gibdd.ru", "mvd.gov.ru",
+        "customs.gov.ru", "sudrf.ru", "zakupki.gov.ru", "genproc.gov.ru", "rosreestr.gov.ru", "fas.gov.ru", "fedresurs.ru", "crpt.ru",
+        "честныйзнак.рф", "xn--80ajghhoc2ajlc1b.xn--p1ai"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //список российских банков и платежных систем, требующих прямого подключения
     private static readonly FrozenSet<string> s_ruBankDomains = new[]
     {
-        "sberbank.ru",
-        "sber.ru",
-        "online.sberbank.ru",
-        "sberbank.com",
-        "tbank.ru",
-        "tinkoff.ru",
-        "cdn-tinkoff.ru",
-        "vtb.ru",
-        "online.vtb.ru",
-        "alfabank.ru",
-        "raiffeisen.ru",
-        "gazprombank.ru",
-        "psbank.ru",
-        "sovcombank.ru",
-        "rshb.ru",
-        "open.ru",
-        "rosbank.ru",
-        "mtsbank.ru",
-        "ozon.bank",
-        "bank.yandex.ru",
-        "pochtabank.ru",
-        "mkb.ru",
-        "uralsib.ru",
-        "rencredit.ru",
-        "homecredit.ru",
-        "home.bank",
-        "bspb.ru",
-        "zenit.ru",
-        "domrfbank.ru",
-        "nspk.ru",
-        "sbp.nspk.ru",
-        "mirpay.ru",
-        "privetmir.ru",
-        "yoomoney.ru",
-        "yookassa.ru"
+        "sberbank.ru", "sber.ru", "online.sberbank.ru", "sberbank.com", "tbank.ru", "tinkoff.ru", "cdn-tinkoff.ru", "vtb.ru",
+        "online.vtb.ru", "alfabank.ru", "raiffeisen.ru", "gazprombank.ru", "psbank.ru", "sovcombank.ru", "rshb.ru", "open.ru",
+        "rosbank.ru", "mtsbank.ru", "ozon.bank", "bank.yandex.ru", "pochtabank.ru", "mkb.ru", "uralsib.ru", "rencredit.ru",
+        "homecredit.ru", "home.bank", "bspb.ru", "zenit.ru", "domrfbank.ru", "nspk.ru", "sbp.nspk.ru", "mirpay.ru", "privetmir.ru",
+        "yoomoney.ru", "yookassa.ru"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //список российских медиа, видеохостингов и социальных сетей
     private static readonly FrozenSet<string> s_ruMediaDomains = new[]
     {
-        "yandex.ru",
-        "ya.ru",
-        "yandex.net",
-        "yastatic.net",
-        "yandex.com",
-        "music.yandex.ru",
-        "kinopoisk.ru",
-        "kp.yandex.net",
-        "vk.com",
-        "vk.ru",
-        "vkvideo.ru",
-        "userapi.com",
-        "vkuseraudio.net",
-        "vkuservideo.net",
-        "vkuser.net",
-        "mycdn.me",
-        "ok.ru",
-        "mail.ru",
-        "imgsmail.ru",
-        "dzen.ru",
-        "rutube.ru",
-        "rtbcdn.ru",
-        "ivi.ru",
-        "okko.tv",
-        "wink.ru",
-        "premier.one",
-        "kion.ru",
-        "smotrim.ru",
-        "1tv.ru",
-        "ntv.ru",
-        "matchtv.ru",
-        "vgtrk.ru",
-        "tass.ru",
-        "ria.ru",
-        "rbc.ru",
-        "kommersant.ru",
-        "lenta.ru",
-        "gazeta.ru",
-        "2gis.ru",
-        "2gis.com",
-        "rambler.ru",
-        "pikabu.ru",
-        "habr.com"
+        "yandex.ru", "ya.ru", "yandex.net", "yastatic.net", "yandex.com", "music.yandex.ru", "kinopoisk.ru", "kp.yandex.net", "vk.com",
+        "vk.ru", "vkvideo.ru", "userapi.com", "vkuseraudio.net", "vkuservideo.net", "vkuser.net", "mycdn.me", "ok.ru", "mail.ru",
+        "imgsmail.ru", "dzen.ru", "rutube.ru", "rtbcdn.ru", "ivi.ru", "okko.tv", "wink.ru", "premier.one", "kion.ru", "smotrim.ru",
+        "1tv.ru", "ntv.ru", "matchtv.ru", "vgtrk.ru", "tass.ru", "ria.ru", "rbc.ru", "kommersant.ru", "lenta.ru", "gazeta.ru",
+        "2gis.ru", "2gis.com", "rambler.ru", "pikabu.ru", "habr.com"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //список российских маркетплейсов, ритейлеров и служб доставки
     private static readonly FrozenSet<string> s_ruMarketplaceDomains = new[]
     {
-        "ozon.ru",
-        "ozone.ru",
-        "ozonusercontent.com",
-        "wildberries.ru",
-        "wb.ru",
-        "wbbasket.ru",
-        "avito.ru",
-        "avito.st",
-        "dns-shop.ru",
-        "citilink.ru",
-        "mvideo.ru",
-        "eldorado.ru",
-        "kuper.ru",
-        "sbermarket.ru",
-        "samokat.ru",
-        "market.yandex.ru",
-        "megamarket.ru",
-        "sbermegamarket.ru",
-        "aliexpress.ru",
-        "magnit.ru",
-        "5ka.ru",
-        "perekrestok.ru",
-        "vkusvill.ru",
-        "auchan.ru",
-        "lenta.com",
-        "cdek.ru",
-        "boxberry.ru",
-        "lamoda.ru",
-        "detmir.ru",
-        "vseinstrumenti.ru",
-        "petrovich.ru",
-        "hoff.ru",
-        "lemanapro.ru",
-        "sportmaster.ru",
-        "apteka.ru",
-        "eapteka.ru"
+        "ozon.ru", "ozone.ru", "ozonusercontent.com", "wildberries.ru", "wb.ru", "wbbasket.ru", "avito.ru", "avito.st", "dns-shop.ru",
+        "citilink.ru", "mvideo.ru", "eldorado.ru", "kuper.ru", "sbermarket.ru", "samokat.ru", "market.yandex.ru", "megamarket.ru",
+        "sbermegamarket.ru", "aliexpress.ru", "magnit.ru", "5ka.ru", "perekrestok.ru", "vkusvill.ru", "auchan.ru", "lenta.com",
+        "cdek.ru", "boxberry.ru", "lamoda.ru", "detmir.ru", "vseinstrumenti.ru", "petrovich.ru", "hoff.ru", "lemanapro.ru",
+        "sportmaster.ru", "apteka.ru", "eapteka.ru"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //список серверов измерения скорости и телеком-провайдеров рф для замера на полной скорости провайдера
     private static readonly FrozenSet<string> s_ruSpeedtestDomains = new[]
     {
-        "speedtest.ru",
-        "spb.speedtest.ru",
-        "selectel.ru",
-        "selectel.net",
-        "rostelecom.ru",
-        "megafon.ru",
-        "mts.ru",
-        "beeline.ru",
-        "t2.ru",
-        "tele2.ru",
-        "dom.ru",
-        "ertelecom.ru",
-        "speedtest.customs.ru",
-        "speedtest.yandex.ru"
+        "speedtest.ru", "spb.speedtest.ru", "selectel.ru", "selectel.net", "rostelecom.ru", "megafon.ru", "mts.ru", "beeline.ru",
+        "t2.ru", "tele2.ru", "dom.ru", "ertelecom.ru", "speedtest.customs.ru", "speedtest.yandex.ru"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    private readonly List<BypassRouteEntry> _activeBypassRoutes = [];
 
     //объект синхронизации для потокобезопасного доступа к изменяемым коллекциям
     private readonly Lock _sync = new();
     private HashSet<string> _bypassedExeNames = [with(StringComparer.OrdinalIgnoreCase)];
     private HashSet<string> _bypassedExePaths = [with(StringComparer.OrdinalIgnoreCase)];
     private HashSet<string> _customDomains = [with(StringComparer.OrdinalIgnoreCase)];
-    private readonly List<BypassRouteEntry> _activeBypassRoutes = [];
 
     //включена ли политика раздельного туннелирования
     public bool Enabled { get; set; } = true;
@@ -226,13 +86,10 @@ public sealed class SplitTunnelPolicy
     public bool BypassRuSpeedtest { get; set; }
 
     //пользовательские IP-адреса и подсети для прямого подключения
-    public List<string> CustomBypassIps { get; set; } = [];
-
-    //пользовательские домены для прямого подключения
-    public List<string> CustomBypassDomains { get; set; } = [];
+    public List<string> CustomBypassIps { get; private set; } = [];
 
     //потокобезопасное получение или перезапись списка активных динамических маршрутов
-    public List<BypassRouteEntry> ActiveBypassRoutes
+    public List<BypassRouteEntry>? ActiveBypassRoutes
     {
         get => GetActiveBypassRoutes();
         set
@@ -333,6 +190,15 @@ public sealed class SplitTunnelPolicy
         }
     }
 
+    //потокобезопасный снимок исключенных путей и имен исполняемых файлов
+    public (string[] Paths, string[] Names) GetBypassedExecutablesSnapshot()
+    {
+        lock (_sync)
+        {
+            return ([.. _bypassedExePaths], [.. _bypassedExeNames]);
+        }
+    }
+
     //парсинг и сохранение пользовательских правил (IP-адреса, подсети, доменные имена и URL)
     public void SetCustomRules(IEnumerable<string> rawRules)
     {
@@ -368,7 +234,6 @@ public sealed class SplitTunnelPolicy
         lock (_sync)
         {
             _customDomains = domains;
-            CustomBypassDomains = [.. domains];
             CustomBypassIps = ips;
         }
     }
@@ -628,12 +493,9 @@ public sealed class SplitTunnelPolicy
 
         lock (_sync)
         {
-            for (var i = 0; i < _activeBypassRoutes.Count; i++)
+            if (_activeBypassRoutes.Any(t => t.DestinationIp.Equals(destinationIp, StringComparison.OrdinalIgnoreCase)))
             {
-                if (_activeBypassRoutes[i].DestinationIp.Equals(destinationIp, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
+                return;
             }
 
             _activeBypassRoutes.Add(new BypassRouteEntry(destinationIp, reason));

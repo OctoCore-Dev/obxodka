@@ -1,6 +1,3 @@
-using System.Collections.Frozen;
-using System.Net.Mail;
-
 namespace obxodka.Models;
 
 //валидатор email адресов по стандарту rfc 5322 с белым списком провайдеров и эвристикой опечаток
@@ -97,7 +94,8 @@ public static class EmailValidator
         //проверка на наличие русских букв (случайно забытая раскладка клавиатуры)
         if (HasCyrillic(trimmed.AsSpan()))
         {
-            return new EmailValidationResult(false, "Email адрес не должен содержать русские буквы. Переключите раскладку на английский язык.");
+            return new EmailValidationResult(false,
+                "Email адрес не должен содержать русские буквы. Переключите раскладку на английский язык.");
         }
 
         var atIndex = trimmed.IndexOf('@');
@@ -229,11 +227,12 @@ public static class EmailValidator
         for (var i = 0; i < text.Length; i++)
         {
             var c = text[i];
-            if (c is (>= '\u0400' and <= '\u04FF') or (>= '\u0500' and <= '\u052F'))
+            if (c is >= '\u0400' and <= '\u04FF' or >= '\u0500' and <= '\u052F')
             {
                 return true;
             }
         }
+
         return false;
     }
 

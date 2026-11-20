@@ -79,12 +79,13 @@ public sealed partial class ThemeStorageService
                     _ = Directory.CreateDirectory(destParent);
                 }
 
-                File.Copy(srcFile, destFile, overwrite: true);
+                File.Copy(srcFile, destFile, true);
             }
 
             return (true, null, manifest);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or InvalidDataException or JsonException or OperationCanceledException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or InvalidDataException
+                                       or JsonException or OperationCanceledException or NotSupportedException or ArgumentException)
         {
             LastError = ex.Message;
             return (false, ex.Message, null);

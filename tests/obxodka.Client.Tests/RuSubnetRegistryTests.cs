@@ -1,6 +1,5 @@
-using System.Net;
+using System.Numerics;
 using obxodka.Shared.Geo;
-using Xunit;
 
 namespace obxodka.Client.Tests;
 
@@ -46,12 +45,12 @@ public sealed class RuSubnetRegistryTests
     [Fact]
     public void RuSubnetRegistry_GetTier1Supernets_Returns_Valid_Routes()
     {
-        var supernets = RuSubnetRegistry.GetTier1Supernets(18);
+        var supernets = RuSubnetRegistry.GetTier1Supernets();
         Assert.NotEmpty(supernets);
 
         foreach (var (net, mask) in supernets)
         {
-            Assert.True(System.Numerics.BitOperations.PopCount(mask) <= 18); //префикс /18 или шире
+            Assert.True(BitOperations.PopCount(mask) <= 18); //префикс /18 или шире
             Assert.Equal(net, net & mask);
         }
     }

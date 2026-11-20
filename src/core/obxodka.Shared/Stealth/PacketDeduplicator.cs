@@ -5,7 +5,10 @@ public sealed class PacketDeduplicator
     //массив для хранения хешей пакетов и их временных меток, используемый для обнаружения дубликатов пакетов. Размер кольца фиксирован и равен 32768, что позволяет эффективно использовать память и обеспечивать быстрый доступ к элементам.
     private const int RingSize = 32768;
     private const int RingMask = RingSize - 1;
-    private const ulong TimeMask = 0xFFFFFUL; //маска для извлечения временной метки из хеша пакета, которая позволяет хранить только младшие 20 битов времени, что обеспечивает достаточную точность для обнаружения дубликатов в пределах 80 миллисекунд.
+
+    private const ulong
+        TimeMask = 0xFFFFFUL; //маска для извлечения временной метки из хеша пакета, которая позволяет хранить только младшие 20 битов времени, что обеспечивает достаточную точность для обнаружения дубликатов в пределах 80 миллисекунд.
+
     private const ulong MaxDuplicateAgeMs = 80UL; //окно дедупликации в мл сек
 
     private readonly ulong[] _entries = new ulong[RingSize];
@@ -25,8 +28,8 @@ public sealed class PacketDeduplicator
         {
             var proto = packet[9];
             var isDeduplicatable = proto == 1 ||
-                                   (proto == 6 && length <= 256) ||
-                                   (proto == 17 && length <= 1500);
+                                   proto == 6 && length <= 256 ||
+                                   proto == 17 && length <= 1500;
             if (!isDeduplicatable)
             {
                 return false;
@@ -36,8 +39,8 @@ public sealed class PacketDeduplicator
         {
             var nextHdr = packet[6];
             var isDeduplicatable = nextHdr == 58 ||
-                                   (nextHdr == 6 && length <= 256) ||
-                                   (nextHdr == 17 && length <= 1500);
+                                   nextHdr == 6 && length <= 256 ||
+                                   nextHdr == 17 && length <= 1500;
             if (!isDeduplicatable)
             {
                 return false;

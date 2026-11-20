@@ -47,62 +47,6 @@ public sealed class WindowsCertificateAuditService : ICertificateAuditService
         return Task.FromResult(new CertificateAuditResult(false, null, null, null));
     }
 
-    private static CertificateAuditResult CheckStore(StoreLocation location)
-    {
-        try
-        {
-            using var store = new X509Store(StoreName.Root, location);
-            store.Open(OpenFlags.ReadOnly);
-
-            foreach (var cert in store.Certificates)
-            {
-                try
-                {
-                    var thumbprint = cert.Thumbprint ?? string.Empty;
-                    var issuer = cert.Issuer ?? string.Empty;
-                    var subject = cert.Subject ?? string.Empty;
-
-                    var isKnownThumbprint = s_knownRussianRootThumbprints.Contains(thumbprint);
-                    var matchesPattern = false;
-
-                    if (!isKnownThumbprint)
-                    {
-                        foreach (var pattern in s_suspiciousPatterns)
-                        {
-                            if (issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                            {
-                                matchesPattern = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (isKnownThumbprint || matchesPattern)
-                    {
-                        var name = !string.IsNullOrWhiteSpace(cert.FriendlyName)
-                            ? cert.FriendlyName
-                            : cert.GetNameInfo(X509NameType.SimpleName, false) ?? "Russian Trusted Root CA";
-
-                        var locName = location == StoreLocation.CurrentUser ? "Хранилище пользователя" : "Хранилище компьютера";
-                        var details = $"Найден в '{locName}'. Отпечаток: {thumbprint}";
-                        return new CertificateAuditResult(true, name, thumbprint, details);
-                    }
-                }
-                finally
-                {
-                    cert.Dispose();
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[CERT AUDIT ERROR] Store error ({location}): {ex.Message}");
-        }
-
-        return new CertificateAuditResult(false, null, null, null);
-    }
-
     //открытие системной оснастки управления сертификатами
     public Task OpenCertificateSettingsAsync()
     {
@@ -158,5 +102,59 @@ public sealed class WindowsCertificateAuditService : ICertificateAuditService
         }
 
         return Task.FromResult(false);
+    }
+
+    private static CertificateAuditResult CheckStore(StoreLocation location)
+    {
+        try
+        {
+            using var store = new X509Store(StoreName.Root, location);
+            store.Open(OpenFlags.ReadOnly);
+
+            foreach (var cert in store.Certificates)
+            {
+                try
+                {
+                    var thumbprint = cert.Thumbprint;
+                    var issuer = cert.Issuer;
+                    var subject = cert.Subject;
+
+                    var isKnownThumbprint = s_knownRussianRootThumbprints.Contains(thumbprint);
+                    var matchesPattern = false;
+
+                    if (!isKnownThumbprint)
+                    {
+                        if (s_suspiciousPatterns.Any(pattern => issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
+                                                                subject.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            matchesPattern = true;
+                        }
+                    }
+
+                    if (!isKnownThumbprint && !matchesPattern)
+                    {
+                        continue;
+                    }
+
+                    var name = !string.IsNullOrWhiteSpace(cert.FriendlyName)
+                        ? cert.FriendlyName
+                        : cert.GetNameInfo(X509NameType.SimpleName, false);
+
+                    var locName = location == StoreLocation.CurrentUser ? "Хранилище пользователя" : "Хранилище компьютера";
+                    var details = $"Найден в '{locName}'. Отпечаток: {thumbprint}";
+                    return new CertificateAuditResult(true, name, thumbprint, details);
+                }
+                finally
+                {
+                    cert.Dispose();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[CERT AUDIT ERROR] Store error ({location}): {ex.Message}");
+        }
+
+        return new CertificateAuditResult(false, null, null, null);
     }
 }

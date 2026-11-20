@@ -1,28 +1,17 @@
 using Microsoft.Win32;
+using Path = System.IO.Path;
 
 namespace obxodka.Platforms.Windows;
 
-//диагностика и настройка сетевых интерфейсов, защита от утечек dns
+//диагностика и настройка сетевых интерфейсов, защита от утечек DNS
 [SupportedOSPlatform("windows10.0.19041.0")]
 internal sealed partial class WindowsVpnService
 {
+    private const string NrptRuleComment = "ObxodkaVpnDns";
     private static int? s_savedDisableSmartNameResolution;
-    private static volatile string? s_dnsLeakAdapterName;
+    private static volatile uint s_dnsLeakAdapterIfIndex;
 
-    private static string GetAppDataFolderPath()
-    {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
-        _ = Directory.CreateDirectory(dir);
-        return dir;
-    }
-
-    private static string GetSmhnrBackupPath() => Path.Combine(GetAppDataFolderPath(), "smhnr_backup.txt");
-
-    private static string GetDnsBackupPath() => Path.Combine(GetAppDataFolderPath(), "dns_backup.txt");
-
-    private static string GetVpnDnsLeakBackupPath() => Path.Combine(GetAppDataFolderPath(), "vpn_dns_leak_backup.txt");
-
-    //предстартовая проверка сети и dns
+    //предстартовая проверка сети и DNS
     public async Task<string?> RunNetworkPreflightAsync()
     {
         //проверка физической доступности сети без лишних задержек
@@ -48,6 +37,7 @@ internal sealed partial class WindowsVpnService
             var (refOk, refError) = referenceResults[i];
             AppLogger.Log($"[PREFLIGHT] TCP {referenceIps[i]}:443 -> {(refOk ? "OK" : refError.ToString())}");
         }
+
         AppLogger.Log($"[PREFLIGHT] TCP {AppConfig.DirectServerIp}:443 -> {(serverOk ? "OK" : serverError.ToString())}");
         AppLogger.Log($"[PREFLIGHT] System DNS -> {(dnsOk ? "OK" : "FAIL")}");
 
@@ -65,9 +55,10 @@ internal sealed partial class WindowsVpnService
         {
             if (internetOk)
             {
-                //прямой ip уже не отвечает при рабочем интернете — сразу штрафуем его, чтобы стартовать с cloudflare без 12с простоя
+                //прямой ip уже не отвечает при рабочем интернете — сразу штрафуем его, чтобы стартовать с Cloudflare без 12с простоя
                 OctopusEngine.MarkNodeByteCapped(AppConfig.DirectServerIp);
             }
+
             OctopusEngine.Current.EmitStatus(VpnStatusMessages.MainNodeUnavailableDirectly);
         }
 
@@ -76,14 +67,9 @@ internal sealed partial class WindowsVpnService
             OctopusEngine.Current.EmitStatus(VpnStatusMessages.DnsFailureDetected);
             await AutoHealAdapterDnsAsync().ConfigureAwait(false);
             dnsOk = await ProbeSystemDnsAsync("ya.ru", 2500).ConfigureAwait(false);
-            if (dnsOk)
-            {
-                OctopusEngine.Current.EmitStatus(VpnStatusMessages.DnsRestoredSuccessfully);
-            }
-            else
-            {
-                OctopusEngine.Current.EmitStatus(VpnStatusMessages.SwitchingToAutonomousDns);
-            }
+            OctopusEngine.Current.EmitStatus(dnsOk
+                ? VpnStatusMessages.DnsRestoredSuccessfully
+                : VpnStatusMessages.SwitchingToAutonomousDns);
         }
         else if (internetOk || serverOk)
         {
@@ -93,13 +79,47 @@ internal sealed partial class WindowsVpnService
         return null;
     }
 
+    //обнаружение имени конкурирующего vpn адаптера
+    public string? DetectConflictingVpn()
+    {
+        try
+        {
+            foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (IsConflictingAdapter(c))
+                {
+                    return c.Name;
+                }
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+
+        return null;
+    }
+
+    private static string GetSmhnrBackupPath() => Path.Combine(GetAppDataFolderPath(), "smhnr_backup.txt");
+
+    private static string GetDnsBackupPath() => Path.Combine(GetAppDataFolderPath(), "dns_backup.txt");
+
+    private static string GetVpnDnsLeakBackupPath() => Path.Combine(GetAppDataFolderPath(), "vpn_dns_leak_backup.txt");
+
+    private static string GetAppDataFolderPath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
+        _ = Directory.CreateDirectory(dir);
+        return dir;
+    }
+
     //безопасное получение ipv4 индекса адаптера без исключения на интерфейсах без стека ipv4
     private static int TryGetIpv4IfIndex(NetworkInterface nic)
     {
         try
         {
             return nic.Supports(NetworkInterfaceComponent.IPv4)
-                ? (nic.GetIPProperties().GetIPv4Properties()?.Index ?? -1)
+                ? nic.GetIPProperties().GetIPv4Properties().Index
                 : -1;
         }
         catch
@@ -108,11 +128,10 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    //сбор активных физических сетевых адаптеров хоста (без loopback, wintun и сторонних vpn)
-    private static (HashSet<int> Indices, HashSet<string> Names) GetPhysicalNetworkAdapterTargets(bool includeAllActive = false)
+    //сбор индексов активных физических сетевых адаптеров хоста (без loopback, wintun и сторонних vpn)
+    private static HashSet<int> GetPhysicalNetworkAdapterIndices(bool includeAllActive = false)
     {
         HashSet<int> targetIndices = [];
-        HashSet<string> targetNames = [with(StringComparer.OrdinalIgnoreCase)];
 
         var (_, physIfIndex) = GetDefaultGatewayInfo();
         if (physIfIndex > 0)
@@ -148,45 +167,43 @@ internal sealed partial class WindowsVpnService
                 {
                     _ = targetIndices.Add(idx);
                 }
-
-                if (!string.IsNullOrWhiteSpace(nic.Name))
-                {
-                    _ = targetNames.Add(nic.Name);
-                }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
 
-        return (targetIndices, targetNames);
+        return targetIndices;
     }
 
-    //автовосстановление серверов dns адаптеров
+    //авто восстановление серверов dns адаптеров через нативный iphlpapi
     private static async Task AutoHealAdapterDnsAsync()
     {
         try
         {
-            var (targetIndices, targetNames) = GetPhysicalNetworkAdapterTargets();
+            var targetIndices = GetPhysicalNetworkAdapterIndices();
 
             //сохраняем исходные dns настройки адаптеров перед лечением (если бекап еще не создан)
-            await BackupAdapterDnsIfNeededAsync(targetIndices, GetDnsBackupPath(), includeIpv6: false).ConfigureAwait(false);
+            await BackupAdapterDnsIfNeededAsync(targetIndices, GetDnsBackupPath()).ConfigureAwait(false);
 
             foreach (var idx in targetIndices)
             {
-                _ = await RunCmdAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"try {{ Set-DnsClientServerAddress -InterfaceIndex {idx} -ServerAddresses '77.88.8.8','1.1.1.1' -ErrorAction Stop }} catch {{ }}\"").ConfigureAwait(false);
+                if (Win32NetworkHelper.TryGetInterfaceGuidByIndex(idx, out var ifGuid))
+                {
+                    _ = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, false, "77.88.8.8,1.1.1.1");
+                }
             }
 
-            foreach (var name in targetNames)
-            {
-                _ = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{name}\" static 77.88.8.8 primary validate=no").ConfigureAwait(false);
-                _ = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{name}\" 1.1.1.1 index=2 validate=no").ConfigureAwait(false);
-            }
-
-            _ = await RunCmdAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+            _ = Win32NetworkHelper.FlushDnsCache();
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
-    //сохранение исходных dns серверов физических адаптеров перед заменой
+    //сохранение исходных dns серверов физических адаптеров перед заменой через iphlpapi
     private static async Task BackupAdapterDnsIfNeededAsync(HashSet<int> targetIndices, string? backupPath = null, bool includeIpv6 = false)
     {
         try
@@ -206,45 +223,46 @@ internal sealed partial class WindowsVpnService
                     continue;
                 }
 
-                var props = nic.GetIPProperties();
                 var idx = TryGetIpv4IfIndex(nic);
                 if (idx <= 0 || !targetIndices.Contains(idx))
                 {
                     continue;
                 }
 
-                var (_, dnsOut) = await RunCmdAsync("netsh", $"interface ipv4 show dnsservers name=\"{nic.Name}\"", timeoutMs: 2500).ConfigureAwait(false);
-                if (dnsOut.Contains("DHCP", StringComparison.OrdinalIgnoreCase))
+                if (!Guid.TryParse(nic.Id, out var ifGuid) && !Win32NetworkHelper.TryGetInterfaceGuidByIndex(idx, out ifGuid))
+                {
+                    continue;
+                }
+
+                var v4Configured = Win32NetworkHelper.GetInterfaceDnsServers(ifGuid, false);
+                if (string.IsNullOrWhiteSpace(v4Configured))
                 {
                     lines.Add($"ipv4|{idx}|{nic.Name}|DHCP");
                 }
                 else
                 {
-                    var v4Dns = props.DnsAddresses
-                        .Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
-                        .Select(a => a.ToString())
-                        .ToArray();
-                    if (v4Dns.Length > 0)
-                    {
-                        lines.Add($"ipv4|{idx}|{nic.Name}|{string.Join(',', v4Dns)}");
-                    }
+                    var v4Ips = v4Configured.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    lines.Add(v4Ips.Length > 0
+                        ? $"ipv4|{idx}|{nic.Name}|{string.Join(',', v4Ips)}"
+                        : $"ipv4|{idx}|{nic.Name}|DHCP");
                 }
 
-                if (includeIpv6)
+                if (!includeIpv6)
                 {
-                    var (_, dnsOutV6) = await RunCmdAsync("netsh", $"interface ipv6 show dnsservers name=\"{nic.Name}\"", timeoutMs: 2500).ConfigureAwait(false);
-                    var v6Static = props.DnsAddresses
-                        .Where(a => a.AddressFamily == AddressFamily.InterNetworkV6 && !IPAddress.IsLoopback(a) && !a.IsIPv6SiteLocal)
-                        .Select(a => a.ToString())
-                        .ToArray();
-                    if (dnsOutV6.Contains("DHCP", StringComparison.OrdinalIgnoreCase) || v6Static.Length == 0)
-                    {
-                        lines.Add($"ipv6|{idx}|{nic.Name}|DHCP");
-                    }
-                    else
-                    {
-                        lines.Add($"ipv6|{idx}|{nic.Name}|{string.Join(',', v6Static)}");
-                    }
+                    continue;
+                }
+
+                var v6Configured = Win32NetworkHelper.GetInterfaceDnsServers(ifGuid, true);
+                if (string.IsNullOrWhiteSpace(v6Configured))
+                {
+                    lines.Add($"ipv6|{idx}|{nic.Name}|DHCP");
+                }
+                else
+                {
+                    var v6Ips = v6Configured.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    lines.Add(v6Ips.Length > 0
+                        ? $"ipv6|{idx}|{nic.Name}|{string.Join(',', v6Ips)}"
+                        : $"ipv6|{idx}|{nic.Name}|DHCP");
                 }
             }
 
@@ -253,10 +271,13 @@ internal sealed partial class WindowsVpnService
                 await File.WriteAllLinesAsync(backupPath, lines).ConfigureAwait(false);
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
-    //восстановление исходных dns серверов физических адаптеров
+    //восстановление исходных dns серверов физических адаптеров через iphlpapi
     private static async Task RestoreAdapterDnsBackupAsync(string? backupPath = null)
     {
         try
@@ -271,24 +292,27 @@ internal sealed partial class WindowsVpnService
             foreach (var line in lines)
             {
                 var parts = line.Split('|');
-                string family;
+                bool isIpv6;
+                int ifIndex;
                 string nicName;
                 string dnsSpec;
-                if (parts.Length >= 4 && (parts[0].Equals("ipv4", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("ipv6", StringComparison.OrdinalIgnoreCase)))
+                switch (parts.Length)
                 {
-                    family = parts[0].ToLowerInvariant();
-                    nicName = parts[2].Trim();
-                    dnsSpec = parts[3].Trim();
-                }
-                else if (parts.Length >= 3)
-                {
-                    family = "ipv4";
-                    nicName = parts[1].Trim();
-                    dnsSpec = parts[2].Trim();
-                }
-                else
-                {
-                    continue;
+                    case >= 4 when parts[0].Equals("ipv4", StringComparison.OrdinalIgnoreCase) ||
+                                   parts[0].Equals("ipv6", StringComparison.OrdinalIgnoreCase):
+                        isIpv6 = parts[0].Equals("ipv6", StringComparison.OrdinalIgnoreCase);
+                        _ = int.TryParse(parts[1], CultureInfo.InvariantCulture, out ifIndex);
+                        nicName = parts[2].Trim();
+                        dnsSpec = parts[3].Trim();
+                        break;
+                    case >= 3:
+                        isIpv6 = false;
+                        _ = int.TryParse(parts[0], CultureInfo.InvariantCulture, out ifIndex);
+                        nicName = parts[1].Trim();
+                        dnsSpec = parts[2].Trim();
+                        break;
+                    default:
+                        continue;
                 }
 
                 if (string.IsNullOrWhiteSpace(nicName) || string.IsNullOrWhiteSpace(dnsSpec))
@@ -296,31 +320,53 @@ internal sealed partial class WindowsVpnService
                     continue;
                 }
 
+                if (!TryResolveAdapterGuid(ifIndex, nicName, out var ifGuid))
+                {
+                    continue;
+                }
+
                 if (dnsSpec.Equals("DHCP", StringComparison.OrdinalIgnoreCase))
                 {
-                    _ = await RunCmdAsync("netsh", $"interface {family} set dnsservers name=\"{nicName}\" dhcp", timeoutMs: 2500).ConfigureAwait(false);
+                    _ = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, isIpv6, null);
                 }
                 else
                 {
-                    var ips = dnsSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (ips.Length > 0 && IPAddress.TryParse(ips[0], out _))
+                    var ips = dnsSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Where(ip => IPAddress.TryParse(ip, out _))
+                        .ToArray();
+                    if (ips.Length > 0)
                     {
-                        _ = await RunCmdAsync("netsh", $"interface {family} set dnsservers name=\"{nicName}\" static {ips[0]} primary validate=no", timeoutMs: 2500).ConfigureAwait(false);
-                        for (var i = 1; i < ips.Length; i++)
-                        {
-                            if (IPAddress.TryParse(ips[i], out _))
-                            {
-                                _ = await RunCmdAsync("netsh", $"interface {family} add dnsservers name=\"{nicName}\" {ips[i]} index={i + 1} validate=no", timeoutMs: 2500).ConfigureAwait(false);
-                            }
-                        }
+                        _ = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, isIpv6, string.Join(',', ips));
                     }
                 }
             }
 
             File.Delete(backupPath);
-            _ = await RunCmdAsync("ipconfig", "/flushdns", timeoutMs: 2000).ConfigureAwait(false);
+            _ = Win32NetworkHelper.FlushDnsCache();
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private static bool TryResolveAdapterGuid(int ifIndex, string nicName, out Guid ifGuid)
+    {
+        if (ifIndex > 0 && Win32NetworkHelper.TryGetInterfaceGuidByIndex(ifIndex, out ifGuid))
+        {
+            return true;
+        }
+
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.Name.Equals(nicName, StringComparison.OrdinalIgnoreCase) && Guid.TryParse(nic.Id, out ifGuid))
+            {
+                return true;
+            }
+        }
+
+        ifGuid = Guid.Empty;
+        return false;
     }
 
     //зондирование tcp соединения
@@ -343,7 +389,7 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    //проверка разрешения dns
+    //проверка разрешения DNS
     private static async Task<bool> ProbeSystemDnsAsync(string host, int timeoutMs)
     {
         try
@@ -409,7 +455,7 @@ internal sealed partial class WindowsVpnService
             return ipProps.GatewayAddresses.Any(g =>
             {
                 var gw = g.Address.ToString();
-                return gw is "0.0.0.0" or "::" || (!IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any));
+                return gw is "0.0.0.0" or "::" || !IPAddress.IsLoopback(g.Address) && !g.Address.Equals(IPAddress.Any);
             });
         }
 
@@ -440,31 +486,13 @@ internal sealed partial class WindowsVpnService
 
         //проверка mac адреса: виртуальные туннельные интерфейсы часто имеют пустой или псевдо-mac
         var mac = c.GetPhysicalAddress().GetAddressBytes();
-        if (mac.Length == 0 || (mac.Length == 6 && mac.All(b => b == 0)))
+        if (mac.Length != 0 && (mac.Length != 6 || mac.Any(b => b != 0)))
         {
-            var ipProps = c.GetIPProperties();
-            return ipProps.UnicastAddresses.Count > 0;
+            return false;
         }
 
-        return false;
-    }
-
-    //обнаружение имени конкурирующего vpn адаптера
-    public string? DetectConflictingVpn()
-    {
-        try
-        {
-            foreach (var c in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (IsConflictingAdapter(c))
-                {
-                    return c.Name;
-                }
-            }
-        }
-        catch { }
-
-        return null;
+        var ipProps = c.GetIPProperties();
+        return ipProps.UnicastAddresses.Count > 0;
     }
 
     //диагностика сетевых адаптеров
@@ -480,18 +508,28 @@ internal sealed partial class WindowsVpnService
                     var ips = string.Join(", ", props.UnicastAddresses.Select(u => $"{u.Address}/{u.IPv4Mask}"));
                     var gws = string.Join(", ", props.GatewayAddresses.Select(g => g.Address.ToString()));
                     var idx = TryGetIpv4IfIndex(c);
-                    AppLogger.Log($"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
+                    AppLogger.Log(
+                        $"[NET-DIAG] Card: '{c.Name}' ({c.Description}), IfIndex: {idx}, Status: {c.OperationalStatus}, IPs: [{ips}], Gateways: [{gws}]");
 
-                    if (IsConflictingAdapter(c))
+                    if (!IsConflictingAdapter(c))
                     {
-                        AppLogger.Log($"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is active. It may filter or conflict with Obxodka traffic.");
-                        onLogUpdated?.Invoke(VpnStatusMessages.ThirdPartyVpnWarning(c.Name));
+                        continue;
                     }
+
+                    AppLogger.Log(
+                        $"[CONFLICTING-VPN] Card '{c.Name}' ({c.Description}) is active. It may filter or conflict with Obxodka traffic.");
+                    onLogUpdated?.Invoke(VpnStatusMessages.ThirdPartyVpnWarning(c.Name));
                 }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     //включение защиты smhnr от утечки dns через другие интерфейсы
@@ -500,24 +538,22 @@ internal sealed partial class WindowsVpnService
         try
         {
             using var key = Registry.LocalMachine.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\DNSClient");
-            if (key != null)
-            {
-                var backupPath = GetSmhnrBackupPath();
-                if (!File.Exists(backupPath))
-                {
-                    var existing = key.GetValue("DisableSmartNameResolution");
-                    var origVal = existing is int intVal ? intVal : -1;
-                    s_savedDisableSmartNameResolution = origVal;
-                    File.WriteAllText(backupPath, origVal.ToString(CultureInfo.InvariantCulture));
-                }
-                else if (!s_savedDisableSmartNameResolution.HasValue &&
-                         int.TryParse(File.ReadAllText(backupPath).Trim(), CultureInfo.InvariantCulture, out var persistedVal))
-                {
-                    s_savedDisableSmartNameResolution = persistedVal;
-                }
 
-                key.SetValue("DisableSmartNameResolution", 1, RegistryValueKind.DWord);
+            var backupPath = GetSmhnrBackupPath();
+            if (!File.Exists(backupPath))
+            {
+                var existing = key.GetValue("DisableSmartNameResolution");
+                var origVal = existing is int intVal ? intVal : -1;
+                s_savedDisableSmartNameResolution = origVal;
+                File.WriteAllText(backupPath, origVal.ToString(CultureInfo.InvariantCulture));
             }
+            else if (!s_savedDisableSmartNameResolution.HasValue &&
+                     int.TryParse(File.ReadAllText(backupPath).Trim(), CultureInfo.InvariantCulture, out var persistedVal))
+            {
+                s_savedDisableSmartNameResolution = persistedVal;
+            }
+
+            key.SetValue("DisableSmartNameResolution", 1, RegistryValueKind.DWord);
         }
         catch (Exception ex)
         {
@@ -568,8 +604,6 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    private const string NrptRuleComment = "ObxodkaVpnDns";
-
     //проверка наличия назначенного глобального ipv6 адреса на адаптере туннеля
     private static bool AdapterHasIpv6Address(string adapterName)
     {
@@ -579,8 +613,7 @@ internal sealed partial class WindowsVpnService
                 n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase) ||
                 n.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase));
             return card?.GetIPProperties().UnicastAddresses.Any(u =>
-                u.Address.AddressFamily == AddressFamily.InterNetworkV6 &&
-                !u.Address.IsIPv6LinkLocal &&
+                u.Address is { AddressFamily: AddressFamily.InterNetworkV6, IsIPv6LinkLocal: false } &&
                 !IPAddress.IsLoopback(u.Address)) ?? false;
         }
         catch
@@ -589,30 +622,85 @@ internal sealed partial class WindowsVpnService
         }
     }
 
+    //запуск скрытого powershell исключительно для системного rpc nrpt (днс cache)
+    private static async Task<(int exitCode, string output)> RunNrptPowerShellAsync(string command, int timeoutMs)
+    {
+        try
+        {
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{command}\"")
+            {
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            if (!proc.Start())
+            {
+                return (-1, "Failed to start powershell");
+            }
+
+            using var cts = new CancellationTokenSource(timeoutMs);
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
+
+            try
+            {
+                await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    proc.Kill(true);
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                return (-1, "PowerShell NRPT command timed out");
+            }
+
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            return (proc.ExitCode, string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+        }
+        catch (Exception ex)
+        {
+            return (-1, ex.Message);
+        }
+    }
+
     //удаление правила nrpt политик разрешения имен obxodka
     private static async Task RemoveObxodkaNrptRulesAsync()
     {
         try
         {
-            _ = await RunCmdAsync(
-                "powershell",
-                $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object {{ $_.Comment -eq '{NrptRuleComment}' }} | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\"",
-                timeoutMs: 3500).ConfigureAwait(false);
+            _ = await RunNrptPowerShellAsync(
+                $"Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object {{ $_.Comment -eq '{NrptRuleComment}' }} | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue",
+                3500).ConfigureAwait(false);
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         try
         {
-            using var policyRoot = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig", writable: true);
+            using var policyRoot =
+                Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig", true);
             if (policyRoot is not null)
             {
                 foreach (var subName in policyRoot.GetSubKeyNames())
                 {
-                    using var sub = policyRoot.OpenSubKey(subName, writable: false);
+                    using var sub = policyRoot.OpenSubKey(subName, false);
                     if (sub?.GetValue("Comment") is string comment &&
                         comment.Equals(NrptRuleComment, StringComparison.Ordinal))
                     {
-                        policyRoot.DeleteSubKeyTree(subName, throwOnMissingSubKey: false);
+                        policyRoot.DeleteSubKeyTree(subName, false);
                     }
                 }
             }
@@ -623,33 +711,33 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    //последовательная подмена ipv4 и ipv6 dns на физическом адаптере
-    private static async Task ApplyAdapterDnsOverrideAsync(string nicName, bool includeIpv6 = true)
+    //подмена ipv4 и ipv6 dns на физическом адаптере через iphlpapi
+    private static void ApplyAdapterDnsOverrideNative(int ifIndex, bool includeIpv6)
     {
-        var (v4SetCode, v4SetOut) = await RunCmdAsync("netsh", $"interface ipv4 set dnsservers name=\"{nicName}\" static {DnsDefaults.PrimaryDns} primary validate=no", timeoutMs: 3000).ConfigureAwait(false);
-        var (v4AddCode, v4AddOut) = await RunCmdAsync("netsh", $"interface ipv4 add dnsservers name=\"{nicName}\" {DnsDefaults.SecondaryDns} index=2 validate=no", timeoutMs: 3000).ConfigureAwait(false);
-        var v6SetCode = 0;
-        var v6SetOut = "";
-        var v6AddCode = 0;
-        var v6AddOut = "";
+        if (!Win32NetworkHelper.TryGetInterfaceGuidByIndex(ifIndex, out var ifGuid))
+        {
+            return;
+        }
+
+        var v4Status = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, false, $"{DnsDefaults.PrimaryDns},{DnsDefaults.SecondaryDns}");
+        uint v6Status = 0;
         if (includeIpv6)
         {
-            (v6SetCode, v6SetOut) = await RunCmdAsync("netsh", $"interface ipv6 set dnsservers name=\"{nicName}\" static {DnsDefaults.PrimaryDnsV6} primary validate=no", timeoutMs: 3000).ConfigureAwait(false);
-            (v6AddCode, v6AddOut) = await RunCmdAsync("netsh", $"interface ipv6 add dnsservers name=\"{nicName}\" {DnsDefaults.SecondaryDnsV6} index=2 validate=no", timeoutMs: 3000).ConfigureAwait(false);
+            v6Status = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, true, $"{DnsDefaults.PrimaryDnsV6},{DnsDefaults.SecondaryDnsV6}");
         }
-        if (v4SetCode != 0 || v4AddCode != 0 || v6SetCode != 0 || v6AddCode != 0)
+
+        if (v4Status != 0 || v6Status != 0)
         {
-            AppLogger.LogWarning($"[DNS-LEAK NIC WARN] '{nicName}': v4=({v4SetCode},{v4AddCode}) {v4SetOut.Trim()} {v4AddOut.Trim()} | v6=({v6SetCode},{v6AddCode}) {v6SetOut.Trim()} {v6AddOut.Trim()}");
+            AppLogger.LogWarning($"[DNS-LEAK NIC WARN] IfIndex {ifIndex}: v4={v4Status}, v6={v6Status}");
         }
     }
 
     //установка правила nrpt для маршрутизации всех dns-запросов строго на доверенные резолверы
     private static async Task InstallObxodkaNrptRuleAsync(string nrptServers)
     {
-        var (code, output) = await RunCmdAsync(
-            "powershell",
-            $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object {{ $_.Comment -eq '{NrptRuleComment}' }} | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue; Add-DnsClientNrptRule -Namespace '.' -NameServers {nrptServers} -Comment '{NrptRuleComment}' -ErrorAction Stop | Out-Null\"",
-            timeoutMs: 15000).ConfigureAwait(false);
+        var (code, output) = await RunNrptPowerShellAsync(
+            $"Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object {{ $_.Comment -eq '{NrptRuleComment}' }} | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue; Add-DnsClientNrptRule -Namespace '.' -NameServers {nrptServers} -Comment '{NrptRuleComment}' -ErrorAction Stop | Out-Null",
+            15000).ConfigureAwait(false);
         if (code != 0)
         {
             AppLogger.LogWarning($"[DNS-LEAK NRPT WARN] exit={code}: {output.Trim()}");
@@ -657,49 +745,44 @@ internal sealed partial class WindowsVpnService
     }
 
     //активация маршрутов и политик dns в интерфейс туннеля для полной защиты от утечек ipv4/ipv6
-    private static async Task EnableDnsLeakProtectionAsync(string adapterName, string assignedIp)
+    private static async Task EnableDnsLeakProtectionAsync(WintunAdapter adapter, string assignedIp)
     {
         _ = assignedIp;
         ApplySmhnrProtection();
-        s_dnsLeakAdapterName = adapterName;
+        var (tunLuid, tunIfIndex) = ResolveAdapterIdentity(adapter);
+        s_dnsLeakAdapterIfIndex = tunIfIndex;
         try
         {
-            var ifIndex = GetWintunInterfaceIndex(adapterName);
-            var ifArg = ifIndex > 0 ? $" if {ifIndex}" : "";
             //шлюз vpn сервера в подсети 100.64.0.0/10
             const string tunGateway = "100.64.0.1";
-            var tasks = new List<Task>();
-
             foreach (var dns in DnsDefaults.TrustedDnsServers)
             {
-                tasks.Add(RunCmdAsync("route", $"add {dns} mask 255.255.255.255 {tunGateway} metric 1{ifArg}", timeoutMs: 2500));
+                _ = Win32NetworkHelper.AddIpv4Route(dns, "255.255.255.255", tunGateway, tunIfIndex);
             }
 
             var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
-            var hasTunV6 = !blockIpv6 && (AdapterHasIpv6Address(adapterName) || HasActiveIpv6Connectivity());
-            if (hasTunV6)
+            var hasTunV6 = !blockIpv6 && (AdapterHasIpv6Address(adapter.Name) || HasActiveIpv6Connectivity());
+            if (hasTunV6 && tunIfIndex > 0)
             {
                 foreach (var dnsV6 in DnsDefaults.TunnelDnsServersIPv6)
                 {
-                    tasks.Add(RunCmdAsync("netsh", $"interface ipv6 add route {dnsV6}/128 interface=\"{adapterName}\" metric=1 store=active", timeoutMs: 2500));
+                    _ = Win32NetworkHelper.AddIpv6Route(dnsV6, 128, tunLuid, tunIfIndex, 1);
                 }
             }
 
-            var (physIndices, physNames) = GetPhysicalNetworkAdapterTargets(includeAllActive: true);
-            await BackupAdapterDnsIfNeededAsync(physIndices, GetVpnDnsLeakBackupPath(), includeIpv6: true).ConfigureAwait(false);
-            foreach (var nicName in physNames)
+            var physIndices = GetPhysicalNetworkAdapterIndices(true);
+            await BackupAdapterDnsIfNeededAsync(physIndices, GetVpnDnsLeakBackupPath(), true).ConfigureAwait(false);
+            foreach (var idx in physIndices)
             {
-                tasks.Add(ApplyAdapterDnsOverrideAsync(nicName, hasTunV6));
+                ApplyAdapterDnsOverrideNative(idx, hasTunV6);
             }
 
             var nrptServers = hasTunV6
                 ? $"'{DnsDefaults.PrimaryDns}','{DnsDefaults.SecondaryDns}','{DnsDefaults.PrimaryDnsV6}','{DnsDefaults.SecondaryDnsV6}'"
                 : $"'{DnsDefaults.PrimaryDns}','{DnsDefaults.SecondaryDns}'";
-            tasks.Add(InstallObxodkaNrptRuleAsync(nrptServers));
+            await InstallObxodkaNrptRuleAsync(nrptServers).ConfigureAwait(false);
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-            _ = DnsFlushResolverCache();
-            _ = await RunCmdAsync("ipconfig", "/flushdns", timeoutMs: 2000).ConfigureAwait(false);
+            _ = Win32NetworkHelper.FlushDnsCache();
         }
         catch (Exception ex)
         {
@@ -713,37 +796,18 @@ internal sealed partial class WindowsVpnService
         RestoreSmhnrProtection();
         try
         {
-            var tasks = new List<Task>
-            {
+            await Task.WhenAll(
                 RemoveObxodkaNrptRulesAsync(),
-                RestoreAdapterDnsBackupAsync(GetVpnDnsLeakBackupPath())
-            };
+                RestoreAdapterDnsBackupAsync(GetVpnDnsLeakBackupPath())).ConfigureAwait(false);
 
-            foreach (var dns in DnsDefaults.TrustedDnsServers)
-            {
-                tasks.Add(RunCmdAsync("route", $"delete {dns} mask 255.255.255.255", timeoutMs: 1500));
-            }
+            Win32NetworkHelper.DeleteIpv4Routes(DnsDefaults.TrustedDnsServers.Select(dns => (dns, "255.255.255.255")));
 
-            var targetAdapter = s_dnsLeakAdapterName;
-            s_dnsLeakAdapterName = null;
-            foreach (var dnsV6 in DnsDefaults.TunnelDnsServersIPv6)
-            {
-                if (!string.IsNullOrWhiteSpace(targetAdapter))
-                {
-                    tasks.Add(RunCmdAsync("netsh", $"interface ipv6 delete route {dnsV6}/128 interface=\"{targetAdapter}\"", timeoutMs: 1500));
-                }
-                else
-                {
-                    tasks.Add(RunCmdAsync(
-                        "powershell",
-                        $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '{dnsV6}/128' -ErrorAction SilentlyContinue | Where-Object {{ $_.InterfaceAlias -like '*Obxodka*' -or $_.InterfaceAlias -like '*Wintun*' }} | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue\"",
-                        timeoutMs: 2000));
-                }
-            }
+            var targetIfIndex = s_dnsLeakAdapterIfIndex;
+            s_dnsLeakAdapterIfIndex = 0;
+            var v6Targets = DnsDefaults.TunnelDnsServersIPv6.Select(dnsV6 => (dnsV6, (byte)128)).ToArray();
+            Win32NetworkHelper.DeleteIpv6Routes(targetIfIndex > 0 ? targetIfIndex : null, v6Targets);
 
-            await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-            _ = DnsFlushResolverCache();
-            _ = await RunCmdAsync("ipconfig", "/flushdns", timeoutMs: 2000).ConfigureAwait(false);
+            _ = Win32NetworkHelper.FlushDnsCache();
         }
         catch (Exception ex)
         {

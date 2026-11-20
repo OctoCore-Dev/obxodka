@@ -25,7 +25,8 @@ public class AppConfigTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void ApiUrlWithEmptyEndpointThrowsArgumentException(string invalidEndpoint) => Assert.Throws<ArgumentException>(() => AppConfig.ApiUrl(invalidEndpoint));
+    public void ApiUrlWithEmptyEndpointThrowsArgumentException(string invalidEndpoint) =>
+        Assert.Throws<ArgumentException>(() => AppConfig.ApiUrl(invalidEndpoint));
 
     [Fact]
     public void CustomBaseUrlOverridesDefaultAndTrims()

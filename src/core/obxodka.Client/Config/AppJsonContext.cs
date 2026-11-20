@@ -1,5 +1,3 @@
-using obxodka.Models;
-
 namespace obxodka.Config;
 
 [JsonSourceGenerationOptions(

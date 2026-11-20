@@ -1,26 +1,35 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Navigation;
 
 //нижняя плавающая панель навигации для мобильных устройств
-public sealed partial class MobileSidebarView : ContentView
+public sealed partial class MobileSidebarView
 {
-    private static Color ActiveColor => (Application.Current?.Resources.TryGetValue("Primary", out var val) == true && val is Color c)
-        ? c
-        : Color.FromArgb("#7C3AED");
     private static readonly Color s_inactiveLightColor = Color.FromArgb("#9080B0");
     private static readonly Color s_inactiveDarkColor = Color.FromArgb("#6A5A8A");
-
-    public event EventHandler<string>? NavTapped;
     private string _currentTab = "vpn";
     private bool _isCompact;
 
     public MobileSidebarView() => InitializeComponent();
 
+    private static Color ActiveColor => Application.Current?.Resources.TryGetValue("Primary", out var val) == true && val is Color c
+        ? c
+        : Color.FromArgb("#7C3AED");
+
+    public event EventHandler<string>? NavTapped;
+
     //анимация появления нижней панели
     public async Task PlayEntranceAnimationAsync()
     {
         MobileBottomBar.IsVisible = true;
-        await UIAnimations.PlayBottomBarEntranceAsync(MobileBottomBar);
+        await UiAnimations.PlayBottomBarEntranceAsync(MobileBottomBar);
     }
+
+    //реакция на смену темы оформления
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateCardOpacity();
+            UpdateActiveTab(_currentTab);
+        });
 
     //скрытие нижней панели
     public void HideSidebar() => MobileBottomBar.IsVisible = false;
@@ -71,8 +80,8 @@ public sealed partial class MobileSidebarView : ContentView
                 BottomNavVpnIcon.IconColor = activeColor;
                 PillVpn.Color = activeColor;
                 _ = BottomNavVpn.ScaleToAsync(1.04, 140, Easing.SpringOut);
-                _ = UIAnimations.ShowPillAsync(PillVpn);
-                _ = UIAnimations.PlayIconSpringHoverAsync(BottomNavVpnIcon, 1.22);
+                _ = UiAnimations.ShowPillAsync(PillVpn);
+                _ = BottomNavVpnIcon.PlayIconSpringHoverAsync(1.22);
                 break;
             case "configuration":
             case "themes":
@@ -80,34 +89,32 @@ public sealed partial class MobileSidebarView : ContentView
                 BottomNavConfigurationIcon.IconColor = activeColor;
                 PillBattery.Color = activeColor;
                 _ = BottomNavConfiguration.ScaleToAsync(1.04, 140, Easing.SpringOut);
-                _ = UIAnimations.ShowPillAsync(PillBattery);
-                _ = UIAnimations.PlayIconSpinAsync(BottomNavConfigurationIcon, 180, 260);
+                _ = UiAnimations.ShowPillAsync(PillBattery);
+                _ = BottomNavConfigurationIcon.PlayIconSpinAsync(180, 260);
                 break;
             case "profile":
                 BottomNavProfile.BackgroundColor = activeBg;
                 BottomNavProfileIcon.IconColor = activeColor;
                 PillProfile.Color = activeColor;
                 _ = BottomNavProfile.ScaleToAsync(1.04, 140, Easing.SpringOut);
-                _ = UIAnimations.ShowPillAsync(PillProfile);
-                _ = UIAnimations.PlayIconBounceJumpAsync(BottomNavProfileIcon, -4);
+                _ = UiAnimations.ShowPillAsync(PillProfile);
+                _ = BottomNavProfileIcon.PlayIconBounceJumpAsync();
                 break;
             case "devices":
                 BottomNavDevices.BackgroundColor = activeBg;
                 BottomNavDevicesIcon.IconColor = activeColor;
                 PillDevices.Color = activeColor;
                 _ = BottomNavDevices.ScaleToAsync(1.04, 140, Easing.SpringOut);
-                _ = UIAnimations.ShowPillAsync(PillDevices);
-                _ = UIAnimations.PlayIconWiggleAsync(BottomNavDevicesIcon, 14);
+                _ = UiAnimations.ShowPillAsync(PillDevices);
+                _ = BottomNavDevicesIcon.PlayIconWiggleAsync();
                 break;
             case "split":
                 BottomNavSplit.BackgroundColor = activeBg;
                 BottomNavSplitIcon.IconColor = activeColor;
                 PillSplit.Color = activeColor;
                 _ = BottomNavSplit.ScaleToAsync(1.04, 140, Easing.SpringOut);
-                _ = UIAnimations.ShowPillAsync(PillSplit);
-                _ = UIAnimations.PlayIconTwinkleAsync(BottomNavSplitIcon);
-                break;
-            default:
+                _ = UiAnimations.ShowPillAsync(PillSplit);
+                _ = BottomNavSplitIcon.PlayIconTwinkleAsync();
                 break;
         }
     }
@@ -115,11 +122,11 @@ public sealed partial class MobileSidebarView : ContentView
     //сброс активных индикаторов и цветов элементов
     private void ResetAllBottomNavItems()
     {
-        _ = UIAnimations.HidePillAsync(PillVpn);
-        _ = UIAnimations.HidePillAsync(PillBattery);
-        _ = UIAnimations.HidePillAsync(PillProfile);
-        _ = UIAnimations.HidePillAsync(PillDevices);
-        _ = UIAnimations.HidePillAsync(PillSplit);
+        _ = UiAnimations.HidePillAsync(PillVpn);
+        _ = UiAnimations.HidePillAsync(PillBattery);
+        _ = UiAnimations.HidePillAsync(PillProfile);
+        _ = UiAnimations.HidePillAsync(PillDevices);
+        _ = UiAnimations.HidePillAsync(PillSplit);
 
         var activeColor = ActiveColor;
         PillVpn.Color = activeColor;
@@ -140,9 +147,11 @@ public sealed partial class MobileSidebarView : ContentView
         BottomNavDevices.Scale = 1.0;
         BottomNavSplit.Scale = 1.0;
 
-        var inactiveColor = (Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc)
+        var inactiveColor = Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc
             ? tmc
-            : (Application.Current?.RequestedTheme == AppTheme.Light ? s_inactiveLightColor : s_inactiveDarkColor);
+            : Application.Current?.RequestedTheme == AppTheme.Light
+                ? s_inactiveLightColor
+                : s_inactiveDarkColor;
 
         BottomNavVpnIcon.IconColor = inactiveColor;
         BottomNavConfigurationIcon.IconColor = inactiveColor;
@@ -160,24 +169,16 @@ public sealed partial class MobileSidebarView : ContentView
     //актуализация цвета фона и границы панели под тему
     public void UpdateCardOpacity()
     {
-        var bgElevated = (Application.Current?.Resources.TryGetValue("BgElevated", out var bg) == true && bg is Color bgColor)
+        var bgElevated = Application.Current?.Resources.TryGetValue("BgElevated", out var bg) == true && bg is Color bgColor
             ? bgColor
             : Color.FromArgb("#202030");
-        var borderMedium = (Application.Current?.Resources.TryGetValue("BorderMedium", out var bm) == true && bm is Color bmColor)
+        var borderMedium = Application.Current?.Resources.TryGetValue("BorderMedium", out var bm) == true && bm is Color bmColor
             ? bmColor
             : Color.FromArgb("#363650");
 
         MobileBottomBar.BackgroundColor = bgElevated;
         MobileBottomBar.Stroke = borderMedium;
     }
-
-    //реакция на смену темы оформления
-    public void OnThemeChanged() =>
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            UpdateCardOpacity();
-            UpdateActiveTab(_currentTab);
-        });
 
     //сброс трансформаций и анимаций иконки
     private static void ResetIconTransform(VisualElement icon)

@@ -2,11 +2,14 @@ namespace obxodka.Core;
 
 //закрытая иерархия активного транспорта для типобезопасного отображения лучей в c# 15
 public closed record ActiveTransportTag;
+
 public sealed record StreamTransportTag(int ActiveRays) : ActiveTransportTag;
+
 public sealed record WebSocketTransportTag : ActiveTransportTag
 {
     public static WebSocketTransportTag Instance { get; } = new();
 }
+
 public sealed record XhttpTransportTag : ActiveTransportTag
 {
     public static XhttpTransportTag Instance { get; } = new();
@@ -124,7 +127,7 @@ internal static class EdgeEndpointHealth
             return;
         }
 
-        var until = Stopwatch.GetTimestamp() + (Stopwatch.Frequency * cooldownSeconds);
+        var until = Stopwatch.GetTimestamp() + Stopwatch.Frequency * cooldownSeconds;
         s_unhealthyUntilTicks[ip.ToString()] = until;
     }
 
@@ -172,12 +175,14 @@ internal static class EdgeEndpointHealth
             ? Math.Abs(Interlocked.Increment(ref s_rotationCounter)) % healthy.Count
             : 0;
 
-        List<IPAddress> ordered = [with(addresses.Length)];
-        for (var i = 0; i < healthy.Count; i++)
-        {
-            ordered.Add(healthy[(i + shift) % healthy.Count]);
-        }
-        ordered.AddRange(penalized);
+        List<IPAddress> ordered =
+        [
+            with(addresses.Length),
+            .. healthy.Select((_, i) => healthy[(i + shift) % healthy.Count]),
+
+            .. penalized
+        ];
+
         return [.. ordered];
     }
 }

@@ -6,11 +6,11 @@ public class InSituDiagnosticsTests
     [Fact]
     public void AnalyzeRstPacketFlagsInjectedAnomalies()
     {
-        var injected = InSituDiagnosticsEngine.AnalyzeRstPacket(observedTtl: 64, ipId: 0, windowSize: 0);
+        var injected = InSituDiagnosticsEngine.AnalyzeRstPacket(64);
         Assert.True(injected.IsInjectedByTspu);
         Assert.Contains("АНОМАЛИЯ", injected.Details);
 
-        var normal = InSituDiagnosticsEngine.AnalyzeRstPacket(observedTtl: 52, ipId: 0x1234, windowSize: 65535);
+        var normal = InSituDiagnosticsEngine.AnalyzeRstPacket(52, 0x1234, 65535);
         Assert.False(normal.IsInjectedByTspu);
         Assert.Contains("Стандартный", normal.Details);
     }
@@ -19,7 +19,7 @@ public class InSituDiagnosticsTests
     public async Task MapTspuHopDistanceReturnsSafeHopDistanceAsync()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        var (hop, details) = await InSituDiagnosticsEngine.MapTspuHopDistanceAsync("127.0.0.1", 1, maxHops: 3, cts.Token);
+        var (hop, details) = await InSituDiagnosticsEngine.MapTspuHopDistanceAsync("127.0.0.1", 1, 3, cts.Token);
         Assert.True(hop is -1 or >= 1);
         Assert.NotNull(details);
     }
@@ -27,7 +27,10 @@ public class InSituDiagnosticsTests
     [Fact]
     public async Task TestCanaryEchoReturnsComprehensiveReportAsync()
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        using var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(2)
+        };
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
 
         var (_, summary) = await InSituDiagnosticsEngine.TestCanaryEchoAsync(client, cts.Token);

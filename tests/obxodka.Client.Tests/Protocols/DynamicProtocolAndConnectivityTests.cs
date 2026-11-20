@@ -94,9 +94,9 @@ public sealed class DynamicProtocolAndConnectivityTests
             }, cts.Token);
             Assert.True(validated);
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or AuthenticationException)
+        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException
+                                      or AuthenticationException)
         {
-            return;
         }
     }
 
@@ -116,11 +116,13 @@ public sealed class DynamicProtocolAndConnectivityTests
             OctopusEngine.DynamicSslPublicKeyHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
         }
 
-        var transport = new ObxodkaStreamTransport(serverPort: 443);
+        var transport = new ObxodkaStreamTransport();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         var ex = await Record.ExceptionAsync(() => transport.ConnectAsync(AppConfig.DirectServerIp, "TEST_THUMBPRINT", cts.Token));
 
-        Assert.True(ex is null or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException or SocketException, $"Expected cancellation, got: {ex}");
+        Assert.True(
+            ex is null or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException or SocketException,
+            $"Expected cancellation, got: {ex}");
     }
 
     [Fact]
@@ -138,9 +140,10 @@ public sealed class DynamicProtocolAndConnectivityTests
         {
             expectedHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
         }
+
         OctopusEngine.DynamicSslPublicKeyHash = expectedHash;
 
-        var transport = new ObxodkaStreamTransport(serverPort: 443);
+        var transport = new ObxodkaStreamTransport();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         string ip;
         try
@@ -148,7 +151,8 @@ public sealed class DynamicProtocolAndConnectivityTests
             var res = await transport.ConnectAsync(AppConfig.DirectServerIp, "8C4D558DD38236249DA05CA9FD59658C0CAC305E", cts.Token);
             ip = res.ip;
         }
-        catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException)
+        catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException
+                                       or HttpRequestException or IOException)
         {
             return;
         }
@@ -185,12 +189,12 @@ public sealed class DynamicProtocolAndConnectivityTests
     [Fact]
     public void DirectServerStrategyUsesZeroSniWhileShieldUsesRealDomain()
     {
-        var directStrategy = SniEngine.ResolveTransportStrategy(AppConfig.DirectServerIp, null, forceWebSocket: false);
+        var directStrategy = SniEngine.ResolveTransportStrategy(AppConfig.DirectServerIp, null, false);
         Assert.False(directStrategy.UseWebSocket);
         Assert.Null(directStrategy.EffectiveSni);
         Assert.False(directStrategy.ClearDynamicPinning);
 
-        var shieldStrategy = SniEngine.ResolveTransportStrategy(AppConfig.PrimaryDomain, AppConfig.PrimaryDomain, forceWebSocket: false);
+        var shieldStrategy = SniEngine.ResolveTransportStrategy(AppConfig.PrimaryDomain, AppConfig.PrimaryDomain, false);
         Assert.True(shieldStrategy.UseWebSocket);
         Assert.Equal(AppConfig.PrimaryDomain, shieldStrategy.EffectiveSni);
         Assert.True(shieldStrategy.ClearDynamicPinning);
@@ -208,11 +212,15 @@ public sealed class DynamicProtocolAndConnectivityTests
                 TargetHost = "gateway.icloud.com",
                 ApplicationProtocols = [SslApplicationProtocol.Http2],
                 EnabledSslProtocols = SslProtocols.Tls13,
-                RemoteCertificateValidationCallback = (s, c, ch, e) => CertificateValidator.ValidateServerCertificate(c, ch, e, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
+                RemoteCertificateValidationCallback = (s, c, ch, e) =>
+                    CertificateValidator.ValidateServerCertificate(c, ch, e, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=")
             },
             ConnectCallback = async (context, ct) =>
             {
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+                {
+                    NoDelay = true
+                };
                 await socket.ConnectAsync(AppConfig.DirectServerIp, 443, ct);
                 var netStream = new NetworkStream(socket, true);
                 return new DpiBypassStream(netStream);
@@ -226,7 +234,7 @@ public sealed class DynamicProtocolAndConnectivityTests
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
         };
 
-        var hsPayload = Encoding.UTF8.GetBytes("CBDEBFDE826F40C6BF0F77525522E624C7A624BC");
+        var hsPayload = "CBDEBFDE826F40C6BF0F77525522E624C7A624BC"u8.ToArray();
         var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
 
         var pushContent = new PushStreamContent(async (stream, ct) =>
@@ -243,9 +251,9 @@ public sealed class DynamicProtocolAndConnectivityTests
             using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             Assert.NotNull(resp);
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
+        catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException
+                                      or OperationCanceledException)
         {
-            return;
         }
     }
 
@@ -253,8 +261,14 @@ public sealed class DynamicProtocolAndConnectivityTests
     {
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
             onSerialize(stream, cancellationToken);
+
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
             SerializeToStreamAsync(stream, context, CancellationToken.None);
-        protected override bool TryComputeLength(out long length) { length = -1; return false; }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = -1;
+            return false;
+        }
     }
 }

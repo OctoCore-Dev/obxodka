@@ -13,23 +13,25 @@ public static class SslOptionsFactory
         var options = new SslClientAuthenticationOptions
         {
             TargetHost = targetHost,
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+            CertificateRevocationCheckMode = X509RevocationMode.Online,
             EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = applicationProtocols,
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
+            RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
                 CertificateValidator.ValidateServerCertificate(cert, chain, errors, dynamicPinningHash)
         };
 
-        if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
+        if (!OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
         {
-            try
-            {
-                options.CipherSuitesPolicy = new CipherSuitesPolicy(RoutingHello.GetCipherSuites(browserProfile));
-            }
-            catch (PlatformNotSupportedException)
-            {
-                //политика шифров не поддерживается текущей платформой
-            }
+            return options;
+        }
+
+        try
+        {
+            options.CipherSuitesPolicy = new CipherSuitesPolicy(RoutingHello.GetCipherSuites(browserProfile));
+        }
+        catch (PlatformNotSupportedException)
+        {
+            //политика шифров не поддерживается текущей платформой
         }
 
         return options;
@@ -42,7 +44,7 @@ public static class SslOptionsFactory
         new()
         {
             TargetHost = targetHost,
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+            CertificateRevocationCheckMode = X509RevocationMode.Online,
             EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = applicationProtocols
         };

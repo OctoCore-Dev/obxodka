@@ -19,7 +19,8 @@ public class NetworkDiagnosticsTests
         report.Steps.Add(new DiagnosticStepResult("1. Локальная сеть", DiagnosticStatus.Passed, "OK", TimeSpan.FromMilliseconds(5)));
         report.Steps.Add(new DiagnosticStepResult("2. DNS", DiagnosticStatus.Passed, "OK", TimeSpan.FromMilliseconds(15)));
         report.Steps.Add(new DiagnosticStepResult("3. TCP 443", DiagnosticStatus.Passed, "RTT: 20ms", TimeSpan.FromMilliseconds(20)));
-        report.Steps.Add(new DiagnosticStepResult("4. TLS и ТСПУ", DiagnosticStatus.Passed, "Рукопожатие успешно", TimeSpan.FromMilliseconds(45)));
+        report.Steps.Add(new DiagnosticStepResult("4. TLS и ТСПУ", DiagnosticStatus.Passed, "Рукопожатие успешно",
+            TimeSpan.FromMilliseconds(45)));
         report.Steps.Add(new DiagnosticStepResult("5. UDP 443", DiagnosticStatus.Passed, "OK", TimeSpan.FromMilliseconds(50)));
 
         var text = report.ToFormattedText();
@@ -40,11 +41,11 @@ public class NetworkDiagnosticsTests
 
         var completedSteps = new List<DiagnosticStepResult>();
         var report = await diagService.RunFullDiagnosticsAsync(
-            serverHost: "127.0.0.1",
-            serverPort: 443,
-            udpPort: 443,
-            onStepCompleted: s => completedSteps.Add(s),
-            ct: cts.Token);
+            "127.0.0.1",
+            443,
+            443,
+            s => completedSteps.Add(s),
+            cts.Token);
 
         Assert.NotNull(report);
         Assert.NotEmpty(report.Steps);
@@ -63,9 +64,7 @@ public class NetworkDiagnosticsTests
         var diagService = new NetworkDiagnosticsService();
 
         var report = await diagService.RunFullDiagnosticsAsync(
-            serverHost: AppConfig.DirectServerIp,
-            serverPort: 443,
-            udpPort: 443,
+            AppConfig.DirectServerIp,
             ct: cts.Token);
 
         Assert.NotNull(report);

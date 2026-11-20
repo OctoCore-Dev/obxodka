@@ -1,6 +1,3 @@
-using obxodka.Models;
-using Xunit;
-
 namespace obxodka.Client.Tests;
 
 public sealed class EmailValidatorTests

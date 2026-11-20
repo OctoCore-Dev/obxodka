@@ -1,7 +1,7 @@
 <Project>
-  <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')" />
-  <Import Project="$(MSBuildThisFileDirectory)sdk.props" Condition="Exists('$(MSBuildThisFileDirectory)sdk.props')" />
-  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.local" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.local')" />
+  <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')"/>
+  <Import Project="$(MSBuildThisFileDirectory)sdk.props" Condition="Exists('$(MSBuildThisFileDirectory)sdk.props')"/>
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.local" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.local')"/>
   <PropertyGroup>
     <IsWindows Condition="'$([MSBuild]::IsOSPlatform(&quot;Windows&quot;))' == 'true' or '$(OS)' == 'Windows_NT'">true</IsWindows>
 
@@ -39,13 +39,11 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion Condition="'$(DotNetLangVersion)' != ''">$(DotNetLangVersion)</LangVersion>
-    <LangVersion Condition="'$(DotNetLangVersion)' == ''">14</LangVersion>
+    <LangVersion>preview</LangVersion>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <Features>strict</Features>
-    <Features Condition="'$(DotNetMajorVersion)' == '11'">$(Features);runtime-async=on</Features>
+    <Features>strict;runtime-async=on</Features>
     <WarningLevel>9999</WarningLevel>
     <Version Condition="'$(Version)' == ''">4.8.6</Version>
     <IsTrimmable Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</IsTrimmable>
@@ -68,10 +66,10 @@
   </PropertyGroup>
 
   <Target Name="EnsureBuildCacheDir" BeforeTargets="BeforeBuild;Restore" Condition="'$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">
-    <MakeDir Directories="C:\BuildCache" ContinueOnError="true" />
+    <MakeDir Directories="C:\BuildCache" ContinueOnError="true"/>
   </Target>
 
   <Target Name="SyncSharedConfigFiles" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('$(USERPROFILE)\code\sync_configs.ps1')">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(USERPROFILE)\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(USERPROFILE)\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true"/>
   </Target>
 </Project>

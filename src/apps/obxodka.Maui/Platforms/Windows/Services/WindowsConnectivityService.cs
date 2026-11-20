@@ -1,4 +1,5 @@
 namespace obxodka.Platforms.Windows;
+
 //мониторинг состояния сетевого подключения windows и определение типа канала связи
 public sealed class WindowsConnectivityService : IConnectivityService
 {
@@ -9,12 +10,6 @@ public sealed class WindowsConnectivityService : IConnectivityService
         NetworkChange.NetworkAddressChanged += OnNetworkChanged;
         NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
     }
-
-    private void OnNetworkChanged(object? sender, EventArgs e) => RaiseConnectivityChanged();
-    private void OnNetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e) => RaiseConnectivityChanged();
-
-    private void RaiseConnectivityChanged() =>
-        _connectivityChanged?.Invoke(this, new AppConnectivityChangedEventArgs(NetworkAccess, []));
 
     //проверка наличия активного подключения к интернету исключая петлевые интерфейсы
     public AppNetworkAccess NetworkAccess
@@ -43,6 +38,12 @@ public sealed class WindowsConnectivityService : IConnectivityService
             }
         }
     }
+
+    private void OnNetworkChanged(object? sender, EventArgs e) => RaiseConnectivityChanged();
+    private void OnNetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e) => RaiseConnectivityChanged();
+
+    private void RaiseConnectivityChanged() =>
+        _connectivityChanged?.Invoke(this, new AppConnectivityChangedEventArgs(NetworkAccess, []));
 
     public event EventHandler<AppConnectivityChangedEventArgs>? ConnectivityChanged
     {
@@ -79,23 +80,19 @@ public sealed class WindowsConnectivityService : IConnectivityService
         }
     }
 
-    private static NetworkConnectionType MapNetworkType(NetworkInterfaceType type)
-    {
-#pragma warning disable IDE0072 // Add missing cases to switch expression
-        return type switch
+    private static NetworkConnectionType MapNetworkType(NetworkInterfaceType type) =>
+        type switch
         {
             NetworkInterfaceType.Wireless80211 => NetworkConnectionType.Wifi,
             NetworkInterfaceType.Ethernet or
-            NetworkInterfaceType.GigabitEthernet or
-            NetworkInterfaceType.FastEthernetT or
-            NetworkInterfaceType.FastEthernetFx or
-            NetworkInterfaceType.Ethernet3Megabit => NetworkConnectionType.Ethernet,
+                NetworkInterfaceType.GigabitEthernet or
+                NetworkInterfaceType.FastEthernetT or
+                NetworkInterfaceType.FastEthernetFx or
+                NetworkInterfaceType.Ethernet3Megabit => NetworkConnectionType.Ethernet,
             NetworkInterfaceType.Ppp or
-            NetworkInterfaceType.Wwanpp or
-            NetworkInterfaceType.Wwanpp2 => NetworkConnectionType.Cellular,
+                NetworkInterfaceType.Wwanpp or
+                NetworkInterfaceType.Wwanpp2 => NetworkConnectionType.Cellular,
             NetworkInterfaceType.Unknown => NetworkConnectionType.Unknown,
             _ => NetworkConnectionType.Other
         };
-#pragma warning restore IDE0072
-    }
 }

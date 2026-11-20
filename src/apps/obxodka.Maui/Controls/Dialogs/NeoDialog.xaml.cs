@@ -1,29 +1,38 @@
-namespace obxodka.Dialogs;
+namespace obxodka.Controls.Dialogs;
 
-//закрытая иерархия тонов диалога с проверкой полноты перебора в компиляторе c# 15
-public closed record DialogTone
+public partial class NeoDialog
 {
-    public static DialogTone Update { get; } = new DialogUpdateTone();
-    public static DialogTone Delete { get; } = new DialogDeleteTone();
-    public static DialogTone Error { get; } = new DialogErrorTone();
-    public static DialogTone Warning { get; } = new DialogWarningTone();
-    public static DialogTone Success { get; } = new DialogSuccessTone();
-    public static DialogTone Info { get; } = new DialogInfoTone();
-}
+    private static readonly SearchValues<string> s_updateKeywords =
+        SearchValues.Create(["обновлен", "update"], StringComparison.OrdinalIgnoreCase);
 
-public sealed record DialogUpdateTone : DialogTone;
-public sealed record DialogDeleteTone : DialogTone;
-public sealed record DialogErrorTone : DialogTone;
-public sealed record DialogWarningTone : DialogTone;
-public sealed record DialogSuccessTone : DialogTone;
-public sealed record DialogInfoTone : DialogTone;
+    private static readonly SearchValues<string> s_errorKeywords =
+        SearchValues.Create(["ошибк", "сбой", "нет интернета", "нет подключения", "нет доступа"], StringComparison.OrdinalIgnoreCase);
 
-public partial class NeoDialog : ContentView
-{
+    private static readonly SearchValues<string> s_warningKeywords =
+        SearchValues.Create(["внимани", "лимит"], StringComparison.OrdinalIgnoreCase);
+
+    private static readonly SearchValues<string> s_successKeywords =
+        SearchValues.Create(["успех", "наград", "поздравля", "скопирован", "отлично"], StringComparison.OrdinalIgnoreCase);
+
     private TaskCompletionSource<bool>? _dialogTcs;
     private DialogTone _lastTone = DialogTone.Info;
 
     public NeoDialog() => InitializeComponent();
+
+    public Task<bool> ShowErrorAsync(string title, string message, string buttonText = "OK") =>
+        ShowAsync(title, message, null, buttonText, DialogTone.Error);
+
+    public Task<bool> ShowUpdateAsync(string title, string message, string acceptText = "Обновить", string cancelText = "Позже") =>
+        ShowAsync(title, message, acceptText, cancelText, DialogTone.Update);
+
+    public Task<bool> ShowSuccessAsync(string title, string message, string buttonText = "OK") =>
+        ShowAsync(title, message, null, buttonText, DialogTone.Success);
+
+    private void OnAcceptClicked(object? sender, EventArgs e) => _ = CloseAsync(true);
+
+    private void OnCancelClicked(object? sender, EventArgs e) => _ = CloseAsync(false);
+
+    private void OnBackdropTapped(object? sender, EventArgs e) => _ = CloseAsync(false);
 
     public void OnThemeChanged()
     {
@@ -46,7 +55,7 @@ public partial class NeoDialog : ContentView
         var resolvedTone = tone ?? ResolveTone(title);
         _lastTone = resolvedTone;
 
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
         {
             try
             {
@@ -57,7 +66,7 @@ public partial class NeoDialog : ContentView
                 CancelCol.Width = isConfirm ? GridLength.Star : GridLength.Auto;
                 CancelButton.IsVisible = isConfirm;
                 CancelButton.Text = cancelText;
-                AcceptButton.Text = isConfirm ? acceptText : cancelText;
+                AcceptButton.Text = (isConfirm ? acceptText : cancelText) ?? "";
                 Grid.SetColumn(AcceptButton, isConfirm ? 1 : 0);
                 Grid.SetColumnSpan(AcceptButton, isConfirm ? 1 : 2);
 
@@ -76,7 +85,7 @@ public partial class NeoDialog : ContentView
             }
             catch (Exception ex)
             {
-                obxodka.Shared.Logging.AppLogger.LogWarning($"[NEO DIALOG ERROR] {ex.Message}");
+                AppLogger.LogWarning($"[NEO DIALOG ERROR] {ex.Message}");
                 _ = tcs.TrySetResult(false);
             }
         });
@@ -84,32 +93,25 @@ public partial class NeoDialog : ContentView
         return tcs.Task;
     }
 
-    public Task<bool> ShowErrorAsync(string title, string message, string buttonText = "OK") =>
-        ShowAsync(title, message, null, buttonText, DialogTone.Error);
-
-    public Task<bool> ShowUpdateAsync(string title, string message, string acceptText = "Обновить", string cancelText = "Позже") =>
-        ShowAsync(title, message, acceptText, cancelText, DialogTone.Update);
-
-    public Task<bool> ShowSuccessAsync(string title, string message, string buttonText = "OK") =>
-        ShowAsync(title, message, null, buttonText, DialogTone.Success);
-
     private static DialogTone ResolveTone(string title)
     {
-        var lower = title.ToLowerInvariant();
-        return lower switch
-        {
-            _ when lower.Contains("обновлен") || lower.Contains("update") => DialogTone.Update,
-            _ when lower.Contains("удал") => DialogTone.Delete,
-            _ when lower.Contains("ошибк") || lower.Contains("сбой") || lower.Contains("нет интернета") || lower.Contains("нет подключения") || lower.Contains("нет доступа") => DialogTone.Error,
-            _ when lower.Contains("внимани") || lower.Contains("лимит") => DialogTone.Warning,
-            _ when lower.Contains("успех") || lower.Contains("наград") || lower.Contains("поздравля") || lower.Contains("скопирован") || lower.Contains("отлично") => DialogTone.Success,
-            _ => DialogTone.Info
-        };
+        var span = title.AsSpan();
+        return span.ContainsAny(s_updateKeywords)
+            ? DialogTone.Update
+            : span.Contains("удал", StringComparison.OrdinalIgnoreCase)
+                ? DialogTone.Delete
+                : span.ContainsAny(s_errorKeywords)
+                    ? DialogTone.Error
+                    : span.ContainsAny(s_warningKeywords)
+                        ? DialogTone.Warning
+                        : span.ContainsAny(s_successKeywords)
+                            ? DialogTone.Success
+                            : DialogTone.Info;
     }
 
     private void ConfigureDialogStyling(DialogTone tone)
     {
-#pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
+#pragma warning disable IDE0072 // C# 15 closed hierarchy проверяется компилятором (CS8509)
         (DialogMauiIcon.Icon, var color, var dim) = tone switch
         {
             DialogUpdateTone => (FluentIcons.Rocket24, "Accent", "AccentDim"),
@@ -131,7 +133,7 @@ public partial class NeoDialog : ContentView
             IconBadge.Stroke = new SolidColorBrush(c);
             AcceptButton.BackgroundColor = c;
 
-            var luminance = (0.299 * c.Red) + (0.587 * c.Green) + (0.114 * c.Blue);
+            var luminance = 0.299 * c.Red + 0.587 * c.Green + 0.114 * c.Blue;
             AcceptButton.TextColor = luminance > 0.62 ? Color.FromArgb("#0E0E14") : Colors.White;
         }
 
@@ -158,16 +160,11 @@ public partial class NeoDialog : ContentView
         }
         catch
         {
+            // ignored, да игнорить
         }
         finally
         {
             _ = tcs?.TrySetResult(result);
         }
     }
-
-    private void OnAcceptClicked(object? sender, EventArgs e) => _ = CloseAsync(true);
-
-    private void OnCancelClicked(object? sender, EventArgs e) => _ = CloseAsync(false);
-
-    private void OnBackdropTapped(object? sender, EventArgs e) => _ = CloseAsync(false);
 }

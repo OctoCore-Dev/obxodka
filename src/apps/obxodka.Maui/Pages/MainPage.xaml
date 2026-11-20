@@ -1,12 +1,13 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentPage
     x:Class="obxodka.Pages.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:controls="clr-namespace:obxodka.Dialogs"
     xmlns:media="clr-namespace:CommunityToolkit.Maui.Views;assembly=CommunityToolkit.Maui.MediaElement"
     xmlns:theming="clr-namespace:obxodka.Maui.Theming.Controls"
-    xmlns:views="clr-namespace:obxodka.Pages"
+    xmlns:dialogs="clr-namespace:obxodka.Controls.Dialogs"
+    xmlns:navigation="clr-namespace:obxodka.Pages.Navigation"
     BackgroundColor="{DynamicResource BgBase}"
     NavigationPage.HasNavigationBar="False"
     SafeAreaEdges="None"
@@ -147,7 +148,7 @@
             RowDefinitions="*, Auto"
             SafeAreaEdges="None"
             ZIndex="10">
-            <views:DesktopSidebarView
+            <navigation:DesktopSidebarView
                 x:Name="DesktopSidebar"
                 Grid.Row="0"
                 Grid.RowSpan="2"
@@ -186,7 +187,7 @@
                 </Grid.GestureRecognizers>
             </Grid>
 
-            <views:MobileSidebarView
+            <navigation:MobileSidebarView
                 x:Name="MobileBottomBar"
                 Grid.Row="1"
                 Grid.Column="0"
@@ -301,6 +302,6 @@
             </Border>
         </Grid>
 
-        <controls:NeoDialog x:Name="NeoDialog" ZIndex="2000" />
+        <dialogs:NeoDialog x:Name="NeoDialog" ZIndex="2000" />
     </Grid>
 </ContentPage>

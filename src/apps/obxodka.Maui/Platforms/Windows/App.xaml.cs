@@ -7,16 +7,6 @@ namespace obxodka.WinUI;
 [SupportedOSPlatform("windows10.0.19041.0")]
 public sealed partial class App : MauiWinUIApplication
 {
-    [LibraryImport("user32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [LibraryImport("user32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetForegroundWindow(IntPtr hWnd);
-
     public App()
     {
         //регистрация единственного экземпляра приложения для исключения сетевых конфликтов
@@ -26,11 +16,16 @@ public sealed partial class App : MauiWinUIApplication
             try
             {
                 var args = AppInstance.GetCurrent().GetActivatedEventArgs();
-                mainInstance.RedirectActivationToAsync(args).AsTask().Wait();
+                _ = mainInstance.RedirectActivationToAsync(args).AsTask().ContinueWith(
+                    static _ => Process.GetCurrentProcess().Kill(),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
-            catch { }
-
-            Process.GetCurrentProcess().Kill();
+            catch
+            {
+                Process.GetCurrentProcess().Kill();
+            }
             return;
         }
 
@@ -39,6 +34,16 @@ public sealed partial class App : MauiWinUIApplication
         InitializeComponent();
         UnhandledException += App_UnhandledException;
     }
+
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindow(IntPtr hWnd);
 
     //восстановление и подъем окна на передний план при повторном запуске или клике на уведомление
     private static void OnAppActivated(object? sender, AppActivationArguments args)
@@ -74,7 +79,7 @@ public sealed partial class App : MauiWinUIApplication
                 }
             }
             else if (args.Kind == ExtendedActivationKind.Launch &&
-                    args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs)
+                     args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs)
             {
                 if (launchArgs.Arguments.Contains("reconnect") || launchArgs.Arguments.Contains("ToastActivated"))
                 {

@@ -1,8 +1,3 @@
-using System.Buffers;
-using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-
 namespace obxodka.Shared.MtuEngine;
 
 public static class Ipv4MtuHandler
@@ -20,10 +15,12 @@ public static class Ipv4MtuHandler
         {
             sum += (uint)((header[i] << 8) | header[i + 1]);
         }
-        while ((sum >> 16) != 0)
+
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
+
         BinaryPrimitives.WriteUInt16BigEndian(header.Slice(10, 2), (ushort)~sum);
     }
 
@@ -40,6 +37,7 @@ public static class Ipv4MtuHandler
         {
             sum += (uint)((pkt[i] << 8) | pkt[i + 1]);
         }
+
         sum += 6U;
         sum += (uint)tcpLen;
 
@@ -51,7 +49,7 @@ public static class Ipv4MtuHandler
                 : (uint)(tcpSpan[i] << 8);
         }
 
-        while ((sum >> 16) != 0)
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
@@ -62,7 +60,7 @@ public static class Ipv4MtuHandler
     //фрагментируем пакет IPv4 на несколько фрагментов, если он превышает MTU клиента, и вызываем обратный вызов для каждого готового фрагмента
     public static bool TryFragment(ReadOnlySpan<byte> packet, int length, int clientMtu, Action<byte[], int> onFragmentReady)
     {
-        if (length <= clientMtu || length < 20 || (packet[0] >> 4) != 4)
+        if (length <= clientMtu || length < 20 || packet[0] >> 4 != 4)
         {
             return false;
         }
@@ -99,7 +97,7 @@ public static class Ipv4MtuHandler
             var chunk = Math.Min(maxPayloadPerFrag, totalPayload - offset);
             var isLast = offset + chunk >= totalPayload;
             var fragMf = !isLast || origMf;
-            var fragOffsetUnits = (ushort)(baseFragOffset + (offset / 8));
+            var fragOffsetUnits = (ushort)(baseFragOffset + offset / 8);
             var fragFlagsAndOffset = (ushort)((fragMf ? 0x2000 : 0) | (fragOffsetUnits & 0x1FFF));
             var fragTotalLen = ihl + chunk;
 
@@ -119,12 +117,13 @@ public static class Ipv4MtuHandler
     }
 
     //механизм PMTUD: создаем ICMP-пакет "Fragmentation Needed" для уведомления отправителя о том, что пакет слишком велик для передачи без фрагментации
-    public static bool TryBuildIcmpFragmentationNeeded(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket, out int icmpLen)
+    public static bool TryBuildIcmpFragmentationNeeded(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket,
+        out int icmpLen)
     {
         icmpPacket = null!;
         icmpLen = 0;
 
-        if (length < 20 || (packet[0] >> 4) != 4)
+        if (length < 20 || packet[0] >> 4 != 4)
         {
             return false;
         }
@@ -169,10 +168,12 @@ public static class Ipv4MtuHandler
                 ? (uint)((icmpSpan[i] << 8) | icmpSpan[i + 1])
                 : (uint)(icmpSpan[i] << 8);
         }
-        while ((icmpSum >> 16) != 0)
+
+        while (icmpSum >> 16 != 0)
         {
             icmpSum = (icmpSum & 0xFFFF) + (icmpSum >> 16);
         }
+
         BinaryPrimitives.WriteUInt16BigEndian(icmpPacket.AsSpan(22, 2), (ushort)~icmpSum);
 
         return true;

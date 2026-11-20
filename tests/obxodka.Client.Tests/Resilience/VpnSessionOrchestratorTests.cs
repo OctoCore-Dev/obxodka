@@ -15,7 +15,8 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
         _adapterMock.Setup(a => a.PreparePermissionsAndStartServiceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _adapterMock.Setup(a => a.CleanupBeforeConnectAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _adapterMock.Setup(a => a.PrepareBypassHostsAsync(It.IsAny<string[]>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        _adapterMock.Setup(a => a.ShutdownTunnelAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<bool>())).Returns(Task.CompletedTask);
+        _adapterMock.Setup(a => a.ShutdownTunnelAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .Returns(Task.CompletedTask);
     }
 
     public void Dispose()
@@ -32,7 +33,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
         _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns("WireGuard");
         _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync("No uplink");
 
-        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, hookProcessExit: false);
+        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, false);
 
         Assert.Equal("WireGuard", orchestrator.DetectConflictingVpn());
         Assert.Equal("No uplink", orchestrator.RunNetworkPreflightAsync().GetAwaiter().GetResult());
@@ -43,7 +44,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     {
         _adapterMock.Setup(a => a.PreparePermissionsAndStartServiceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
-        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, hookProcessExit: false);
+        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, false);
         string? capturedError = null;
         orchestrator.OnErrorOccurred += msg => capturedError = msg;
 
@@ -67,7 +68,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
                 await releaseCleanup.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
             });
 
-        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, hookProcessExit: false);
+        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, false);
         var errors = new List<string>();
         orchestrator.OnErrorOccurred += msg => errors.Add(msg);
 
@@ -182,7 +183,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     [Fact]
     public async Task StopVpnAsync_IgnoresSubsequentPlatformNetworkChangedAndLateLogsAsync()
     {
-        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, hookProcessExit: false);
+        using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, false);
         var logsAfterStop = new List<string>();
 
         await orchestrator.StopVpnAsync();

@@ -1,11 +1,12 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.SplitView"
+    x:Class="obxodka.Pages.Settings.SplitView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:m="clr-namespace:obxodka.Client.Models;assembly=obxodka.Client"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
-    xmlns:views="clr-namespace:obxodka.Pages"
+    xmlns:settings="clr-namespace:obxodka.Pages.Settings"
     x:Name="ThisView">
 
     <Grid
@@ -283,7 +284,7 @@
                                         FontFamily="{DynamicResource AppFontBold}"
                                         FontSize="14"
                                         InputTransparent="True"
-                                        Text="Госуслуги и Госсервисы РФ"
+                                        Text="Госуслуги и Гос сервисы РФ"
                                         TextColor="{DynamicResource TextPrimary}" />
                                     <Label
                                         FontSize="11"
@@ -998,7 +999,7 @@
                                 VerticalTextAlignment="Center" />
                             <Border.Triggers>
                                 <DataTrigger
-                                    Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=views:SplitView}"
+                                    Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=settings:SplitView}"
                                     TargetType="Border"
                                     Value="True">
                                     <Setter Property="IsVisible" Value="False" />
@@ -1009,6 +1010,5 @@
                 </VerticalStackLayout>
             </Border>
         </Grid>
-
     </Grid>
 </ContentView>

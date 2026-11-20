@@ -1,28 +1,28 @@
+using Microsoft.Maui.Handlers;
 #if WINDOWS
-using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
-using obxodka.Platforms.Windows;
+using Windows.Graphics;
 using WinRT.Interop;
+using Colors = Microsoft.UI.Colors;
+using SolidColorBrush = Microsoft.UI.Xaml.Media.SolidColorBrush;
+using Thickness = Microsoft.UI.Xaml.Thickness;
+using WinUiWindow = Microsoft.UI.Xaml.Window;
+using ScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility;
+using ScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode;
+
 #elif ANDROID
-using obxodka.Platforms.Android;
+using Android.Content.Res;
+using Google.Android.Material.MaterialSwitch;
+using Application = Android.App.Application;
+using Color = Android.Graphics.Color;
 #endif
+
 
 namespace obxodka;
 
-internal static partial class MauiProgram
+internal static class MauiProgram
 {
-#if WINDOWS
-    [LibraryImport("user32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial uint GetDpiForWindow(IntPtr hwnd);
-
-    [LibraryImport("user32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
-#endif
-
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
@@ -30,7 +30,7 @@ internal static partial class MauiProgram
             .UseMauiApp<App>()
             .UseFluentMauiIcons()
             .UseMauiCommunityToolkit()
-            .UseMauiCommunityToolkitMediaElement(isAndroidForegroundServiceEnabled: false)
+            .UseMauiCommunityToolkitMediaElement(false)
             .UseSkiaSharp()
             .ConfigureFonts(fonts =>
             {
@@ -44,18 +44,15 @@ internal static partial class MauiProgram
 
         ConfigurePlatformHandlers();
 
-        builder.ConfigureLifecycleEvents(events =>
-        {
 #if WINDOWS
-            events.AddWindows(windows => windows.OnWindowCreated(window =>
+        builder.ConfigureLifecycleEvents(events => events.AddWindows(windows => windows.OnWindowCreated(window =>
+        {
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
             {
-                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
-                {
-                    ConfigureWindowsWindow(window);
-                }
-            }));
+                ConfigureWindowsWindow(window);
+            }
+        })));
 #endif
-        });
 
         builder.Services.AddHttpClient<ApiService>(client =>
         {
@@ -73,13 +70,13 @@ internal static partial class MauiProgram
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
             PlatformServices.Init(
-                preferences: new MauiPreferencesService(),
-                secureStorage: new WindowsSecureStorageService(),
-                connectivity: new WindowsConnectivityService(),
-                mainThread: new MauiMainThreadService(),
-                deviceInfo: new WindowsDeviceInfoService(),
-                certificateAudit: new WindowsCertificateAuditService(),
-                notification: new WindowsNotificationService());
+                new MauiPreferencesService(),
+                new WindowsSecureStorageService(),
+                new WindowsConnectivityService(),
+                new MauiMainThreadService(),
+                new WindowsDeviceInfoService(),
+                new WindowsCertificateAuditService(),
+                new WindowsNotificationService());
 
             builder.Services.AddSingleton<ITunnelPlatformAdapter, WindowsVpnService>();
             builder.Services.AddSingleton<IVpnService>(sp => new VpnSessionOrchestrator(sp.GetRequiredService<ITunnelPlatformAdapter>()));
@@ -87,16 +84,16 @@ internal static partial class MauiProgram
             builder.Services.AddSingleton<IAppUpdaterService, WindowsAppUpdaterService>();
         }
 #elif ANDROID
-        if (OperatingSystem.IsAndroidVersionAtLeast(29))
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
         {
-            var ctx = Android.App.Application.Context;
+            var ctx = Application.Context;
             PlatformServices.Init(
-                preferences: new MauiPreferencesService(),
-                secureStorage: new AndroidSecureStorageService(),
-                connectivity: new AndroidConnectivityService(ctx),
-                mainThread: new MauiMainThreadService(),
-                deviceInfo: new AndroidDeviceInfoService(ctx),
-                certificateAudit: new AndroidCertificateAuditService(ctx));
+                new MauiPreferencesService(),
+                new AndroidSecureStorageService(),
+                new AndroidConnectivityService(ctx),
+                new MauiMainThreadService(),
+                new AndroidDeviceInfoService(ctx),
+                new AndroidCertificateAuditService(ctx));
 
             RegisterAndroidServices(builder.Services);
         }
@@ -117,7 +114,10 @@ internal static partial class MauiProgram
                 Directory.CreateDirectory(dir);
                 File.AppendAllText(Path.Combine(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
 
             throw;
         }
@@ -125,22 +125,27 @@ internal static partial class MauiProgram
 
     private static void ConfigurePlatformHandlers()
     {
-        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("Borderless", (handler, _) =>
+        EntryHandler.Mapper.AppendToMapping("Borderless", (handler, _) =>
         {
 #if WINDOWS
-            handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
-            handler.PlatformView.Resources["TextControlBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBackgroundFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBorderBrushPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            handler.PlatformView.Resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            handler.PlatformView.BorderThickness = new Thickness(0);
+            handler.PlatformView.Resources["TextControlBackground"] =
+                new SolidColorBrush(Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBackgroundPointerOver"] =
+                new SolidColorBrush(Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBackgroundFocused"] =
+                new SolidColorBrush(Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBorderBrushPointerOver"] =
+                new SolidColorBrush(Colors.Transparent);
+            handler.PlatformView.Resources["TextControlBorderBrushFocused"] =
+                new SolidColorBrush(Colors.Transparent);
 #elif ANDROID
-            handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
-            handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+            handler.PlatformView.SetBackgroundColor(Color.Transparent);
+            handler.PlatformView.BackgroundTintList = ColorStateList.ValueOf(Color.Transparent);
 #endif
         });
 
-        Microsoft.Maui.Handlers.SwitchHandler.Mapper.AppendToMapping("CleanSwitch", (handler, _) =>
+        SwitchHandler.Mapper.AppendToMapping("CleanSwitch", (handler, _) =>
         {
 #if WINDOWS
             handler.PlatformView.OnContent = null;
@@ -148,7 +153,7 @@ internal static partial class MauiProgram
 #elif ANDROID
             handler.PlatformView.Background = null;
             handler.PlatformView.BackgroundTintList = null;
-            if (handler.PlatformView is Google.Android.Material.MaterialSwitch.MaterialSwitch matSwitch)
+            if (handler.PlatformView is MaterialSwitch matSwitch)
             {
                 matSwitch.ThumbIconDrawable = null;
             }
@@ -156,19 +161,21 @@ internal static partial class MauiProgram
         });
 
 #if WINDOWS
-        Microsoft.Maui.Handlers.ScrollViewHandler.Mapper.AppendToMapping("FixHorizontalOverflow", (handler, view) =>
+        ScrollViewHandler.Mapper.AppendToMapping("FixHorizontalOverflow", (handler, view) =>
         {
-            if (view.Orientation == ScrollOrientation.Vertical)
+            if (view.Orientation != ScrollOrientation.Vertical)
             {
-                handler.PlatformView.HorizontalScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode.Disabled;
-                handler.PlatformView.HorizontalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Disabled;
+                return;
             }
+
+            handler.PlatformView.HorizontalScrollMode = ScrollMode.Disabled;
+            handler.PlatformView.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         });
 #endif
     }
 
 #if ANDROID
-    [SupportedOSPlatform("android29.0")]
+    [SupportedOSPlatform("android30.0")]
     private static void RegisterAndroidServices(IServiceCollection services)
     {
         var orchestrator = AndroidVpnService.Orchestrator;
@@ -181,7 +188,7 @@ internal static partial class MauiProgram
 
 #if WINDOWS
     [SupportedOSPlatform("windows10.0.19041.0")]
-    private static void ConfigureWindowsWindow(Microsoft.UI.Xaml.Window window)
+    private static void ConfigureWindowsWindow(WinUiWindow window)
     {
         window.ExtendsContentIntoTitleBar = true;
 
@@ -200,13 +207,13 @@ internal static partial class MauiProgram
         {
             var titleBar = appWindow.TitleBar;
             titleBar.ExtendsContentIntoTitleBar = true;
-            titleBar.BackgroundColor = Microsoft.UI.Colors.Transparent;
-            titleBar.InactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-            titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-            titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+            titleBar.BackgroundColor = Colors.Transparent;
+            titleBar.InactiveBackgroundColor = Colors.Transparent;
+            titleBar.ButtonBackgroundColor = Colors.Transparent;
+            titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
         }
 
-        var dpi = GetDpiForWindow(handle);
+        var dpi = MauiNativeMethods.GetDpiForWindow(handle);
         var scale = dpi / 96.0;
 
         var physWidth = (int)(1150 * scale);
@@ -216,7 +223,7 @@ internal static partial class MauiProgram
         physWidth = Math.Min(physWidth, displayArea.WorkArea.Width);
         physHeight = Math.Min(physHeight, displayArea.WorkArea.Height);
 
-        appWindow.Resize(new Windows.Graphics.SizeInt32(physWidth, physHeight));
+        appWindow.Resize(new SizeInt32(physWidth, physHeight));
         if (appWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.IsResizable = false;
@@ -226,7 +233,7 @@ internal static partial class MauiProgram
 
         appWindow.Changed += (sender, _) =>
         {
-            var currentDpi = GetDpiForWindow(handle);
+            var currentDpi = MauiNativeMethods.GetDpiForWindow(handle);
             var currentScale = currentDpi / 96.0;
             var expectedWidth = (int)(1150 * currentScale);
             var expectedHeight = (int)(750 * currentScale);
@@ -237,7 +244,7 @@ internal static partial class MauiProgram
 
             if (sender.Size.Width != expectedWidth || sender.Size.Height != expectedHeight)
             {
-                sender.Resize(new Windows.Graphics.SizeInt32(expectedWidth, expectedHeight));
+                sender.Resize(new SizeInt32(expectedWidth, expectedHeight));
             }
         };
 
@@ -246,10 +253,13 @@ internal static partial class MauiProgram
             args.Cancel = true;
             try
             {
-                _ = ShowWindow(handle, 0);
+                _ = MauiNativeMethods.ShowWindow(handle, 0);
                 sender.Hide();
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
 
             App.InitiateGracefulBackgroundShutdown();
         };
@@ -258,3 +268,17 @@ internal static partial class MauiProgram
     }
 #endif
 }
+
+#if WINDOWS
+internal static partial class MauiNativeMethods
+{
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    internal static partial uint GetDpiForWindow(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+#endif

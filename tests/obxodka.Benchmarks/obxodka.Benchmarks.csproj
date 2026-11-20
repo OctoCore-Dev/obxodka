@@ -12,12 +12,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="BenchmarkDotNet"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj" />
-    <ProjectReference Include="..\..\src\core\obxodka.Client\obxodka.Client.csproj" />
+    <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj"/>
+    <ProjectReference Include="..\..\src\core\obxodka.Client\obxodka.Client.csproj"/>
   </ItemGroup>
 
 </Project>

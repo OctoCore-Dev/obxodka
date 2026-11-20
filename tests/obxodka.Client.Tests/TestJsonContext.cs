@@ -20,4 +20,3 @@ namespace obxodka.Client.Tests;
 public sealed partial class TestJsonContext : JsonSerializerContext
 {
 }
-

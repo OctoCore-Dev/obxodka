@@ -8,11 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="PacketDotNet" />
+    <PackageReference Include="PacketDotNet"/>
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Geo\ru_subnets.bin" />
+    <EmbeddedResource Include="Geo\ru_subnets.bin"/>
   </ItemGroup>
 
 </Project>

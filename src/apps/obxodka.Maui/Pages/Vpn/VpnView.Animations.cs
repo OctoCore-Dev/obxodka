@@ -1,7 +1,4 @@
-using Microsoft.Maui.Controls.Shapes;
-using Path = System.IO.Path;
-
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
 //процедурные шейдеры skia, анимации лоадера, реактора, кристаллов и ауры
 public sealed partial class VpnView
@@ -14,8 +11,15 @@ public sealed partial class VpnView
         {
             CustomButtonRingImage.Rotation = _loaderAngle * 0.45f % 360f;
         }
+
         LoaderCanvas?.InvalidateSurface();
     }
+
+    //получение цвета темы для графики skia
+    private static SKColor GetSkiaThemeColor(string key, SKColor fallback) =>
+        Application.Current?.Resources.TryGetValue(key, out var val) == true && val is Color c
+            ? new SKColor((byte)(c.Red * 255), (byte)(c.Green * 255), (byte)(c.Blue * 255), (byte)(c.Alpha * 255))
+            : fallback;
 
 #if WINDOWS
     //аппаратная синхронизация кадров лоадера через vsync экрана
@@ -26,6 +30,7 @@ public sealed partial class VpnView
         {
             return;
         }
+
         _loaderLastVsyncTicks = nowTicks;
         StepLoaderFrame();
     }
@@ -38,7 +43,7 @@ public sealed partial class VpnView
         if (_loaderVsyncActive)
         {
             _loaderVsyncActive = false;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnLoaderVsyncRendering;
+            Platforms.Windows.WinUiVsync.Unsubscribe(OnLoaderVsyncRendering);
         }
 #else
         _loaderTimer?.Stop();
@@ -55,7 +60,7 @@ public sealed partial class VpnView
         {
             _loaderLastVsyncTicks = 0;
             _loaderVsyncActive = true;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnLoaderVsyncRendering;
+            Platforms.Windows.WinUiVsync.Subscribe(OnLoaderVsyncRendering);
         }
 #else
         if (_loaderTimer is null)
@@ -78,6 +83,7 @@ public sealed partial class VpnView
             }
             catch
             {
+                // ignored
             }
 
             LoaderCanvas.Scale = 0.25;
@@ -110,6 +116,7 @@ public sealed partial class VpnView
             }
             catch
             {
+                //ignored
             }
 
             SafeScaleTo(LoaderCanvas, 0.25, 350, Easing.CubicIn);
@@ -183,10 +190,10 @@ public sealed partial class VpnView
     private static SKColor LerpColor(SKColor from, SKColor to, float t)
     {
         t = Math.Clamp(t, 0f, 1f);
-        var r = (byte)(from.Red + ((to.Red - from.Red) * t));
-        var g = (byte)(from.Green + ((to.Green - from.Green) * t));
-        var b = (byte)(from.Blue + ((to.Blue - from.Blue) * t));
-        var a = (byte)(from.Alpha + ((to.Alpha - from.Alpha) * t));
+        var r = (byte)(from.Red + (to.Red - from.Red) * t);
+        var g = (byte)(from.Green + (to.Green - from.Green) * t);
+        var b = (byte)(from.Blue + (to.Blue - from.Blue) * t);
+        var a = (byte)(from.Alpha + (to.Alpha - from.Alpha) * t);
         return new SKColor(r, g, b, a);
     }
 
@@ -200,7 +207,7 @@ public sealed partial class VpnView
 
         try
         {
-            if (element.Handler is not null && element.IsLoaded && element.Window is not null)
+            if (element.Handler is not null && element is { IsLoaded: true, Window: not null })
             {
                 _ = element.ScaleToAsync(scale, length, easing ?? Easing.Linear);
             }
@@ -215,7 +222,8 @@ public sealed partial class VpnView
         }
     }
 
-    private static void SafeFadeTo(VisualElement? element, double opacity, uint length = 250, Easing? easing = null, Action? onCompleted = null)
+    private static void SafeFadeTo(VisualElement? element, double opacity, uint length = 250, Easing? easing = null,
+        Action? onCompleted = null)
     {
         if (element is null)
         {
@@ -225,7 +233,7 @@ public sealed partial class VpnView
 
         try
         {
-            if (element.Handler is not null && element.IsLoaded && element.Window is not null)
+            if (element.Handler is not null && element is { IsLoaded: true, Window: not null })
             {
                 _ = element.FadeToAsync(opacity, length, easing ?? Easing.Linear).ContinueWith(_ =>
                 {
@@ -239,6 +247,7 @@ public sealed partial class VpnView
                             }
                             catch
                             {
+                                // ignored
                             }
                         });
                     }
@@ -267,12 +276,12 @@ public sealed partial class VpnView
                 _ = this.AbortAnimation("ButtonShockwave");
                 _shockwaveIsConnect = isConnect;
                 _shockwaveProgress = 0f;
-                var anim = new Animation(v =>
+                var anim = new Animation(d =>
                 {
-                    _shockwaveProgress = (float)v;
+                    _shockwaveProgress = (float)d;
                     OuterAura?.InvalidateSurface();
                 }, 0f, 1f, Easing.CubicOut);
-                anim.Commit(this, "ButtonShockwave", 16, 650, Easing.CubicOut, (v, c) =>
+                anim.Commit(this, "ButtonShockwave", 16, 650, Easing.CubicOut, (_, _) =>
                 {
                     _shockwaveProgress = -1f;
                     OuterAura?.InvalidateSurface();
@@ -292,9 +301,9 @@ public sealed partial class VpnView
         using var builder = new SKPathBuilder();
         for (var i = 0; i < sides; i++)
         {
-            var a = (float)((i * 2 * Math.PI / sides) - (Math.PI / 2));
-            var x = cx + (r * MathF.Cos(a));
-            var y = cy + (r * MathF.Sin(a));
+            var a = (float)(i * 2 * Math.PI / sides - Math.PI / 2);
+            var x = cx + r * MathF.Cos(a);
+            var y = cy + r * MathF.Sin(a);
             if (i == 0)
             {
                 builder.MoveTo(x, y);
@@ -304,6 +313,7 @@ public sealed partial class VpnView
                 builder.LineTo(x, y);
             }
         }
+
         builder.Close();
         return builder.Detach();
     }
@@ -318,13 +328,13 @@ public sealed partial class VpnView
 #else
         var isLoaderLoopRunning = _loaderTimer is not null;
 #endif
-        if (!isLoaderLoopRunning && _vpnService?.CurrentState != AppVpnState.Connected)
+        if (!isLoaderLoopRunning && _vpnService.CurrentState != AppVpnState.Connected)
         {
             return;
         }
 
         var vfx = ThemeManager.Instance?.ActiveTheme?.Vfx;
-        var loaderStyle = vfx?.ButtonLoaderStyle?.Trim().ToLowerInvariant() ?? string.Empty;
+        var loaderStyle = vfx?.ButtonLoaderStyle.Trim().ToLowerInvariant() ?? string.Empty;
         if (loaderStyle == "none")
         {
             return;
@@ -341,7 +351,7 @@ public sealed partial class VpnView
         var skPrimary = GetSkiaThemeColor("Primary", s_skPurple);
         var skAccent = GetSkiaThemeColor("Accent", s_skCyan);
         var skError = GetSkiaThemeColor("Error", new SKColor(0xEF, 0x44, 0x44));
-        if (_vpnService?.CurrentState == AppVpnState.Connected &&
+        if (_vpnService.CurrentState == AppVpnState.Connected &&
             !string.IsNullOrWhiteSpace(vfx?.ActiveOverrides?.AccentColor) &&
             SKColor.TryParse(vfx.ActiveOverrides.AccentColor, out var ovAccent))
         {
@@ -356,42 +366,38 @@ public sealed partial class VpnView
             glowMult *= (float)vfx.Glow.Intensity;
         }
 
-        if (loaderStyle == "dual_arc")
+        switch (loaderStyle)
         {
-            DrawDualArcLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
-            return;
-        }
-
-        if (loaderStyle == "runes")
-        {
-            DrawRunesLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
-            return;
-        }
-
-        if (loaderStyle == "reactor")
-        {
-            DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
-            return;
+            case "dual_arc":
+                DrawDualArcLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                return;
+            case "runes":
+                DrawRunesLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                return;
+            case "reactor":
+                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                return;
         }
 
         var factor = _reactorTransitionFactor;
 
-        if (factor <= 0.001f)
+        switch (factor)
         {
-            DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
-        }
-        else if (factor >= 0.999f)
-        {
-            DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
-        }
-        else
-        {
-            DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f - factor);
-            DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, factor);
+            case <= 0.001f:
+                DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                break;
+            case >= 0.999f:
+                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                break;
+            default:
+                DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f - factor);
+                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, factor);
+                break;
         }
     }
 
-    private void DrawDualArcLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
+    private void DrawDualArcLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult,
+        float alphaMultiplier)
     {
         var outerR = r * 0.84f;
         var innerR = r * 0.66f;
@@ -405,18 +411,19 @@ public sealed partial class VpnView
         _polyCorePaint.Color = colorAccent.WithAlpha(coreAlpha);
         canvas.DrawArc(outerRect, _loaderAngle * 1.4f, 115f, false, _polyGlowPaint);
         canvas.DrawArc(outerRect, _loaderAngle * 1.4f, 115f, false, _polyCorePaint);
-        canvas.DrawArc(outerRect, (_loaderAngle * 1.4f) + 180f, 115f, false, _polyGlowPaint);
-        canvas.DrawArc(outerRect, (_loaderAngle * 1.4f) + 180f, 115f, false, _polyCorePaint);
+        canvas.DrawArc(outerRect, _loaderAngle * 1.4f + 180f, 115f, false, _polyGlowPaint);
+        canvas.DrawArc(outerRect, _loaderAngle * 1.4f + 180f, 115f, false, _polyCorePaint);
 
         _polyGlowPaint.Color = colorPrimary.WithAlpha(glowAlpha);
         _polyCorePaint.Color = colorPrimary.WithAlpha(coreAlpha);
         canvas.DrawArc(innerRect, -_loaderAngle * 1.9f, 85f, false, _polyGlowPaint);
         canvas.DrawArc(innerRect, -_loaderAngle * 1.9f, 85f, false, _polyCorePaint);
-        canvas.DrawArc(innerRect, (-_loaderAngle * 1.9f) + 180f, 85f, false, _polyGlowPaint);
-        canvas.DrawArc(innerRect, (-_loaderAngle * 1.9f) + 180f, 85f, false, _polyCorePaint);
+        canvas.DrawArc(innerRect, -_loaderAngle * 1.9f + 180f, 85f, false, _polyGlowPaint);
+        canvas.DrawArc(innerRect, -_loaderAngle * 1.9f + 180f, 85f, false, _polyCorePaint);
     }
 
-    private void DrawRunesLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
+    private void DrawRunesLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult,
+        float alphaMultiplier)
     {
         var ringR = r * 0.82f;
         var glowAlpha = (byte)Math.Clamp(95 * glowMult * alphaMultiplier, 0, 255);
@@ -445,7 +452,8 @@ public sealed partial class VpnView
         canvas.Restore();
     }
 
-    private void DrawQuantumHyperCrystal(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
+    private void DrawQuantumHyperCrystal(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent,
+        float glowMult, float alphaMultiplier)
     {
         if (alphaMultiplier <= 0.001f)
         {
@@ -462,15 +470,15 @@ public sealed partial class VpnView
         for (var i = 0; i < s_polyConfigs.Length; i++)
         {
             var (speed, delay, ox, oy, size, sides) = s_polyConfigs[i];
-            var rot = (_loaderAngle * speed) + delay;
-            var baseAlpha = 80 + (i * 20);
+            var rot = _loaderAngle * speed + delay;
+            var baseAlpha = 80 + i * 20;
             var glowAlpha = (byte)Math.Clamp(baseAlpha * glowMult * alphaMultiplier, 0, 255);
             var coreAlpha = (byte)Math.Clamp((baseAlpha + 50) * Math.Min(glowMult, 1.2f) * alphaMultiplier, 0, 255);
 
             var polyColor = i % 2 == 0 ? colorPrimary : colorAccent;
 
-            var pivotX = cx + ((ox - 0.5f) * r);
-            var pivotY = cy + ((oy - 0.5f) * r);
+            var pivotX = cx + (ox - 0.5f) * r;
+            var pivotY = cy + (oy - 0.5f) * r;
 
             _ = canvas.Save();
             canvas.RotateDegrees(rot, pivotX, pivotY);
@@ -490,7 +498,8 @@ public sealed partial class VpnView
         }
     }
 
-    private void DrawLivingReactor(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult, float alphaMultiplier)
+    private void DrawLivingReactor(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult,
+        float alphaMultiplier)
     {
         if (alphaMultiplier <= 0.001f)
         {
@@ -501,9 +510,9 @@ public sealed partial class VpnView
 
         var trafficBps = _smoothSpeedDown + _smoothSpeedUp;
         var trafficNormalized = Math.Clamp((float)(trafficBps / (1024.0 * 1024.0 * 2.0)), 0f, 3.5f);
-        var dynamicSpeed = 1.2f + (trafficNormalized * 2.0f);
+        var dynamicSpeed = 1.2f + trafficNormalized * 2.0f;
 
-        var pulse = (MathF.Sin(t * 3f) * 0.12f) + 0.88f;
+        var pulse = MathF.Sin(t * 3f) * 0.12f + 0.88f;
         var coreR = Math.Max(6f, r * 0.42f * pulse);
 
         var coreAlpha = (byte)Math.Clamp(50 * glowMult * pulse * alphaMultiplier, 0, 255);
@@ -528,11 +537,11 @@ public sealed partial class VpnView
             var isOuter = i % 2 == 0;
             var trackR = isOuter ? trackR1 : trackR2;
             var dir = isOuter ? 1f : -1.25f;
-            var angleDeg = baseAngle + (_loaderAngle * dynamicSpeed * dir);
+            var angleDeg = baseAngle + _loaderAngle * dynamicSpeed * dir;
             var angleRad = angleDeg * (MathF.PI / 180f);
 
-            var sparkX = cx + (trackR * MathF.Cos(angleRad));
-            var sparkY = cy + (trackR * MathF.Sin(angleRad));
+            var sparkX = cx + trackR * MathF.Cos(angleRad);
+            var sparkY = cy + trackR * MathF.Sin(angleRad);
 
             var sparkColor = isOuter ? colorAccent : colorPrimary;
             var sparkAlpha = (byte)Math.Clamp(200 * glowMult * alphaMultiplier, 0, 255);
@@ -563,7 +572,7 @@ public sealed partial class VpnView
         }
 
         var vfx = ThemeManager.Instance?.ActiveTheme?.Vfx;
-        var isConnected = _vpnService?.CurrentState == AppVpnState.Connected;
+        var isConnected = _vpnService.CurrentState == AppVpnState.Connected;
 
         var skAccent = GetSkiaThemeColor("Accent", s_skCyan);
         var skPrimary = GetSkiaThemeColor("Primary", s_skPurple);
@@ -574,6 +583,7 @@ public sealed partial class VpnView
         {
             coreGlowColor = parsedCore;
         }
+
         var bloomGlowColor = !string.IsNullOrWhiteSpace(vfx?.Glow?.BloomColor) && SKColor.TryParse(vfx.Glow.BloomColor, out var parsedBloom)
             ? parsedBloom
             : coreGlowColor;
@@ -585,6 +595,7 @@ public sealed partial class VpnView
             {
                 coreGlowColor = ovAccent;
             }
+
             if (!string.IsNullOrWhiteSpace(vfx?.ActiveOverrides?.GlowColor) &&
                 SKColor.TryParse(vfx.ActiveOverrides.GlowColor, out var ovGlow))
             {
@@ -641,36 +652,34 @@ public sealed partial class VpnView
         canvas.DrawCircle(cx, cy, r, _auraPaint);
         _auraPaint.Shader = null;
 
-        if (_shockwaveProgress >= 0f)
+        if (!(_shockwaveProgress >= 0f))
         {
-            var p = _shockwaveProgress;
-            var shockColor = _shockwaveIsConnect ? color : skPrimary;
-            var waveAlpha = (byte)Math.Clamp((int)(240f * (1f - p) * glowMult), 0, 255);
-            if (waveAlpha > 0)
-            {
-                var waveR1 = r * (0.28f + (0.72f * p));
-                _shockwavePaint.Color = shockColor.WithAlpha(waveAlpha);
-                _shockwavePaint.StrokeWidth = Math.Max(1f, 5f * (1f - p));
-                canvas.DrawCircle(cx, cy, waveR1, _shockwavePaint);
-
-                if (p > 0.15f)
-                {
-                    var p2 = (p - 0.15f) / 0.85f;
-                    var waveR2 = r * (0.20f + (0.80f * p2));
-                    var waveAlpha2 = (byte)Math.Clamp((int)(180f * (1f - p2) * glowMult), 0, 255);
-                    _shockwavePaint.Color = shockColor.WithAlpha(waveAlpha2);
-                    _shockwavePaint.StrokeWidth = Math.Max(1f, 3.5f * (1f - p2));
-                    canvas.DrawCircle(cx, cy, waveR2, _shockwavePaint);
-                }
-            }
+            return;
         }
+
+        var p = _shockwaveProgress;
+        var shockColor = _shockwaveIsConnect ? color : skPrimary;
+        var waveAlpha = (byte)Math.Clamp((int)(240f * (1f - p) * glowMult), 0, 255);
+        if (waveAlpha <= 0)
+        {
+            return;
+        }
+
+        var waveR1 = r * (0.28f + 0.72f * p);
+        _shockwavePaint.Color = shockColor.WithAlpha(waveAlpha);
+        _shockwavePaint.StrokeWidth = Math.Max(1f, 5f * (1f - p));
+        canvas.DrawCircle(cx, cy, waveR1, _shockwavePaint);
+
+        if (!(p > 0.15f))
+        {
+            return;
+        }
+
+        var p2 = (p - 0.15f) / 0.85f;
+        var waveR2 = r * (0.20f + 0.80f * p2);
+        var waveAlpha2 = (byte)Math.Clamp((int)(180f * (1f - p2) * glowMult), 0, 255);
+        _shockwavePaint.Color = shockColor.WithAlpha(waveAlpha2);
+        _shockwavePaint.StrokeWidth = Math.Max(1f, 3.5f * (1f - p2));
+        canvas.DrawCircle(cx, cy, waveR2, _shockwavePaint);
     }
-
-    //получение цвета темы для графики skia
-    private static SKColor GetSkiaThemeColor(string key, SKColor fallback) =>
-        Application.Current?.Resources.TryGetValue(key, out var val) == true && val is Color c
-            ? new SKColor((byte)(c.Red * 255), (byte)(c.Green * 255), (byte)(c.Blue * 255), (byte)(c.Alpha * 255))
-            : fallback;
-
-
 }

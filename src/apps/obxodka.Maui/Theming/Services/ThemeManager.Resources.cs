@@ -2,15 +2,14 @@ namespace obxodka.Maui.Theming.Services;
 
 public sealed partial class ThemeManager
 {
-    private Color _baseBgSurface = Color.FromArgb("#161622");
+    private readonly Dictionary<string, object> _defaultResourceSnapshot = [];
     private Color _baseBgElevated = Color.FromArgb("#1E1E2E");
     private Color _baseBgInput = Color.FromArgb("#12121C");
-
-    private readonly Dictionary<string, object> _defaultResourceSnapshot = [];
+    private Color _baseBgSurface = Color.FromArgb("#161622");
 
     private double? _cachedCardOpacity;
-    private int _opacitySaveSequence;
     private long _lastApplyOpacityTicks;
+    private int _opacitySaveSequence;
 
     public double CardOpacity
     {
@@ -32,7 +31,7 @@ public sealed partial class ThemeManager
                 if (Volatile.Read(ref _opacitySaveSequence) == seq)
                 {
                     Preferences.Default.Set(ThemeCardOpacityKey, clamped);
-                    ApplyCardOpacity(clamped, forceImmediate: true);
+                    ApplyCardOpacity(clamped, true);
                 }
             });
 
@@ -110,6 +109,7 @@ public sealed partial class ThemeManager
         {
             currentBrush.Color = newBrush.Color;
         }
+
         root[key] = value;
 
         void UpdateDict(ResourceDictionary dict)
@@ -120,6 +120,7 @@ public sealed partial class ThemeManager
                 {
                     cb.Color = nb.Color;
                 }
+
                 dict[key] = value;
             }
 
@@ -157,7 +158,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "PrimaryGlow", parsedPrimary.WithAlpha(0.35f));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryBright) && Color.TryParse(manifest.Core.Colors.PrimaryBright, out var primaryBright))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryBright) &&
+                Color.TryParse(manifest.Core.Colors.PrimaryBright, out var primaryBright))
             {
                 SetResourceValue(appResources, "PrimaryBright", primaryBright);
                 SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(primaryBright));
@@ -168,7 +170,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(primaryColor));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryDim) && Color.TryParse(manifest.Core.Colors.PrimaryDim, out var parsedPrimaryDim))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryDim) &&
+                Color.TryParse(manifest.Core.Colors.PrimaryDim, out var parsedPrimaryDim))
             {
                 SetResourceValue(appResources, "PrimaryDim", parsedPrimaryDim);
             }
@@ -213,7 +216,9 @@ public sealed partial class ThemeManager
                         }
                     }
                 }
-                SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(gradStops, new Point(0, 0), new Point(1, 1)));
+
+                SetResourceValue(appResources, "PrimaryGradientBrush",
+                    new LinearGradientBrush(gradStops, new Point(0, 0), new Point(1, 1)));
             }
 
             if (Color.TryParse(manifest.Core.Colors.BgBase, out var parsedBgBase))
@@ -223,7 +228,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "BgOverlay", parsedBgBase.WithAlpha(0.70f));
             }
 
-            var rawSurface = !string.IsNullOrEmpty(manifest.Core.Colors.BgSurface) && Color.TryParse(manifest.Core.Colors.BgSurface, out var parsedSurface)
+            var rawSurface = !string.IsNullOrEmpty(manifest.Core.Colors.BgSurface) &&
+                             Color.TryParse(manifest.Core.Colors.BgSurface, out var parsedSurface)
                 ? parsedSurface
                 : Color.FromArgb("#161622");
             _baseBgSurface = rawSurface;
@@ -250,15 +256,18 @@ public sealed partial class ThemeManager
                     }
                 }
             }
+
             SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(surfaceStops, new Point(0, 0), new Point(0, 1)));
 
-            var rawElevated = !string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) && Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor)
+            var rawElevated = !string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) &&
+                              Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor)
                 ? bgElevatedColor
                 : rawSurface.AddLuminosity(0.08f);
             _baseBgElevated = rawElevated;
             SetResourceValue(appResources, "BgElevated", rawElevated.WithAlpha((float)Math.Clamp(userOpacity + 0.08, 0.25, 1.0)));
 
-            var rawInput = !string.IsNullOrEmpty(manifest.Core.Colors.BgInput) && Color.TryParse(manifest.Core.Colors.BgInput, out var bgInputColor)
+            var rawInput = !string.IsNullOrEmpty(manifest.Core.Colors.BgInput) &&
+                           Color.TryParse(manifest.Core.Colors.BgInput, out var bgInputColor)
                 ? bgInputColor
                 : rawSurface.WithAlpha(0.55f);
             _baseBgInput = rawInput;
@@ -272,7 +281,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "TextPrimaryBrush", new SolidColorBrush(textPrimaryColor));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextSecondary) && Color.TryParse(manifest.Core.Colors.TextSecondary, out var textSecondaryColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextSecondary) &&
+                Color.TryParse(manifest.Core.Colors.TextSecondary, out var textSecondaryColor))
             {
                 SetResourceValue(appResources, "TextSecondary", textSecondaryColor);
                 SetResourceValue(appResources, "TextMuted", textSecondaryColor);
@@ -283,12 +293,14 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "TextMuted", textPrimary.WithAlpha(0.55f));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextMuted) && Color.TryParse(manifest.Core.Colors.TextMuted, out var textMutedColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextMuted) &&
+                Color.TryParse(manifest.Core.Colors.TextMuted, out var textMutedColor))
             {
                 SetResourceValue(appResources, "TextMuted", textMutedColor);
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.SolidBorderDark) && Color.TryParse(manifest.Core.Colors.SolidBorderDark, out var parsedBorderDark))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.SolidBorderDark) &&
+                Color.TryParse(manifest.Core.Colors.SolidBorderDark, out var parsedBorderDark))
             {
                 SetResourceValue(appResources, "SolidBorderDark", parsedBorderDark);
                 SetResourceValue(appResources, "BorderSubtle", parsedBorderDark);
@@ -305,13 +317,15 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "BorderStrong", primaryColor.WithAlpha(0.50f));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderSubtle) && Color.TryParse(manifest.Core.Colors.BorderSubtle, out var borderSubtleColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderSubtle) &&
+                Color.TryParse(manifest.Core.Colors.BorderSubtle, out var borderSubtleColor))
             {
                 SetResourceValue(appResources, "BorderSubtle", borderSubtleColor);
                 SetResourceValue(appResources, "BorderSubtleBrush", new SolidColorBrush(borderSubtleColor));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderMedium) && Color.TryParse(manifest.Core.Colors.BorderMedium, out var borderMediumColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderMedium) &&
+                Color.TryParse(manifest.Core.Colors.BorderMedium, out var borderMediumColor))
             {
                 SetResourceValue(appResources, "BorderMedium", borderMediumColor);
             }
@@ -406,10 +420,12 @@ public sealed partial class ThemeManager
                 {
                     _baseBgSurface = surfC;
                 }
+
                 if (_defaultResourceSnapshot.TryGetValue("BgElevated", out var snapElev) && snapElev is Color elevC)
                 {
                     _baseBgElevated = elevC;
                 }
+
                 if (_defaultResourceSnapshot.TryGetValue("BgInput", out var snapInp) && snapInp is Color inpC)
                 {
                     _baseBgInput = inpC;
@@ -479,19 +495,21 @@ public sealed partial class ThemeManager
                 new GradientStop(defaultPrimary, 0.0f),
                 new GradientStop(defaultAccent, 1.0f)
             };
-            SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(defaultGradStops, new Point(0, 0), new Point(1, 1)));
+            SetResourceValue(appResources, "PrimaryGradientBrush",
+                new LinearGradientBrush(defaultGradStops, new Point(0, 0), new Point(1, 1)));
 
             var defaultSurfaceStops = new GradientStopCollection
             {
                 new GradientStop(_baseBgSurface, 0.0f),
                 new GradientStop(_baseBgSurface.AddLuminosity(0.06f), 1.0f)
             };
-            SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(defaultSurfaceStops, new Point(0, 0), new Point(0, 1)));
+            SetResourceValue(appResources, "SurfaceGradientBrush",
+                new LinearGradientBrush(defaultSurfaceStops, new Point(0, 0), new Point(0, 1)));
 
             SetResourceValue(appResources, "CardCornerRadius", new CornerRadius(12));
             SetResourceValue(appResources, "CardBorderThickness", 1.0);
 
-            ApplyCardOpacity(CardOpacity, forceImmediate: true);
+            ApplyCardOpacity(CardOpacity, true);
         }
         catch
         {
@@ -502,11 +520,23 @@ public sealed partial class ThemeManager
     public void ApplyCardOpacity(double opacity, bool forceImmediate = false)
     {
         var now = Environment.TickCount64;
-        if (!forceImmediate && now - _lastApplyOpacityTicks < 35 && opacity > 0.20 && opacity < 1.00)
+        if (!forceImmediate && now - _lastApplyOpacityTicks < 35 && opacity is > 0.20 and < 1.00)
         {
             return;
         }
+
         _lastApplyOpacityTicks = now;
+
+        if (MainThread.IsMainThread)
+        {
+            UpdateAction();
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(UpdateAction);
+        }
+
+        return;
 
         void UpdateAction()
         {
@@ -516,7 +546,8 @@ public sealed partial class ThemeManager
                 return;
             }
 
-            var baseSurface = ActiveTheme?.Core?.Colors?.BgSurface != null && Color.TryParse(ActiveTheme.Core.Colors.BgSurface, out var parsedThemeColor)
+            var baseSurface = ActiveTheme?.Core.Colors.BgSurface != null &&
+                              Color.TryParse(ActiveTheme.Core.Colors.BgSurface, out var parsedThemeColor)
                 ? parsedThemeColor
                 : _baseBgSurface;
 
@@ -524,7 +555,8 @@ public sealed partial class ThemeManager
             SetResourceValue(appResources, "BgSurface", surfaceWithAlpha);
             SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(surfaceWithAlpha));
 
-            var baseElevated = ActiveTheme?.Core?.Colors?.BgElevated != null && Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)
+            var baseElevated = ActiveTheme?.Core.Colors.BgElevated != null &&
+                               Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)
                 ? parsedElevated
                 : _baseBgElevated;
 
@@ -534,15 +566,6 @@ public sealed partial class ThemeManager
             SetResourceValue(appResources, "BgInput", _baseBgInput);
 
             CardOpacityChanged?.Invoke(opacity);
-        }
-
-        if (MainThread.IsMainThread)
-        {
-            UpdateAction();
-        }
-        else
-        {
-            MainThread.BeginInvokeOnMainThread(UpdateAction);
         }
     }
 

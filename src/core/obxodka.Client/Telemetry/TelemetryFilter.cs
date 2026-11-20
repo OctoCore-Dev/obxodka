@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace obxodka.Client.Telemetry;
 
 //фильтрация шума и защита сервера от спама
@@ -72,7 +70,10 @@ public static class TelemetryFilter
         }
 
         //отсеиваем отмену пользователем и штатный разрыв сокета
-        if (ex is OperationCanceledException or TaskCanceledException or SocketException { SocketErrorCode: SocketError.OperationAborted or SocketError.Interrupted })
+        if (ex is OperationCanceledException or TaskCanceledException or SocketException
+            {
+                SocketErrorCode: SocketError.OperationAborted or SocketError.Interrupted
+            })
         {
             return false;
         }

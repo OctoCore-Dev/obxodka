@@ -4,7 +4,7 @@ namespace obxodka.Core;
 public static class DnsAdBlockRuleManager
 {
     //ссылка на официальный список фильтрации по умолчанию
-    public const string DefaultRemoteUrl = "https://raw.githubusercontent.com/AdguardTeam/AdguardSDNSFilter/gh-pages/Filters/rules.txt";
+    private const string DefaultRemoteUrl = "https://raw.githubusercontent.com/AdguardTeam/AdguardSDNSFilter/gh-pages/Filters/rules.txt";
 
     //парсинг строк правил блокировки в набор доменов
     public static HashSet<string> ParseRuleLines(IEnumerable<string> lines) =>
@@ -54,11 +54,12 @@ public static class DnsAdBlockRuleManager
             var domains = ParseRuleLines(lines);
             if (domains.Count > 0)
             {
-                DnsAdBlocker.UpdateBlockedDomains(domains, mergeWithDefaults: true);
+                DnsAdBlocker.UpdateBlockedDomains(domains, true);
                 return domains.Count;
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or OperationCanceledException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException
+                                       or NotSupportedException or ArgumentException)
         {
             //игнорируем поврежденный или заблокированный файл кэша правил
         }
@@ -67,7 +68,8 @@ public static class DnsAdBlockRuleManager
     }
 
     //сохранение списка заблокированных доменов в локальный кэш
-    public static async Task<bool> SaveCacheAsync(string cacheFilePath, IEnumerable<string> domains, CancellationToken cancellationToken = default)
+    public static async Task<bool> SaveCacheAsync(string cacheFilePath, IEnumerable<string> domains,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -79,10 +81,11 @@ public static class DnsAdBlockRuleManager
 
             var tempPath = $"{cacheFilePath}.tmp.{Guid.NewGuid():N}";
             await File.WriteAllLinesAsync(tempPath, domains, cancellationToken);
-            File.Move(tempPath, cacheFilePath, overwrite: true);
+            File.Move(tempPath, cacheFilePath, true);
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or OperationCanceledException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException
+                                       or NotSupportedException or ArgumentException)
         {
             return false;
         }
@@ -96,7 +99,12 @@ public static class DnsAdBlockRuleManager
         CancellationToken cancellationToken = default)
     {
         var targetUrl = string.IsNullOrWhiteSpace(url) ? DefaultRemoteUrl : url;
-        using var defaultClient = httpClient is null ? new HttpClient { Timeout = TimeSpan.FromSeconds(15) } : null;
+        using var defaultClient = httpClient is null
+            ? new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(15)
+            }
+            : null;
         var client = httpClient ?? defaultClient!;
 
         try
@@ -122,7 +130,7 @@ public static class DnsAdBlockRuleManager
                 return false;
             }
 
-            DnsAdBlocker.UpdateBlockedDomains(domains, mergeWithDefaults: true);
+            DnsAdBlocker.UpdateBlockedDomains(domains, true);
 
             if (!string.IsNullOrWhiteSpace(cacheFilePath))
             {
@@ -131,7 +139,8 @@ public static class DnsAdBlockRuleManager
 
             return true;
         }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or InvalidOperationException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException
+                                       or InvalidOperationException or NotSupportedException or ArgumentException)
         {
             return false;
         }
@@ -141,20 +150,10 @@ public static class DnsAdBlockRuleManager
     private static string? CleanDomain(string raw)
     {
         var trimmed = raw.Trim().TrimEnd('.');
-        if (trimmed.Length < 3 || !trimmed.Contains('.'))
-        {
-            return null;
-        }
-
-        for (var i = 0; i < trimmed.Length; i++)
-        {
-            var ch = trimmed[i];
-            if (!(char.IsAsciiLetterOrDigit(ch) || ch == '.' || ch == '-' || ch == '_'))
-            {
-                return null;
-            }
-        }
-
-        return trimmed.ToLowerInvariant();
+        return trimmed.Length < 3 || !trimmed.Contains('.')
+            ? null
+            : trimmed.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch == '.' || ch == '-' || ch == '_'))
+                ? null
+                : trimmed.ToLowerInvariant();
     }
 }

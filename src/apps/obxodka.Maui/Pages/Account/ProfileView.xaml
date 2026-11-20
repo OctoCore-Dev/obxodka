@@ -1,10 +1,11 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.ProfileView"
+    x:Class="obxodka.Pages.Account.ProfileView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
-    xmlns:views="clr-namespace:obxodka.Pages"
+    xmlns:account="clr-namespace:obxodka.Pages.Account"
     x:Name="ThisProfileView">
     <Grid
         x:Name="RootLayoutGrid"
@@ -133,15 +134,9 @@
                             <Switch
                                 x:Name="AdBlockSwitch"
                                 Grid.Column="2"
+                                IsEnabled="{Binding IsEditingAllowed, Source={x:Reference ThisProfileView}, x:DataType=account:ProfileView}"
                                 Toggled="OnAdBlockToggled"
-                                VerticalOptions="Center">
-                                <Switch.IsEnabled>
-                                    <Binding
-                                        x:DataType="views:ProfileView"
-                                        Path="IsEditingAllowed"
-                                        Source="{x:Reference ThisProfileView}" />
-                                </Switch.IsEnabled>
-                            </Switch>
+                                VerticalOptions="Center" />
                         </Grid>
 
                         <Border Margin="0,8,0,0" Style="{StaticResource WarningBanner}">
@@ -154,7 +149,7 @@
                                 VerticalTextAlignment="Center" />
                             <Border.Triggers>
                                 <DataTrigger
-                                    Binding="{Binding IsEditingAllowed, Source={x:Reference ThisProfileView}, x:DataType=views:ProfileView}"
+                                    Binding="{Binding IsEditingAllowed, Source={x:Reference ThisProfileView}, x:DataType=account:ProfileView}"
                                     TargetType="Border"
                                     Value="True">
                                     <Setter Property="IsVisible" Value="False" />

@@ -1,12 +1,12 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Account;
 
 //экран входа по email, qr коду и deep link
-public sealed partial class AuthView : ContentView
+public sealed partial class AuthView
 {
-    private MainPage _parent = null!;
     private ApiService _apiService = null!;
-    private IQrScannerService? _qrScanner;
     private bool _isVerifying;
+    private MainPage _parent = null!;
+    private IQrScannerService? _qrScanner;
 
     public AuthView()
     {
@@ -19,26 +19,26 @@ public sealed partial class AuthView : ContentView
     {
         _parent = parent;
         _apiService = apiService;
-        _qrScanner = qrScanner ?? IPlatformApplication.Current?.Services?.GetService<IQrScannerService>();
+        _qrScanner = qrScanner ?? IPlatformApplication.Current?.Services.GetService<IQrScannerService>();
         UpdateSeasonalLogo();
     }
 
     //обновление сезонного логотипа приложения
-    public void UpdateSeasonalLogo()
+    private void UpdateSeasonalLogo()
     {
-        var isHalloween = ThemeManager.Instance?.ActiveTheme?.Id?.Contains("halloween", StringComparison.OrdinalIgnoreCase) == true;
+        var isHalloween = ThemeManager.Instance?.ActiveTheme?.Id.Contains("halloween", StringComparison.OrdinalIgnoreCase) == true;
         AppLogoImage.Source = isHalloween ? "app_logo_halloween.png" : "app_logo.png";
     }
 
     //анимация плавного появления формы
     public async Task PlayEntranceAnimationAsync()
     {
-        await UIAnimations.PlayEntranceFadeScaleAsync(FormContainer);
+        await UiAnimations.PlayEntranceFadeScaleAsync(FormContainer);
         _ = CheckClipboardForLoginAsync();
     }
 
     //проверка буфера обмена на наличие deep link ссылки авторизации
-    public async Task CheckClipboardForLoginAsync()
+    private async Task CheckClipboardForLoginAsync()
     {
         if (!OperatingSystem.IsAndroid() || _isVerifying)
         {
@@ -68,7 +68,7 @@ public sealed partial class AuthView : ContentView
     //актуализация цвета фона карточки формы
     public void UpdateCardOpacity()
     {
-        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+        var bgSurface = Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor
             ? bgColor
             : Color.FromArgb("#161622");
 
@@ -100,7 +100,7 @@ public sealed partial class AuthView : ContentView
             return;
         }
 
-        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
+        _ = UiAnimations.HideErrorLabelAsync(AuthErrorLabel);
         EmailEntry.Text = email.Trim();
 
         if (!CodeInputView.IsVisible)
@@ -118,16 +118,16 @@ public sealed partial class AuthView : ContentView
     //сканирование qr кода камерой
     private async void OnScanQrCodeClickedAsync(object? sender, EventArgs e)
     {
-        if (_isVerifying)
-        {
-            return;
-        }
-
-        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
-
         try
         {
-            var qrScanner = _qrScanner ?? IPlatformApplication.Current?.Services?.GetService<IQrScannerService>();
+            if (_isVerifying)
+            {
+                return;
+            }
+
+            _ = UiAnimations.HideErrorLabelAsync(AuthErrorLabel);
+
+            var qrScanner = _qrScanner ?? IPlatformApplication.Current?.Services.GetService<IQrScannerService>();
             if (qrScanner == null || !qrScanner.IsSupported)
             {
                 await ShowLoginErrorAsync(AuthMessages.QrDesktopHint);
@@ -201,14 +201,14 @@ public sealed partial class AuthView : ContentView
     {
         if (AuthErrorLabel.IsVisible)
         {
-            _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
+            _ = UiAnimations.HideErrorLabelAsync(AuthErrorLabel);
         }
 
         var text = e.NewTextValue?.Trim() ?? string.Empty;
         var atIndex = text.IndexOf('@');
         if (atIndex < 0)
         {
-            _ = UIAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
+            _ = UiAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
             return;
         }
 
@@ -217,7 +217,7 @@ public sealed partial class AuthView : ContentView
 
         if (string.IsNullOrWhiteSpace(localPart))
         {
-            _ = UIAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
+            _ = UiAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
             return;
         }
 
@@ -226,9 +226,9 @@ public sealed partial class AuthView : ContentView
             .Take(4)
             .ToList();
 
-        if (matches.Count == 0 || (matches.Count == 1 && string.Equals(query, matches[0], StringComparison.OrdinalIgnoreCase)))
+        if (matches.Count == 0 || matches.Count == 1 && string.Equals(query, matches[0], StringComparison.OrdinalIgnoreCase))
         {
-            _ = UIAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
+            _ = UiAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
             return;
         }
 
@@ -240,8 +240,12 @@ public sealed partial class AuthView : ContentView
             {
                 Text = fullEmail,
                 BackgroundColor = Colors.Transparent,
-                TextColor = (Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true && tp is Color tColor) ? tColor : Colors.White,
-                FontFamily = (Application.Current?.Resources.TryGetValue("AppFontMedium", out var fm) == true && fm is string fStr) ? fStr : null,
+                TextColor =
+                    Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true && tp is Color tColor
+                        ? tColor
+                        : Colors.White,
+                FontFamily =
+                    Application.Current?.Resources.TryGetValue("AppFontMedium", out var fm) == true && fm is string fStr ? fStr : null,
                 FontSize = 13,
                 HeightRequest = 34,
                 HorizontalOptions = LayoutOptions.Fill,
@@ -252,7 +256,7 @@ public sealed partial class AuthView : ContentView
 
             btn.Clicked += async (s, ev) =>
             {
-                await UIAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
+                await UiAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
                 EmailEntry.Text = fullEmail;
                 EmailEntry.CursorPosition = fullEmail.Length;
                 _ = EmailEntry.Focus();
@@ -263,7 +267,7 @@ public sealed partial class AuthView : ContentView
 
         if (!DomainSuggestionsCard.IsVisible)
         {
-            _ = UIAnimations.ShowSuggestionsDropdownAsync(DomainSuggestionsCard);
+            _ = UiAnimations.ShowSuggestionsDropdownAsync(DomainSuggestionsCard);
         }
     }
 
@@ -280,51 +284,61 @@ public sealed partial class AuthView : ContentView
     //запрос одноразового кода на почту
     private async void OnGetCodeClickedAsync(object? sender, EventArgs? e)
     {
-        EmailEntry.Unfocus();
-        _ = UIAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
-        var rawEmail = EmailEntry.Text?.Trim();
-
-        var validation = EmailValidator.Validate(rawEmail);
-        if (!validation.IsValid)
+        try
         {
-            if (!string.IsNullOrEmpty(validation.SuggestedCorrection))
-            {
-                var fixConfirmed = await _parent.ShowCustomDialogAsync(
-                    "Возможная опечатка",
-                    $"В адресе обнаружена ошибка:\n{rawEmail}\n\nВозможно, имелось в виду:\n{validation.SuggestedCorrection}?\n\nИсправить адрес?",
-                    acceptText: "Исправить",
-                    cancelText: "Отмена");
+            EmailEntry.Unfocus();
+            _ = UiAnimations.HideSuggestionsDropdownAsync(DomainSuggestionsCard);
+            var rawEmail = EmailEntry.Text?.Trim() ?? string.Empty;
 
-                if (fixConfirmed)
+            var validation = EmailValidator.Validate(rawEmail);
+            if (!validation.IsValid)
+            {
+                if (!string.IsNullOrEmpty(validation.SuggestedCorrection))
                 {
+                    var fixConfirmed = await _parent.ShowCustomDialogAsync(
+                        "Возможная опечатка",
+                        $"В адресе обнаружена ошибка:\n{rawEmail}\n\nВозможно, имелось в виду:\n{validation.SuggestedCorrection}?\n\nИсправить адрес?",
+                        "Исправить",
+                        "Отмена");
+
+                    if (!fixConfirmed)
+                    {
+                        return;
+                    }
+
                     EmailEntry.Text = validation.SuggestedCorrection;
                     EmailEntry.CursorPosition = validation.SuggestedCorrection.Length;
                     _ = EmailEntry.Focus();
+
+                    return;
                 }
+
+                _ = await _parent.ShowCustomDialogAsync("Неверный Email", validation.ErrorMessage ?? AuthMessages.EnterValidEmail);
                 return;
             }
 
-            _ = await _parent.ShowCustomDialogAsync("Неверный Email", validation.ErrorMessage ?? AuthMessages.EnterValidEmail);
-            return;
-        }
+            var email = validation.NormalizedEmail ?? rawEmail;
+            SetGetCodeLoadingState(true);
+            _ = UiAnimations.HideErrorLabelAsync(AuthErrorLabel);
 
-        var email = validation.NormalizedEmail ?? rawEmail!;
-        SetGetCodeLoadingState(true);
-        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
-
-        try
-        {
-            var (success, error) = await _apiService.RequestCodeAsync(new EmailAuthRequest(email));
-            if (success)
+            try
             {
-                CodeSentTargetLabel.Text = $"Код отправлен на {email}.\nВведите 6-значный код из письма:";
-                await UIAnimations.CrossFadeFormAsync(EmailInputView, CodeInputView);
-                _ = CodeEntry.Focus();
+                var (success, error) = await _apiService.RequestCodeAsync(new EmailAuthRequest(email));
+                if (success)
+                {
+                    CodeSentTargetLabel.Text = $"Код отправлен на {email}.\nВведите 6-значный код из письма:";
+                    await UiAnimations.CrossFadeFormAsync(EmailInputView, CodeInputView);
+                    _ = CodeEntry.Focus();
+                }
+                else
+                {
+                    var errorMsg = ApiErrorHandler.ParseLoginError(error);
+                    _ = await _parent.ShowCustomDialogAsync("Ошибка отправки", errorMsg);
+                }
             }
-            else
+            finally
             {
-                var errorMsg = ApiErrorHandler.ParseLoginError(error);
-                _ = await _parent.ShowCustomDialogAsync("Ошибка отправки", errorMsg);
+                SetGetCodeLoadingState(false);
             }
         }
         catch (Exception ex)
@@ -333,15 +347,20 @@ public sealed partial class AuthView : ContentView
             var generalError = ApiErrorHandler.ParseGeneralError(ex.Message, AuthMessages.ConnectionError);
             _ = await _parent.ShowCustomDialogAsync("Сбой подключения", generalError);
         }
-        finally
-        {
-            SetGetCodeLoadingState(false);
-        }
     }
 
     //нажатие кнопки подтверждения кода
-    private async void OnVerifyCodeClickedAsync(object? sender, EventArgs? e) =>
-        await VerifyCodeInternalAsync();
+    private async void OnVerifyCodeClickedAsync(object? sender, EventArgs? e)
+    {
+        try
+        {
+            await VerifyCodeInternalAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[VERIFY CODE ERROR] {ex.Message}", ex);
+        }
+    }
 
     //проверка введенного кода на сервере
     private async Task VerifyCodeInternalAsync()
@@ -353,8 +372,8 @@ public sealed partial class AuthView : ContentView
 
         CodeEntry.Unfocus();
 
-        var code = CodeEntry.Text?.Trim();
-        var email = EmailEntry.Text?.Trim();
+        var code = CodeEntry.Text?.Trim() ?? string.Empty;
+        var email = EmailEntry.Text?.Trim() ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
         {
@@ -370,7 +389,7 @@ public sealed partial class AuthView : ContentView
 
         _isVerifying = true;
         SetVerifyCodeLoadingState(true);
-        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
+        _ = UiAnimations.HideErrorLabelAsync(AuthErrorLabel);
 
         try
         {
@@ -401,10 +420,17 @@ public sealed partial class AuthView : ContentView
     //возврат к экрану ввода адреса электронной почты
     private async void OnBackToEmailClickedAsync(object? sender, EventArgs? e)
     {
-        _ = UIAnimations.HideErrorLabelAsync(AuthErrorLabel);
-        CodeEntry.Text = string.Empty;
-        await UIAnimations.CrossFadeFormAsync(CodeInputView, EmailInputView);
-        _ = EmailEntry.Focus();
+        try
+        {
+            _ = UiAnimations.HideErrorLabelAsync(AuthErrorLabel);
+            CodeEntry.Text = string.Empty;
+            await UiAnimations.CrossFadeFormAsync(CodeInputView, EmailInputView);
+            _ = EmailEntry.Focus();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[AUTH BACK ERROR] {ex.Message}");
+        }
     }
 
     //сохранение сессии в защищенное хранилище и переключение в приложение
@@ -412,7 +438,7 @@ public sealed partial class AuthView : ContentView
     {
         await AuthManager.SaveSessionAsync(new UserSession
         {
-            Email = string.IsNullOrEmpty(data.Email) ? EmailEntry.Text?.Trim() : data.Email,
+            Email = string.IsNullOrEmpty(data.Email) ? EmailEntry.Text?.Trim() ?? string.Empty : data.Email,
             Password = "email_otp",
             JwtToken = data.Token,
             VpnConfig = data.VpnConfig,
@@ -452,7 +478,7 @@ public sealed partial class AuthView : ContentView
     private async Task ShowLoginErrorAsync(string msg)
     {
         AuthErrorLabel.Text = msg;
-        await UIAnimations.ShowErrorLabelAsync(AuthErrorLabel);
+        await UiAnimations.ShowErrorLabelAsync(AuthErrorLabel);
         await AuthErrorLabel.ShakeErrorAsync();
         _ = await _parent.ShowCustomDialogAsync("Ошибка", msg);
     }

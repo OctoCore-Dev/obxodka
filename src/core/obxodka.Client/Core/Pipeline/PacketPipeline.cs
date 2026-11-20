@@ -4,8 +4,6 @@ namespace obxodka.Core.Pipeline;
 //строгая последовательность: фильтр петель -> adblock -> split tunnel -> mss clamping -> smart mtu нарезка -> отправка в сокет
 public sealed class PacketPipeline(OctopusEngine engine)
 {
-    private readonly OctopusEngine _engine = engine;
-
     //блокировать ли исходящий ipv6-трафик (режим только ipv4 для предотвращения любых ipv6-проверок)
     public bool BlockIpv6Traffic { get; set; }
 
@@ -26,13 +24,13 @@ public sealed class PacketPipeline(OctopusEngine engine)
 
     //проверка нужно ли блокировать исходящий ipv6 пакет в режиме только ipv4
     public bool ShouldDropIpv6Packet(ReadOnlySpan<byte> packet) =>
-        BlockIpv6Traffic && packet.Length > 0 && (packet[0] >> 4) == 6;
+        BlockIpv6Traffic && packet.Length > 0 && packet[0] >> 4 == 6;
 
     //проверка отбрасывания мультикаста и пакетов от старых сокетов с чужим локальным ip до туннеля
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool ShouldDropOutgoingIpv4Noise(ReadOnlySpan<byte> packet)
     {
-        if (packet.Length < 20 || (packet[0] >> 4) != 4)
+        if (packet.Length < 20 || packet[0] >> 4 != 4)
         {
             return false;
         }
@@ -43,14 +41,14 @@ public sealed class PacketPipeline(OctopusEngine engine)
             return true;
         }
 
-        var assignedIpUint = _engine.AssignedIpUint;
+        var assignedIpUint = engine.AssignedIpUint;
         return assignedIpUint != 0 && BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(12, 4)) != assignedIpUint;
     }
 
     //обработка исходящего l3-пакета из сетевого стека ос (uplink)
     public void ProcessOutgoingPacket(byte[] inputBuf, int length, IVpnTransport? transport)
     {
-        if (length < 20 || transport is null || !_engine.IsConnected)
+        if (length < 20 || transport is null || !engine.IsConnected)
         {
             ArrayPool<byte>.Shared.Return(inputBuf);
             return;
@@ -59,7 +57,7 @@ public sealed class PacketPipeline(OctopusEngine engine)
         var span = inputBuf.AsSpan(0, length);
 
         //этап 1: фильтрация петель трафика к vpn серверу, широковещательных пакетов и чужих source ip
-        if (_engine.IsServerDestination(span, length))
+        if (engine.IsServerDestination(span, length))
         {
             ArrayPool<byte>.Shared.Return(inputBuf);
             return;
@@ -102,7 +100,7 @@ public sealed class PacketPipeline(OctopusEngine engine)
         }
 
         //этап 4: оптимизация tcp mss под текущий mtu туннеля и учет реально уходящего в туннель трафика
-        _engine.RecordOutgoingPacketBytes(length);
+        engine.RecordOutgoingPacketBytes(length);
         var currentMtu = SmartMtuEngine.CurrentMtu;
         SmartMtuEngine.ClampTcpMss(span, currentMtu);
 
@@ -130,6 +128,7 @@ public sealed class PacketPipeline(OctopusEngine engine)
                     {
                         ArrayPool<byte>.Shared.Return(icmpPkt);
                     }
+
                     ArrayPool<byte>.Shared.Return(inputBuf);
                     return;
                 }
@@ -144,6 +143,7 @@ public sealed class PacketPipeline(OctopusEngine engine)
                 {
                     ArrayPool<byte>.Shared.Return(icmp6Pkt);
                 }
+
                 ArrayPool<byte>.Shared.Return(inputBuf);
                 return;
             }

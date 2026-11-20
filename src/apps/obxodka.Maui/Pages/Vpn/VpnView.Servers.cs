@@ -1,11 +1,14 @@
-using Microsoft.Maui.Controls.Shapes;
-using Path = System.IO.Path;
-
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
 //управление выбором серверов, пингами, модальным окном и hot-swap
 public sealed partial class VpnView
 {
+    //признак выполняющегося горячего переключения сервера
+    private bool _isHotSwapping;
+
+    //флаг активности модального окна выбора серверов
+    public bool IsServerModalOpen => ServerModalOverlay?.IsVisible == true;
+
     //получение флага страны сервера
     private static string GetServerFlag(VpnServerDto server) =>
         !string.IsNullOrWhiteSpace(server.Flag) ? server.Flag : "";
@@ -17,7 +20,7 @@ public sealed partial class VpnView
     //получение роли узла
     private static string GetServerRole(VpnServerDto server) =>
         string.Equals(server.Role, "shield", StringComparison.OrdinalIgnoreCase) ? "Shield" :
-        (string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase) ? "Main" : "Worker");
+        string.Equals(server.Role, "main", StringComparison.OrdinalIgnoreCase) ? "Main" : "Worker";
 
     //получение текста статуса подключения с учетом темы
     private static string GetStatusTextForState(AppVpnState state, string fallback)
@@ -28,7 +31,9 @@ public sealed partial class VpnView
             : state switch
             {
                 AppVpnState.Disconnected => !string.IsNullOrWhiteSpace(st.Disconnected) ? st.Disconnected : fallback,
-                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => !string.IsNullOrWhiteSpace(st.Connecting) ? st.Connecting : fallback,
+                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => !string.IsNullOrWhiteSpace(st.Connecting)
+                    ? st.Connecting
+                    : fallback,
                 AppVpnState.Connected => !string.IsNullOrWhiteSpace(st.Connected) ? st.Connected : fallback,
                 AppVpnState.Error => !string.IsNullOrWhiteSpace(st.Error) ? st.Error : fallback,
                 _ => fallback
@@ -44,7 +49,8 @@ public sealed partial class VpnView
             : state switch
             {
                 AppVpnState.Disconnected => !string.IsNullOrWhiteSpace(st.ButtonIdle) ? st.ButtonIdle : fallback,
-                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => !string.IsNullOrWhiteSpace(st.ButtonConnecting) ? st.ButtonConnecting : fallback,
+                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting =>
+                    !string.IsNullOrWhiteSpace(st.ButtonConnecting) ? st.ButtonConnecting : fallback,
                 AppVpnState.Connected => !string.IsNullOrWhiteSpace(st.ButtonConnected) ? st.ButtonConnected : fallback,
                 AppVpnState.Error => !string.IsNullOrWhiteSpace(st.ButtonIdle) ? st.ButtonIdle : fallback,
                 _ => fallback
@@ -54,7 +60,7 @@ public sealed partial class VpnView
     //загрузка сохраненного выбора локации из настроек
     private void LoadSavedServerSelection()
     {
-        var cachedJson = Preferences.Get("cached_cluster_servers_json", string.Empty);
+        var cachedJson = Preferences.Get(AppPreferenceKeys.CachedClusterServersJson, string.Empty);
         if (!string.IsNullOrEmpty(cachedJson))
         {
             try
@@ -65,7 +71,10 @@ public sealed partial class VpnView
                     _cachedServers = cached;
                 }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
 
         var savedIp = Preferences.Get("selected_server_ip", string.Empty);
@@ -86,15 +95,16 @@ public sealed partial class VpnView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (SelectedServerFlagLabel is null || SelectedServerLocationLabel is null || SelectedServerProviderLabel is null || SelectedServerFlagImage is null)
+            if (SelectedServerFlagLabel is null || SelectedServerLocationLabel is null || SelectedServerProviderLabel is null ||
+                SelectedServerFlagImage is null)
             {
                 return;
             }
 
             var flagEmoji = _selectedServer != null ? GetServerFlag(_selectedServer) : "";
-            var flagUrl = FlagHelper.GetFlagImageUrl(flagEmoji);
 
 #if WINDOWS
+            var flagUrl = FlagHelper.GetFlagImageUrl(flagEmoji);
             if (!string.IsNullOrEmpty(flagUrl))
             {
                 SelectedServerFlagImage.Source = new UriImageSource
@@ -145,9 +155,13 @@ public sealed partial class VpnView
                 _cachedServers = servers;
                 try
                 {
-                    Preferences.Set("cached_cluster_servers_json", JsonSerializer.Serialize(servers, AppJsonContext.Default.ListVpnServerDto));
+                    Preferences.Set(AppPreferenceKeys.CachedClusterServersJson,
+                        JsonSerializer.Serialize<List<VpnServerDto>>(servers, AppJsonContext.Default.ListVpnServerDto));
                 }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
             }
 
             if (_selectedServer is null && _cachedServers.Count > 0)
@@ -168,13 +182,14 @@ public sealed partial class VpnView
         }
         catch
         {
+            // ignored
         }
     }
 
     //фоновый опрос задержки доступных серверов
     private async Task PingCachedServersAsync()
     {
-        var tasks = _cachedServers.Select(async s =>
+        var tasks = _cachedServers.Select<VpnServerDto, Task>(async s =>
         {
             var sw = Stopwatch.StartNew();
             try
@@ -223,7 +238,10 @@ public sealed partial class VpnView
                 var retryCard = new Border
                 {
                     Padding = new Thickness(14, 18),
-                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14) },
+                    StrokeShape = new RoundRectangle
+                    {
+                        CornerRadius = new CornerRadius(14)
+                    },
                     StrokeThickness = 1.0,
                     BackgroundColor = bgSurface,
                     Stroke = borderMedium
@@ -279,7 +297,10 @@ public sealed partial class VpnView
                 var card = new Border
                 {
                     Padding = new Thickness(14, 10),
-                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14) },
+                    StrokeShape = new RoundRectangle
+                    {
+                        CornerRadius = new CornerRadius(14)
+                    },
                     StrokeThickness = isSelected ? 1.5 : 1.0,
                     BackgroundColor = isSelected ? bgElevated : bgSurface,
                     Stroke = isSelected ? primaryColor : borderMedium
@@ -298,13 +319,15 @@ public sealed partial class VpnView
                 };
 
                 var flagEmoji = GetServerFlag(server);
-                var flagUrl = FlagHelper.GetFlagImageUrl(flagEmoji);
 
                 var flagBorder = new Border
                 {
                     WidthRequest = 28,
                     HeightRequest = 19,
-                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(3) },
+                    StrokeShape = new RoundRectangle
+                    {
+                        CornerRadius = new CornerRadius(3)
+                    },
                     StrokeThickness = 0.8,
                     Stroke = borderMedium,
                     VerticalOptions = LayoutOptions.Center
@@ -313,6 +336,7 @@ public sealed partial class VpnView
                 var flagGrid = new Grid();
 
 #if WINDOWS
+                var flagUrl = FlagHelper.GetFlagImageUrl(flagEmoji);
                 if (!string.IsNullOrEmpty(flagUrl))
                 {
                     var flagImage = new Image
@@ -350,7 +374,7 @@ public sealed partial class VpnView
                 flagGrid.Children.Add(flagLabel);
 #endif
                 flagBorder.Content = flagGrid;
-                grid.Add(flagBorder, 0, 0);
+                grid.Add(flagBorder, 0);
 
                 var infoStack = new VerticalStackLayout
                 {
@@ -376,7 +400,10 @@ public sealed partial class VpnView
                 var providerBadge = new Border
                 {
                     Padding = new Thickness(5, 1),
-                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
+                    StrokeShape = new RoundRectangle
+                    {
+                        CornerRadius = new CornerRadius(4)
+                    },
                     StrokeThickness = 0.6,
                     BackgroundColor = accentDim,
                     Stroke = accentColor
@@ -398,7 +425,10 @@ public sealed partial class VpnView
                 var roleBadge = new Border
                 {
                     Padding = new Thickness(5, 1),
-                    StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(4) },
+                    StrokeShape = new RoundRectangle
+                    {
+                        CornerRadius = new CornerRadius(4)
+                    },
                     StrokeThickness = 0.6,
                     BackgroundColor = isHighlightRole ? primaryDim : accentDim,
                     Stroke = isHighlightRole ? primaryBright : accentColor
@@ -436,7 +466,7 @@ public sealed partial class VpnView
                 badgeStack.Children.Add(pingLabel);
 
                 infoStack.Children.Add(badgeStack);
-                grid.Add(infoStack, 1, 0);
+                grid.Add(infoStack, 1);
 
                 var statusIcon = new MauiIcon
                 {
@@ -445,33 +475,37 @@ public sealed partial class VpnView
                     IconSize = isSelected ? 20 : 18,
                     VerticalOptions = LayoutOptions.Center
                 };
-                grid.Add(statusIcon, 2, 0);
+                grid.Add(statusIcon, 2);
 
                 card.Content = grid;
 
                 var tap = new TapGestureRecognizer();
                 tap.Tapped += async (s, e) =>
                 {
-                    if (_isBusy || _vpnService?.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+                    if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting
+                            or AppVpnState.Disconnecting)
                     {
                         return;
                     }
+
                     ThemeAudioService.PlayClick();
                     _ = card.BounceClickAsync();
-                    var wasConnected = _vpnService?.CurrentState == AppVpnState.Connected;
+                    var wasConnected = _vpnService.CurrentState == AppVpnState.Connected;
                     _selectedServer = server;
-                    Preferences.Set("selected_server_ip", server.Ip);
-                    Preferences.Set("selected_server_location", server.Location);
+                    Preferences.Set("selected_server_ip", (string?)server.Ip);
+                    Preferences.Set("selected_server_location", (string?)server.Location);
                     Preferences.Set("selected_server_provider", GetServerProvider(server));
                     Preferences.Set("selected_server_flag", GetServerFlag(server));
                     if (!string.IsNullOrEmpty(server.Role))
                     {
-                        Preferences.Set("selected_server_role", server.Role);
+                        Preferences.Set("selected_server_role", (string?)server.Role);
                     }
+
                     if (!string.IsNullOrEmpty(server.CertHash))
                     {
-                        Preferences.Set("selected_server_cert_hash", server.CertHash);
+                        Preferences.Set("selected_server_cert_hash", (string?)server.CertHash);
                     }
+
                     UpdateSelectedServerDisplay();
                     await CloseServerModalAsync();
 
@@ -487,13 +521,10 @@ public sealed partial class VpnView
         });
     }
 
-    //признак выполняющегося горячего переключения сервера
-    private bool _isHotSwapping;
-
     //бесшовное переключение сервера на лету без полного разрыва
     private async Task SwitchServerHotSwapAsync(VpnServerDto newServer)
     {
-        if (_isBusy || _vpnService is null)
+        if (_isBusy)
         {
             return;
         }
@@ -513,8 +544,11 @@ public sealed partial class VpnView
 
             await _vpnService.StopVpnAsync();
 
-            var orderedCandidates = new List<VpnServerDto> { newServer };
-            orderedCandidates.AddRange(_cachedServers.Where(s => s.Ip != newServer.Ip));
+            List<VpnServerDto> orderedCandidates =
+            [
+                newServer,
+                .. _cachedServers.Where(s => s.Ip != newServer.Ip)
+            ];
 
             _ = SniEngine.ConfigureServerSecurity(newServer, out _);
             UpdateActiveNode(newServer.Ip);
@@ -545,16 +579,14 @@ public sealed partial class VpnView
         }
     }
 
-    //флаг активности модального окна выбора серверов
-    public bool IsServerModalOpen => ServerModalOverlay?.IsVisible == true;
-
     //открытие модального окна выбора локации
     private async Task OpenServerModalAsync()
     {
-        if (_isBusy || _vpnService?.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+        if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
         {
             return;
         }
+
         if (_cachedServers.Count == 0)
         {
             await RefreshServerListAsync();
@@ -604,29 +636,43 @@ public sealed partial class VpnView
     //ручное обновление списка серверов по кнопке
     private async void OnRefreshServersClickedAsync(object? sender, EventArgs e)
     {
-        ThemeAudioService.PlayClick();
-        if (sender is VisualElement ve)
+        try
         {
-            _ = ve.BounceClickAsync();
+            ThemeAudioService.PlayClick();
+            if (sender is VisualElement ve)
+            {
+                _ = ve.BounceClickAsync();
+            }
+
+            await RefreshServerListAsync();
         }
-        await RefreshServerListAsync();
+        catch
+        {
+            // ignored
+        }
     }
 
     //клик по карточке выбора сервера для открытия модалки
     private async void OnServerSelectorTappedAsync(object? sender, EventArgs e)
     {
-        if (_isBusy || _vpnService?.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+        try
         {
-            return;
-        }
+            if (_isBusy || _vpnService.CurrentState is AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting)
+            {
+                return;
+            }
 
-        ThemeAudioService.PlayClick();
-        if (ServerSelectorButton is not null)
-        {
-            _ = ServerSelectorButton.BounceClickAsync();
+            ThemeAudioService.PlayClick();
+            if (ServerSelectorButton is not null)
+            {
+                _ = ServerSelectorButton.BounceClickAsync();
+            }
+
+            await OpenServerModalAsync();
         }
-        await OpenServerModalAsync();
+        catch
+        {
+            // ignored
+        }
     }
-
-
 }

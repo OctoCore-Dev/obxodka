@@ -45,7 +45,7 @@ public static class DeviceHelper
         var first = clean[0];
         var allSame = clean.All(c => c == first);
 
-        return !allSame || (first != '0' && first != 'f' && first != 'F');
+        return !allSame || first != '0' && first != 'f' && first != 'F';
     }
 
     //получение идентификатора платформы из служб устройства

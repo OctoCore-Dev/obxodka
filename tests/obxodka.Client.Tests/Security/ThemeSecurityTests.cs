@@ -55,7 +55,7 @@ public class ThemeSecurityTests
     [InlineData(".mp4")]
     public void VerifyMagicBytesShebangScriptAlwaysRejected(string extension)
     {
-        var script = Encoding.UTF8.GetBytes("#!/bin/bash\nrm -rf /\n");
+        var script = "#!/bin/bash\nrm -rf /\n"u8.ToArray();
         var isValid = SafeThemeExtractor.VerifyMagicBytes(extension, script, script.Length);
         Assert.False(isValid);
     }
@@ -83,31 +83,22 @@ public class ThemeSecurityTests
     {
         var validPng24 = new byte[]
         {
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x0D,
-            (byte)'I', (byte)'H', (byte)'D', (byte)'R',
-            0x00, 0x00, 0x04, 0x00,
-            0x00, 0x00, 0x04, 0x00
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0x00,
+            0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00
         };
         Assert.True(SafeThemeExtractor.VerifyMagicBytes(".png", validPng24, validPng24.Length));
 
         var bombPng24 = new byte[]
         {
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x0D,
-            (byte)'I', (byte)'H', (byte)'D', (byte)'R',
-            0x00, 0x01, 0x00, 0x00,
-            0x00, 0x01, 0x00, 0x00
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
         };
         Assert.False(SafeThemeExtractor.VerifyMagicBytes(".png", bombPng24, bombPng24.Length));
 
         var zeroDimPng24 = new byte[]
         {
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x0D,
-            (byte)'I', (byte)'H', (byte)'D', (byte)'R',
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x01, 0x00
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00
         };
         Assert.False(SafeThemeExtractor.VerifyMagicBytes(".png", zeroDimPng24, zeroDimPng24.Length));
     }
@@ -303,7 +294,10 @@ public class ThemeSecurityTests
         {
             Id = "valid-theme",
             Name = "Valid Name",
-            Core = new CoreThemeTokens { Colors = null! }
+            Core = new CoreThemeTokens
+            {
+                Colors = null!
+            }
         };
         Assert.False(ThemeValidator.ValidateManifest(manifestWithoutColors, out var err2));
         Assert.NotNull(err2);
@@ -316,7 +310,10 @@ public class ThemeSecurityTests
         {
             Id = "test-theme",
             Name = "Test",
-            Decorations = new ThemeDecorations { ScreenFrameMobile = "../../../windows/system32/calc.exe" }
+            Decorations = new ThemeDecorations
+            {
+                ScreenFrameMobile = "../../../windows/system32/calc.exe"
+            }
         };
         Assert.False(ThemeValidator.ValidateManifest(m1, out var err1));
         Assert.Contains("Unsafe or prohibited asset path", err1);
@@ -325,7 +322,10 @@ public class ThemeSecurityTests
         {
             Id = "test-theme",
             Name = "Test",
-            Decorations = new ThemeDecorations { ButtonRing = "../evil.png" }
+            Decorations = new ThemeDecorations
+            {
+                ButtonRing = "../evil.png"
+            }
         };
         Assert.False(ThemeValidator.ValidateManifest(m2, out var err2));
         Assert.Contains("Unsafe or prohibited asset path", err2);
@@ -334,7 +334,13 @@ public class ThemeSecurityTests
         {
             Id = "test-theme",
             Name = "Test",
-            Core = new CoreThemeTokens { Sounds = new ThemeSounds { Notification = "../evil.wav" } }
+            Core = new CoreThemeTokens
+            {
+                Sounds = new ThemeSounds
+                {
+                    Notification = "../evil.wav"
+                }
+            }
         };
         Assert.False(ThemeValidator.ValidateManifest(m3, out var err3));
         Assert.Contains("Unsafe or prohibited asset path", err3);
@@ -343,7 +349,13 @@ public class ThemeSecurityTests
         {
             Id = "test-theme",
             Name = "Test",
-            Core = new CoreThemeTokens { Sounds = new ThemeSounds { Disconnect = "../evil.wav" } }
+            Core = new CoreThemeTokens
+            {
+                Sounds = new ThemeSounds
+                {
+                    Disconnect = "../evil.wav"
+                }
+            }
         };
         Assert.False(ThemeValidator.ValidateManifest(m4, out var err4));
         Assert.Contains("Unsafe or prohibited asset path", err4);
@@ -353,7 +365,7 @@ public class ThemeSecurityTests
     public async Task ExtractZipSafelyAsyncTooManyEntriesThrowsSecurityExceptionAsync()
     {
         using var ms = new MemoryStream();
-        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
         {
             for (var i = 0; i < SafeThemeExtractor.MaxArchiveEntries + 5; i++)
             {
@@ -362,6 +374,7 @@ public class ThemeSecurityTests
                 s.Write("{}"u8);
             }
         }
+
         ms.Position = 0;
 
         var tempDir = Path.Join(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
@@ -382,12 +395,13 @@ public class ThemeSecurityTests
     public async Task ExtractZipSafelyAsyncZipSlipTraversalThrowsSecurityExceptionAsync()
     {
         using var ms = new MemoryStream();
-        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
         {
             var entry = zip.CreateEntry("../../../evil.json");
             using var s = entry.Open();
             s.Write("{}"u8);
         }
+
         ms.Position = 0;
 
         var tempDir = Path.Join(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
@@ -408,12 +422,13 @@ public class ThemeSecurityTests
     public async Task ExtractZipSafelyAsyncProhibitedExtensionThrowsSecurityExceptionAsync()
     {
         using var ms = new MemoryStream();
-        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
         {
             var entry = zip.CreateEntry("payload.exe");
             using var s = entry.Open();
             s.Write([0x4D, 0x5A, 0x90, 0x00]);
         }
+
         ms.Position = 0;
 
         var tempDir = Path.Join(Path.GetTempPath(), "theme_test_" + Guid.NewGuid().ToString("N"));
@@ -439,8 +454,20 @@ public class ThemeSecurityTests
             Name = "Valid Slice",
             Decorations = new ThemeDecorations
             {
-                FrameSlice = new FrameSlice { Top = 40, Right = 40, Bottom = 40, Left = 40 },
-                FrameSliceMobile = new FrameSlice { Top = 20, Right = 20, Bottom = 20, Left = 20 }
+                FrameSlice = new FrameSlice
+                {
+                    Top = 40,
+                    Right = 40,
+                    Bottom = 40,
+                    Left = 40
+                },
+                FrameSliceMobile = new FrameSlice
+                {
+                    Top = 20,
+                    Right = 20,
+                    Bottom = 20,
+                    Left = 20
+                }
             }
         };
         Assert.True(ThemeValidator.ValidateManifest(validManifest, out var err1));
@@ -452,7 +479,13 @@ public class ThemeSecurityTests
             Name = "Invalid Slice",
             Decorations = new ThemeDecorations
             {
-                FrameSlice = new FrameSlice { Top = -5, Right = 40, Bottom = 40, Left = 40 }
+                FrameSlice = new FrameSlice
+                {
+                    Top = -5,
+                    Right = 40,
+                    Bottom = 40,
+                    Left = 40
+                }
             }
         };
         Assert.False(ThemeValidator.ValidateManifest(invalidManifest, out var err2));
@@ -464,7 +497,13 @@ public class ThemeSecurityTests
             Name = "Huge Slice",
             Decorations = new ThemeDecorations
             {
-                FrameSliceMobile = new FrameSlice { Top = 10, Right = 5000, Bottom = 10, Left = 10 }
+                FrameSliceMobile = new FrameSlice
+                {
+                    Top = 10,
+                    Right = 5000,
+                    Bottom = 10,
+                    Left = 10
+                }
             }
         };
         Assert.False(ThemeValidator.ValidateManifest(hugeManifest, out var err3));
@@ -480,7 +519,13 @@ public class ThemeSecurityTests
             Name = "Slice Test",
             Decorations = new ThemeDecorations
             {
-                FrameSlice = new FrameSlice { Top = 50, Right = 60, Bottom = 70, Left = 80 }
+                FrameSlice = new FrameSlice
+                {
+                    Top = 50,
+                    Right = 60,
+                    Bottom = 70,
+                    Left = 80
+                }
             }
         };
 

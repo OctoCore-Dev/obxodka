@@ -1,16 +1,49 @@
-using System.Text.Json;
 using Android.Content;
 using Android.Content.PM;
+using Android.Graphics;
 using Application = Android.App.Application;
+using Path = System.IO.Path;
 
-namespace obxodka.Platforms.Android;
+namespace obxodka;
 
 //управление списком установленных приложений и исключениями из vpn туннеля (split tunneling)
-[SupportedOSPlatform("android29.0")]
+[SupportedOSPlatform("android30.0")]
 public sealed class AppManager : IAppManager
 {
     private const string BypassedAppsKey = "obxodka_bypassed_apps";
+
+    private const string SplitInitializedKey = "obxodka_split_initialized";
     private static List<AppInfoItem>? s_cachedApps;
+
+    private static readonly HashSet<string> s_defaultCloakedPackages =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
+
+        "ru.sberbankmobile",
+        "com.idamob.tinkoff.android",
+        "ru.vtb24.mobilebanking",
+        "ru.alfabank.mobile.android",
+        "ru.raiffeisennews",
+        "ru.gosuslugi.online",
+        "ru.gosuslugi.pos",
+        "ru.yandex.yandexnavi",
+        "ru.yandex.taxi",
+        "ru.yandex.search plugin",
+        "ru.yandex.market",
+        "com.vkontakte.android",
+        "com.vk.im",
+        "ru.mail.mailapp",
+        "com.wildberries.work",
+        "com.wildberries.wbdeti",
+        "ru.ozon.app.android",
+        "com.avito.android",
+        "ru.nspk.mirpay",
+        "ru.samokat.app",
+        "ru.magnit.app",
+        "ru.x5.app"
+    ];
+
+    private static string PersistentFilePath => Path.Combine(FileSystem.AppDataDirectory, "split_tunnel_apps.json");
 
     //получение списка установленных приложений с иконками и статусом исключения
     public Task<List<AppInfoItem>> GetInstalledAppsAsync() =>
@@ -47,89 +80,86 @@ public sealed class AppManager : IAppManager
             HashSet<string> seenPackages = [with(StringComparer.OrdinalIgnoreCase)];
             var pendingIcons = new List<(ApplicationInfo appInfo, string pkgName, string iconPath)>();
 
-            if (resolveInfos is not null)
+            foreach (var ri in resolveInfos)
             {
-                foreach (var ri in resolveInfos)
+                if (ri.ActivityInfo?.ApplicationInfo is not { } appInfo)
                 {
-                    if (ri.ActivityInfo?.ApplicationInfo is not { } appInfo)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    var pkgName = appInfo.PackageName ?? string.Empty;
-                    if (string.IsNullOrEmpty(pkgName) ||
-                        pkgName.Equals(context.PackageName, StringComparison.OrdinalIgnoreCase) ||
-                        pkgName.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
-                        !seenPackages.Add(pkgName))
-                    {
-                        continue;
-                    }
+                var pkgName = appInfo.PackageName ?? string.Empty;
+                if (string.IsNullOrEmpty(pkgName) ||
+                    pkgName.Equals(context.PackageName, StringComparison.OrdinalIgnoreCase) ||
+                    pkgName.Contains("obxodka", StringComparison.OrdinalIgnoreCase) ||
+                    !seenPackages.Add(pkgName))
+                {
+                    continue;
+                }
 
-                    var appName = ri.LoadLabel(pm)?.ToString() ?? appInfo.LoadLabel(pm)?.ToString() ?? pkgName;
+                var appName = ri.LoadLabel(pm);
+                if (appName.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var iconPath = Path.Combine(iconsDir, $"{pkgName}.png");
+                var hasIcon = File.Exists(iconPath);
+
+                if (!hasIcon)
+                {
+                    pendingIcons.Add((appInfo, pkgName, iconPath));
+                }
+
+                apps.Add(new AppInfoItem
+                {
+                    Name = appName,
+                    PackageName = pkgName,
+                    IsBypassed = bypassed.Contains(pkgName),
+                    IconPath = hasIcon ? iconPath : null
+                });
+            }
+
+            foreach (var bypassedPkg in bypassed.Where(bypassedPkg => !bypassedPkg.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                         .Where(seenPackages.Add))
+            {
+                try
+                {
+                    var appInfo = pm.GetApplicationInfo(bypassedPkg, 0);
+                    var appName = appInfo.LoadLabel(pm);
                     if (appName.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
 
-                    var iconPath = Path.Combine(iconsDir, $"{pkgName}.png");
+                    var iconPath = Path.Combine(iconsDir, $"{bypassedPkg}.png");
                     var hasIcon = File.Exists(iconPath);
 
                     if (!hasIcon)
                     {
-                        pendingIcons.Add((appInfo, pkgName, iconPath));
+                        pendingIcons.Add((appInfo, bypassedPkg, iconPath));
                     }
 
                     apps.Add(new AppInfoItem
                     {
                         Name = appName,
-                        PackageName = pkgName,
-                        IsBypassed = bypassed.Contains(pkgName),
+                        PackageName = bypassedPkg,
+                        IsBypassed = true,
                         IconPath = hasIcon ? iconPath : null
                     });
                 }
-            }
-
-            foreach (var bypassedPkg in bypassed)
-            {
-                if (bypassedPkg.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                catch
                 {
-                    continue;
-                }
-
-                if (seenPackages.Add(bypassedPkg))
-                {
-                    try
-                    {
-                        var appInfo = pm.GetApplicationInfo(bypassedPkg, 0);
-                        var appName = appInfo.LoadLabel(pm)?.ToString() ?? bypassedPkg;
-                        if (appName.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        var iconPath = Path.Combine(iconsDir, $"{bypassedPkg}.png");
-                        var hasIcon = File.Exists(iconPath);
-
-                        if (!hasIcon)
-                        {
-                            pendingIcons.Add((appInfo, bypassedPkg, iconPath));
-                        }
-
-                        apps.Add(new AppInfoItem
-                        {
-                            Name = appName,
-                            PackageName = bypassedPkg,
-                            IsBypassed = true,
-                            IconPath = hasIcon ? iconPath : null
-                        });
-                    }
-                    catch { }
+                    // ignored
                 }
             }
 
             s_cachedApps = [.. apps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
 
-            if (pendingIcons.Count > 0)
+            if (pendingIcons.Count <= 0)
+            {
+                return [.. s_cachedApps];
+            }
+
             {
                 var appsByPkg = apps.ToDictionary(a => a.PackageName, a => a, StringComparer.OrdinalIgnoreCase);
                 var orderedPending = pendingIcons
@@ -155,19 +185,18 @@ public sealed class AppManager : IAppManager
                             {
                                 var width = Math.Clamp(drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48, 32, 56);
                                 var height = Math.Clamp(drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48, 32, 56);
-                                using var bmp = global::Android.Graphics.Bitmap.CreateBitmap(
+                                using var bmp = Bitmap.CreateBitmap(
                                     width,
                                     height,
-                                    global::Android.Graphics.Bitmap.Config.Argb8888!);
+                                    Bitmap.Config.Argb8888!);
 
-                                if (bmp is not null)
                                 {
-                                    var canvas = new global::Android.Graphics.Canvas(bmp);
+                                    var canvas = new Canvas(bmp);
                                     drawable.SetBounds(0, 0, canvas.Width, canvas.Height);
                                     drawable.Draw(canvas);
 
-                                    using var fs = new FileStream(iconPath, FileMode.Create, FileAccess.Write);
-                                    _ = await bmp.CompressAsync(global::Android.Graphics.Bitmap.CompressFormat.Png!, 80, fs).ConfigureAwait(false);
+                                    await using var fs = new FileStream(iconPath, FileMode.Create, FileAccess.Write);
+                                    _ = await bmp.CompressAsync(Bitmap.CompressFormat.Png!, 80, fs).ConfigureAwait(false);
                                     bmp.Recycle();
 
                                     if (appsByPkg.TryGetValue(pkgName, out var targetApp))
@@ -177,21 +206,26 @@ public sealed class AppManager : IAppManager
                                 }
                             }
 
-                            if (batch.Count >= 35)
+                            if (batch.Count < 35)
                             {
-                                var toApply = batch.ToArray();
-                                batch.Clear();
-                                MainThread.BeginInvokeOnMainThread(() =>
-                                {
-                                    foreach (var (target, path) in toApply)
-                                    {
-                                        target.IconPath = path;
-                                    }
-                                });
-                                await Task.Delay(45).ConfigureAwait(false);
+                                continue;
                             }
+
+                            var toApply = batch.ToArray();
+                            batch.Clear();
+                            MainThread.BeginInvokeOnMainThread(() =>
+                            {
+                                foreach (var (target, path) in toApply)
+                                {
+                                    target.IconPath = path;
+                                }
+                            });
+                            await Task.Delay(45).ConfigureAwait(false);
                         }
-                        catch { }
+                        catch
+                        {
+                            // ignored
+                        }
                     }
 
                     if (batch.Count > 0)
@@ -212,35 +246,6 @@ public sealed class AppManager : IAppManager
             return [.. s_cachedApps];
         });
 
-    private static readonly HashSet<string> s_defaultCloakedPackages = new(
-    [
-        "ru.sberbankmobile",
-        "com.idamob.tinkoff.android",
-        "ru.vtb24.mobilebanking",
-        "ru.alfabank.mobile.android",
-        "ru.raiffeisennews",
-        "ru.gosuslugi.online",
-        "ru.gosuslugi.pos",
-        "ru.yandex.yandexnavi",
-        "ru.yandex.taxi",
-        "ru.yandex.searchplugin",
-        "ru.yandex.market",
-        "com.vkontakte.android",
-        "com.vk.im",
-        "ru.mail.mailapp",
-        "com.wildberries.work",
-        "com.wildberries.wbdeti",
-        "ru.ozon.app.android",
-        "com.avito.android",
-        "ru.nspk.mirpay",
-        "ru.samokat.app",
-        "ru.magnit.app",
-        "ru.x5.app"
-    ], StringComparer.OrdinalIgnoreCase);
-
-    private const string SplitInitializedKey = "obxodka_split_initialized";
-    private static string PersistentFilePath => Path.Combine(FileSystem.AppDataDirectory, "split_tunnel_apps.json");
-
     //получение списка пакетов приложений исключенных из маршрутизации vpn
     public List<string> GetBypassedPackages()
     {
@@ -255,12 +260,18 @@ public sealed class AppManager : IAppManager
                     var list = JsonSerializer.Deserialize<List<string>>(json);
                     if (list is not null)
                     {
-                        return [.. list.Where(p => !string.IsNullOrWhiteSpace(p) && !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
+                        return
+                        [
+                            .. list.Where(p => !string.IsNullOrWhiteSpace(p) && !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                        ];
                     }
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         //проверяем сохраненные настройки в preferences для обратной совместимости
         if (Preferences.ContainsKey(BypassedAppsKey))
@@ -268,28 +279,34 @@ public sealed class AppManager : IAppManager
             var saved = Preferences.Get(BypassedAppsKey, string.Empty);
             List<string> list = string.IsNullOrWhiteSpace(saved)
                 ? []
-                : [.. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                       .Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))];
+                :
+                [
+                    .. saved.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Where(p => !p.Contains("obxodka", StringComparison.OrdinalIgnoreCase))
+                ];
 
             try
             {
                 File.WriteAllText(PersistentFilePath, JsonSerializer.Serialize(list));
                 Preferences.Set(SplitInitializedKey, true);
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
 
             return list;
         }
 
         //если приложение запущено впервые и сплит еще не инициализирован
-        if (!Preferences.Get(SplitInitializedKey, false))
+        if (Preferences.Get(SplitInitializedKey, false))
         {
-            List<string> defaultList = [.. s_defaultCloakedPackages];
-            SaveBypassedPackages(defaultList);
-            return defaultList;
+            return [];
         }
 
-        return [];
+        List<string> defaultList = [.. s_defaultCloakedPackages];
+        SaveBypassedPackages(defaultList);
+        return defaultList;
     }
 
     //сохранение обновленного списка пакетов приложений исключенных из vpn
@@ -307,20 +324,25 @@ public sealed class AppManager : IAppManager
         {
             File.WriteAllText(PersistentFilePath, JsonSerializer.Serialize(cleaned));
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         //дублирование в preferences и фиксация флага инициализации
         Preferences.Set(BypassedAppsKey, string.Join(",", cleaned));
         Preferences.Set(SplitInitializedKey, true);
 
         //обновление кэша в памяти
-        if (s_cachedApps is not null)
+        if (s_cachedApps is null)
         {
-            var set = cleaned.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var app in s_cachedApps)
-            {
-                app.IsBypassed = set.Contains(app.PackageName);
-            }
+            return;
+        }
+
+        var set = cleaned.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var app in s_cachedApps)
+        {
+            app.IsBypassed = set.Contains(app.PackageName);
         }
     }
 }

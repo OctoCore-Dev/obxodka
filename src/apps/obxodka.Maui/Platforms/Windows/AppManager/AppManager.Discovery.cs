@@ -1,6 +1,5 @@
-using System.ComponentModel;
-using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using Path = System.IO.Path;
 
 namespace obxodka.Platforms.Windows;
 
@@ -20,6 +19,7 @@ public sealed partial class AppManager
                 {
                     app.IsBypassed = bypassed.Contains(app.PackageName);
                 }
+
                 return [.. _cachedApps];
             }
 
@@ -35,8 +35,10 @@ public sealed partial class AppManager
             if (OperatingSystem.IsWindows())
             {
                 DiscoverFromRegistryUninstall(discovered);
+                DiscoverFromRegistryAppPaths(discovered);
             }
-            DiscoverFromKnownPaths(discovered);
+
+            DiscoverFromUserPrograms(discovered);
 
             var iconsDir = Path.Combine(FileSystem.Current.CacheDirectory, "AppIcons");
             _ = Directory.CreateDirectory(iconsDir);
@@ -44,14 +46,14 @@ public sealed partial class AppManager
             var apps = new List<AppInfoItem>(discovered.Count);
             var pendingIcons = new List<(AppInfoItem Item, string ExePath)>();
 
-            foreach (var kvp in discovered)
+            foreach (var (exeName, value) in discovered)
             {
-                var exeName = kvp.Key;
-                var (friendlyName, exePath) = kvp.Value;
+                var (friendlyName, exePath) = value;
                 if (IsSelfOrProtectedApp(exePath, exeName, friendlyName))
                 {
                     continue;
                 }
+
                 var cachedIconPath = GetCachedIconPath(exePath, iconsDir);
                 var hasCachedIcon = File.Exists(cachedIconPath);
 
@@ -86,7 +88,10 @@ public sealed partial class AppManager
                                 MainThread.BeginInvokeOnMainThread(() => item.IconPath = extracted);
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                            // ignored
+                        }
                     }
                 });
             }
@@ -118,7 +123,8 @@ public sealed partial class AppManager
         }
 
         var exeName = Path.GetFileName(cleanPath);
-        if (string.IsNullOrWhiteSpace(exeName) || s_ignoredExeNames.Contains(exeName) || IsSelfOrProtectedApp(cleanPath, exeName, suggestedName))
+        if (string.IsNullOrWhiteSpace(exeName) || s_ignoredExeNames.Contains(exeName) ||
+            IsSelfOrProtectedApp(cleanPath, exeName, suggestedName))
         {
             return;
         }
@@ -143,7 +149,8 @@ public sealed partial class AppManager
         }
 
         if (!discovered.TryGetValue(exeName, out var existing) ||
-            (existing.FriendlyName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && !friendlyName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+            existing.FriendlyName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+            !friendlyName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
             discovered[exeName] = (friendlyName, cleanPath);
         }
@@ -204,7 +211,10 @@ public sealed partial class AppManager
                 return info.ProductName.Trim();
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         return Path.GetFileNameWithoutExtension(exePath);
     }
@@ -228,36 +238,26 @@ public sealed partial class AppManager
                         continue;
                     }
 
-                    var procName = proc.ProcessName;
-                    if (string.Equals(procName, "system", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "registry", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "smss", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "csrss", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "wininit", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "services", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "lsass", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "svchost", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "fontdrvhost", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "dwm", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(procName, "sihost", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
                     var path = GetProcessExecutablePath(proc.Id);
                     if (!string.IsNullOrWhiteSpace(path))
                     {
                         TryRegisterCandidate(discovered, path, null);
                     }
                 }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
                 finally
                 {
                     proc.Dispose();
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
@@ -269,7 +269,8 @@ public sealed partial class AppManager
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint hObject);
 
-    [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool QueryFullProcessImageName(nint hProcess, int flags, [Out] char[] lpExeName, ref int lpdwSize);
@@ -293,7 +294,10 @@ public sealed partial class AppManager
                 return new string(buffer, 0, size);
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
         finally
         {
             _ = CloseHandle(handle);
@@ -346,7 +350,10 @@ public sealed partial class AppManager
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
     }
 
@@ -394,108 +401,124 @@ public sealed partial class AppManager
                         }
 
                         var installLoc = appKey.GetValue("InstallLocation") as string;
-                        if (!string.IsNullOrWhiteSpace(installLoc) && Directory.Exists(installLoc))
+                        if (string.IsNullOrWhiteSpace(installLoc) || !Directory.Exists(installLoc))
                         {
-                            var topExes = Directory.GetFiles(installLoc, "*.exe", SearchOption.TopDirectoryOnly);
-                            if (topExes.Length > 0)
-                            {
-                                var bestExe = topExes
-                                    .Where(f => !s_ignoredExeNames.Contains(Path.GetFileName(f)))
-                                    .OrderByDescending(f =>
-                                    {
-                                        try
-                                        {
-                                            return new FileInfo(f).Length;
-                                        }
-                                        catch
-                                        {
-                                            return 0L;
-                                        }
-                                    })
-                                    .FirstOrDefault();
+                            continue;
+                        }
 
-                                if (!string.IsNullOrEmpty(bestExe))
+                        var topExes = Directory.GetFiles(installLoc, "*.exe", SearchOption.TopDirectoryOnly);
+                        if (topExes.Length <= 0)
+                        {
+                            continue;
+                        }
+
+                        var bestExe = topExes
+                            .Where(f => !s_ignoredExeNames.Contains(Path.GetFileName(f)))
+                            .OrderByDescending(f =>
+                            {
+                                try
                                 {
-                                    TryRegisterCandidate(discovered, bestExe, displayName);
+                                    return new FileInfo(f).Length;
                                 }
-                            }
+                                catch
+                                {
+                                    return 0L;
+                                }
+                            })
+                            .FirstOrDefault();
+
+                        if (!string.IsNullOrEmpty(bestExe))
+                        {
+                            TryRegisterCandidate(discovered, bestExe, displayName);
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
     }
 
-    //поиск известных популярных приложений по стандартным путям
-    private static void DiscoverFromKnownPaths(Dictionary<string, (string FriendlyName, string ExePath)> discovered)
+    //сканирование зарегистрированных исполняемых файлов через реестр app paths
+    [SupportedOSPlatform("windows")]
+    private static void DiscoverFromRegistryAppPaths(Dictionary<string, (string FriendlyName, string ExePath)> discovered)
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-
-        (string Name, string Path)[] knownApps =
+        (RegistryKey Root, string SubKey)[] hives =
         [
-            ("Telegram Desktop", Path.Combine(appData, "Telegram Desktop", "Telegram.exe")),
-            ("Yandex Browser", Path.Combine(localAppData, "Yandex", "YandexBrowser", "Application", "browser.exe")),
-            ("Google Chrome", Path.Combine(progFiles, "Google", "Chrome", "Application", "chrome.exe")),
-            ("Microsoft Edge", Path.Combine(progFilesX86, "Microsoft", "Edge", "Application", "msedge.exe")),
-            ("Mozilla Firefox", Path.Combine(progFiles, "Mozilla Firefox", "firefox.exe")),
-            ("Brave Browser", Path.Combine(progFiles, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")),
-            ("Opera Browser", Path.Combine(localAppData, "Programs", "Opera", "opera.exe")),
-            ("Opera GX", Path.Combine(localAppData, "Programs", "Opera GX", "opera.exe")),
-            ("Steam", Path.Combine(progFilesX86, "Steam", "steam.exe")),
-            ("Spotify", Path.Combine(appData, "Spotify", "Spotify.exe")),
-            ("qBittorrent", Path.Combine(progFiles, "qBittorrent", "qbittorrent.exe")),
-            ("OBS Studio", Path.Combine(progFiles, "obs-studio", "bin", "64bit", "obs64.exe")),
-            ("AnyDesk", Path.Combine(progFilesX86, "AnyDesk", "AnyDesk.exe")),
-            ("RustDesk", Path.Combine(progFiles, "RustDesk", "rustdesk.exe"))
+            (Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
+            (Registry.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\App Paths")
         ];
 
-        foreach (var (name, path) in knownApps)
-        {
-            TryRegisterCandidate(discovered, path, name);
-        }
-
-        var discordDir = Path.Combine(localAppData, "Discord");
-        if (Directory.Exists(discordDir))
+        foreach (var (root, subKeyPath) in hives)
         {
             try
             {
-                foreach (var appDir in Directory.GetDirectories(discordDir, "app-*"))
+                using var baseKey = root.OpenSubKey(subKeyPath);
+                if (baseKey is null)
                 {
-                    TryRegisterCandidate(discovered, Path.Combine(appDir, "Discord.exe"), "Discord");
+                    continue;
+                }
+
+                foreach (var subName in baseKey.GetSubKeyNames())
+                {
+                    try
+                    {
+                        using var appKey = baseKey.OpenSubKey(subName);
+                        var exePath = appKey?.GetValue(null) as string;
+                        if (!string.IsNullOrWhiteSpace(exePath))
+                        {
+                            TryRegisterCandidate(discovered, exePath, null);
+                        }
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
+        }
+    }
+
+    //сканирование пользовательских программ без прав администратора в localappdata\programs
+    private static void DiscoverFromUserPrograms(Dictionary<string, (string FriendlyName, string ExePath)> discovered)
+    {
+        var userPrograms = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs");
+
+        if (!Directory.Exists(userPrograms))
+        {
+            return;
         }
 
-        var robloxDir = Path.Combine(localAppData, "Roblox", "Versions");
-        if (Directory.Exists(robloxDir))
+        try
         {
-            try
+            var enumOptions = new EnumerationOptions
             {
-                foreach (var verDir in Directory.GetDirectories(robloxDir, "version-*"))
-                {
-                    TryRegisterCandidate(discovered, Path.Combine(verDir, "RobloxPlayerBeta.exe"), "Roblox Player");
-                }
-            }
-            catch { }
-        }
+                RecurseSubdirectories = true,
+                MaxRecursionDepth = 2,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint
+            };
 
-        var robloxX86 = Path.Combine(progFilesX86, "Roblox", "Versions");
-        if (Directory.Exists(robloxX86))
-        {
-            try
+            foreach (var exeFile in Directory.EnumerateFiles(userPrograms, "*.exe", enumOptions))
             {
-                foreach (var verDir in Directory.GetDirectories(robloxX86, "version-*"))
-                {
-                    TryRegisterCandidate(discovered, Path.Combine(verDir, "RobloxPlayerBeta.exe"), "Roblox Player");
-                }
+                TryRegisterCandidate(discovered, exeFile, null);
             }
-            catch { }
+        }
+        catch
+        {
+            // ignored
         }
     }
 }

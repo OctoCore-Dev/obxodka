@@ -1,4 +1,3 @@
-using obxodka.Client.Platforms;
 using MauiMainThread = Microsoft.Maui.ApplicationModel.MainThread;
 
 namespace obxodka.Maui.Services;

@@ -2,8 +2,9 @@ using Android.Content;
 using Android.Provider;
 using Java.Security;
 using Javax.Net.Ssl;
+using X509Certificate = Java.Security.Cert.X509Certificate;
 
-namespace obxodka.Platforms.Android;
+namespace obxodka.Services;
 
 //аудит системного и пользовательского хранилищ сертификатов android на наличие mitm-сертификатов
 public sealed class AndroidCertificateAuditService(Context context) : ICertificateAuditService
@@ -17,6 +18,9 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         "National Certification Authority",
         "Министерство цифрового развития"
     ];
+
+    //удаление пользовательского сертификата на android программно ограничено системой безопасности
+    public Task<bool> TryRemoveUserCertificateAsync(string thumbprint) => Task.FromResult(false);
 
     //проверка наличия подозрительных корневых сертификатов в keystore
     public Task<CertificateAuditResult> CheckCertificatesAsync()
@@ -37,26 +41,27 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
                     }
 
                     var cert = keyStore.GetCertificate(alias);
-                    if (cert is Java.Security.Cert.X509Certificate x509)
+                    if (cert is not X509Certificate x509)
                     {
-                        var issuer = x509.IssuerDN?.Name ?? string.Empty;
-                        var subject = x509.SubjectDN?.Name ?? string.Empty;
-
-                        foreach (var pattern in s_suspiciousPatterns)
-                        {
-                            if (issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                            {
-                                var name = ExtractCommonName(subject) ?? "Russian Trusted Root CA";
-                                var isUser = alias.StartsWith("user:", StringComparison.OrdinalIgnoreCase);
-                                var details = isUser
-                                    ? "Установлен в раздел 'Пользовательские сертификаты'"
-                                    : "Обнаружен в системном хранилище Android";
-
-                                return Task.FromResult(new CertificateAuditResult(true, name, alias, details));
-                            }
-                        }
+                        continue;
                     }
+
+                    var issuer = x509.IssuerDN?.Name ?? string.Empty;
+                    var subject = x509.SubjectDN?.Name ?? string.Empty;
+
+                    if (!s_suspiciousPatterns.Any(pattern => issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
+                                                             subject.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    var name = ExtractCommonName(subject) ?? "Russian Trusted Root CA";
+                    var isUser = alias.StartsWith("user:", StringComparison.OrdinalIgnoreCase);
+                    var details = isUser
+                        ? "Установлен в раздел 'Пользовательские сертификаты'"
+                        : "Обнаружен в системном хранилище Android";
+
+                    return Task.FromResult(new CertificateAuditResult(true, name, alias, details));
                 }
             }
 
@@ -67,29 +72,30 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
             {
                 foreach (var tm in trustManagers)
                 {
-                    if (tm is IX509TrustManager x509Tm)
+                    if (tm is not IX509TrustManager x509Tm)
                     {
-                        var accepted = x509Tm.GetAcceptedIssuers();
-                        if (accepted is null)
+                        continue;
+                    }
+
+                    var accepted = x509Tm.GetAcceptedIssuers();
+                    if (accepted is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var cert in accepted)
+                    {
+                        var issuer = cert.IssuerDN?.Name ?? string.Empty;
+                        var subject = cert.SubjectDN?.Name ?? string.Empty;
+
+                        if (!s_suspiciousPatterns.Any(pattern => issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
+                                                                 subject.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
                         {
                             continue;
                         }
 
-                        foreach (var cert in accepted)
-                        {
-                            var issuer = cert.IssuerDN?.Name ?? string.Empty;
-                            var subject = cert.SubjectDN?.Name ?? string.Empty;
-
-                            foreach (var pattern in s_suspiciousPatterns)
-                            {
-                                if (issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
-                                    subject.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    var name = ExtractCommonName(subject) ?? "Russian Trusted Root CA";
-                                    return Task.FromResult(new CertificateAuditResult(true, name, null, "Обнаружен в доверенных центрах"));
-                                }
-                            }
-                        }
+                        var name = ExtractCommonName(subject) ?? "Russian Trusted Root CA";
+                        return Task.FromResult(new CertificateAuditResult(true, name, null, "Обнаружен в доверенных центрах"));
                     }
                 }
             }
@@ -100,21 +106,6 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         }
 
         return Task.FromResult(new CertificateAuditResult(false, null, null, null));
-    }
-
-    //извлечение имени общего сертификата из строки dn
-    private static string? ExtractCommonName(string dn)
-    {
-        var parts = dn.Split(',');
-        foreach (var part in parts)
-        {
-            var trimmed = part.Trim();
-            if (trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
-            {
-                return trimmed[3..];
-            }
-        }
-        return null;
     }
 
     //открытие системных настроек безопасности и хранилища сертификатов android
@@ -143,6 +134,18 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
         return Task.CompletedTask;
     }
 
-    //удаление пользовательского сертификата на android программно ограничено системой безопасности
-    public Task<bool> TryRemoveUserCertificateAsync(string thumbprint) => Task.FromResult(false);
+    //извлечение имени общего сертификата из строки dn
+    private static string? ExtractCommonName(string dn)
+    {
+        foreach (var part in dn.Split(','))
+        {
+            var trimmed = part.AsSpan().Trim();
+            if (trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed[3..].ToString();
+            }
+        }
+
+        return null;
+    }
 }

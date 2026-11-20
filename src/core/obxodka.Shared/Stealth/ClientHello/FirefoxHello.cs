@@ -13,7 +13,7 @@ public static class FirefoxHello
         0xcca9, // ECDHE-ECDSA-CHACHA20-POLY1305
         0xcca8, // ECDHE-RSA-CHACHA20-POLY1305
         0xc02c, // ECDHE-ECDSA-AES256-GCM-SHA384
-        0xc030  // ECDHE-RSA-AES256-GCM-SHA384
+        0xc030 // ECDHE-RSA-AES256-GCM-SHA384
     ];
 
     private static readonly ushort[] s_signatureAlgorithms =
@@ -25,7 +25,7 @@ public static class FirefoxHello
         0x0805, // rsa_pss_rsae_sha384
         0x0501, // rsa_pkcs1_sha384
         0x0806, // rsa_pss_rsae_sha512
-        0x0601  // rsa_pkcs1_sha512
+        0x0601 // rsa_pkcs1_sha512
     ];
 
     public static byte[] Build(
@@ -121,6 +121,7 @@ public static class FirefoxHello
         WriteSupportedVersions(buffer, ref offset); //supported versions
         WriteSignatureAlgorithms(buffer, ref offset); //signature algorithms
         WriteExtension(buffer, ref offset, 0x002d, [0x01, 0x01]); //psk modes
+        // ReSharper disable once UseUtf8StringLiteral
         WriteExtension(buffer, ref offset, 0x001c, [0x40, 0x00]); //record size limit
     }
 

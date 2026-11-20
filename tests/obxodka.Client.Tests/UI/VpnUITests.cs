@@ -1,20 +1,19 @@
 namespace obxodka.Client.Tests.UI;
 
 [Trait("Category", "UI")]
-public partial class VpnUITests : IDisposable
+public class VpnUiTests : IDisposable
 {
+    private const string WindowsApplicationDriverUrl = "http://127.0.0.1:4723";
+    private static readonly string s_tAppId = UiTestHelper.ResolveAppPath();
     private WindowsDriver? _session;
 
-    private const string WindowsApplicationDriverUrl = "http://127.0.0.1:4723";
-    private static readonly string t_appId = UITestHelper.ResolveAppPath();
-
-    public VpnUITests()
+    public VpnUiTests()
     {
         try
         {
             var appiumOptions = new AppiumOptions
             {
-                App = t_appId,
+                App = s_tAppId,
                 DeviceName = "WindowsPC"
             };
             _session = new WindowsDriver(new Uri(WindowsApplicationDriverUrl), appiumOptions);
@@ -24,6 +23,14 @@ public partial class VpnUITests : IDisposable
         {
             _session = null;
         }
+    }
+
+    public void Dispose()
+    {
+        _session?.Quit();
+        _session?.Dispose();
+        _session = null;
+        GC.SuppressFinalize(this);
     }
 
     [Fact]
@@ -42,13 +49,5 @@ public partial class VpnUITests : IDisposable
         connectButton.Click();
 
         Assert.NotEqual("Не в сети", statusLabel.Text);
-    }
-
-    public void Dispose()
-    {
-        _session?.Quit();
-        _session?.Dispose();
-        _session = null;
-        GC.SuppressFinalize(this);
     }
 }

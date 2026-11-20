@@ -21,26 +21,47 @@ public sealed class WindowsDeviceInfoService : IDeviceInfoService
     public AppDeviceIdiom Idiom => s_idiom.Value;
     public AppDeviceType DeviceType => s_deviceType.Value;
 
-    //получение uuid материнской платы или резервного machine guid из реестра
-    private static string QueryDeviceId()
+
+    private static string QueryModel() =>
+        QueryWmiValue<object>("Win32_ComputerSystem", nameof(Model))?.ToString() ?? string.Empty;
+
+    private static string QueryManufacturer() =>
+        QueryWmiValue<object>("Win32_ComputerSystem", nameof(Manufacturer))?.ToString() ?? string.Empty;
+
+    //получение первого значения свойства из wmi без sql-строк
+    private static T? QueryWmiValue<T>(string wmiClass, string propertyName)
     {
         try
         {
-            using var searcher = new ManagementObjectSearcher("SELECT UUID FROM Win32_ComputerSystemProduct");
+            using var searcher = new ManagementObjectSearcher(new SelectQuery(wmiClass, null, [propertyName]));
             using var collection = searcher.Get();
             foreach (var obj in collection.Cast<ManagementObject>())
             {
                 using (obj)
                 {
-                    var uuid = obj["UUID"]?.ToString();
-                    if (!string.IsNullOrWhiteSpace(uuid) && uuid != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
+                    if (obj[propertyName] is T value)
                     {
-                        return uuid;
+                        return value;
                     }
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
+
+        return default;
+    }
+
+    //получение uuid материнской платы или резервного machine guid из реестра
+    private static string QueryDeviceId()
+    {
+        var uuid = QueryWmiValue<object>("Win32_ComputerSystemProduct", "UUID")?.ToString();
+        if (!string.IsNullOrWhiteSpace(uuid) && uuid != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
+        {
+            return uuid;
+        }
 
         try
         {
@@ -51,94 +72,33 @@ public sealed class WindowsDeviceInfoService : IDeviceInfoService
                 return guid;
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         return Environment.MachineName;
     }
 
-    private static string QueryModel()
-    {
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("SELECT Model FROM Win32_ComputerSystem");
-            using var collection = searcher.Get();
-            foreach (var obj in collection.Cast<ManagementObject>())
-            {
-                using (obj)
-                {
-                    return obj[nameof(Model)]?.ToString() ?? string.Empty;
-                }
-            }
-        }
-        catch { }
-        return string.Empty;
-    }
-
-    private static string QueryManufacturer()
-    {
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("SELECT Manufacturer FROM Win32_ComputerSystem");
-            using var collection = searcher.Get();
-            foreach (var obj in collection.Cast<ManagementObject>())
-            {
-                using (obj)
-                {
-                    return obj[nameof(Manufacturer)]?.ToString() ?? string.Empty;
-                }
-            }
-        }
-        catch { }
-        return string.Empty;
-    }
-
     private static AppDeviceIdiom QueryIdiom()
     {
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("SELECT ChassisTypes FROM Win32_SystemEnclosure");
-            using var collection = searcher.Get();
-            foreach (var obj in collection.Cast<ManagementObject>())
+        var chassisTypes = QueryWmiValue<ushort[]>("Win32_SystemEnclosure", "ChassisTypes");
+        return chassisTypes?.Length > 0
+            ? chassisTypes[0] switch
             {
-                using (obj)
-                {
-                    var chassisTypes = obj["ChassisTypes"] as ushort[];
-                    if (chassisTypes?.Length > 0)
-                    {
-                        return chassisTypes[0] switch
-                        {
-                            3 or 4 or 5 or 6 or 7 or 15 or 16 => AppDeviceIdiom.Desktop,
-                            8 or 9 or 10 or 11 or 12 or 13 => AppDeviceIdiom.Phone,
-                            14 => AppDeviceIdiom.Tablet,
-                            _ => AppDeviceIdiom.Desktop
-                        };
-                    }
-                }
+                3 or 4 or 5 or 6 or 7 or 15 or 16 => AppDeviceIdiom.Desktop,
+                8 or 9 or 10 or 11 or 12 or 13 => AppDeviceIdiom.Phone,
+                14 => AppDeviceIdiom.Tablet,
+                _ => AppDeviceIdiom.Desktop
             }
-        }
-        catch { }
-        return AppDeviceIdiom.Desktop;
+            : AppDeviceIdiom.Desktop;
     }
 
     private static AppDeviceType QueryDeviceType()
     {
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("SELECT Model FROM Win32_ComputerSystem");
-            using var collection = searcher.Get();
-            foreach (var obj in collection.Cast<ManagementObject>())
-            {
-                using (obj)
-                {
-                    var model = obj[nameof(Model)]?.ToString()?.ToLowerInvariant() ?? string.Empty;
-                    if (model.Contains("virtual") || model.Contains("vmware") || model.Contains("vbox") || model.Contains("qemu"))
-                    {
-                        return AppDeviceType.Virtual;
-                    }
-                }
-            }
-        }
-        catch { }
-        return AppDeviceType.Physical;
+        var model = QueryModel().ToLowerInvariant();
+        return model.Contains("virtual") || model.Contains("vmware") || model.Contains("vbox") || model.Contains("qemu")
+            ? AppDeviceType.Virtual
+            : AppDeviceType.Physical;
     }
 }

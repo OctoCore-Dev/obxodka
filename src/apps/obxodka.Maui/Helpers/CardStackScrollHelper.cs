@@ -1,12 +1,12 @@
 namespace obxodka.Helpers;
 
-public static class CardStackScrollHelper
+internal static class CardStackScrollHelper
 {
-    public const double DefaultTransitionZone = 85.0;
-    public const double DefaultMinScale = 0.60;
-    public const double DefaultPower = 3.5;
+    internal const double DefaultTransitionZone = 85.0;
+    internal const double DefaultMinScale = 0.60;
+    internal const double DefaultPower = 3.5;
 
-    public static (double Scale, double TranslateY, double Opacity) Calculate(
+    private static (double Scale, double TranslateY, double Opacity) Calculate(
         double relativeY,
         double viewportHeight,
         double zone = DefaultTransitionZone,
@@ -18,19 +18,18 @@ public static class CardStackScrollHelper
             return (1.0, 0.0, 1.0);
         }
 
-        var startThreshold = zone;
         var bottomThreshold = viewportHeight - zone;
 
-        if (relativeY >= startThreshold && relativeY <= bottomThreshold)
+        if (relativeY >= zone && relativeY <= bottomThreshold)
         {
             return (1.0, 0.0, 1.0);
         }
 
-        var isTop = relativeY < startThreshold;
-        var delta = isTop ? startThreshold - relativeY : relativeY - bottomThreshold;
+        var isTop = relativeY < zone;
+        var delta = isTop ? zone - relativeY : relativeY - bottomThreshold;
         var progress = Math.Clamp(delta / zone, 0.0, 1.0);
         var easeProgress = Math.Pow(1.0 - progress, power);
-        var scale = Math.Max(minScale, minScale + ((1.0 - minScale) * easeProgress));
+        var scale = Math.Max(minScale, minScale + (1.0 - minScale) * easeProgress);
         var clampedDelta = Math.Min(delta, zone);
         var stackTranslateY = isTop ? clampedDelta * 0.45 : -clampedDelta * 0.45;
         var opacity = Math.Clamp(Math.Pow(1.0 - progress, 1.4), 0.0, 1.0);
@@ -38,7 +37,7 @@ public static class CardStackScrollHelper
         return (scale, stackTranslateY, opacity);
     }
 
-    public static void ApplyToChildren(
+    internal static void ApplyToChildren(
         IEnumerable<VisualElement> items,
         double scrollY,
         double viewportHeight,
@@ -59,7 +58,7 @@ public static class CardStackScrollHelper
                 continue;
             }
 
-            var itemCenterY = containerOffsetY + item.Y + (item.Height / 2.0) - scrollY;
+            var itemCenterY = containerOffsetY + item.Y + item.Height / 2.0 - scrollY;
             var (scale, transY, opacity) = Calculate(itemCenterY, viewportHeight, zone, minScale, power);
 
             if (Math.Abs(item.Scale - scale) > 0.005)
@@ -95,9 +94,9 @@ public static class CardStackScrollHelper
             items.OfType<VisualElement>(),
             scrollView.ScrollY,
             scrollView.Height,
-            containerOffsetY: 0.0,
-            zone: zone,
-            minScale: minScale,
-            power: power);
+            0.0,
+            zone,
+            minScale,
+            power);
     }
 }

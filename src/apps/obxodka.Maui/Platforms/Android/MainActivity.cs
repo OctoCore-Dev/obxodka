@@ -1,11 +1,14 @@
+using Android;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Net;
 using Android.OS;
+using Android.Provider;
 using AndroidX.Core.View;
-using obxodka.Helpers;
-using obxodka.Platforms.Android;
+using Object = Java.Lang.Object;
+using Uri = Android.Net.Uri;
+using View = Android.Views.View;
 
 namespace obxodka;
 
@@ -15,7 +18,8 @@ namespace obxodka;
     MainLauncher = true,
     Exported = true,
     LaunchMode = LaunchMode.SingleTop,
-    ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+    ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout |
+                           ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 [IntentFilter(
     [Intent.ActionView],
     Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable],
@@ -27,7 +31,7 @@ namespace obxodka;
     DataScheme = "https",
     DataHost = "qr",
     DataPathPrefix = "/qr")]
-[SupportedOSPlatform("android29.0")]
+[SupportedOSPlatform("android30.0")]
 public sealed class MainActivity : MauiAppCompatActivity
 {
     private const int VpnRequestCode = 1001;
@@ -36,7 +40,8 @@ public sealed class MainActivity : MauiAppCompatActivity
 
     private static TaskCompletionSource<bool>? s_vpnPermTcs;
 
-    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "WindowInsetsHandler is retained by Android View hierarchy")]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+        Justification = "WindowInsetsHandler is retained by Android View hierarchy")]
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         try
@@ -45,7 +50,7 @@ public sealed class MainActivity : MauiAppCompatActivity
             {
                 WindowCompat.SetDecorFitsSystemWindows(earlyWindow, false);
 
-                if (OperatingSystem.IsAndroidVersionAtLeast(29))
+                if (OperatingSystem.IsAndroidVersionAtLeast(30))
                 {
 #pragma warning disable CA1422
                     earlyWindow.NavigationBarContrastEnforced = false;
@@ -54,7 +59,10 @@ public sealed class MainActivity : MauiAppCompatActivity
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         base.OnCreate(savedInstanceState);
 
@@ -63,41 +71,47 @@ public sealed class MainActivity : MauiAppCompatActivity
             App.HandleDeepLink(initialUri);
         }
 
-        _ = Window?.DecorView?.Post(() =>
+        _ = Window?.DecorView.Post(() =>
         {
             try
             {
                 RequestNotificationPermission();
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         });
 
         try
         {
-            if (Window is { } window)
+            if (Window is not { } window)
             {
-                WindowCompat.SetDecorFitsSystemWindows(window, false);
-
-                if (!OperatingSystem.IsAndroidVersionAtLeast(35))
-                {
-#pragma warning disable CA1422
-                    window.SetStatusBarColor(Android.Graphics.Color.Transparent);
-                    window.SetNavigationBarColor(Android.Graphics.Color.Transparent);
-#pragma warning restore CA1422
-                }
-
-                var controller = WindowCompat.GetInsetsController(window, window.DecorView);
-                if (controller is not null)
-                {
-                    var isLight = Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
-                    controller.AppearanceLightStatusBars = isLight;
-                    controller.AppearanceLightNavigationBars = isLight;
-                }
-
-                ViewCompat.SetOnApplyWindowInsetsListener(window.DecorView, new WindowInsetsHandler());
+                return;
             }
+
+            WindowCompat.SetDecorFitsSystemWindows(window, false);
+
+            if (!OperatingSystem.IsAndroidVersionAtLeast(35))
+            {
+                window.SetStatusBarColor(Android.Graphics.Color.Transparent);
+                window.SetNavigationBarColor(Android.Graphics.Color.Transparent);
+            }
+
+            var controller = WindowCompat.GetInsetsController(window, window.DecorView);
+            if (controller is not null)
+            {
+                var isLight = Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
+                controller.AppearanceLightStatusBars = isLight;
+                controller.AppearanceLightNavigationBars = isLight;
+            }
+
+            ViewCompat.SetOnApplyWindowInsetsListener(window.DecorView, new WindowInsetsHandler());
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     protected override void OnNewIntent(Intent? intent)
@@ -110,47 +124,33 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
-    //обработчик отступов системных панелей для корректного отображения edge to edge
-    private sealed class WindowInsetsHandler : Java.Lang.Object, IOnApplyWindowInsetsListener
-    {
-        public WindowInsetsCompat? OnApplyWindowInsets(Android.Views.View? v, WindowInsetsCompat? insets)
-        {
-            if (insets is null)
-            {
-                return insets;
-            }
-
-            var systemBars = insets.GetInsets(WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
-            var density = Platform.AppContext.Resources?.DisplayMetrics?.Density ?? 1.0f;
-            var topDp = (systemBars?.Top ?? 0) / density;
-            var bottomDp = (systemBars?.Bottom ?? 0) / density;
-
-            SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
-
-            return WindowInsetsCompat.Consumed;
-        }
-    }
-
     //динамическое обновление контрастности иконок статус бара и навигации под тему оформления
     public static void UpdateSystemBarsTheme(Color? bgBaseColor) =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
             try
             {
-                if (Platform.CurrentActivity?.Window is { } window)
+                if (Platform.CurrentActivity?.Window is not { } window)
                 {
-                    var controller = WindowCompat.GetInsetsController(window, window.DecorView);
-                    if (controller is not null)
-                    {
-                        var isLight = bgBaseColor != null
-                            ? ((bgBaseColor.Red * 0.299) + (bgBaseColor.Green * 0.587) + (bgBaseColor.Blue * 0.114)) > 0.55
-                            : Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
-                        controller.AppearanceLightStatusBars = isLight;
-                        controller.AppearanceLightNavigationBars = isLight;
-                    }
+                    return;
                 }
+
+                var controller = WindowCompat.GetInsetsController(window, window.DecorView);
+                if (controller is null)
+                {
+                    return;
+                }
+
+                var isLight = bgBaseColor != null
+                    ? bgBaseColor.Red * 0.299 + bgBaseColor.Green * 0.587 + bgBaseColor.Blue * 0.114 > 0.55
+                    : Microsoft.Maui.Controls.Application.Current?.RequestedTheme == AppTheme.Light;
+                controller.AppearanceLightStatusBars = isLight;
+                controller.AppearanceLightNavigationBars = isLight;
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         });
 
     //запрос разрешения на отправку уведомлений android 13+
@@ -159,9 +159,9 @@ public sealed class MainActivity : MauiAppCompatActivity
         try
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(33) &&
-                CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Permission.Granted)
+                CheckSelfPermission(Manifest.Permission.PostNotifications) != Permission.Granted)
             {
-                RequestPermissions([Android.Manifest.Permission.PostNotifications], NotificationRequestCode);
+                RequestPermissions([Manifest.Permission.PostNotifications], NotificationRequestCode);
             }
         }
         catch (Exception ex)
@@ -178,43 +178,50 @@ public sealed class MainActivity : MauiAppCompatActivity
             return;
         }
 
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
         {
-            if (IsFinishing || IsDestroyed)
-            {
-                return;
-            }
-
             try
             {
-                if (PackageName is { Length: > 0 } pkgName &&
-                    GetSystemService(PowerService) is PowerManager pm &&
-                    !pm.IsIgnoringBatteryOptimizations(pkgName))
+                if (IsFinishing || IsDestroyed)
                 {
-                    if (Preferences.Default.Get("HasRequestedBatteryOpt", false))
+                    return;
+                }
+
+                try
+                {
+                    if (PackageName is { Length: > 0 } pkgName &&
+                        GetSystemService(PowerService) is PowerManager pm &&
+                        !pm.IsIgnoringBatteryOptimizations(pkgName))
                     {
-                        return;
-                    }
+                        if (Preferences.Default.Get("HasRequestedBatteryOpt", false))
+                        {
+                            return;
+                        }
 
-                    Preferences.Default.Set("HasRequestedBatteryOpt", true);
+                        Preferences.Default.Set("HasRequestedBatteryOpt", true);
 
-                    var accepted = await NeoAlert.ShowConfirmAsync(
-                        "Фоновая работа и батарея",
-                        "Для стабильной работы VPN-соединения и защиты от разрывов при выключенном экране необходимо разрешить работу приложения без ограничений расхода батареи.\n\nРазрешить сейчас?",
-                        "Разрешить",
-                        "Позже");
+                        var accepted = await NeoAlert.ShowConfirmAsync(
+                            "Фоновая работа и батарея",
+                            "Для стабильной работы VPN-соединения и защиты от разрывов при выключенном экране необходимо разрешить работу приложения без ограничений расхода батареи.\n\nРазрешить сейчас?",
+                            "Разрешить",
+                            "Позже");
 
-                    if (accepted && !IsFinishing && !IsDestroyed)
-                    {
-                        using var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations)
-                            .SetData(Android.Net.Uri.Parse($"package:{pkgName}"));
-                        StartActivity(intent);
+                        if (accepted && !IsFinishing && !IsDestroyed)
+                        {
+                            using var intent = new Intent(Settings.ActionRequestIgnoreBatteryOptimizations)
+                                .SetData(Uri.Parse($"package:{pkgName}"));
+                            StartActivity(intent);
+                        }
                     }
                 }
+                catch (Exception ex)
+                {
+                    AppLogger.LogError($"[BATTERY REQ ERROR] {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                AppLogger.LogError($"[BATTERY REQ ERROR] {ex.Message}");
+                // ignored
             }
         });
     }
@@ -251,20 +258,17 @@ public sealed class MainActivity : MauiAppCompatActivity
     {
         base.OnActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == VpnRequestCode)
+        switch (requestCode)
         {
-            if (resultCode == Result.Ok)
-            {
+            case VpnRequestCode when resultCode == Result.Ok:
                 StartActualService(this);
-            }
-            else
-            {
+                break;
+            case VpnRequestCode:
                 AndroidVpnService.Orchestrator.ReportError("Пользователь отклонил запрос на подключение");
-            }
-        }
-        else if (requestCode == VpnCustomRequestCode)
-        {
-            _ = s_vpnPermTcs?.TrySetResult(resultCode == Result.Ok);
+                break;
+            case VpnCustomRequestCode:
+                _ = s_vpnPermTcs?.TrySetResult(resultCode == Result.Ok);
+                break;
         }
     }
 
@@ -307,12 +311,33 @@ public sealed class MainActivity : MauiAppCompatActivity
             }
         }).ConfigureAwait(false);
 
-        if (!launched)
+        if (launched)
         {
-            s_vpnPermTcs = null;
-            return false;
+            return await tcs.Task.ConfigureAwait(false);
         }
 
-        return await tcs.Task.ConfigureAwait(false);
+        s_vpnPermTcs = null;
+        return false;
+    }
+
+    //обработчик отступов системных панелей для корректного отображения edge to edge
+    private sealed class WindowInsetsHandler : Object, IOnApplyWindowInsetsListener
+    {
+        public WindowInsetsCompat? OnApplyWindowInsets(View? v, WindowInsetsCompat? insets)
+        {
+            if (insets is null)
+            {
+                return insets;
+            }
+
+            var systemBars = insets.GetInsets(WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
+            var density = Platform.AppContext.Resources?.DisplayMetrics?.Density ?? 1.0f;
+            var topDp = (systemBars?.Top ?? 0) / density;
+            var bottomDp = (systemBars?.Bottom ?? 0) / density;
+
+            SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
+
+            return WindowInsetsCompat.Consumed;
+        }
     }
 }

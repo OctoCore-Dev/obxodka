@@ -43,3 +43,6 @@ global using obxodka.Shared.Logging;
 global using obxodka.Shared.MtuEngine;
 global using obxodka.Shared.Stealth;
 global using obxodka.Shared.Stealth.ClientHello;
+global using System.Security;
+global using obxodka.Core.Pipeline;
+global using obxodka.Client.Telemetry;

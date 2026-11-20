@@ -1,9 +1,11 @@
 namespace obxodka.Platforms.Windows;
 
-//реализация контракта платформенного драйвера windows для vpngateway и единого оркестратора
+//реализация контракта платформенного драйвера windows для vpn gateway и единого оркестратора
 [SupportedOSPlatform("windows10.0.19041.0")]
 internal sealed partial class WindowsVpnService
 {
+    public void BindPhysicalSocket(Socket socket) => BindSocketToPhysicalAdapter(socket);
+
     public Task<bool> PreparePermissionsAndStartServiceAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -14,12 +16,13 @@ internal sealed partial class WindowsVpnService
     {
         ct.ThrowIfCancellationRequested();
         using var suppressScope = SuppressNetworkChanges();
+        Win32WfpLeakGuard.Disable();
         AppManager.SyncPolicyFromPreferences();
         await CleanupStaleRoutesAsync().ConfigureAwait(false);
         LogNetworkDiagnostics();
     }
 
-    public async Task PrepareBypassHostsAsync(string[] ips, CancellationToken ct)
+    public async Task PrepareBypassHostsAsync(string[]? ips, CancellationToken ct)
     {
         if (ips is null || ips.Length == 0)
         {
@@ -38,16 +41,15 @@ internal sealed partial class WindowsVpnService
         }
     }
 
-    public void BindPhysicalSocket(Socket socket) => BindSocketToPhysicalAdapter(socket);
-
-    public async Task ApplyTunnelInterfaceAsync(ProtocolRouteStep step, string assignedIpv4, string? assignedIpv6, int mtu, CancellationToken ct)
+    public async Task ApplyTunnelInterfaceAsync(ProtocolRouteStep step, string assignedIpv4, string? assignedIpv6, int mtu,
+        CancellationToken ct)
     {
         _ = step;
         _ = mtu;
         using var suppressScope = SuppressNetworkChanges();
         if (_adapter is null || _adapter.IsDisposed)
         {
-            _adapter = await Task.Run(() => new WintunAdapter("Obxodka", "Obxodka"), ct).ConfigureAwait(false);
+            _adapter = await Task.Run(() => new WintunAdapter(), ct).ConfigureAwait(false);
         }
 
         if (!_adapter.IsSessionActive)
@@ -55,13 +57,14 @@ internal sealed partial class WindowsVpnService
             _adapter.StartSession();
         }
 
-        await SetAdapterConfigAsync(_adapter.Name, assignedIpv4, "255.192.0.0", assignedIpv6).ConfigureAwait(false);
+        await SetAdapterConfigAsync(_adapter, assignedIpv4, 10, assignedIpv6).ConfigureAwait(false);
     }
 
     public void StartPacketPump(CancellationToken ct) =>
         _trafficTask = Task.Run(() => ProcessTrafficAsync(ct), CancellationToken.None);
 
-    public async Task ActivateRoutingAndLeakGuardAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, CancellationToken ct)
+    public async Task ActivateRoutingAndLeakGuardAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6,
+        CancellationToken ct)
     {
         _ = ct;
         var adapter = _adapter;
@@ -71,11 +74,15 @@ internal sealed partial class WindowsVpnService
         }
 
         using var suppressScope = SuppressNetworkChanges();
-        await SetWindowsRoutesAsync(adapter.Name, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
-        await EnableDnsLeakProtectionAsync(adapter.Name, assignedIpv4).ConfigureAwait(false);
+        await SetWindowsRoutesAsync(adapter, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
+        await EnableDnsLeakProtectionAsync(adapter, assignedIpv4).ConfigureAwait(false);
+        var (tunLuid, _) = ResolveAdapterIdentity(adapter);
+        WindowsSplitTunnelEngine.SyncWfpLeakGuard();
+        Win32WfpLeakGuard.Enable(tunLuid, serverIps);
     }
 
-    public async Task SyncTunnelIpAndRoutesAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, int mtu, CancellationToken ct)
+    public async Task SyncTunnelIpAndRoutesAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, int mtu,
+        CancellationToken ct)
     {
         _ = mtu;
         _ = ct;
@@ -86,9 +93,12 @@ internal sealed partial class WindowsVpnService
         }
 
         using var suppressScope = SuppressNetworkChanges();
-        await SetAdapterConfigAsync(adapter.Name, assignedIpv4, "255.192.0.0", assignedIpv6).ConfigureAwait(false);
-        await SetWindowsRoutesAsync(adapter.Name, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
-        await EnableDnsLeakProtectionAsync(adapter.Name, assignedIpv4).ConfigureAwait(false);
+        await SetAdapterConfigAsync(adapter, assignedIpv4, 10, assignedIpv6).ConfigureAwait(false);
+        await SetWindowsRoutesAsync(adapter, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
+        await EnableDnsLeakProtectionAsync(adapter, assignedIpv4).ConfigureAwait(false);
+        var (tunLuid, _) = ResolveAdapterIdentity(adapter);
+        WindowsSplitTunnelEngine.SyncWfpLeakGuard();
+        Win32WfpLeakGuard.Enable(tunLuid, serverIps);
     }
 
     public void UpdateAdapterMtu(int mtu)
@@ -100,7 +110,7 @@ internal sealed partial class WindowsVpnService
         }
 
         AppLogger.Log($"[SMART MTU] Optimal MTU updated to {mtu}B. Syncing Wintun adapter...");
-        _ = UpdateAdapterMtuAsync(adapter.Name, mtu);
+        _ = UpdateAdapterMtuAsync(adapter, mtu);
     }
 
     public async Task HandlePhysicalUplinkLostAsync()
@@ -108,6 +118,7 @@ internal sealed partial class WindowsVpnService
         ResetSavedPhysicalGateway();
         if (!Preferences.Get(AppPreferenceKeys.KillSwitch, true))
         {
+            Win32WfpLeakGuard.Disable();
             await CleanupStaleRoutesAsync().ConfigureAwait(false);
         }
     }
@@ -116,15 +127,17 @@ internal sealed partial class WindowsVpnService
     {
         if (keepKillSwitch)
         {
+            Win32WfpLeakGuard.Enable(0, serverIps);
             return;
         }
 
         using var suppressScope = SuppressNetworkChanges();
-        var adapterName = _adapter?.Name ?? "Obxodka";
+        Win32WfpLeakGuard.Disable();
+        var adapter = _adapter;
 
         await DisableDnsLeakProtectionAsync().ConfigureAwait(false);
         await RestoreAdapterDnsBackupAsync().ConfigureAwait(false);
-        await SetWindowsRoutesAsync(adapterName, serverIps, assignedIpv4, false).ConfigureAwait(false);
+        await SetWindowsRoutesAsync(adapter, serverIps, assignedIpv4, false).ConfigureAwait(false);
 
         if (_adapter is not null)
         {
@@ -133,7 +146,10 @@ internal sealed partial class WindowsVpnService
                 _adapter.Dispose();
                 _adapter = null;
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
 
         if (_trafficTask is not null)
@@ -142,26 +158,12 @@ internal sealed partial class WindowsVpnService
             {
                 await _trafficTask.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
+
             _trafficTask = null;
-        }
-
-        var deleteHostTasks = new List<Task>();
-        foreach (var ip in serverIps)
-        {
-            if (!string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out _))
-            {
-                deleteHostTasks.Add(RunCmdAsync("route", $"delete {ip} mask 255.255.255.255", timeoutMs: 1500));
-            }
-        }
-
-        if (deleteHostTasks.Count > 0)
-        {
-            try
-            {
-                await Task.WhenAll(deleteHostTasks).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-            }
-            catch { }
         }
 
         ResetSavedPhysicalGateway();

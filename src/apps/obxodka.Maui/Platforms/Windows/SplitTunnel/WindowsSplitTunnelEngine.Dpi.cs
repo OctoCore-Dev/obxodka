@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Text;
-using obxodka.Core.Models;
 using obxodka.Shared.Geo;
 
 namespace obxodka.Platforms.Windows;
@@ -91,17 +90,20 @@ internal static partial class WindowsSplitTunnelEngine
 
         foreach (var line in lines)
         {
-            if (line.StartsWith("Host:", StringComparison.OrdinalIgnoreCase))
+            if (!line.StartsWith("Host:", StringComparison.OrdinalIgnoreCase))
             {
-                var val = line[5..].Trim();
-                var colon = val.IndexOf(':');
-                if (colon > 0)
-                {
-                    val = val[..colon];
-                }
-                host = val.TrimEnd('.');
-                return !string.IsNullOrEmpty(host);
+                continue;
             }
+
+            var val = line[5..].Trim();
+            var colon = val.IndexOf(':');
+            if (colon > 0)
+            {
+                val = val[..colon];
+            }
+
+            host = val.TrimEnd('.');
+            return !string.IsNullOrEmpty(host);
         }
 
         return false;
@@ -168,7 +170,7 @@ internal static partial class WindowsSplitTunnelEngine
         return !string.IsNullOrEmpty(qName);
     }
 
-    //закрепление физических маршрутов для всех ip адресов из ответа dns
+    //закрепление физических маршрутов для всех ip адресов из ответа DNS
     private static void PinBypassedDnsAnswerIps(
         ReadOnlySpan<byte> dnsSpan,
         SplitTunnelPolicy policy,
@@ -206,10 +208,12 @@ internal static partial class WindowsSplitTunnelEngine
             {
                 return;
             }
+
             if (string.IsNullOrEmpty(queriedDomain))
             {
                 queriedDomain = name;
             }
+
             offset += consumed + 4;
         }
 
@@ -228,6 +232,7 @@ internal static partial class WindowsSplitTunnelEngine
             {
                 break;
             }
+
             offset += nameConsumed;
 
             if (offset + 10 > dnsSpan.Length)
@@ -281,6 +286,7 @@ internal static partial class WindowsSplitTunnelEngine
                 {
                     bytesConsumed = current - startOffset + 1;
                 }
+
                 break;
             }
 

@@ -3,12 +3,20 @@ namespace obxodka.Client.Models;
 //элемент списка установленных приложений для раздельного туннелирования
 public class AppInfoItem : INotifyPropertyChanged
 {
+    private string? _iconPath;
+    private bool _isBypassed;
     private string _name = string.Empty;
     private string _packageName = string.Empty;
-    private bool _isBypassed;
-    private string? _iconPath;
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public AppInfoItem() { }
+
+    public AppInfoItem(string name, string packageName, bool isBypassed = false, string? iconPath = null)
+    {
+        _name = name;
+        _packageName = packageName;
+        _isBypassed = isBypassed;
+        _iconPath = iconPath;
+    }
 
     //название приложения
     public string Name
@@ -81,15 +89,7 @@ public class AppInfoItem : INotifyPropertyChanged
     //первая буква для аватарки приложения
     public string InitialLetter => !string.IsNullOrWhiteSpace(_name) ? _name.TrimStart()[0].ToString().ToUpperInvariant() : "?";
 
-    public AppInfoItem() { }
-
-    public AppInfoItem(string name, string packageName, bool isBypassed = false, string? iconPath = null)
-    {
-        _name = name;
-        _packageName = packageName;
-        _isBypassed = isBypassed;
-        _iconPath = iconPath;
-    }
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

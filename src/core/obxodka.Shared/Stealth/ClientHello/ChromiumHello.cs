@@ -13,7 +13,7 @@ public static class ChromiumHello
         0xc02c, // ECDHE-ECDSA-AES256-GCM-SHA384
         0xc030, // ECDHE-RSA-AES256-GCM-SHA384
         0xcca9, // ECDHE-ECDSA-CHACHA20-POLY1305
-        0xcca8  // ECDHE-RSA-CHACHA20-POLY1305
+        0xcca8 // ECDHE-RSA-CHACHA20-POLY1305
     ];
 
     private static readonly ushort[] s_signatureAlgorithms =
@@ -25,7 +25,7 @@ public static class ChromiumHello
         0x0805, // rsa_pss_rsae_sha384
         0x0501, // rsa_pkcs1_sha384
         0x0806, // rsa_pss_rsae_sha512
-        0x0601  // rsa_pkcs1_sha512
+        0x0601 // rsa_pkcs1_sha512
     ];
 
     public static byte[] Build(

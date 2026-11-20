@@ -33,7 +33,10 @@ public sealed partial class AppManager
                 return true;
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         return false;
     }
@@ -60,7 +63,8 @@ public sealed partial class AppManager
 
             var start = colonSlash - 1;
             var end = start;
-            while (end < rawText.Length && rawText[end] >= 32 && rawText[end] != '"' && rawText[end] != '<' && rawText[end] != '>' && rawText[end] != '|')
+            while (end < rawText.Length && rawText[end] >= 32 && rawText[end] != '"' && rawText[end] != '<' && rawText[end] != '>' &&
+                   rawText[end] != '|')
             {
                 end++;
             }

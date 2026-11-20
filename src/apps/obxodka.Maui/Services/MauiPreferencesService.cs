@@ -12,13 +12,13 @@ public sealed class MauiPreferencesService : IPreferencesService
         }
 
         var targetType = typeof(T);
-        if (targetType.IsEnum)
+        if (!targetType.IsEnum)
         {
-            var rawInt = Preferences.Default.Get(key, Convert.ToInt32(defaultValue, CultureInfo.InvariantCulture));
-            return (T)Enum.ToObject(targetType, rawInt);
+            return Preferences.Default.Get(key, defaultValue);
         }
 
-        return Preferences.Default.Get(key, defaultValue);
+        var rawInt = Preferences.Default.Get(key, Convert.ToInt32(defaultValue, CultureInfo.InvariantCulture));
+        return (T)Enum.ToObject(targetType, rawInt);
     }
 
     //сохранение значения настройки в платформенное хранилище

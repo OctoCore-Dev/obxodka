@@ -1,11 +1,11 @@
 namespace obxodka.Client.Tests;
 
 [Trait("Category", "Unit")]
-public partial class ApiServiceTests : IDisposable
+public class ApiServiceTests : IDisposable
 {
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
     private readonly ApiService _apiService;
+    private readonly HttpClient _httpClient;
+    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
 
     public ApiServiceTests()
     {
@@ -15,6 +15,12 @@ public partial class ApiServiceTests : IDisposable
             BaseAddress = new Uri("http://localhost:5000/")
         };
         _apiService = new ApiService(_httpClient);
+    }
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     [Fact]
@@ -75,7 +81,7 @@ public partial class ApiServiceTests : IDisposable
         using var response = new HttpResponseMessage
         {
             StatusCode = HttpStatusCode.BadRequest,
-            Content = new StringContent(/*lang=json,strict*/ "{\"message\":\"Некорректный email.\"}", Encoding.UTF8, "application/json")
+            Content = new StringContent( /*lang=json,strict*/ "{\"message\":\"Некорректный email.\"}", Encoding.UTF8, "application/json")
         };
         _ = _httpMessageHandlerMock
             .Protected()
@@ -96,7 +102,8 @@ public partial class ApiServiceTests : IDisposable
     public async Task VerifyCodeAsyncWhenValidReturnsLoginResponseAsync()
     {
         var request = new EmailVerifyRequest("test@example.com", "123456", "test_hwid", "MyPhone");
-        var rawJson = /*lang=json,strict*/ "{\"token\":\"jwt_token_sample\",\"vpnConfig\":\"vpn_config_data\",\"certThumbprint\":\"CERT_123\",\"balanceSeconds\":3600,\"email\":\"test@example.com\"}";
+        var rawJson = /*lang=json,strict*/
+            "{\"token\":\"jwt_token_sample\",\"vpnConfig\":\"vpn_config_data\",\"certThumbprint\":\"CERT_123\",\"balanceSeconds\":3600,\"email\":\"test@example.com\"}";
 
         using var response = new HttpResponseMessage
         {
@@ -157,7 +164,8 @@ public partial class ApiServiceTests : IDisposable
         using var response = new HttpResponseMessage
         {
             StatusCode = HttpStatusCode.OK,
-            Content = new StringContent("""{"credited":true,"balanceSeconds":2703600,"pendingCount":0}""", Encoding.UTF8, "application/json")
+            Content = new StringContent("""{"credited":true,"balanceSeconds":2703600,"pendingCount":0}""", Encoding.UTF8,
+                "application/json")
         };
 
         _ = _httpMessageHandlerMock
@@ -177,11 +185,4 @@ public partial class ApiServiceTests : IDisposable
         Assert.Equal(2703600L, data.BalanceSeconds);
         Assert.Equal(0, data.PendingCount);
     }
-
-    public void Dispose()
-    {
-        _httpClient.Dispose();
-        GC.SuppressFinalize(this);
-    }
 }
-

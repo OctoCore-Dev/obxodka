@@ -8,6 +8,9 @@ public static class SmartMtuEngine
     public const int MinMtu = 1200;
     public const int MaxMtu = 1500;
 
+    //шаги эскалации для залповой проверки проходимости канала (burst probing)
+    public static readonly int[] MtuEscalationSteps = [1200, 1240, 1280, 1300, 1320, 1360, 1400, 1420];
+
     //текущий рабочий размер mtu туннеля (потокобезопасный единый источник истины)
     public static int CurrentMtu
     {
@@ -17,11 +20,8 @@ public static class SmartMtuEngine
         set => Volatile.Write(ref field, ClampMtu(value));
     } = InitialMtu;
 
-    //шаги эскалации для залповой проверки проходимости канала (burst probing)
-    public static readonly int[] MtuEscalationSteps = [1200, 1240, 1280, 1300, 1320, 1360, 1400, 1420];
-
     //кандидаты размеров mtu для точного сканирования
-    public static int[] MtuCandidates => GenerateMtuScanCandidates(MaxMtu, MinMtu, 8);
+    public static int[] MtuCandidates => GenerateMtuScanCandidates();
 
     //генерация сетки кандидатов mtu от максимума к минимуму с заданным шагом
     public static int[] GenerateMtuScanCandidates(int max = MaxMtu, int min = MinMtu, int step = 8)
@@ -31,10 +31,12 @@ public static class SmartMtuEngine
         {
             candidates.Add(m);
         }
+
         if (candidates.Count == 0 || candidates[^1] != min)
         {
             candidates.Add(min);
         }
+
         return [.. candidates];
     }
 
@@ -110,20 +112,24 @@ public static class SmartMtuEngine
             {
                 break;
             }
+
             if (kind == 1)
             {
                 idx++;
                 continue;
             }
+
             if (idx + 1 >= options.Length)
             {
                 break;
             }
+
             var len = options[idx + 1];
             if (len < 2 || idx + len > options.Length)
             {
                 break;
             }
+
             if (kind == 2 && len == 4)
             {
                 var currentMss = BinaryPrimitives.ReadUInt16BigEndian(options.Slice(idx + 2, 2));
@@ -132,10 +138,13 @@ public static class SmartMtuEngine
                     BinaryPrimitives.WriteUInt16BigEndian(options.Slice(idx + 2, 2), maxMss);
                     return true;
                 }
+
                 return false;
             }
+
             idx += len;
         }
+
         return false;
     }
 
@@ -146,17 +155,20 @@ public static class SmartMtuEngine
 
     //формирование пакета icmp fragmentation needed (type 3, code 4) для аппаратного pmtud ipv4
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryBuildIcmpFragmentationNeeded(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket, out int icmpLen) =>
+    public static bool TryBuildIcmpFragmentationNeeded(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket,
+        out int icmpLen) =>
         Ipv4MtuHandler.TryBuildIcmpFragmentationNeeded(packet, length, clientMtu, out icmpPacket, out icmpLen);
 
     //формирование пакета icmpv6 packet too big (type 2, code 0) для аппаратного pmtud ipv6
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryBuildIcmpPacketTooBig(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket, out int icmpLen) =>
+    public static bool TryBuildIcmpPacketTooBig(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket,
+        out int icmpLen) =>
         Ipv6MtuHandler.TryBuildIcmpPacketTooBig(packet, length, clientMtu, out icmpPacket, out icmpLen);
 
     //формирование пакета icmpv6 packet too big (алиас для совместимости)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryBuildIcmpV6PacketTooBig(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket, out int icmpLen) =>
+    public static bool TryBuildIcmpV6PacketTooBig(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket,
+        out int icmpLen) =>
         Ipv6MtuHandler.TryBuildIcmpPacketTooBig(packet, length, clientMtu, out icmpPacket, out icmpLen);
 
     //пересчет контрольной суммы заголовка ipv4

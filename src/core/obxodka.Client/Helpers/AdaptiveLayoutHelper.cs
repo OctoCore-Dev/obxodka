@@ -3,13 +3,13 @@ namespace obxodka.Helpers;
 //адаптивный расчет размеров элементов интерфейса vpn для разных экранов
 public static class AdaptiveLayoutHelper
 {
-    public const double WideBreakpointWidth = 700.0;
-    public const double MediumBreakpointWidth = 600.0;
-    public const double ShortScreenBreakpointHeight = 520.0;
+    private const double WideBreakpointWidth = 700.0;
+    private const double MediumBreakpointWidth = 600.0;
+    private const double ShortScreenBreakpointHeight = 520.0;
 
     //широкий макет планшет или десктоп
     public static bool IsWideLayout(double width, bool isDesktopOrTablet = false) =>
-        width <= 0 ? isDesktopOrTablet : width >= WideBreakpointWidth || (isDesktopOrTablet && width >= MediumBreakpointWidth);
+        width <= 0 ? isDesktopOrTablet : width >= WideBreakpointWidth || isDesktopOrTablet && width >= MediumBreakpointWidth;
 
     //короткий экран смартфона
     public static bool IsShortScreen(double height) =>
@@ -48,20 +48,22 @@ public static class AdaptiveLayoutHelper
         var minGraph = isShort ? 50.0 : 75.0;
         var graphHeight = Math.Clamp(Math.Round(flex - buttonSize - 10.0), minGraph, 180.0);
 
-        if (buttonSize + graphHeight + fixedOverhead > availableH)
+        if (!(buttonSize + graphHeight + fixedOverhead > availableH))
         {
-            var excess = buttonSize + graphHeight + fixedOverhead - availableH;
-            var minG = isShort ? 50.0 : 70.0;
-            if (graphHeight - excess >= minG)
-            {
-                graphHeight -= excess;
-            }
-            else
-            {
-                var remainingExcess = excess - (graphHeight - minG);
-                graphHeight = minG;
-                buttonSize = Math.Max(minButton, buttonSize - remainingExcess);
-            }
+            return (buttonSize, graphHeight, bottomNavReserve);
+        }
+
+        var excess = buttonSize + graphHeight + fixedOverhead - availableH;
+        var minG = isShort ? 50.0 : 70.0;
+        if (graphHeight - excess >= minG)
+        {
+            graphHeight -= excess;
+        }
+        else
+        {
+            var remainingExcess = excess - (graphHeight - minG);
+            graphHeight = minG;
+            buttonSize = Math.Max(minButton, buttonSize - remainingExcess);
         }
 
         return (buttonSize, graphHeight, bottomNavReserve);

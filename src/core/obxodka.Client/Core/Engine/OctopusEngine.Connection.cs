@@ -2,9 +2,78 @@ namespace obxodka.Core;
 
 public sealed partial class OctopusEngine
 {
+    private readonly Lock _serverIpsLock = new();
     private volatile uint[] _serverIpv4Array = [];
     private volatile byte[][] _serverIpv6Array = [];
-    private readonly Lock _serverIpsLock = new();
+
+    //асинхронное освобождение ресурсов движка
+    public async ValueTask DisposeAsync()
+    {
+        Volatile.Write(ref _watchdogArmedTicks, 0);
+        _smoothedPing = 0;
+        var scanCts = Interlocked.Exchange(ref _mtuScanCts, null);
+        if (scanCts is not null)
+        {
+            try
+            {
+                using (scanCts)
+                {
+                    await scanCts.CancelAsync().ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
+            {
+                //подавление ошибки отмены сканирования mtu при остановке
+            }
+        }
+
+        var engineCts = Interlocked.Exchange(ref _cts, null);
+        if (engineCts is not null)
+        {
+            using (engineCts)
+            {
+                await engineCts.CancelAsync().ConfigureAwait(false);
+            }
+        }
+
+        Interlocked.Exchange(ref _clientCert, null)?.Dispose();
+
+        var transport = Interlocked.Exchange(ref _transport, null);
+        if (transport is not null)
+        {
+            await transport.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    //синхронное освобождение ресурсов движка
+    public void Dispose()
+    {
+        Volatile.Write(ref _watchdogArmedTicks, 0);
+        var scanCts = Interlocked.Exchange(ref _mtuScanCts, null);
+        if (scanCts is not null)
+        {
+            try
+            {
+                scanCts.Cancel();
+                scanCts.Dispose();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
+            {
+                //подавление ошибки отмены токена сканирования mtu
+            }
+        }
+
+        var engineCts = Interlocked.Exchange(ref _cts, null);
+        if (engineCts is not null)
+        {
+            engineCts.Cancel();
+            engineCts.Dispose();
+        }
+
+        Interlocked.Exchange(ref _clientCert, null)?.Dispose();
+
+        Interlocked.Exchange(ref _transport, null)?.Dispose();
+    }
 
     //добавление уже известных ip адресов сервера в таблицу исключений без блокирующего dns
     private void RegisterServerIpAddresses(IEnumerable<IPAddress> addresses)
@@ -17,36 +86,45 @@ public sealed partial class OctopusEngine
 
             foreach (var ip in addresses)
             {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                switch (ip.AddressFamily)
                 {
-                    var u = BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
-                    if (!v4List.Contains(u))
-                    {
-                        v4List.Add(u);
-                        changed = true;
-                    }
-                }
-                else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-                {
-                    var b = ip.GetAddressBytes();
-                    if (!v6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
-                    {
-                        v6List.Add(b);
-                        changed = true;
-                    }
+                    case AddressFamily.InterNetwork:
+                        {
+                            var u = BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
+                            if (!v4List.Contains(u))
+                            {
+                                v4List.Add(u);
+                                changed = true;
+                            }
+
+                            break;
+                        }
+                    case AddressFamily.InterNetworkV6:
+                        {
+                            var b = ip.GetAddressBytes();
+                            if (!v6List.Any(existing => existing.AsSpan().SequenceEqual(b)))
+                            {
+                                v6List.Add(b);
+                                changed = true;
+                            }
+
+                            break;
+                        }
                 }
             }
 
-            if (changed)
+            if (!changed)
             {
-                _serverIpv4Array = [.. v4List];
-                _serverIpv6Array = [.. v6List];
+                return;
             }
+
+            _serverIpv4Array = [.. v4List];
+            _serverIpv6Array = [.. v6List];
         }
     }
 
     //регистрация ip адресов сервера для исключения из туннеля во избежание петель маршрутизации
-    public void RegisterServerEndpoint(string serverIp)
+    private void RegisterServerEndpoint(string serverIp)
     {
         if (string.IsNullOrWhiteSpace(serverIp))
         {
@@ -80,36 +158,41 @@ public sealed partial class OctopusEngine
         }
 
         var version = packet[0] >> 4;
-        if (version == 4)
+        switch (version)
         {
-            var dst = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(16, 4));
-            var v4 = _serverIpv4Array;
-            for (var i = 0; i < v4.Length; i++)
-            {
-                if (v4[i] == dst)
+            case 4:
                 {
-                    return true;
+                    var dst = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(16, 4));
+                    var v4 = _serverIpv4Array;
+                    if (v4.Any(t => t == dst))
+                    {
+                        return true;
+                    }
+
+                    break;
                 }
-            }
-        }
-        else if (version == 6 && length >= 40)
-        {
-            var dstSpan = packet.Slice(24, 16);
-            var v6 = _serverIpv6Array;
-            for (var i = 0; i < v6.Length; i++)
-            {
-                if (dstSpan.SequenceEqual(v6[i]))
+            case 6 when length >= 40:
                 {
-                    return true;
+                    var dstSpan = packet.Slice(24, 16);
+                    var v6 = _serverIpv6Array;
+                    foreach (var t in v6)
+                    {
+                        if (dstSpan.SequenceEqual(t))
+                        {
+                            return true;
+                        }
+                    }
+
+                    break;
                 }
-            }
         }
 
         return false;
     }
 
     //подключение к vpn серверу по круговому конвейеру протоколов и серверов с обязательной проверкой rx > 0
-    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области", Justification = "Владение транспортом хранится в _transport и освобождается при замене или в DisposeAsync")]
+    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области",
+        Justification = "Владение транспортом хранится в _transport и освобождается при замене или в DisposeAsync")]
     public async Task<ProtocolRouteStep> ConnectRotationRingAsync(
         IReadOnlyList<ProtocolRouteStep> ring,
         Func<ProtocolRouteStep, CancellationToken, Task>? prepareTunnelBeforeVerifyAsync = null,
@@ -183,7 +266,8 @@ public sealed partial class OctopusEngine
                 WireTransportEvents(transport);
 
                 EmitStatus(VpnStatusMessages.TryingProtocol(stepProtocol, i + 1, _rotationRing.Count));
-                AppLogger.Log($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count}: {transport.ProtocolName} -> {step.Host}:{step.Port} (SNI={step.TargetSni ?? "none"})");
+                AppLogger.Log(
+                    $"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count}: {transport.ProtocolName} -> {step.Host}:{step.Port} (SNI={step.TargetSni ?? "none"})");
 
                 var (ip, ip6) = await transport.ConnectAsync(step.Host, _clientCert?.Thumbprint ?? "", stepToken).ConfigureAwait(false);
                 AssignedIp = ip;
@@ -195,24 +279,28 @@ public sealed partial class OctopusEngine
                 }
 
                 //жесткая проверка двустороннего трафика: без реального rx/cmdpong шаг считается мертвым
-                var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), forceFreshProbe: true, ct: stepToken).ConfigureAwait(false);
+                var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), true, stepToken).ConfigureAwait(false);
                 if (!verified)
                 {
-                    AppLogger.LogWarning($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count} ({transport.ProtocolName} @ {step.Host}) returned 0 RX. Rotating...");
+                    AppLogger.LogWarning(
+                        $"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count} ({transport.ProtocolName} @ {step.Host}) returned 0 RX. Rotating...");
                     if (transport is IHealthAwareTransport healthAware)
                     {
                         healthAware.ReportUnhealthyEndpoint();
                     }
 
-                    if (!step.IsShield && step.Kind == TransportProtocolKind.ObxodkaStream)
+                    if (step is { IsShield: false, Kind: TransportProtocolKind.ObxodkaStream })
                     {
                         MarkNodeByteCapped(step.Host);
                     }
 
-                    lastException = new TimeoutException($"Протокол {transport.ProtocolName} ({step.Host}:{step.Port}) не получил ответных пакетов (0 RX).");
+                    lastException =
+                        new TimeoutException(
+                            $"Протокол {transport.ProtocolName} ({step.Host}:{step.Port}) не получил ответных пакетов (0 RX).");
                     if (i + 1 < _rotationRing.Count)
                     {
-                        EmitStatus(VpnStatusMessages.ProtocolUnavailableSwitching(stepProtocol, FormatStepProtocolName(_rotationRing[i + 1])));
+                        EmitStatus(VpnStatusMessages.ProtocolUnavailableSwitching(stepProtocol,
+                            FormatStepProtocolName(_rotationRing[i + 1])));
                     }
 
                     await DisposeAttemptTransportAsync(transport).ConfigureAwait(false);
@@ -221,7 +309,8 @@ public sealed partial class OctopusEngine
 
                 _rotationStepIndex = i;
                 Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
-                AppLogger.Log($"[OCTOPUS-RING] Connected & verified (RX OK): {transport.ProtocolName} @ {step.Host}:{step.Port} -> IPv4={ip}, IPv6={ip6}");
+                AppLogger.Log(
+                    $"[OCTOPUS-RING] Connected & verified (RX OK): {transport.ProtocolName} @ {step.Host}:{step.Port} -> IPv4={ip}, IPv6={ip6}");
                 StartTrafficMonitor();
                 ArmTrafficWatchdog();
                 return step;
@@ -234,7 +323,8 @@ public sealed partial class OctopusEngine
             catch (Exception ex) when (ex is not OutOfMemoryException and not UnauthorizedAccessException)
             {
                 lastException = ex;
-                AppLogger.LogWarning($"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count} ({step.Kind} @ {step.Host}:{step.Port}) failed: {ex.Message}");
+                AppLogger.LogWarning(
+                    $"[OCTOPUS-RING] Step {i + 1}/{_rotationRing.Count} ({step.Kind} @ {step.Host}:{step.Port}) failed: {ex.Message}");
                 if (transport is IHealthAwareTransport healthAware)
                 {
                     healthAware.ReportUnhealthyEndpoint();
@@ -250,7 +340,8 @@ public sealed partial class OctopusEngine
         }
 
         await DisposeAsync().ConfigureAwait(false);
-        throw lastException ?? new InvalidOperationException("Не удалось установить двустороннее соединение (0 RX) ни по одному из протоколов.");
+        throw lastException ??
+              new InvalidOperationException("Не удалось установить двустороннее соединение (0 RX) ни по одному из протоколов.");
     }
 
     //загрузка и валидация клиентского сертификата из сохранённой сессии
@@ -265,7 +356,8 @@ public sealed partial class OctopusEngine
         var certBytes = Convert.FromBase64String(session.VpnConfig);
         try
         {
-            var loadedCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+            var loadedCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword,
+                X509KeyStorageFlags.EphemeralKeySet);
             Interlocked.Exchange(ref _clientCert, loadedCert)?.Dispose();
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException or PlatformNotSupportedException or ArgumentException)
@@ -279,7 +371,7 @@ public sealed partial class OctopusEngine
     //регистрация внешних ip адреса назначения для bypass-маршрута ос перед открытием сокета без синхронной блокировки dns
     private async Task PrepareExternalEndpointBypassAsync(ProtocolRouteStep step, CancellationToken ct)
     {
-        HashSet<string> ips = [with(StringComparer.OrdinalIgnoreCase)];
+        var ips = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (IPAddress.TryParse(step.Host, out var literalIp))
         {
@@ -310,11 +402,13 @@ public sealed partial class OctopusEngine
 
         foreach (var relayIp in AppConfig.DirectRelayIps)
         {
-            if (!string.IsNullOrWhiteSpace(relayIp) && IPAddress.TryParse(relayIp, out var relayParsed))
+            if (string.IsNullOrWhiteSpace(relayIp) || !IPAddress.TryParse(relayIp, out var relayParsed))
             {
-                _ = ips.Add(relayIp);
-                RegisterServerIpAddresses([relayParsed]);
+                continue;
             }
+
+            _ = ips.Add(relayIp);
+            RegisterServerIpAddresses([relayParsed]);
         }
 
         var hook = EnsureExternalHostRoutesAsync;
@@ -337,15 +431,17 @@ public sealed partial class OctopusEngine
         {
             await transport.DisposeAsync().ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException
+                                       or SocketException)
         {
             //подавление ошибки закрытия неудачного транспорта
         }
     }
 
     //подключение к vpn серверу и инициализация транспорта
-    public async Task ConnectAsync(string serverIp, int serverPort, string? targetSni = null)
+    private async Task ConnectAsync(string serverIp, int serverPort, string? targetSni = null, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         if (IsConnected)
         {
             return;
@@ -362,7 +458,8 @@ public sealed partial class OctopusEngine
             !IPAddress.IsLoopback(directCandidateIp) &&
             IsNodeByteCapped(serverIp))
         {
-            AppLogger.LogWarning($"[OCTOPUS-SHIELD] Direct node {serverIp} is penalized by TSPU byte-cap detector. Routing via Shield '{AppConfig.PrimaryDomain}'.");
+            AppLogger.LogWarning(
+                $"[OCTOPUS-SHIELD] Direct node {serverIp} is penalized by TSPU byte-cap detector. Routing via Shield '{AppConfig.PrimaryDomain}'.");
             serverIp = AppConfig.PrimaryDomain;
             serverPort = 443;
             targetSni = AppConfig.PrimaryDomain;
@@ -387,7 +484,8 @@ public sealed partial class OctopusEngine
         var certBytes = Convert.FromBase64String(session.VpnConfig);
         try
         {
-            _clientCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+            _clientCert = X509CertificateLoader.LoadPkcs12(certBytes, AppSecrets.InternalPfxPassword,
+                X509KeyStorageFlags.EphemeralKeySet);
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException or PlatformNotSupportedException or ArgumentException)
         {
@@ -397,6 +495,8 @@ public sealed partial class OctopusEngine
         }
 
         _cts = new CancellationTokenSource();
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct);
+        var transportToken = linkedCts.Token;
         ActiveRays = 2;
 
         if (!string.IsNullOrWhiteSpace(targetSni))
@@ -418,7 +518,8 @@ public sealed partial class OctopusEngine
             DynamicSslPublicKeyHash = null;
         }
 
-        AppLogger.Log($"[OCTOPUS] Initializing transport (mode: {(strategy.UseWebSocket ? "WebSocket" : "H2Stream")}) to {serverIp}:{serverPort} with SNI '{strategy.EffectiveSni ?? "none"}'");
+        AppLogger.Log(
+            $"[OCTOPUS] Initializing transport (mode: {(strategy.UseWebSocket ? "WebSocket" : "H2Stream")}) to {serverIp}:{serverPort} with SNI '{strategy.EffectiveSni ?? "none"}'");
         IVpnTransport transport = strategy.UseWebSocket
             ? new ObxodkaWebSocketTransport(serverPort, strategy.EffectiveSni)
             : new ObxodkaStreamTransport(serverPort, strategy.EffectiveSni);
@@ -426,6 +527,7 @@ public sealed partial class OctopusEngine
         {
             transport.ProtectSockets(_protectAction);
         }
+
         _transport = transport;
         ActiveProtocol = transport.ProtocolName;
         ActiveProtocolDisplayName = VpnStatusMessages.FormatProtocolName(transport.ProtocolName, strategy.UseWebSocket);
@@ -433,7 +535,7 @@ public sealed partial class OctopusEngine
         OnProtocolChanged?.Invoke();
         WireTransportEvents(transport);
 
-        var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", _cts.Token);
+        var (ip, ip6) = await transport.ConnectAsync(serverIp, _clientCert?.Thumbprint ?? "", transportToken).ConfigureAwait(false);
         AssignedIp = ip;
         AssignedIpV6 = ip6;
         AppLogger.Log($"[OCTOPUS] Handshake complete with {serverIp}:{serverPort}! Assigned IPv4: {ip}, IPv6: {ip6}");
@@ -451,6 +553,7 @@ public sealed partial class OctopusEngine
             {
                 _ = Interlocked.Increment(ref _largeRxPackets);
             }
+
             OnProbePacketInspect?.Invoke(pkt, len);
             var handler = OnPacketReceived;
             if (handler is not null)
@@ -474,17 +577,19 @@ public sealed partial class OctopusEngine
         {
             if (ReferenceEquals(_transport, transport))
             {
+                SmartMtuEngine.CurrentMtu = mtu;
                 OnMtuUpdated?.Invoke(mtu);
             }
         };
     }
 
     //обратная совместимость: переключение на следующий живой протокол по кругу при заморозке
-    public Task<bool> TryEscalateToShieldAsync(string reason, CancellationToken ct = default) =>
+    private Task<bool> TryEscalateToShieldAsync(string reason, CancellationToken ct = default) =>
         TryRotateProtocolAsync(reason, ct);
 
     //бесшовная круговая ротация протокола (obxodka stream -> websocket -> xhttp -> резервные узлы) с проверкой rx > 0
-    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области", Justification = "Владение передается в _transport через Interlocked.Exchange либо освобождается через DisposeAsync в finally")]
+    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области",
+        Justification = "Владение передается в _transport через Interlocked.Exchange либо освобождается через DisposeAsync в finally")]
     public async Task<bool> TryRotateProtocolAsync(string reason, CancellationToken ct = default)
     {
         if (_clientCert is null || _cts is null || _cts.IsCancellationRequested)
@@ -549,8 +654,7 @@ public sealed partial class OctopusEngine
                 var nextStep = _rotationRing[candidateIdx];
 
                 //если прямой узел не отвечает в префлайте или попал под лимит тспу, пропускаем прямые шаги и чередуем щиты
-                if (!nextStep.IsShield &&
-                    (nextStep.Kind is TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaXhttp) &&
+                if (nextStep is { IsShield: false, Kind: TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaXhttp } &&
                     IsNodeByteCapped(nextStep.Host))
                 {
                     continue;
@@ -563,7 +667,8 @@ public sealed partial class OctopusEngine
                 EmitStatus(failedCandidateName is null
                     ? VpnStatusMessages.RotatingProtocol(nextProtocolName)
                     : VpnStatusMessages.ProtocolUnavailableSwitching(failedCandidateName, nextProtocolName));
-                AppLogger.LogWarning($"[OCTOPUS-ROTATE] {reason}: trying step {candidateIdx + 1}/{totalSteps} ({nextStep.Kind} -> {nextStep.Host}:{nextStep.Port})");
+                AppLogger.LogWarning(
+                    $"[OCTOPUS-ROTATE] {reason}: trying step {candidateIdx + 1}/{totalSteps} ({nextStep.Kind} -> {nextStep.Host}:{nextStep.Port})");
 
                 candidateTransport = ProtocolPipelineRegistry.CreateTransport(nextStep, AssignedIp);
                 if (_protectAction is not null)
@@ -578,20 +683,22 @@ public sealed partial class OctopusEngine
                     using var rotateTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                     using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct, rotateTimeoutCts.Token);
 
-                    var (newIp, newIp6) = await candidateTransport.ConnectAsync(nextStep.Host, _clientCert.Thumbprint, linkedCts.Token).ConfigureAwait(false);
+                    var (newIp, newIp6) = await candidateTransport.ConnectAsync(nextStep.Host, _clientCert.Thumbprint, linkedCts.Token)
+                        .ConfigureAwait(false);
 
                     //временно переключаем активный транспорт для честного живого эхо-зонда на новом канале
                     _ = Interlocked.Exchange(ref _transport, candidateTransport);
-                    var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), forceFreshProbe: true, ct: linkedCts.Token).ConfigureAwait(false);
+                    var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), true, linkedCts.Token).ConfigureAwait(false);
                     if (!verified)
                     {
-                        AppLogger.LogWarning($"[OCTOPUS-ROTATE] Candidate {nextStep.Kind} @ {nextStep.Host} yielded 0 RX. Advancing ring...");
+                        AppLogger.LogWarning(
+                            $"[OCTOPUS-ROTATE] Candidate {nextStep.Kind} @ {nextStep.Host} yielded 0 RX. Advancing ring...");
                         if (candidateTransport is IHealthAwareTransport badCandidate)
                         {
                             badCandidate.ReportUnhealthyEndpoint();
                         }
 
-                        if (!nextStep.IsShield && nextStep.Kind == TransportProtocolKind.ObxodkaStream)
+                        if (nextStep is { IsShield: false, Kind: TransportProtocolKind.ObxodkaStream })
                         {
                             MarkNodeByteCapped(nextStep.Host);
                         }
@@ -632,14 +739,16 @@ public sealed partial class OctopusEngine
                         {
                             await originalTransport.DisposeAsync().ConfigureAwait(false);
                         }
-                        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+                        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException
+                                                       or IOException or SocketException)
                         {
                             //подавление ошибки закрытия предыдущего транспорта
                         }
                     }
 
                     EmitStatus(VpnStatusMessages.ProtocolSwitched(nextProtocolName));
-                    AppLogger.Log($"[OCTOPUS-ROTATE] Seamless switch succeeded! Active={ActiveProtocol} @ {ConnectedServerIp}:{ConnectedServerPort} (TUN={AssignedIp})");
+                    AppLogger.Log(
+                        $"[OCTOPUS-ROTATE] Seamless switch succeeded! Active={ActiveProtocol} @ {ConnectedServerIp}:{ConnectedServerPort} (TUN={AssignedIp})");
                     if (swappedTransport is ObxodkaStreamTransport)
                     {
                         ScheduleSmartMtuScan(1500);
@@ -651,7 +760,9 @@ public sealed partial class OctopusEngine
 
                     return true;
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or WebSocketException or HttpRequestException or InvalidOperationException or CryptographicException or ObjectDisposedException)
+                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException
+                                               or WebSocketException or HttpRequestException or InvalidOperationException
+                                               or CryptographicException or ObjectDisposedException)
                 {
                     failedCandidateName = nextProtocolName;
                     AppLogger.LogWarning($"[OCTOPUS-ROTATE] Step {nextStep.Kind} @ {nextStep.Host} failed: {ex.Message}");
@@ -671,9 +782,11 @@ public sealed partial class OctopusEngine
                         {
                             await candidateTransport.DisposeAsync().ConfigureAwait(false);
                         }
-                        catch (Exception disposeEx) when (disposeEx is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+                        catch (Exception disposeEx) when (disposeEx is OperationCanceledException or ObjectDisposedException
+                                                              or TimeoutException or IOException or SocketException)
                         {
                         }
+
                         candidateTransport = null;
                     }
                 }
@@ -689,29 +802,33 @@ public sealed partial class OctopusEngine
                 {
                     await candidateTransport.DisposeAsync().ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException
+                                               or SocketException)
                 {
                 }
             }
+
             Volatile.Write(ref _isEscalatingToShield, 0);
             _ = _rotationGate.Release();
         }
     }
 
     //реконнект с использованием сохраненных параметров или кругового конвейера протоколов (ssot)
-    public async Task ReconnectAsync()
+    public Task ReconnectAsync(CancellationToken ct = default) =>
+        ReconnectCoreAsync(ct);
+
+    private async Task ReconnectCoreAsync(CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (_rotationRing.Count > 0)
         {
             var rotatedRing = new List<ProtocolRouteStep>(_rotationRing.Count);
             var startIdx = (_rotationStepIndex + 1) % _rotationRing.Count;
-            for (var i = 0; i < _rotationRing.Count; i++)
-            {
-                rotatedRing.Add(_rotationRing[(startIdx + i) % _rotationRing.Count]);
-            }
+            rotatedRing.AddRange(_rotationRing.Select((t, i) => _rotationRing[(startIdx + i) % _rotationRing.Count]));
 
             await DisposeAsync().ConfigureAwait(false);
-            _ = await ConnectRotationRingAsync(rotatedRing).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            _ = await ConnectRotationRingAsync(rotatedRing, ct: ct).ConfigureAwait(false);
             return;
         }
 
@@ -723,16 +840,18 @@ public sealed partial class OctopusEngine
             throw new InvalidOperationException("Невозможно переподключиться без предварительно установленного соединения.");
         }
 
-        await ReconnectAsync(ip, port, sni);
+        await ReconnectAsync(ip, port, sni, ct).ConfigureAwait(false);
     }
 
     //переподключение к vpn серверу с новыми параметрами
-    public async Task ReconnectAsync(string serverIp, int serverPort, string? targetSni = null)
+    private async Task ReconnectAsync(string serverIp, int serverPort, string? targetSni, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ConnectedServerIp = serverIp;
         ConnectedServerPort = serverPort;
-        await DisposeAsync();
-        await ConnectAsync(serverIp, serverPort, targetSni ?? ActiveTargetSni);
+        await DisposeAsync().ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        await ConnectAsync(serverIp, serverPort, targetSni ?? ActiveTargetSni, ct).ConfigureAwait(false);
     }
 
     //установка платформенного обработчика защиты сокетов
@@ -752,47 +871,6 @@ public sealed partial class OctopusEngine
         _protectAction?.Invoke(socket);
     }
 
-    //асинхронное освобождение ресурсов движка
-    public async ValueTask DisposeAsync()
-    {
-        Volatile.Write(ref _watchdogArmedTicks, 0);
-        _smoothedPing = 0;
-        var scanCts = Interlocked.Exchange(ref _mtuScanCts, null);
-        if (scanCts is not null)
-        {
-            try
-            {
-                using (scanCts)
-                {
-                    await scanCts.CancelAsync().ConfigureAwait(false);
-                }
-            }
-            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
-            {
-                //подавление ошибки отмены сканирования mtu при остановке
-            }
-        }
-
-        var engineCts = Interlocked.Exchange(ref _cts, null);
-        if (engineCts is not null)
-        {
-            using (engineCts)
-            {
-                await engineCts.CancelAsync().ConfigureAwait(false);
-            }
-        }
-
-        Interlocked.Exchange(ref _clientCert, null)?.Dispose();
-
-        var transport = Interlocked.Exchange(ref _transport, null);
-        if (transport is not null)
-        {
-            await transport.DisposeAsync().ConfigureAwait(false);
-        }
-
-        GC.SuppressFinalize(this);
-    }
-
     //получение понятного названия протокола для шага кругового конвейера
     private static string FormatStepProtocolName(ProtocolRouteStep step)
     {
@@ -800,37 +878,5 @@ public sealed partial class OctopusEngine
             ? factory.DisplayName
             : step.Kind.ToString();
         return VpnStatusMessages.FormatProtocolName(rawName, step.IsShield);
-    }
-
-    //синхронное освобождение ресурсов движка
-    public void Dispose()
-    {
-        Volatile.Write(ref _watchdogArmedTicks, 0);
-        var scanCts = Interlocked.Exchange(ref _mtuScanCts, null);
-        if (scanCts is not null)
-        {
-            try
-            {
-                scanCts.Cancel();
-                scanCts.Dispose();
-            }
-            catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
-            {
-                //подавление ошибки отмены токена сканирования mtu
-            }
-        }
-
-        var engineCts = Interlocked.Exchange(ref _cts, null);
-        if (engineCts is not null)
-        {
-            engineCts.Cancel();
-            engineCts.Dispose();
-        }
-
-        Interlocked.Exchange(ref _clientCert, null)?.Dispose();
-
-        Interlocked.Exchange(ref _transport, null)?.Dispose();
-
-        GC.SuppressFinalize(this);
     }
 }

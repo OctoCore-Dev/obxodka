@@ -64,13 +64,15 @@ public static class InSituDiagnosticsEngine
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == 10054)
             {
                 sw.Stop();
-                return (ttl, $"Обнаружен инжектированный TCP RST на хопе {ttl} (RTT: {sw.ElapsedMilliseconds} ms) -> Точная дистанция до ТСПУ: {ttl} хопов");
+                return (ttl,
+                    $"Обнаружен инжектированный TCP RST на хопе {ttl} (RTT: {sw.ElapsedMilliseconds} ms) -> Точная дистанция до ТСПУ: {ttl} хопов");
             }
             catch (OperationCanceledException)
             {
                 //таймаут пробы на текущем хопе ttl
             }
-            catch (SocketException ex) when (ex.SocketErrorCode is SocketError.TimedOut or SocketError.HostUnreachable or SocketError.NetworkUnreachable)
+            catch (SocketException ex) when (ex.SocketErrorCode is SocketError.TimedOut or SocketError.HostUnreachable
+                                                 or SocketError.NetworkUnreachable)
             {
                 //штатное истечение ttl без сброса от тспу
             }
@@ -159,7 +161,8 @@ public static class InSituDiagnosticsEngine
                     results.Add($"{name}: HTTP {(int)resp.StatusCode}");
                 }
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException
+                                           or OperationCanceledException)
             {
                 results.Add($"{name}: БЛОКИРОВКА ({ex.Message})");
             }

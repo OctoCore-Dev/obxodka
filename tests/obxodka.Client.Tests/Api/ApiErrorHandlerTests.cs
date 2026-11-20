@@ -4,8 +4,10 @@ namespace obxodka.Client.Tests;
 public class ApiErrorHandlerTests
 {
     [Theory]
-    [InlineData("SSL connection could not be established", "Ошибка защищенного соединения. Пожалуйста, отключите другой VPN, AdGuard или антивирус, они блокируют трафик.")]
-    [InlineData("The remote certificate is invalid", "Ошибка защищенного соединения. Пожалуйста, отключите другой VPN, AdGuard или антивирус, они блокируют трафик.")]
+    [InlineData("SSL connection could not be established",
+        "Ошибка защищенного соединения. Пожалуйста, отключите другой VPN, AdGuard или антивирус, они блокируют трафик.")]
+    [InlineData("The remote certificate is invalid",
+        "Ошибка защищенного соединения. Пожалуйста, отключите другой VPN, AdGuard или антивирус, они блокируют трафик.")]
     [InlineData("connection refused", "Нет связи с сервером. Проверьте интернет-соединение или выключите локальный VPN/AdGuard.")]
     [InlineData("timed out", "Нет связи с сервером. Проверьте интернет-соединение или выключите локальный VPN/AdGuard.")]
     [InlineData("502 Bad Gateway", "Сервер временно недоступен (502/504). Пожалуйста, повторите попытку позже.")]
@@ -59,4 +61,3 @@ public class ApiErrorHandlerTests
         Assert.Equal("Запасное сообщение", result);
     }
 }
-

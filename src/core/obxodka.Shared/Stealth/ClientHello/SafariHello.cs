@@ -13,7 +13,7 @@ public static class SafariHello
         0xc02f, // ECDHE-RSA-AES128-GCM-SHA256
         0xc030, // ECDHE-RSA-AES256-GCM-SHA384
         0xcca9, // ECDHE-ECDSA-CHACHA20-POLY1305
-        0xcca8  // ECDHE-RSA-CHACHA20-POLY1305
+        0xcca8 // ECDHE-RSA-CHACHA20-POLY1305
     ];
 
     private static readonly ushort[] s_safariSignatures =
@@ -25,7 +25,7 @@ public static class SafariHello
         0x0804, // rsa_pss_rsae_sha256
         0x0805, // rsa_pss_rsae_sha384
         0x0806, // rsa_pss_rsae_sha512
-        0x0401  // rsa_pkcs1_sha256
+        0x0401 // rsa_pkcs1_sha256
     ];
 
     public static byte[] Build(

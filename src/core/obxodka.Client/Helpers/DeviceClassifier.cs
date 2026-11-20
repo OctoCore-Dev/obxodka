@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace obxodka.Helpers;
 
 //тип устройства для иконки fluent ui
@@ -18,7 +16,10 @@ public static class DeviceClassifier
         StringComparison.OrdinalIgnoreCase);
 
     private static readonly SearchValues<string> s_phoneKeywords = SearchValues.Create(
-        ["iphone", "ipad", "ios", "android", "samsung", "pixel", "phone", "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "vivo", "oneplus", "realme"],
+        [
+            "iphone", "ipad", "ios", "android", "samsung", "pixel", "phone", "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "vivo",
+            "oneplus", "realme"
+        ],
         StringComparison.OrdinalIgnoreCase);
 
     //категория устройства пк телефон или неизвестно
@@ -34,7 +35,7 @@ public static class DeviceClassifier
         return span.ContainsAny(s_desktopKeywords)
             ? DeviceKind.Desktop
             : span.ContainsAny(s_phoneKeywords)
-            ? DeviceKind.Phone
-            : DeviceKind.Unknown;
+                ? DeviceKind.Phone
+                : DeviceKind.Unknown;
     }
 }

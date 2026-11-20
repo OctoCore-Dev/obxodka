@@ -27,6 +27,7 @@ public class LeakPreventionTests
             Buffer.BlockCopy(partBytes, 0, packet, currentOffset, partBytes.Length);
             currentOffset += partBytes.Length;
         }
+
         packet[currentOffset++] = 0;
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset, 2), 1);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset + 2, 2), 1);
@@ -54,14 +55,14 @@ public class LeakPreventionTests
     public void DnsAdBlockerPreventsTelemetryLeaksBySinkholing(string domain, bool shouldBeBlocked)
     {
         var query = CreateDnsQueryPacket(domain);
-        var response = DnsAdBlocker.ProcessPacket(query, query.Length, useAdblock: true);
+        var response = DnsAdBlocker.ProcessPacket(query, query.Length, true);
 
         if (shouldBeBlocked)
         {
             Assert.NotNull(response);
             var answerIp = new byte[4];
             Buffer.BlockCopy(response, response.Length - 4, answerIp, 0, 4);
-            Assert.Equal(new byte[] { 0, 0, 0, 0 }, answerIp);
+            Assert.Equal("\0\0\0\0"u8.ToArray(), answerIp);
         }
         else
         {
@@ -115,7 +116,10 @@ public class LeakPreventionTests
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        using var client = new TcpClient { NoDelay = true };
+        using var client = new TcpClient
+        {
+            NoDelay = true
+        };
         var acceptTask = listener.AcceptTcpClientAsync();
         await client.ConnectAsync(IPAddress.Loopback, port);
         using var server = await acceptTask;
@@ -128,7 +132,7 @@ public class LeakPreventionTests
         var sessionKey = ObxodkaFraming.DeriveSessionKey("loopback-bench", 0, 0x12345678u);
         var samplePacket = new byte[packetSize];
         samplePacket[0] = 0x45;
-        BinaryPrimitives.WriteUInt16BigEndian(samplePacket.AsSpan(2, 2), (ushort)packetSize);
+        BinaryPrimitives.WriteUInt16BigEndian(samplePacket.AsSpan(2, 2), packetSize);
         samplePacket[9] = 6;
         samplePacket[12] = 100;
         samplePacket[13] = 64;
@@ -156,7 +160,8 @@ public class LeakPreventionTests
                 var offset = 0;
                 while (pending - offset >= ObxodkaFraming.HeaderSize)
                 {
-                    if (!ObxodkaFraming.TryDecodeHeader(recvBuf.AsSpan(offset, ObxodkaFraming.HeaderSize), out var totalLen, out var payloadLen, out _, out var salt, sessionKey))
+                    if (!ObxodkaFraming.TryDecodeHeader(recvBuf.AsSpan(offset, ObxodkaFraming.HeaderSize), out var totalLen,
+                            out var payloadLen, out _, out var salt, sessionKey))
                     {
                         throw new InvalidOperationException("Loopback framing decode failed");
                     }
@@ -175,8 +180,10 @@ public class LeakPreventionTests
                 {
                     Buffer.BlockCopy(recvBuf, offset, recvBuf, 0, pending - offset);
                 }
+
                 pending -= offset;
             }
+
             return received;
         });
 
@@ -192,15 +199,17 @@ public class LeakPreventionTests
                 batchOffset += frameLen;
                 sent++;
             }
+
             await clientStream.WriteAsync(coalesce.AsMemory(0, batchOffset));
         }
+
         await clientStream.FlushAsync();
 
         var receivedCount = await rxTask;
         sw.Stop();
 
         Assert.Equal(totalPackets, receivedCount);
-        var mbps = (totalPackets * (double)packetSize * 8.0) / (sw.Elapsed.TotalSeconds * 1_000_000.0);
+        var mbps = totalPackets * (double)packetSize * 8.0 / (sw.Elapsed.TotalSeconds * 1_000_000.0);
         Assert.True(mbps > 200.0, $"Expected >200 Mbps wire framing throughput, got {mbps:F1} Mbps");
     }
 }

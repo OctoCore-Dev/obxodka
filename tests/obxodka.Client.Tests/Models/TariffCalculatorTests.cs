@@ -44,4 +44,37 @@ public sealed class TariffCalculatorTests
         var actual = TariffCalculator.NormalizePaymentMethod(method, currency);
         Assert.Equal(expected, actual);
     }
+
+    [Theory]
+    [InlineData(TariffCalculator.GooglePlaySku100, 100, 99, 0, false)]
+    [InlineData(TariffCalculator.GooglePlaySku250, 260, 250, 4, false)]
+    [InlineData(TariffCalculator.GooglePlaySku300, 350, 300, 17, true)]
+    [InlineData(TariffCalculator.GooglePlaySku500, 750, 500, 50, true)]
+    [InlineData(TariffCalculator.GooglePlaySku1000, 2200, 1000, 120, true)]
+    [InlineData(TariffCalculator.GooglePlaySku2000, 4700, 2000, 135, false)]
+    [InlineData(TariffCalculator.GooglePlaySku5000, 12000, 5000, 140, false)]
+    public void TryGetGooglePlayProduct_ResolvesCompleteCatalog(
+        string productId,
+        int expectedHours,
+        decimal expectedRubAmount,
+        int expectedBonusPercent,
+        bool expectedBaseTier)
+    {
+        var found = TariffCalculator.TryGetGooglePlayProduct(productId, out var spec);
+
+        Assert.True(found);
+        Assert.Equal(productId, spec.ProductId);
+        Assert.Equal(expectedHours, spec.Hours);
+        Assert.Equal(expectedRubAmount, spec.ReferenceRubAmount);
+        Assert.Equal(expectedBonusPercent, spec.BonusPercent);
+        Assert.Equal(expectedBaseTier, spec.IsBaseTier);
+    }
+
+    [Fact]
+    public void TryGetGooglePlayProduct_ReturnsFalseForUnknownSku()
+    {
+        var found = TariffCalculator.TryGetGooglePlayProduct("obxodka_unknown_tier", out _);
+        Assert.False(found);
+        Assert.Equal(7, TariffCalculator.GetGooglePlayProductIds().Length);
+    }
 }

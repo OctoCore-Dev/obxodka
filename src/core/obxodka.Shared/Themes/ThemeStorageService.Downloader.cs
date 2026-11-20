@@ -20,7 +20,10 @@ public sealed partial class ThemeStorageService
     //создание настроенного http клиента
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("OctoCore-Client/1.0 (Windows NT 10.0; Win64; x64)");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/plain, */*");
         return client;
@@ -112,9 +115,9 @@ public sealed partial class ThemeStorageService
                     _ = Directory.CreateDirectory(parentDir);
                 }
 
-                await DownloadThemeAssetWithMirrorsAsync(themeId, rel, dest, ct, isRequired: isIcon).ConfigureAwait(false);
+                await DownloadThemeAssetWithMirrorsAsync(themeId, rel, dest, ct, isIcon).ConfigureAwait(false);
                 processed++;
-                Report(0.3 + (0.65 * processed / Math.Max(1, totalAssets)));
+                Report(0.3 + 0.65 * processed / Math.Max(1, totalAssets));
             }
 
             await File.WriteAllTextAsync(Path.Join(targetDir, "theme.json"), manifestJson, ct).ConfigureAwait(false);
@@ -123,7 +126,9 @@ public sealed partial class ThemeStorageService
             success = true;
             return true;
         }
-        catch (Exception ex) when (ex is SecurityException or HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException or SocketException or JsonException or NotSupportedException or ArgumentException or InvalidOperationException)
+        catch (Exception ex) when (ex is SecurityException or HttpRequestException or OperationCanceledException or IOException
+                                       or UnauthorizedAccessException or SocketException or JsonException or NotSupportedException
+                                       or ArgumentException or InvalidOperationException)
         {
             LastError = ex.Message;
             if (Directory.Exists(targetDir))
@@ -177,13 +182,15 @@ public sealed partial class ThemeStorageService
                     MustRevalidate = true
                 };
 
-                using var res = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+                using var res = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token)
+                    .ConfigureAwait(false);
                 if (res.IsSuccessStatusCode)
                 {
                     return await res.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
                 }
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or NotSupportedException or ArgumentException)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException
+                                           or NotSupportedException or ArgumentException)
             {
                 lastEx = ex;
             }
@@ -239,7 +246,8 @@ public sealed partial class ThemeStorageService
             {
                 throw;
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or NotSupportedException or ArgumentException)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException
+                                           or NotSupportedException or ArgumentException)
             {
                 lastEx = ex;
             }
@@ -247,7 +255,9 @@ public sealed partial class ThemeStorageService
 
         if (isRequired)
         {
-            throw lastEx ?? new InvalidOperationException($"Не удалось скачать обязательный ресурс '{relativePath}' темы '{themeId}' со всех доступных зеркал.");
+            throw lastEx ??
+                  new InvalidOperationException(
+                      $"Не удалось скачать обязательный ресурс '{relativePath}' темы '{themeId}' со всех доступных зеркал.");
         }
     }
 
@@ -279,7 +289,8 @@ public sealed partial class ThemeStorageService
 
         if (response.Content.Headers.ContentLength is { } len && len > maxAllowedSize)
         {
-            throw new SecurityException($"[ThemeSecurity] Размер ресурса '{cleanRelPath}' ({len} байт) превышает лимит {maxAllowedSize} байт!");
+            throw new SecurityException(
+                $"[ThemeSecurity] Размер ресурса '{cleanRelPath}' ({len} байт) превышает лимит {maxAllowedSize} байт!");
         }
 
         await using var responseStream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
@@ -289,7 +300,8 @@ public sealed partial class ThemeStorageService
         var headerRead = 0;
         while (headerRead < headerBuffer.Length)
         {
-            var r = await responseStream.ReadAsync(headerBuffer.AsMemory(headerRead, headerBuffer.Length - headerRead), cts.Token).ConfigureAwait(false);
+            var r = await responseStream.ReadAsync(headerBuffer.AsMemory(headerRead, headerBuffer.Length - headerRead), cts.Token)
+                .ConfigureAwait(false);
             if (r == 0)
             {
                 break;
@@ -310,7 +322,7 @@ public sealed partial class ThemeStorageService
 
         try
         {
-            await using var fileStream = new FileStream(fullDest, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+            await using var fileStream = new FileStream(fullDest, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true);
             await fileStream.WriteAsync(headerBuffer.AsMemory(0, headerRead), ct).ConfigureAwait(false);
 
             long totalRead = headerRead;
@@ -318,12 +330,14 @@ public sealed partial class ThemeStorageService
             try
             {
                 int bytesRead;
-                while ((bytesRead = await responseStream.ReadAsync(copyBuffer.AsMemory(0, copyBuffer.Length), cts.Token).ConfigureAwait(false)) > 0)
+                while ((bytesRead = await responseStream.ReadAsync(copyBuffer.AsMemory(0, copyBuffer.Length), cts.Token)
+                           .ConfigureAwait(false)) > 0)
                 {
                     totalRead += bytesRead;
                     if (totalRead > maxAllowedSize)
                     {
-                        throw new SecurityException($"[ThemeSecurity] Размер ресурса '{cleanRelPath}' превысил лимит {maxAllowedSize} байт!");
+                        throw new SecurityException(
+                            $"[ThemeSecurity] Размер ресурса '{cleanRelPath}' превысил лимит {maxAllowedSize} байт!");
                     }
 
                     if (SafeThemeExtractor.ContainsPolyglotPayload(copyBuffer.AsSpan(0, bytesRead)))

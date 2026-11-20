@@ -58,7 +58,8 @@ public sealed partial class ThemeManager
         _storageService.DownloadAndInstallThemeAsync(
             themeId,
             progress,
-            (id, p, isComp, success, err) => MainThread.BeginInvokeOnMainThread(() => ThemeDownloadProgressChanged?.Invoke(this, (id, p, isComp, success, err))),
+            (id, p, isComp, success, err) =>
+                MainThread.BeginInvokeOnMainThread(() => ThemeDownloadProgressChanged?.Invoke(this, (id, p, isComp, success, err))),
             ct);
 
     public bool IsThemeDownloading(string themeId, out double progress) =>
@@ -70,7 +71,7 @@ public sealed partial class ThemeManager
         CancellationToken ct = default)
     {
         var res = await _storageService.ImportThemeFromZipAsync(zipStream, fileName, ct).ConfigureAwait(false);
-        if (res.Success && res.Manifest is not null)
+        if (res is { Success: true, Manifest: not null })
         {
             _ = await ApplyThemeByIdAsync(res.Manifest.Id).ConfigureAwait(false);
         }

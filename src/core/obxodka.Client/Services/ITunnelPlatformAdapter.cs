@@ -31,10 +31,12 @@ public interface ITunnelPlatformAdapter
     public Task ApplyTunnelInterfaceAsync(ProtocolRouteStep step, string assignedIpv4, string? assignedIpv6, int mtu, CancellationToken ct);
 
     //включение системной маршрутизации и защиты от утечек dns/ipv6 после подтверждения rx > 0
-    public Task ActivateRoutingAndLeakGuardAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, CancellationToken ct);
+    public Task ActivateRoutingAndLeakGuardAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6,
+        CancellationToken ct);
 
     //обновление внутреннего ip адреса и маршрутов туннеля при бесшовной ротации протокола
-    public Task SyncTunnelIpAndRoutesAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, int mtu, CancellationToken ct);
+    public Task SyncTunnelIpAndRoutesAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, int mtu,
+        CancellationToken ct);
 
     //применение нового mtu на виртуальном интерфейсе ос
     public void UpdateAdapterMtu(int mtu);

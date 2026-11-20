@@ -18,33 +18,40 @@ public class TrafficGraphControl : Control
     private static readonly IBrush s_upSolidBrush = new SolidColorBrush(Color.Parse("#9F6FF0"));
     private static readonly IBrush s_downSolidBrush = new SolidColorBrush(Color.Parse("#00E5FF"));
 
-    private readonly DispatcherTimer _animationTimer;
+    private bool _isAttached;
     private double _timePhase;
     private double _pulsePhase;
-
-    public TrafficGraphControl()
-    {
-        _animationTimer = new DispatcherTimer(DispatcherPriority.Render)
-        {
-            Interval = TimeSpan.FromMilliseconds(20) // ~50 FPS silky smooth packet flow
-        };
-        _animationTimer.Tick += OnAnimationTick;
-    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _animationTimer.Start();
+        _isAttached = true;
+        RequestNextFrame();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _animationTimer.Stop();
+        _isAttached = false;
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnAnimationTick(object? sender, EventArgs e)
+    private void RequestNextFrame()
     {
+        if (!_isAttached)
+        {
+            return;
+        }
+
+        TopLevel.GetTopLevel(this)?.RequestAnimationFrame(OnRenderFrame);
+    }
+
+    private void OnRenderFrame(TimeSpan frameTime)
+    {
+        if (!_isAttached)
+        {
+            return;
+        }
+
         _timePhase += 0.09;
         if (_timePhase > 2000.0)
         {
@@ -58,6 +65,7 @@ public class TrafficGraphControl : Control
         }
 
         InvalidateVisual();
+        RequestNextFrame();
     }
 
     public override void Render(DrawingContext context)

@@ -3,6 +3,8 @@ namespace obxodka.Shared.Logging;
 //запись логов в один файл client.log с лимитом 1 мб
 public static class AppLogger
 {
+    private const long MaxLogFileBytes = 1 * 1024 * 1024; //1 мб максимум на диске
+
     private static readonly Channel<LogItem> s_channel =
         Channel.CreateBounded<LogItem>(new BoundedChannelOptions(1000)
         {
@@ -17,23 +19,10 @@ public static class AppLogger
     private static bool s_isInitialized;
     private static long s_currentFileBytes;
 
-    private const long MaxLogFileBytes = 1 * 1024 * 1024; //1 мб максимум на диске
+    static AppLogger() => Initialize();
 
     public static string LogFilePath { get; private set; } = string.Empty;
     public static string CrashLogFilePath { get; private set; } = string.Empty;
-
-    //старые свойства для совместимости
-    [Obsolete("Используйте LogFilePath. HTML-логи ликвидированы.")]
-    public static string HtmlLogFilePath => string.Empty;
-
-    [Obsolete("Используйте LogFilePath. Дублирующие бэкап-логи ликвидированы.")]
-    public static string BackupLogFilePath => LogFilePath;
-
-    private readonly record struct LogItem(DateTime Timestamp, string Level, string Message);
-
-    static AppLogger() => Initialize();
-
-    public static void AutoInitialize() => Initialize();
 
     public static void Initialize()
     {
@@ -43,6 +32,7 @@ public static class AppLogger
             {
                 return;
             }
+
             s_isInitialized = true;
 
             SetupPaths();
@@ -55,7 +45,7 @@ public static class AppLogger
     {
         try
         {
-            var logDir = obxodka.Client.Telemetry.TelemetryFilter.IsTestEnvironment
+            var logDir = TelemetryFilter.IsTestEnvironment
                 ? Path.Join(Path.GetTempPath(), "obxodka_test_logs")
                 : Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "logs");
             _ = Directory.CreateDirectory(logDir);
@@ -75,7 +65,10 @@ public static class AppLogger
 
             var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
             s_currentFileBytes = fs.Length;
-            s_writer = new StreamWriter(fs, Encoding.UTF8) { AutoFlush = false };
+            s_writer = new StreamWriter(fs, Encoding.UTF8)
+            {
+                AutoFlush = false
+            };
 
             LogPass($"[SESSION] Новая сессия запущена: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
         }
@@ -112,6 +105,7 @@ public static class AppLogger
                 {
                     //подавление ошибки сброса буфера записи логов
                 }
+
                 flushCounter = 0;
             }
         }
@@ -140,9 +134,13 @@ public static class AppLogger
                         {
                             File.Delete(LogFilePath);
                         }
+
                         var fs = new FileStream(LogFilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
                         s_currentFileBytes = 0;
-                        s_writer = new StreamWriter(fs, Encoding.UTF8) { AutoFlush = false };
+                        s_writer = new StreamWriter(fs, Encoding.UTF8)
+                        {
+                            AutoFlush = false
+                        };
                     }
                     catch (Exception ex) when (ex is not OutOfMemoryException)
                     {
@@ -150,7 +148,6 @@ public static class AppLogger
                     }
                 }
             }
-
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -167,6 +164,7 @@ public static class AppLogger
             {
                 s_recentLogs.RemoveAt(0);
             }
+
             s_recentLogs.Add(line);
         }
     }
@@ -216,12 +214,12 @@ public static class AppLogger
 
     //запись ошибок в журнал логов
     public static void LogError(string message, Exception? ex = null) =>
-        LogErrorInternal(message, ex, telemetryLevel: "ERROR");
+        LogErrorInternal(message, ex, "ERROR");
 
     //запись фатального падения процесса в crash.log
     public static void LogCrash(string message, Exception? ex = null)
     {
-        LogErrorInternal(message, ex, telemetryLevel: "FATAL");
+        LogErrorInternal(message, ex, "FATAL");
         try
         {
             var fullMessage = ex != null
@@ -257,7 +255,7 @@ public static class AppLogger
     //пересылка предупреждений, ошибок и сбоев в серверный шлюз sentry без блокировки вызывающего потока
     private static void ForwardToTelemetry(string level, string message, Exception? ex)
     {
-        if (obxodka.Client.Telemetry.TelemetryFilter.IsTestEnvironment)
+        if (TelemetryFilter.IsTestEnvironment)
         {
             return;
         }
@@ -270,9 +268,11 @@ public static class AppLogger
 
         var platformTag = OperatingSystem.IsWindows()
             ? "WINDOWS"
-            : (OperatingSystem.IsAndroid() ? "ANDROID" : "CLIENT");
+            : OperatingSystem.IsAndroid()
+                ? "ANDROID"
+                : "CLIENT";
         var formatted = $"[{platformTag}] [{level}] {message}";
-        obxodka.Client.Telemetry.TelemetryService.Instance.EnqueueError(formatted, ex);
+        TelemetryService.Instance.EnqueueError(formatted, ex);
     }
 
     //получение последних строк для интерфейса
@@ -344,4 +344,6 @@ public static class AppLogger
             //подавление ошибки запуска внешнего процесса просмотра логов
         }
     }
+
+    private readonly record struct LogItem(DateTime Timestamp, string Level, string Message);
 }

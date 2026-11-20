@@ -21,6 +21,7 @@ public class WebSocketTransportTests
         {
             return;
         }
+
         using var transport = new ObxodkaWebSocketTransport(443, AppConfig.PrimaryDomain);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var dummyThumbprint = "0123456789ABCDEF0123456789ABCDEF";

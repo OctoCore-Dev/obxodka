@@ -66,7 +66,8 @@ public static class DnsProbeService
             sw.Stop();
             return (ip, sw.ElapsedMilliseconds, true);
         }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException or FormatException)
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException
+                                       or FormatException)
         {
             return (ip, long.MaxValue, false);
         }

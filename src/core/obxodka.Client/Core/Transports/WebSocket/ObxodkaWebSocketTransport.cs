@@ -1,10 +1,76 @@
 namespace obxodka.Core.Transports;
 
 //транспорт туннеля поверх защищенного websocket соединения
-public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, string? configuredSni = null, string? preferredAssignedIp = null) : IVpnTransport, IHealthAwareTransport
+public sealed partial class ObxodkaWebSocketTransport(
+    int serverPort = 443,
+    string? configuredSni = null,
+    string? preferredAssignedIp = null) : IVpnTransport, IHealthAwareTransport
 {
-    //имя активного протокола
-    public string ProtocolName => "OBXODKA-WS";
+    //сконфигурированное имя sni
+    private readonly string? _configuredSni = configuredSni;
+
+    //ожидающие подтверждения зонды проверки исходящего mtu
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<int>?> _pendingMtuProbes = new();
+
+    //список полученных тестовых размеров mtu
+    private readonly List<int> _receivedBurstMtus = [];
+
+    //заданный порт сервера
+    private readonly int _serverPort = serverPort;
+
+    //приоритетная очередь исходящих пакетов для строго однопоточной отправки без bufferbloat
+    private readonly PriorityPacketQueue _txQueue = new(16384);
+
+    //активные фоновые задачи чтения, записи и пинга сокета
+    private Task[] _activeLoopTasks = [];
+
+    //активный целевой хост сервера
+    private string _activeServerHost = AppConfig.PrimaryDomain;
+
+    //назначенный клиенту виртуальный ip адрес
+    private volatile string? _assignedIp = preferredAssignedIp;
+
+    //кандидатный сессионный ключ на этапе рукопожатия
+    private uint _candidateSessionKey;
+
+    //признак установленного соединения
+    private bool _connected;
+
+    //источник токена отмены текущей сессии
+    private CancellationTokenSource? _cts;
+
+    //признак освобождения ресурсов
+    private int _disposed;
+
+    //источник завершения задачи получения ip адресов туннеля
+    private TaskCompletionSource<(string ip, string ip6)> _ipTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    //ip последнего подключенного edge-узла
+    private string? _lastConnectedRemoteIp;
+
+    //действие защиты системного сокета от петли маршрутизации
+    private Action<Socket>? _protectAction;
+
+    //сессионный ключ маскировки фреймов
+    private uint _sessionKey;
+
+    //активный клиентский websocket
+    private ClientWebSocket? _webSocket;
+
+    //обработчик http вызовов для сокета websocket
+    private HttpMessageInvoker? _wsInvoker;
+
+    //эффективный рабочий порт сервера
+    public int EffectivePort { get; private set; } = serverPort;
+
+    //активное имя sni для маскировки tls рукопожатия
+    public string ActiveSni { get; private set; } = configuredSni ?? AppConfig.PrimaryDomain;
+
+    //профиль маскировки под браузер
+    public TlsBrowserProfile ActiveBrowserProfile { get; private set; } = TlsBrowserProfile.Chrome;
+
+    //глобальный хук создания сокета
+    public static Action<Socket>? OnSocketCreated { get; set; }
 
     //фактический ip удаленного edge-сервера
     public string? RemoteConnectedEndpointIp => Volatile.Read(ref _lastConnectedRemoteIp);
@@ -15,21 +81,15 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
         var ip = Volatile.Read(ref _lastConnectedRemoteIp);
         if (!string.IsNullOrWhiteSpace(ip))
         {
-            EdgeEndpointHealth.MarkUnhealthy(ip, 120);
+            EdgeEndpointHealth.MarkUnhealthy(ip);
         }
     }
 
+    //имя активного протокола
+    public string ProtocolName => "OBXODKA-WS";
+
     //флаг активности соединения
     public bool IsConnected => Volatile.Read(ref _connected);
-
-    //эффективный рабочий порт сервера
-    public int EffectivePort { get; private set; } = serverPort;
-
-    //активное имя sni для маскировки tls рукопожатия
-    public string ActiveSni { get; private set; } = configuredSni ?? AppConfig.PrimaryDomain;
-
-    //профиль маскировки под браузер
-    public TlsBrowserProfile ActiveBrowserProfile { get; private set; } = TlsBrowserProfile.Chrome;
 
     //событие приема входящего сетевого пакета
     public event Action<byte[], int>? OnPacketReceived;
@@ -43,159 +103,20 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
     //событие согласования или изменения mtu
     public event Action<int>? OnMtuUpdated;
 
-    //приоритетная очередь исходящих пакетов для строго однопоточной отправки без bufferbloat
-    private readonly PriorityPacketQueue _txQueue = new(16384);
-
-    //источник завершения задачи получения ip адресов туннеля
-    private TaskCompletionSource<(string ip, string ip6)> _ipTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    //сконфигурированное имя sni
-    private readonly string? _configuredSni = configuredSni;
-
-    //заданный порт сервера
-    private readonly int _serverPort = serverPort;
-
-    //действие защиты системного сокета от петли маршрутизации
-    private Action<Socket>? _protectAction;
-
-    //активный клиентский websocket
-    private ClientWebSocket? _webSocket;
-
-    //обработчик http вызовов для сокета websocket
-    private HttpMessageInvoker? _wsInvoker;
-
-    //источник токена отмены текущей сессии
-    private CancellationTokenSource? _cts;
-
-    //активные фоновые задачи чтения, записи и пинга сокета
-    private Task[] _activeLoopTasks = [];
-
-    //признак установленного соединения
-    private bool _connected;
-
-    //признак освобождения ресурсов
-    private bool _disposed;
-
-    //активный целевой хост сервера
-    private string _activeServerHost = AppConfig.PrimaryDomain;
-
-    //назначенный клиенту виртуальный ip адрес
-    private volatile string? _assignedIp = preferredAssignedIp;
-
-    //ip последнего подключенного edge-узла
-    private string? _lastConnectedRemoteIp;
-
-    //сессионный ключ маскировки фреймов
-    private uint _sessionKey;
-
-    //кандидатный сессионный ключ на этапе рукопожатия
-    private uint _candidateSessionKey;
-
-    //ожидающие подтверждения зонды проверки исходящего mtu
-    private readonly ConcurrentDictionary<long, TaskCompletionSource<int>> _pendingMtuProbes = new();
-
-    //список полученных тестовых размеров mtu
-    private readonly List<int> _receivedBurstMtus = [];
-
-    //глобальный хук создания сокета
-    public static Action<Socket>? OnSocketCreated { get; set; }
-
     //установка действия защиты сокетов
     public void ProtectSockets(Action<Socket> protectAction) => _protectAction = protectAction;
-
-    //создание обработчика сетевых запросов с защитой сокета, ротацией браузера и обходом dpi
-    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области", Justification = "HttpMessageInvoker принимает владение handler")]
-    private HttpMessageInvoker CreateWsInvoker(string targetSni, string serverIp, int port)
-    {
-        var browserProfile = ActiveBrowserProfile;
-        var isDirectIp = IPAddress.TryParse(serverIp, out var literalIp);
-        var pinningHash = isDirectIp
-            ? (!string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash) ? OctopusEngine.DirectOriginCertHash : (OctopusEngine.DynamicSslPublicKeyHash ?? string.Empty))
-            : string.Empty;
-        var handler = new SocketsHttpHandler
-        {
-            UseProxy = false,
-            Proxy = null,
-            ConnectTimeout = TimeSpan.FromSeconds(4),
-            SslOptions = SslOptionsFactory.Create(
-                targetHost: IPAddress.TryParse(targetSni, out _) ? null : targetSni,
-                dynamicPinningHash: pinningHash,
-                browserProfile: browserProfile),
-            ConnectCallback = async (context, cToken) =>
-            {
-                var candidateIps = isDirectIp && literalIp is not null
-                    ? [literalIp]
-                    : EdgeEndpointHealth.FilterAndRotate(await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken).ConfigureAwait(false));
-
-                Socket? connectedSocket = null;
-                Exception? lastSocketEx = null;
-
-                for (var ipIdx = 0; ipIdx < candidateIps.Length; ipIdx++)
-                {
-                    var targetIp = candidateIps[ipIdx];
-                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
-                    {
-                        NoDelay = true,
-                        SendBufferSize = 4194304,
-                        ReceiveBufferSize = 4194304
-                    };
-                    (_protectAction ?? OnSocketCreated ?? OctopusEngine.Current.ProtectSocket).Invoke(socket);
-
-                    try
-                    {
-                        if (candidateIps.Length > 1 && ipIdx + 1 < candidateIps.Length)
-                        {
-                            using var perIpCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
-                            perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1600));
-                            await socket.ConnectAsync(new IPEndPoint(targetIp, port), perIpCts.Token).ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            await socket.ConnectAsync(new IPEndPoint(targetIp, port), cToken).ConfigureAwait(false);
-                        }
-
-                        Volatile.Write(ref _lastConnectedRemoteIp, targetIp.ToString());
-                        connectedSocket = socket;
-                        break;
-                    }
-                    catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException or TimeoutException or ObjectDisposedException || cToken.IsCancellationRequested)
-                    {
-                        lastSocketEx = ex;
-                        if (!isDirectIp)
-                        {
-                            EdgeEndpointHealth.MarkUnhealthy(targetIp.ToString(), 60);
-                        }
-                        socket.Dispose();
-                        if (cToken.IsCancellationRequested)
-                        {
-                            throw;
-                        }
-                    }
-                }
-
-                if (connectedSocket is null)
-                {
-                    ApiService.InvalidateHostCache(targetSni);
-                    throw lastSocketEx ?? new SocketException((int)SocketError.HostUnreachable);
-                }
-
-                var netStream = new NetworkStream(connectedSocket, ownsSocket: true);
-                var isLoopback = connectedSocket.RemoteEndPoint is IPEndPoint remoteEp && IPAddress.IsLoopback(remoteEp.Address);
-                return !isLoopback
-                    ? DpiBypassStream.CreateForProfile(netStream, browserProfile, bypassEnabled: true, forcePureL4: true)
-                    : netStream;
-            }
-        };
-
-        return new HttpMessageInvoker(handler, disposeHandler: true);
-    }
 
     //подключение к серверу через цепочку портов, зеркал и браузерных профилей сформированную sni движком
     public async Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
         _activeServerHost = !string.IsNullOrWhiteSpace(_configuredSni)
             ? _configuredSni
-            : (!IPAddress.TryParse(serverIp, out _) ? serverIp : AppConfig.PrimaryDomain);
+            : !IPAddress.TryParse(serverIp, out _)
+                ? serverIp
+                : AppConfig.PrimaryDomain;
         ActiveSni = _activeServerHost;
 
         var candidates = SniEngine.BuildWebSocketCandidates(serverIp, _serverPort, _configuredSni);
@@ -236,7 +157,8 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                     Query = $"cid={cid}&_t={nowQuerySec}&v=133.0"
                 };
 
-                AppLogger.Log($"[OBXODKA-WS] Connecting to {uriBuilder.Uri} (SNI={ActiveSni}, Port={candidatePort}, Profile={ActiveBrowserProfile})...");
+                AppLogger.Log(
+                    $"[OBXODKA-WS] Connecting to {uriBuilder.Uri} (SNI={ActiveSni}, Port={candidatePort}, Profile={ActiveBrowserProfile})...");
                 await ws.ConnectAsync(uriBuilder.Uri, invoker, linkedCts.Token).ConfigureAwait(false);
 
                 _wsInvoker = invoker;
@@ -255,7 +177,8 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
                 try
                 {
-                    await ws.SendAsync(hsFrame.AsMemory(0, hsTotalLen), WebSocketMessageType.Binary, true, linkedCts.Token).ConfigureAwait(false);
+                    await ws.SendAsync(hsFrame.AsMemory(0, hsTotalLen), WebSocketMessageType.Binary, true, linkedCts.Token)
+                        .ConfigureAwait(false);
                 }
                 finally
                 {
@@ -266,21 +189,23 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
                 var writerTask = Task.Run(() => WriterLoopAsync(ws, _cts.Token), _cts.Token);
                 _activeLoopTasks = [readerTask, writerTask];
 
-                using (linkedCts.Token.Register(() => _ipTcs.TrySetCanceled()))
+                await using (linkedCts.Token.Register(() => _ipTcs.TrySetCanceled()))
                 {
                     var result = await _ipTcs.Task.ConfigureAwait(false);
                     Volatile.Write(ref _connected, true);
                     var pingTask = Task.Run(() => PingLoopAsync(_cts.Token), _cts.Token);
                     _activeLoopTasks = [readerTask, writerTask, pingTask];
                     _ = SendPingProbeAsync();
-                    AppLogger.Log($"[OBXODKA-WS] Connected on port {candidatePort} (Browser: {ActiveBrowserProfile})! Assigned IPv4: {result.ip}, IPv6: {result.ip6}");
+                    AppLogger.Log(
+                        $"[OBXODKA-WS] Connected on port {candidatePort} (Browser: {ActiveBrowserProfile})! Assigned IPv4: {result.ip}, IPv6: {result.ip6}");
                     return result;
                 }
             }
             catch (Exception ex) when (!ct.IsCancellationRequested && pIdx + 1 < candidates.Count)
             {
                 lastEx = ex;
-                AppLogger.LogWarning($"[OBXODKA-WS] Port {candidatePort} (Profile {ActiveBrowserProfile}) failed: {ex.Message}. Trying next candidate...");
+                AppLogger.LogWarning(
+                    $"[OBXODKA-WS] Port {candidatePort} (Profile {ActiveBrowserProfile}) failed: {ex.Message}. Trying next candidate...");
                 await CleanupFailedAttemptAsync(ws, invoker, ownershipTransferred).ConfigureAwait(false);
             }
             catch
@@ -291,6 +216,99 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
         }
 
         throw lastEx ?? new TimeoutException("WebSocket connection failed across all candidate ports.");
+    }
+
+    //создание обработчика сетевых запросов с защитой сокета, ротацией браузера и обходом dpi
+    [SuppressMessage("Reliability", "CA2000:Ликвидировать объекты перед потерей области",
+        Justification = "HttpMessageInvoker принимает владение handler")]
+    private HttpMessageInvoker CreateWsInvoker(string targetSni, string serverIp, int port)
+    {
+        var browserProfile = ActiveBrowserProfile;
+        var isDirectIp = IPAddress.TryParse(serverIp, out var literalIp);
+        var pinningHash = isDirectIp
+            ? !string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash)
+                ? OctopusEngine.DirectOriginCertHash
+                : OctopusEngine.DynamicSslPublicKeyHash ?? string.Empty
+            : string.Empty;
+        var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            Proxy = null,
+            ConnectTimeout = TimeSpan.FromSeconds(4),
+            SslOptions = SslOptionsFactory.Create(
+                IPAddress.TryParse(targetSni, out _) ? null : targetSni,
+                pinningHash,
+                browserProfile: browserProfile),
+            ConnectCallback = async (_, cToken) =>
+            {
+                var candidateIps = isDirectIp && literalIp is not null
+                    ? [literalIp]
+                    : EdgeEndpointHealth.FilterAndRotate(await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken)
+                        .ConfigureAwait(false));
+
+                Socket? connectedSocket = null;
+                Exception? lastSocketEx = null;
+
+                for (var ipIdx = 0; ipIdx < candidateIps.Length; ipIdx++)
+                {
+                    var targetIp = candidateIps[ipIdx];
+                    var socket = new Socket(targetIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+                    {
+                        NoDelay = true,
+                        SendBufferSize = 4194304,
+                        ReceiveBufferSize = 4194304
+                    };
+                    (_protectAction ?? OnSocketCreated ?? OctopusEngine.Current.ProtectSocket).Invoke(socket);
+
+                    try
+                    {
+                        if (candidateIps.Length > 1 && ipIdx + 1 < candidateIps.Length)
+                        {
+                            using var perIpCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
+                            perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1600));
+                            await socket.ConnectAsync(new IPEndPoint(targetIp, port), perIpCts.Token).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            await socket.ConnectAsync(new IPEndPoint(targetIp, port), cToken).ConfigureAwait(false);
+                        }
+
+                        Volatile.Write(ref _lastConnectedRemoteIp, targetIp.ToString());
+                        connectedSocket = socket;
+                        break;
+                    }
+                    catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException or TimeoutException
+                                                   or ObjectDisposedException || cToken.IsCancellationRequested)
+                    {
+                        lastSocketEx = ex;
+                        if (!isDirectIp)
+                        {
+                            EdgeEndpointHealth.MarkUnhealthy(targetIp.ToString(), 60);
+                        }
+
+                        socket.Dispose();
+                        if (cToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                    }
+                }
+
+                if (connectedSocket is null)
+                {
+                    ApiService.InvalidateHostCache(targetSni);
+                    throw lastSocketEx ?? new SocketException((int)SocketError.HostUnreachable);
+                }
+
+                var netStream = new NetworkStream(connectedSocket, true);
+                var isLoopback = connectedSocket.RemoteEndPoint is IPEndPoint remoteEp && IPAddress.IsLoopback(remoteEp.Address);
+                return !isLoopback
+                    ? DpiBypassStream.CreateForProfile(netStream, browserProfile, true, true)
+                    : netStream;
+            }
+        };
+
+        return new HttpMessageInvoker(handler, true);
     }
 
     //освобождение ресурсов и дренирование пула при неудачной попытке подключения
@@ -306,15 +324,18 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             {
                 await retryCts.CancelAsync().ConfigureAwait(false);
             }
+
             if (loopTasks.Length > 0)
             {
                 await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException
+                                       or ObjectDisposedException or InvalidOperationException)
         {
             //подавление ожидаемой отмены фоновых задач попытки
         }
+
         _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
         _webSocket = null;
         _wsInvoker = null;
@@ -344,6 +365,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
             {
                 //игнорируем ошибку формата заголовка host
             }
+
             RoutingHello.ApplyWebSocketHeaders(ws.Options, browserProfile);
             return ws;
         }
@@ -365,6 +387,7 @@ public sealed partial class ObxodkaWebSocketTransport(int serverPort = 443, stri
         {
             //сокет уже освобожден
         }
+
         try
         {
             invoker?.Dispose();

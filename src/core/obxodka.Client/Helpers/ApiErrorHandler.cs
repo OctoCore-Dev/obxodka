@@ -33,12 +33,12 @@ public static class ApiErrorHandler
         return ContainsAny(error, s_sslErrors)
             ? "Ошибка защищенного соединения. Пожалуйста, отключите другой VPN, AdGuard или антивирус, они блокируют трафик."
             : ContainsAny(error, s_networkErrors)
-            ? "Нет связи с сервером. Проверьте интернет-соединение или выключите локальный VPN/AdGuard."
-            : ContainsAny(error, s_badGatewayErrors)
-            ? "Сервер временно недоступен (502/504). Пожалуйста, повторите попытку позже."
-            : ContainsAny(error, s_serverErrors)
-            ? "Произошла сбойная ошибка сервера (500). Попробуйте позже."
-            : string.Empty;
+                ? "Нет связи с сервером. Проверьте интернет-соединение или выключите локальный VPN/AdGuard."
+                : ContainsAny(error, s_badGatewayErrors)
+                    ? "Сервер временно недоступен (502/504). Пожалуйста, повторите попытку позже."
+                    : ContainsAny(error, s_serverErrors)
+                        ? "Произошла сбойная ошибка сервера (500). Попробуйте позже."
+                        : string.Empty;
     }
 
     //разбор ошибок регистрации пользователя
@@ -54,10 +54,10 @@ public static class ApiErrorHandler
         return !string.IsNullOrEmpty(commonError)
             ? commonError
             : ContainsAny(span, s_registrationTakenKeywords)
-            ? "Этот Email уже занят."
-            : ContainsAny(span, s_registrationDuplicateDeviceKeywords)
-            ? "На этом устройстве уже зарегистрирован аккаунт. Войдите в него."
-            : ExtractMessageFromJson(error, "Неизвестная ошибка регистрации");
+                ? "Этот Email уже занят."
+                : ContainsAny(span, s_registrationDuplicateDeviceKeywords)
+                    ? "На этом устройстве уже зарегистрирован аккаунт. Войдите в него."
+                    : ExtractMessageFromJson(error, "Неизвестная ошибка регистрации");
     }
 
     //разбор ошибок входа в систему
@@ -73,12 +73,12 @@ public static class ApiErrorHandler
         return !string.IsNullOrEmpty(commonError)
             ? commonError
             : ContainsAny(span, s_unauthorizedKeywords)
-            ? "Аккаунт не найден или пароль неверный"
-            : ContainsAny(span, s_deviceLimitKeywords)
-            ? "Лимит устройств исчерпан (макс. 3)"
-            : ContainsAny(span, s_bannedKeywords)
-            ? "Ваш аккаунт заблокирован"
-            : ExtractMessageFromJson(error, $"Ошибка авторизации: {error}");
+                ? "Аккаунт не найден или пароль неверный"
+                : ContainsAny(span, s_deviceLimitKeywords)
+                    ? "Лимит устройств исчерпан (макс. 3)"
+                    : ContainsAny(span, s_bannedKeywords)
+                        ? "Ваш аккаунт заблокирован"
+                        : ExtractMessageFromJson(error, $"Ошибка авторизации: {error}");
     }
 
     //разбор общих ошибок запроса с запасным сообщением

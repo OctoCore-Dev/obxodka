@@ -1,9 +1,3 @@
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Net.Security;
-using System.Net.Sockets;
-using System.Net.WebSockets;
-
 namespace obxodka.Shared.Stealth.ClientHello;
 
 //маршрутизатор, анализатор и генератор отпечатков tls clienthello и браузерных сигнатур
@@ -69,7 +63,8 @@ public static class RoutingHello
     //возвращает упорядоченный список шифров tls под конкретный профиль браузера
     public static TlsCipherSuite[] GetCipherSuites(TlsBrowserProfile profile) => profile switch
     {
-        TlsBrowserProfile.Chrome or TlsBrowserProfile.ChromePostQuantum or TlsBrowserProfile.Yandex or TlsBrowserProfile.Edge or TlsBrowserProfile.Opera => s_chromiumTlsCipherSuites,
+        TlsBrowserProfile.Chrome or TlsBrowserProfile.ChromePostQuantum or TlsBrowserProfile.Yandex or TlsBrowserProfile.Edge
+            or TlsBrowserProfile.Opera => s_chromiumTlsCipherSuites,
         TlsBrowserProfile.Firefox => s_firefoxTlsCipherSuites,
         TlsBrowserProfile.SafariIos or TlsBrowserProfile.SafariMac => s_safariTlsCipherSuites,
         _ => s_chromiumTlsCipherSuites
@@ -85,7 +80,8 @@ public static class RoutingHello
                 mode = 1;
                 delayMs = RandomNumberGenerator.GetInt32(12, 24);
                 break;
-            case TlsBrowserProfile.Firefox or TlsBrowserProfile.SafariIos or TlsBrowserProfile.SafariMac or TlsBrowserProfile.ChromePostQuantum:
+            case TlsBrowserProfile.Firefox or TlsBrowserProfile.SafariIos or TlsBrowserProfile.SafariMac
+                or TlsBrowserProfile.ChromePostQuantum:
                 //трехступенчатая гибридная нарезка tls record + l4 tcp посередине sni
                 mode = 2;
                 delayMs = RandomNumberGenerator.GetInt32(14, 28);
@@ -100,18 +96,19 @@ public static class RoutingHello
     }
 
     //сборка байтового пакета clienthello под конкретный профиль браузера
-    public static byte[] BuildHello(TlsBrowserProfile profile, ReadOnlySpan<byte> sni, ReadOnlySpan<byte> sessionId = default) => profile switch
-    {
-        TlsBrowserProfile.Chrome => ChromiumHello.Build(sni, sessionId, isPostQuantum: false),
-        TlsBrowserProfile.ChromePostQuantum => ChromiumHello.Build(sni, sessionId, isPostQuantum: true),
-        TlsBrowserProfile.Yandex => ChromiumHello.Build(sni, sessionId, isPostQuantum: false),
-        TlsBrowserProfile.Edge => ChromiumHello.Build(sni, sessionId, isPostQuantum: false),
-        TlsBrowserProfile.Opera => ChromiumHello.Build(sni, sessionId, isPostQuantum: false),
-        TlsBrowserProfile.Firefox => FirefoxHello.Build(sni, sessionId),
-        TlsBrowserProfile.SafariIos => SafariHello.Build(sni, sessionId, isMobile: true),
-        TlsBrowserProfile.SafariMac => SafariHello.Build(sni, sessionId, isMobile: false),
-        _ => ChromiumHello.Build(sni, sessionId, isPostQuantum: false)
-    };
+    public static byte[] BuildHello(TlsBrowserProfile profile, ReadOnlySpan<byte> sni, ReadOnlySpan<byte> sessionId = default) =>
+        profile switch
+        {
+            TlsBrowserProfile.Chrome => ChromiumHello.Build(sni, sessionId),
+            TlsBrowserProfile.ChromePostQuantum => ChromiumHello.Build(sni, sessionId, true),
+            TlsBrowserProfile.Yandex => ChromiumHello.Build(sni, sessionId),
+            TlsBrowserProfile.Edge => ChromiumHello.Build(sni, sessionId),
+            TlsBrowserProfile.Opera => ChromiumHello.Build(sni, sessionId),
+            TlsBrowserProfile.Firefox => FirefoxHello.Build(sni, sessionId),
+            TlsBrowserProfile.SafariIos => SafariHello.Build(sni, sessionId),
+            TlsBrowserProfile.SafariMac => SafariHello.Build(sni, sessionId, false),
+            _ => ChromiumHello.Build(sni, sessionId)
+        };
 
     //выбор следующего clienthello по лестнице ротации в зависимости от попытки подключения
     public static byte[] GetNextHello(
@@ -145,7 +142,7 @@ public static class RoutingHello
         try
         {
             await socket.ConnectAsync(endPoint, token).ConfigureAwait(false);
-            var sniBytes = (!string.IsNullOrWhiteSpace(sni) && !IPAddress.TryParse(sni, out _))
+            var sniBytes = !string.IsNullOrWhiteSpace(sni) && !IPAddress.TryParse(sni, out _)
                 ? Encoding.ASCII.GetBytes(sni)
                 : [];
             var hello = BuildHello(profile, sniBytes);
@@ -168,7 +165,8 @@ public static class RoutingHello
                 ArrayPool<byte>.Shared.Return(rx);
             }
         }
-        catch (Exception ex) when (ex is SocketException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or IOException)
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException or ObjectDisposedException
+                                       or InvalidOperationException or IOException)
         {
             return false;
         }
@@ -204,29 +202,36 @@ public static class RoutingHello
         request.Headers.UserAgent.ParseAdd(ua);
         request.Headers.Accept.Clear();
         request.Headers.Accept.ParseAdd("*/*");
-        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+        request.Headers.CacheControl = new CacheControlHeaderValue
+        {
+            NoCache = true
+        };
 
         if (profile is TlsBrowserProfile.Chrome or TlsBrowserProfile.ChromePostQuantum)
         {
-            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"");
+            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua",
+                "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
         }
         else if (profile is TlsBrowserProfile.Yandex)
         {
-            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not(A:Brand\";v=\"99\", \"Chromium\";v=\"133\", \"Yandex\";v=\"25\"");
+            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua",
+                "\"Not(A:Brand\";v=\"99\", \"Chromium\";v=\"133\", \"Yandex\";v=\"25\"");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
         }
         else if (profile is TlsBrowserProfile.Edge)
         {
-            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not(A:Brand\";v=\"99\", \"Microsoft Edge\";v=\"133\", \"Chromium\";v=\"133\"");
+            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua",
+                "\"Not(A:Brand\";v=\"99\", \"Microsoft Edge\";v=\"133\", \"Chromium\";v=\"133\"");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
         }
         else if (profile is TlsBrowserProfile.Opera)
         {
-            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not(A:Brand\";v=\"99\", \"Opera\";v=\"118\", \"Chromium\";v=\"133\"");
+            _ = request.Headers.TryAddWithoutValidation("sec-ch-ua",
+                "\"Not(A:Brand\";v=\"99\", \"Opera\";v=\"118\", \"Chromium\";v=\"133\"");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
             _ = request.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
         }
@@ -301,9 +306,9 @@ public static class RoutingHello
                        !ua.Contains("Chromium/", StringComparison.OrdinalIgnoreCase);
 
         return isSafari
-            ? (ua.Contains("iPhone", StringComparison.OrdinalIgnoreCase) || ua.Contains("iPad", StringComparison.OrdinalIgnoreCase)
+            ? ua.Contains("iPhone", StringComparison.OrdinalIgnoreCase) || ua.Contains("iPad", StringComparison.OrdinalIgnoreCase)
                 ? TlsBrowserProfile.SafariIos
-                : TlsBrowserProfile.SafariMac)
+                : TlsBrowserProfile.SafariMac
             : TlsBrowserProfile.Chrome;
     }
 
@@ -312,69 +317,76 @@ public static class RoutingHello
     {
         TlsBrowserProfile.Edge =>
         [
-            new("Server", "Microsoft-IIS/10.0"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
-            new("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
-            new("X-MSEdge-Ref", "Ref A: 0000000000000000 Ref B: LON01 Ref C: 2026-11-02T00:00:00Z")
+            new KeyValuePair<string, string>("Server", "Microsoft-IIS/10.0"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
+            new KeyValuePair<string, string>("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
+            new KeyValuePair<string, string>("X-MSEdge-Ref", "Ref A: 0000000000000000 Ref B: LON01 Ref C: 2026-11-02T00:00:00Z")
         ],
         TlsBrowserProfile.Yandex =>
         [
-            new("Server", "nginx"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
-            new("Strict-Transport-Security", "max-age=31536000"),
-            new("X-Yandex-Req-Id", "1762060000000000-0000000000000000000-balancer-production")
+            new KeyValuePair<string, string>("Server", "nginx"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
+            new KeyValuePair<string, string>("Strict-Transport-Security", "max-age=31536000"),
+            new KeyValuePair<string, string>("X-Yandex-Req-Id", "1762060000000000-0000000000000000000-balancer-production")
         ],
         TlsBrowserProfile.Opera =>
         [
-            new("Server", "cloudflare"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
-            new("Alt-Svc", "h3=\":443\"; ma=86400")
+            new KeyValuePair<string, string>("Server", "cloudflare"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
+            new KeyValuePair<string, string>("Alt-Svc", "h3=\":443\"; ma=86400")
         ],
         TlsBrowserProfile.Firefox =>
         [
-            new("Server", "nginx"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload"),
-            new("X-Frame-Options", "SAMEORIGIN")
+            new KeyValuePair<string, string>("Server", "nginx"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload"),
+            new KeyValuePair<string, string>("X-Frame-Options", "SAMEORIGIN")
         ],
         TlsBrowserProfile.SafariIos or TlsBrowserProfile.SafariMac =>
         [
-            new("Server", "Apple"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
-            new("X-Apple-Orig-Url", "https://apple.com/")
+            new KeyValuePair<string, string>("Server", "Apple"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
+            new KeyValuePair<string, string>("X-Apple-Orig-Url", "https://apple.com/")
         ],
         TlsBrowserProfile.Chrome or TlsBrowserProfile.ChromePostQuantum =>
         [
-            new("Server", "gws"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
-            new("Alt-Svc", "h3=\":443\"; ma=86400"),
-            new("X-XSS-Protection", "0")
+            new KeyValuePair<string, string>("Server", "gws"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
+            new KeyValuePair<string, string>("Alt-Svc", "h3=\":443\"; ma=86400"),
+            new KeyValuePair<string, string>("X-XSS-Protection", "0")
         ],
         _ =>
         [
-            new("Server", "gws"),
-            new("X-Content-Type-Options", "nosniff"),
-            new("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
-            new("Alt-Svc", "h3=\":443\"; ma=86400"),
-            new("X-XSS-Protection", "0")
+            new KeyValuePair<string, string>("Server", "gws"),
+            new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            new KeyValuePair<string, string>("Accept-CH", "Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"),
+            new KeyValuePair<string, string>("Alt-Svc", "h3=\":443\"; ma=86400"),
+            new KeyValuePair<string, string>("X-XSS-Protection", "0")
         ]
     };
 
     //маскировочный json ответ сервера
     public static string GetDecoyJsonResponse(TlsBrowserProfile profile) => profile switch
     {
-        TlsBrowserProfile.Edge => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"133.0.0.0\",\"engine\":\"EdgeHTML\"}",
-        TlsBrowserProfile.Yandex => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"25.2.0\",\"engine\":\"YaBrowser\"}",
-        TlsBrowserProfile.Opera => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"118.0.0.0\",\"engine\":\"Blink\"}",
-        TlsBrowserProfile.Firefox => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"135.0\",\"engine\":\"Gecko\"}",
-        TlsBrowserProfile.SafariIos => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"18.3\",\"engine\":\"WebKit\"}",
-        TlsBrowserProfile.SafariMac => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"18.3\",\"engine\":\"WebKit\"}",
-        TlsBrowserProfile.Chrome or TlsBrowserProfile.ChromePostQuantum => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"133.0\",\"engine\":\"Blink\"}",
+        TlsBrowserProfile.Edge => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"133.0.0.0\",\"engine\":\"EdgeHTML\"}",
+        TlsBrowserProfile.Yandex => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"25.2.0\",\"engine\":\"YaBrowser\"}",
+        TlsBrowserProfile.Opera => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"118.0.0.0\",\"engine\":\"Blink\"}",
+        TlsBrowserProfile.Firefox => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"135.0\",\"engine\":\"Gecko\"}",
+        TlsBrowserProfile.SafariIos => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"18.3\",\"engine\":\"WebKit\"}",
+        TlsBrowserProfile.SafariMac => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"18.3\",\"engine\":\"WebKit\"}",
+        TlsBrowserProfile.Chrome or TlsBrowserProfile.ChromePostQuantum => /*lang=json,strict*/
+            "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"133.0\",\"engine\":\"Blink\"}",
         _ => /*lang=json,strict*/ "{\"status\":\"ok\",\"service\":\"sync\",\"version\":\"133.0\",\"engine\":\"Blink\"}"
     };
 

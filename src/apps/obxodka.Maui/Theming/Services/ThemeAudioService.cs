@@ -1,3 +1,11 @@
+#if WINDOWS
+using Windows.Media.Playback;
+using MediaSource = Windows.Media.Core.MediaSource;
+
+#elif ANDROID
+using Android.Media;
+#endif
+
 namespace obxodka.Maui.Theming.Services;
 
 //кроссплатформенный аудиосервис воспроизведения звуковых эффектов темы
@@ -12,11 +20,6 @@ public static partial class ThemeAudioService
     private static string? s_defaultClickPath;
     private static double s_volume = 0.85;
     private static long s_lastHoverTicks;
-
-#if WINDOWS
-    private static Windows.Media.Playback.MediaPlayer?[]? s_sfxPool;
-    private static int s_sfxPoolIndex;
-#endif
 
     public static double Volume
     {
@@ -113,7 +116,7 @@ public static partial class ThemeAudioService
         PlaySound(path, true, 0.9);
     }
 
-    //проверка и санитизация пути к звуку клика
+    //проверка и сорбитизация пути к звуку клика
     private static string? SanitizeClickPath(string? clickPath, string? connectPath)
     {
         if (string.IsNullOrWhiteSpace(clickPath) || !File.Exists(clickPath))
@@ -128,11 +131,13 @@ public static partial class ThemeAudioService
             if (!string.IsNullOrEmpty(folder))
             {
                 var candidate = Path.Combine(folder, "click.wav");
-                if (File.Exists(candidate) && !string.Equals(Path.GetFullPath(candidate), Path.GetFullPath(connectPath), StringComparison.OrdinalIgnoreCase))
+                if (File.Exists(candidate) && !string.Equals(Path.GetFullPath(candidate), Path.GetFullPath(connectPath),
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     return candidate;
                 }
             }
+
             return null;
         }
 
@@ -150,6 +155,7 @@ public static partial class ThemeAudioService
                         return candidate;
                     }
                 }
+
                 return null;
             }
         }
@@ -182,6 +188,7 @@ public static partial class ThemeAudioService
             {
                 GenerateDefaultClickWav(path);
             }
+
             s_defaultClickPath = path;
             return path;
         }
@@ -227,13 +234,15 @@ public static partial class ThemeAudioService
                 wave += Math.Sin(2.0 * Math.PI * 180.0 * t) * 0.35 * Math.Exp(-t * 150.0);
                 if (i < 25)
                 {
-                    wave += (1.0 - (i / 25.0)) * 0.4;
+                    wave += (1.0 - i / 25.0) * 0.4;
                 }
+
                 var clamped = Math.Clamp(wave, -1.0, 1.0);
                 var sample = (short)(clamped * 22000);
                 bw.Write(sample);
                 bw.Write(sample);
             }
+
             bw.Flush();
         }
         catch
@@ -261,28 +270,28 @@ public static partial class ThemeAudioService
     public static void PlayNotification()
     {
         var enabled = ThemeManager.Instance?.SoundsEnabled ?? true;
-        PlaySound(s_notificationPath, enabled, 1.0);
+        PlaySound(s_notificationPath, enabled);
     }
 
     //воспроизведение звука подключения vpn
     public static void PlayConnect()
     {
         var enabled = ThemeManager.Instance?.SoundsEnabled ?? true;
-        PlaySound(s_connectPath, enabled, 1.0);
+        PlaySound(s_connectPath, enabled);
     }
 
     //воспроизведение звука отключения vpn
     public static void PlayDisconnect()
     {
         var enabled = ThemeManager.Instance?.SoundsEnabled ?? true;
-        PlaySound(s_disconnectPath, enabled, 1.0);
+        PlaySound(s_disconnectPath, enabled);
     }
 
     //обновление фонового эмбиента
     public static void UpdateAmbientState(bool shouldPlay) => _ = shouldPlay;
 
     //воспроизведение звукового файла на текущей платформе
-    public static void PlaySound(string? soundFilePath, bool isSoundEnabled = true, double volumeScale = 1.0)
+    private static void PlaySound(string? soundFilePath, bool isSoundEnabled = true, double volumeScale = 1.0)
     {
         if (!isSoundEnabled || string.IsNullOrWhiteSpace(soundFilePath) || !File.Exists(soundFilePath))
         {
@@ -307,19 +316,19 @@ public static partial class ThemeAudioService
 
                 try
                 {
-                    Windows.Media.Playback.MediaPlayer player;
+                    MediaPlayer player;
                     lock (s_sync)
                     {
-                        s_sfxPool ??= new Windows.Media.Playback.MediaPlayer?[4];
+                        s_sfxPool ??= new MediaPlayer?[4];
                         var idx = s_sfxPoolIndex % s_sfxPool.Length;
                         s_sfxPoolIndex = (s_sfxPoolIndex + 1) % s_sfxPool.Length;
-                        player = s_sfxPool[idx] ??= new Windows.Media.Playback.MediaPlayer();
+                        player = s_sfxPool[idx] ??= new MediaPlayer();
                     }
 
                     var fullPath = Path.GetFullPath(soundFilePath);
                     player.IsLoopingEnabled = false;
                     player.Volume = effectiveVolume;
-                    player.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(fullPath));
+                    player.Source = MediaSource.CreateFromUri(new Uri(fullPath));
                     player.Play();
                 }
                 catch
@@ -333,7 +342,7 @@ public static partial class ThemeAudioService
                     }
                     catch
                     {
-                        //подавление ошибок win32 playsound
+                        //подавление ошибок win32 playground
                     }
                 }
             });
@@ -342,7 +351,7 @@ public static partial class ThemeAudioService
             {
                 try
                 {
-                    var player = new Android.Media.MediaPlayer();
+                    var player = new MediaPlayer();
                     player.SetDataSource(soundFilePath);
                     player.SetVolume((float)effectiveVolume, (float)effectiveVolume);
                     player.Prepared += (s, e) => player.Start();
@@ -383,5 +392,10 @@ public static partial class ThemeAudioService
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool PlaySoundWin32(string pszSound, IntPtr hmod, uint fdwSound);
+#endif
+
+#if WINDOWS
+    private static MediaPlayer?[]? s_sfxPool;
+    private static int s_sfxPoolIndex;
 #endif
 }

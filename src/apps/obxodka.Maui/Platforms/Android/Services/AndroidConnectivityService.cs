@@ -1,14 +1,18 @@
 using Android.Content;
 using Android.Net;
 
-namespace obxodka.Platforms.Android;
+namespace obxodka.Services;
 
-//проверка доступности сети и типа интернет-соединения через системный connectivitymanager android
-[SupportedOSPlatform("android29.0")]
-[SuppressMessage("Usage", "CA1001:Types that own disposable fields should be disposable", Justification = "Process-lifetime singleton service")]
+//проверка доступности сети и типа интернет-соединения через системный connectivity manager android
+[SupportedOSPlatform("android30.0")]
+[SuppressMessage("Usage", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "Process-lifetime singleton service")]
 public sealed class AndroidConnectivityService : IConnectivityService
 {
     private readonly ConnectivityManager? _connectivityManager;
+
+    //держим ссылку на callback в поле синглтона, чтобы gc не собрал обёртку
+    // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
     private readonly NetworkChangeCallback? _networkCallback;
     private EventHandler<AppConnectivityChangedEventArgs>? _connectivityChanged;
 
@@ -20,17 +24,10 @@ public sealed class AndroidConnectivityService : IConnectivityService
             _networkCallback = new NetworkChangeCallback(this);
             _connectivityManager?.RegisterDefaultNetworkCallback(_networkCallback);
         }
-        catch { }
-    }
-
-    private void RaiseConnectivityChanged() =>
-        _connectivityChanged?.Invoke(this, new AppConnectivityChangedEventArgs(NetworkAccess, []));
-
-    private sealed class NetworkChangeCallback(AndroidConnectivityService owner) : ConnectivityManager.NetworkCallback
-    {
-        public override void OnAvailable(Network network) => owner.RaiseConnectivityChanged();
-        public override void OnLost(Network network) => owner.RaiseConnectivityChanged();
-        public override void OnCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) => owner.RaiseConnectivityChanged();
+        catch
+        {
+            // ignored
+        }
     }
 
     //текущий статус доступа в интернет с учетом vpn, wifi и сотовой сети
@@ -92,11 +89,24 @@ public sealed class AndroidConnectivityService : IConnectivityService
         var connType = capabilities.HasTransport(TransportType.Wifi)
             ? NetworkConnectionType.Wifi
             : capabilities.HasTransport(TransportType.Cellular)
-            ? NetworkConnectionType.Cellular
-            : capabilities.HasTransport(TransportType.Ethernet)
-            ? NetworkConnectionType.Ethernet
-            : NetworkConnectionType.Unknown;
+                ? NetworkConnectionType.Cellular
+                : capabilities.HasTransport(TransportType.Ethernet)
+                    ? NetworkConnectionType.Ethernet
+                    : NetworkConnectionType.Unknown;
 
         return Task.FromResult(new AppConnectionProfile(connType, AppNetworkAccess.Internet));
+    }
+
+
+    private void RaiseConnectivityChanged() =>
+        _connectivityChanged?.Invoke(this, new AppConnectivityChangedEventArgs(NetworkAccess, []));
+
+    private sealed class NetworkChangeCallback(AndroidConnectivityService owner) : ConnectivityManager.NetworkCallback
+    {
+        public override void OnAvailable(Network network) => owner.RaiseConnectivityChanged();
+        public override void OnLost(Network network) => owner.RaiseConnectivityChanged();
+
+        public override void OnCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) =>
+            owner.RaiseConnectivityChanged();
     }
 }

@@ -22,21 +22,16 @@ public sealed partial class ThemeManager
     //кроссплатформенный сервис хранения и загрузки ассетов тем
     private readonly ThemeStorageService _storageService;
 
-    public event Action<ThemeAppliedEventArgs>? OnThemeApplied;
-    public event Action? OnThemeReset;
-    public event Action<ThemeCatalogResponse>? OnCatalogUpdated;
-    public event Action<bool>? VideoEnabledChanged;
-    public event Action<bool>? SoundsEnabledChanged;
-    public event Action<bool>? ClickSoundsEnabledChanged;
-    public event Action<double>? SoundVolumeChanged;
-    public event Action<bool>? AmbientEnabledChanged;
-    public event Action<bool>? ParticlesEnabledChanged;
-    public event Action<bool>? FramesEnabledChanged;
-    public event Action<bool>? ParallaxEnabledChanged;
-    public event Action<bool>? AlwaysPlayVideoChanged;
-    public event Action<double>? CardOpacityChanged;
-    public event Action<double>? GlowIntensityChanged;
-    public event EventHandler<(string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error)>? ThemeDownloadProgressChanged;
+    private double? _cachedGlowIntensity;
+
+    private double? _cachedSoundVolume;
+
+    public ThemeManager()
+    {
+        Instance = this;
+        _storageService = new ThemeStorageService(Path.Combine(FileSystem.AppDataDirectory, "themes"));
+        CaptureDefaultResourcesSnapshot();
+    }
 
     public ThemeManifest? ActiveTheme { get; private set; }
     public string? ActiveThemeFolderPath { get; private set; }
@@ -52,6 +47,7 @@ public sealed partial class ThemeManager
             {
                 ThemeAudioService.UpdateAmbientState(false);
             }
+
             SoundsEnabledChanged?.Invoke(value);
         }
     }
@@ -65,8 +61,6 @@ public sealed partial class ThemeManager
             ClickSoundsEnabledChanged?.Invoke(value);
         }
     }
-
-    private double? _cachedSoundVolume;
 
     public double SoundVolume
     {
@@ -96,6 +90,7 @@ public sealed partial class ThemeManager
             {
                 ThemeAudioService.UpdateAmbientState(false);
             }
+
             AmbientEnabledChanged?.Invoke(value);
         }
     }
@@ -150,8 +145,6 @@ public sealed partial class ThemeManager
         }
     }
 
-    private double? _cachedGlowIntensity;
-
     public double GlowIntensity
     {
         get => _cachedGlowIntensity ??= Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
@@ -174,12 +167,23 @@ public sealed partial class ThemeManager
     public static ThemeManager? Instance { get; private set; }
     public static double CurrentGlowIntensity => Instance?.GlowIntensity ?? Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
 
-    public ThemeManager()
-    {
-        Instance = this;
-        _storageService = new ThemeStorageService(Path.Combine(FileSystem.AppDataDirectory, "themes"));
-        CaptureDefaultResourcesSnapshot();
-    }
+    public event Action<ThemeAppliedEventArgs>? OnThemeApplied;
+    public event Action? OnThemeReset;
+    public event Action<ThemeCatalogResponse>? OnCatalogUpdated;
+    public event Action<bool>? VideoEnabledChanged;
+    public event Action<bool>? SoundsEnabledChanged;
+    public event Action<bool>? ClickSoundsEnabledChanged;
+    public event Action<double>? SoundVolumeChanged;
+    public event Action<bool>? AmbientEnabledChanged;
+    public event Action<bool>? ParticlesEnabledChanged;
+    public event Action<bool>? FramesEnabledChanged;
+    public event Action<bool>? ParallaxEnabledChanged;
+    public event Action<bool>? AlwaysPlayVideoChanged;
+    public event Action<double>? CardOpacityChanged;
+    public event Action<double>? GlowIntensityChanged;
+
+    public event EventHandler<(string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error)>?
+        ThemeDownloadProgressChanged;
 
     public bool ApplyThemeById(string themeId)
     {
@@ -231,7 +235,7 @@ public sealed partial class ThemeManager
         }
     }
 
-    public async Task<bool> ApplyThemeAsync(ThemeManifest manifest) =>
+    public async Task<bool> ApplyThemeAsync(ThemeManifest? manifest) =>
         manifest != null &&
         ThemeValidator.ValidateManifest(manifest, out _) &&
         (MainThread.IsMainThread

@@ -1,5 +1,3 @@
-using obxodka.Core.Transports;
-
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Unit")]
@@ -19,7 +17,7 @@ public sealed class ProtocolRotationAndXhttpTests
                 new(AppConfig.DirectServerIp, 443, "Amsterdam Main", true, 12, "TESTHASH_MAIN==", "Vultr", "NL", "main")
             ];
 
-            var ring = SniEngine.BuildProtocolRotationRing(servers, AppConfig.PrimaryDomain, 443, null, forceWebSocket: false);
+            var ring = SniEngine.BuildProtocolRotationRing(servers, AppConfig.PrimaryDomain, 443, null, false);
 
             Assert.True(ring.Count >= 3);
             Assert.Equal(TransportProtocolKind.ObxodkaStream, ring[0].Kind);
@@ -55,7 +53,7 @@ public sealed class ProtocolRotationAndXhttpTests
                 new(AppConfig.PrimaryDomain, 443, "Shield", true, 5, null, "Cloudflare", "EU", "shield")
             ];
 
-            var ring = SniEngine.BuildProtocolRotationRing(servers, AppConfig.DirectServerIp, 443, null, forceWebSocket: false);
+            var ring = SniEngine.BuildProtocolRotationRing(servers, AppConfig.DirectServerIp, 443, null, false);
 
             Assert.Equal(TransportProtocolKind.ObxodkaWebSocket, ring[0].Kind);
             Assert.Equal(TransportProtocolKind.ObxodkaXhttp, ring[1].Kind);
@@ -79,7 +77,7 @@ public sealed class ProtocolRotationAndXhttpTests
             var badIp = IPAddress.Parse("188.114.96.1");
             var goodIp1 = IPAddress.Parse("104.21.48.10");
             var goodIp2 = IPAddress.Parse("172.67.150.20");
-            EdgeEndpointHealth.MarkUnhealthy(badIp.ToString(), cooldownSeconds: 60);
+            EdgeEndpointHealth.MarkUnhealthy(badIp.ToString(), 60);
 
             var rotated = EdgeEndpointHealth.FilterAndRotate([badIp, goodIp1, goodIp2]);
 
@@ -130,30 +128,36 @@ public sealed class ProtocolRotationAndXhttpTests
     public void TransportFrameControlMapperClassifiesAllControlAndDataFrames()
     {
         byte[] mtuPkt = [0xCC, 0xDD, 0x05, 0x00];
-        Assert.Equal(ObxodkaFraming.CmdMtuSync, TransportFrameControlMapper.ClassifyOutgoingPacket(mtuPkt, mtuPkt.Length, out var off1, out var len1));
+        Assert.Equal(ObxodkaFraming.CmdMtuSync,
+            TransportFrameControlMapper.ClassifyOutgoingPacket(mtuPkt, mtuPkt.Length, out var off1, out var len1));
         Assert.Equal(2, off1);
         Assert.Equal(2, len1);
 
         byte[] burstPkt = [0xEE, 0x77];
-        Assert.Equal(ObxodkaFraming.CmdMtuBurstRequest, TransportFrameControlMapper.ClassifyOutgoingPacket(burstPkt, burstPkt.Length, out _, out var len2));
+        Assert.Equal(ObxodkaFraming.CmdMtuBurstRequest,
+            TransportFrameControlMapper.ClassifyOutgoingPacket(burstPkt, burstPkt.Length, out _, out var len2));
         Assert.Equal(0, len2);
 
         byte[] pongPkt = [0xEE, 0x88, 1, 2, 3, 4];
-        Assert.Equal(ObxodkaFraming.CmdPong, TransportFrameControlMapper.ClassifyOutgoingPacket(pongPkt, pongPkt.Length, out var off3, out var len3));
+        Assert.Equal(ObxodkaFraming.CmdPong,
+            TransportFrameControlMapper.ClassifyOutgoingPacket(pongPkt, pongPkt.Length, out var off3, out var len3));
         Assert.Equal(2, off3);
         Assert.Equal(4, len3);
 
         byte[] disconnectPkt = [0xEE, 0x99];
-        Assert.Equal(ObxodkaFraming.CmdDisconnect, TransportFrameControlMapper.ClassifyOutgoingPacket(disconnectPkt, disconnectPkt.Length, out _, out _));
+        Assert.Equal(ObxodkaFraming.CmdDisconnect,
+            TransportFrameControlMapper.ClassifyOutgoingPacket(disconnectPkt, disconnectPkt.Length, out _, out _));
 
         byte[] pingMarkerPkt = [0xAA, 0xBB, 1, 2, 3, 4, 5, 6, 7, 8];
-        Assert.Equal(ObxodkaFraming.CmdPing, TransportFrameControlMapper.ClassifyOutgoingPacket(pingMarkerPkt, pingMarkerPkt.Length, out var off5, out var len5));
+        Assert.Equal(ObxodkaFraming.CmdPing,
+            TransportFrameControlMapper.ClassifyOutgoingPacket(pingMarkerPkt, pingMarkerPkt.Length, out var off5, out var len5));
         Assert.Equal(2, off5);
         Assert.Equal(8, len5);
 
-        byte[] rawData = new byte[64];
+        var rawData = new byte[64];
         rawData[0] = 0x45;
-        Assert.Equal(ObxodkaFraming.CmdData, TransportFrameControlMapper.ClassifyOutgoingPacket(rawData, rawData.Length, out var off6, out var len6));
+        Assert.Equal(ObxodkaFraming.CmdData,
+            TransportFrameControlMapper.ClassifyOutgoingPacket(rawData, rawData.Length, out var off6, out var len6));
         Assert.Equal(0, off6);
         Assert.Equal(64, len6);
     }
@@ -173,14 +177,15 @@ public sealed class ProtocolRotationAndXhttpTests
     [Fact]
     public void VpnStatusMessagesFormatsProtocolRotationStatuses()
     {
-        Assert.Equal("Obxodka Stream", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-STREAM", isShield: false));
-        Assert.Equal("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-WS", isShield: true));
-        Assert.Equal("Cloudflare XHTTP", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP", isShield: true));
-        Assert.Equal("Direct XHTTP", obxodka.Client.Localization.VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP", isShield: false));
-        Assert.Contains("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.TryingProtocol("Cloudflare WS", 2, 4), StringComparison.Ordinal);
-        Assert.Contains("Cloudflare XHTTP", obxodka.Client.Localization.VpnStatusMessages.ProtocolUnavailableSwitching("Obxodka Stream", "Cloudflare XHTTP"), StringComparison.Ordinal);
-        Assert.Contains("Direct XHTTP", obxodka.Client.Localization.VpnStatusMessages.RotatingProtocol("Direct XHTTP"), StringComparison.Ordinal);
-        Assert.Contains("Cloudflare WS", obxodka.Client.Localization.VpnStatusMessages.ProtocolSwitched("Cloudflare WS"), StringComparison.Ordinal);
+        Assert.Equal("Obxodka Stream", VpnStatusMessages.FormatProtocolName("OBXODKA-STREAM"));
+        Assert.Equal("Cloudflare WS", VpnStatusMessages.FormatProtocolName("OBXODKA-WS", true));
+        Assert.Equal("Cloudflare XHTTP", VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP", true));
+        Assert.Equal("Direct XHTTP", VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP"));
+        Assert.Contains("Cloudflare WS", VpnStatusMessages.TryingProtocol("Cloudflare WS", 2, 4), StringComparison.Ordinal);
+        Assert.Contains("Cloudflare XHTTP", VpnStatusMessages.ProtocolUnavailableSwitching("Obxodka Stream", "Cloudflare XHTTP"),
+            StringComparison.Ordinal);
+        Assert.Contains("Direct XHTTP", VpnStatusMessages.RotatingProtocol("Direct XHTTP"), StringComparison.Ordinal);
+        Assert.Contains("Cloudflare WS", VpnStatusMessages.ProtocolSwitched("Cloudflare WS"), StringComparison.Ordinal);
     }
 
     [Theory]

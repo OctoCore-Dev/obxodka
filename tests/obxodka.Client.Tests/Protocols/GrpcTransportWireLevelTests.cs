@@ -13,8 +13,8 @@ public class StreamTransportWireLevelTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
         var transport = new ObxodkaStreamTransport(
-            serverPort: port,
-            configuredSni: AppConfig.PrimaryDomain
+            port,
+            AppConfig.PrimaryDomain
         );
 
         Task? connectTask = null;
@@ -26,7 +26,9 @@ public class StreamTransportWireLevelTests
                 {
                     _ = await transport.ConnectAsync("127.0.0.1", "test-thumbprint", cts.Token);
                 }
-                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or System.Security.Authentication.AuthenticationException or OperationCanceledException or ObjectDisposedException or TimeoutException or InvalidOperationException)
+                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or AuthenticationException
+                                               or OperationCanceledException or ObjectDisposedException or TimeoutException
+                                               or InvalidOperationException)
                 {
                     //подавление ожидаемого разрыва соединения тестового сокета
                 }
@@ -52,11 +54,14 @@ public class StreamTransportWireLevelTests
                 {
                     await connectTask;
                 }
-                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or System.Security.Authentication.AuthenticationException or OperationCanceledException or ObjectDisposedException or TimeoutException or InvalidOperationException)
+                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or AuthenticationException
+                                               or OperationCanceledException or ObjectDisposedException or TimeoutException
+                                               or InvalidOperationException)
                 {
                     //ожидание завершения фоновой задачи соединения
                 }
             }
+
             await transport.DisposeAsync();
         }
     }

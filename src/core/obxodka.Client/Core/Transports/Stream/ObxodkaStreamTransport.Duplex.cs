@@ -1,3 +1,5 @@
+using static System.Threading.Volatile;
+
 namespace obxodka.Core.Transports;
 
 public sealed partial class ObxodkaStreamTransport
@@ -12,15 +14,15 @@ public sealed partial class ObxodkaStreamTransport
         var forceNewSocket = false;
         Exception? lastAttemptEx = null;
 
-        while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
+        while (!ct.IsCancellationRequested && (Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = primaryPorts[portIdx % primaryPorts.Length];
-            var client = (!forceNewSocket && activePort == currentClientPort && _httpClient0 != null)
+            var client = !forceNewSocket && activePort == currentClientPort && _httpClient0 != null
                 ? _httpClient0
                 : ResetRayHttpClient(0, channelHost, activePort, enableDpi);
             forceNewSocket = false;
             currentClientPort = activePort;
-            var rxBefore = Volatile.Read(ref _lastRxTicks0);
+            var rxBefore = Read(ref _lastRxTicks0);
             var rotatedCleanly = false;
             try
             {
@@ -29,24 +31,27 @@ public sealed partial class ObxodkaStreamTransport
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
+                AppLogger.LogWarning(
+                    $"[OBXODKA-STREAM] Ray #0 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
                 portIdx++;
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or AuthenticationException or InvalidOperationException or ObjectDisposedException)
+            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException
+                                           or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
                 lastAttemptEx = ex;
-                if (Volatile.Read(ref _connected))
+                if (Read(ref _connected))
                 {
                     AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 dropped on port {activePort}: {ex.Message}. Reconnecting in 1s...");
                 }
+
                 portIdx++;
             }
 
-            if (rotatedCleanly || Volatile.Read(ref _lastRxTicks0) > rxBefore)
+            if (rotatedCleanly || Read(ref _lastRxTicks0) > rxBefore)
             {
                 consecutiveDrops = 0;
             }
@@ -55,23 +60,24 @@ public sealed partial class ObxodkaStreamTransport
                 consecutiveDrops++;
             }
 
-            if (consecutiveDrops >= primaryPorts.Length && _rayCts[1] == null && _rayCts[2] == null && Volatile.Read(ref _connected) && !ct.IsCancellationRequested)
+            if (consecutiveDrops >= primaryPorts.Length && _rayCts[1] == null && _rayCts[2] == null && Read(ref _connected) &&
+                !ct.IsCancellationRequested)
             {
                 AppLogger.LogWarning("[OBXODKA-STREAM] All rays dropped across all ports. Signaling connection drop.");
                 _inspector.RecordStep($"All rays dropped after port hopping across ports {string.Join(',', primaryPorts)}");
                 _ = _inspector.ReportIncidentIfExhaustedAsync(
-                    reason: "AllRaysDroppedAfterRecovery",
-                    targetHost: channelHost,
-                    effectivePort: activePort,
-                    currentMtu: SmartMtuEngine.CurrentMtu,
-                    targetIp: _activeServerIp,
-                    apiBaseUrl: AppConfig.ApiBaseUrl, cancellationToken: CancellationToken.None);
-                Volatile.Write(ref _connected, false);
+                    "AllRaysDroppedAfterRecovery",
+                    channelHost,
+                    activePort,
+                    SmartMtuEngine.CurrentMtu,
+                    _activeServerIp,
+                    AppConfig.ApiBaseUrl, CancellationToken.None);
+                Write(ref _connected, false);
                 OnConnectionDropped?.Invoke();
                 break;
             }
 
-            if (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
+            if (!ct.IsCancellationRequested && Read(ref _connected))
             {
                 try
                 {
@@ -99,10 +105,10 @@ public sealed partial class ObxodkaStreamTransport
         var forceNewSocket = false;
         Exception? lastAttemptEx = null;
 
-        while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
+        while (!ct.IsCancellationRequested && (Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = secondaryPorts[portIdx % secondaryPorts.Length];
-            var client = (!forceNewSocket && activePort == currentClientPort && _httpClient1 != null)
+            var client = !forceNewSocket && activePort == currentClientPort && _httpClient1 != null
                 ? _httpClient1
                 : ResetRayHttpClient(1, channelHost, activePort, enableDpi);
             forceNewSocket = false;
@@ -115,21 +121,23 @@ public sealed partial class ObxodkaStreamTransport
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #1 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
+                AppLogger.LogWarning(
+                    $"[OBXODKA-STREAM] Ray #1 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
                 portIdx++;
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or AuthenticationException or InvalidOperationException or ObjectDisposedException)
+            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException
+                                           or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
                 lastAttemptEx = ex;
                 AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #1 dropped on port {activePort}: {ex.Message}. Reconnecting in 2s...");
                 portIdx++;
             }
 
-            if (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
+            if (!ct.IsCancellationRequested && Read(ref _connected))
             {
                 try
                 {
@@ -157,10 +165,10 @@ public sealed partial class ObxodkaStreamTransport
         var forceNewSocket = false;
         Exception? lastAttemptEx = null;
 
-        while (!ct.IsCancellationRequested && (Volatile.Read(ref _connected) || !_ipTcs.Task.IsCompleted))
+        while (!ct.IsCancellationRequested && (Read(ref _connected) || !_ipTcs.Task.IsCompleted))
         {
             var activePort = tertiaryPorts[portIdx % tertiaryPorts.Length];
-            var client = (!forceNewSocket && activePort == currentClientPort && _httpClient2 != null)
+            var client = !forceNewSocket && activePort == currentClientPort && _httpClient2 != null
                 ? _httpClient2
                 : ResetRayHttpClient(2, channelHost, activePort, enableDpi);
             forceNewSocket = false;
@@ -173,21 +181,23 @@ public sealed partial class ObxodkaStreamTransport
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #2 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
+                AppLogger.LogWarning(
+                    $"[OBXODKA-STREAM] Ray #2 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
                 portIdx++;
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or AuthenticationException or InvalidOperationException or ObjectDisposedException)
+            catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException
+                                           or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
                 lastAttemptEx = ex;
                 AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #2 dropped on port {activePort}: {ex.Message}. Reconnecting in 2s...");
                 portIdx++;
             }
 
-            if (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
+            if (!ct.IsCancellationRequested && Read(ref _connected))
             {
                 try
                 {
@@ -207,10 +217,11 @@ public sealed partial class ObxodkaStreamTransport
     }
 
     //ядро передачи: подъем дуплексного http2 потока приема и отдачи с нарезкой сессии
-    private async Task<bool> RunStreamAsync(int ray, HttpClient client, string channelHost, int port, string thumbprint, CancellationToken ct)
+    private async Task<bool> RunStreamAsync(int ray, HttpClient client, string channelHost, int port, string thumbprint,
+        CancellationToken ct)
     {
         using var rayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        Volatile.Write(ref _rayCts[ray], rayCts);
+        Write(ref _rayCts[ray], rayCts);
         var token = rayCts.Token;
         var rotatedCleanly = false;
         long raySharedBytes = 0;
@@ -225,11 +236,9 @@ public sealed partial class ObxodkaStreamTransport
             var activeSessionKey = 0u;
             var cid = RandomNumberGenerator.GetInt32(10000000, 99999999);
             var requestUri = $"https://{channelHost}:{port}{streamPath}?cid={cid}&_t={nowSec}&v=133.0";
-            using var request = new HttpRequestMessage(HttpMethod.Post, requestUri)
-            {
-                Version = HttpVersion.Version20,
-                VersionPolicy = HttpVersionPolicy.RequestVersionExact
-            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, requestUri);
+            request.Version = HttpVersion.Version20;
+            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
 
             RoutingHello.ApplyBrowserHeaders(request, ActiveBrowserProfile);
 
@@ -250,7 +259,8 @@ public sealed partial class ObxodkaStreamTransport
                     try
                     {
                         await stream.WriteAsync(hsFrame.AsMemory(0, hsTotalLen), pumpToken).ConfigureAwait(false);
-                        var chaffFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdChaff, [], out var chaffLen, SmartMtuEngine.CurrentMtu, candidateSessionKey);
+                        var chaffFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdChaff, [], out var chaffLen, SmartMtuEngine.CurrentMtu,
+                            candidateSessionKey);
                         try
                         {
                             await stream.WriteAsync(chaffFrame.AsMemory(0, chaffLen), pumpToken).ConfigureAwait(false);
@@ -260,7 +270,9 @@ public sealed partial class ObxodkaStreamTransport
                         {
                             ArrayPool<byte>.Shared.Return(chaffFrame);
                         }
+
                         await stream.FlushAsync(pumpToken).ConfigureAwait(false);
+                        // ReSharper disable once AccessToModifiedClosure
                         _ = Interlocked.Add(ref raySharedBytes, hsTotalLen);
                     }
                     finally
@@ -285,10 +297,12 @@ public sealed partial class ObxodkaStreamTransport
                             {
                                 try
                                 {
-                                    var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset, out var payloadLength);
+                                    var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset,
+                                        out var payloadLength);
 
-                                    var isEarly = (rayTxBytes + coalescedLen) < ObxodkaFraming.EarlyStageWindowBytes;
-                                    var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, maxMtu: SmartMtuEngine.CurrentMtu, isEarlySession: isEarly);
+                                    var isEarly = rayTxBytes + coalescedLen < ObxodkaFraming.EarlyStageWindowBytes;
+                                    var paddingLen =
+                                        ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, SmartMtuEngine.CurrentMtu, isEarly);
                                     var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
 
                                     if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
@@ -299,10 +313,12 @@ public sealed partial class ObxodkaStreamTransport
                                         coalescedLen = 0;
                                     }
 
-                                    var txKey = Volatile.Read(ref activeSessionKey);
+                                    // ReSharper disable once AccessToModifiedClosure
+                                    var txKey = Read(ref activeSessionKey);
                                     if (totalLen <= coalesceBuf.Length)
                                     {
-                                        ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd, packet.AsSpan(payloadOffset, payloadLength), paddingLen, txKey);
+                                        ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd,
+                                            packet.AsSpan(payloadOffset, payloadLength), paddingLen, txKey);
                                         coalescedLen += totalLen;
                                     }
                                     else
@@ -310,7 +326,8 @@ public sealed partial class ObxodkaStreamTransport
                                         var frame = ArrayPool<byte>.Shared.Rent(totalLen);
                                         try
                                         {
-                                            ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd, packet.AsSpan(payloadOffset, payloadLength), paddingLen, txKey);
+                                            ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd,
+                                                packet.AsSpan(payloadOffset, payloadLength), paddingLen, txKey);
                                             await stream.WriteAsync(frame.AsMemory(0, totalLen), pumpToken).ConfigureAwait(false);
                                             rayTxBytes += totalLen;
                                             _ = Interlocked.Add(ref raySharedBytes, totalLen);
@@ -348,7 +365,8 @@ public sealed partial class ObxodkaStreamTransport
                 {
                     //штатная отмена исходящего потока при закрытии луча
                 }
-                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException or ObjectDisposedException or InvalidOperationException)
+                catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException
+                                               or ObjectDisposedException or InvalidOperationException)
                 {
                     AppLogger.LogWarning($"[OBXODKA-TX] Ray #{ray} upload pump stopped: {ex.Message}");
                 }
@@ -361,9 +379,11 @@ public sealed partial class ObxodkaStreamTransport
             duplexContent.Headers.ContentType = MediaTypeHeaderValue.Parse(requestContentType);
             request.Content = duplexContent;
 
-            AppLogger.Log($"[H2 STREAM] Ray #{ray} initiating duplex tunnel POST to https://{channelHost}:{port}{streamPath} (MTU={SmartMtuEngine.CurrentMtu}, MIME={requestContentType}, Browser={ActiveBrowserProfile})...");
+            AppLogger.Log(
+                $"[H2 STREAM] Ray #{ray} initiating duplex tunnel POST to https://{channelHost}:{port}{streamPath} (MTU={SmartMtuEngine.CurrentMtu}, MIME={requestContentType}, Browser={ActiveBrowserProfile})...");
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-            AppLogger.Log($"[H2 RESPONSE] Ray #{ray} received HTTP {(int)response.StatusCode} {response.ReasonPhrase} (Version={response.Version}).");
+            AppLogger.Log(
+                $"[H2 RESPONSE] Ray #{ray} received HTTP {(int)response.StatusCode} {response.ReasonPhrase} (Version={response.Version}).");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -372,7 +392,7 @@ public sealed partial class ObxodkaStreamTransport
                 _ = response.EnsureSuccessStatusCode();
             }
 
-            using var responseStream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            await using var responseStream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             var rxBuf = ArrayPool<byte>.Shared.Rent(131072);
             var rxFilled = 0;
             var rxOffset = 0;
@@ -385,26 +405,28 @@ public sealed partial class ObxodkaStreamTransport
                 while (!token.IsCancellationRequested && streamActive)
                 {
                     var elapsedTicks = Stopwatch.GetTimestamp() - streamStartedTicks;
-                    var transferredBytes = Volatile.Read(ref raySharedBytes);
-                    if ((elapsedTicks > maxStreamDurationTicks || transferredBytes >= maxSliceBytes) && Volatile.Read(ref _activeRays) >= 2)
+                    var transferredBytes = Read(ref raySharedBytes);
+                    if ((elapsedTicks > maxStreamDurationTicks || transferredBytes >= maxSliceBytes) && Read(ref _activeRays) >= 2)
                     {
                         var siblingRay = ray == 2 ? 0 : (ray + 1) % 2;
-                        var siblingLastRx = siblingRay == 0 ? Volatile.Read(ref _lastRxTicks0) : Volatile.Read(ref _lastRxTicks1);
-                        if (siblingLastRx > 0 && (Stopwatch.GetTimestamp() - siblingLastRx) < 8 * Stopwatch.Frequency)
+                        var siblingLastRx = siblingRay == 0 ? Read(ref _lastRxTicks0) : Read(ref _lastRxTicks1);
+                        if (siblingLastRx > 0 && Stopwatch.GetTimestamp() - siblingLastRx < 8 * Stopwatch.Frequency)
                         {
-                            if (ray is 0 or 1 && Volatile.Read(ref _preferredRay) == ray)
+                            if (ray is 0 or 1 && Read(ref _preferredRay) == ray)
                             {
-                                Volatile.Write(ref _preferredRay, siblingRay);
+                                Write(ref _preferredRay, siblingRay);
                             }
 
                             rotatedCleanly = true;
-                            AppLogger.Log($"[OBXODKA-STEALTH] Session slice complete on Ray #{ray} ({transferredBytes / 1024}KB) -> rotating to next stealth chunk.");
+                            AppLogger.Log(
+                                $"[OBXODKA-STEALTH] Session slice complete on Ray #{ray} ({transferredBytes / 1024}KB) -> rotating to next stealth chunk.");
                             await rayCts.CancelAsync().ConfigureAwait(false);
                             break;
                         }
                     }
 
-                    var bytesRead = await responseStream.ReadAsync(rxBuf.AsMemory(rxFilled, rxBuf.Length - rxFilled), token).ConfigureAwait(false);
+                    var bytesRead = await responseStream.ReadAsync(rxBuf.AsMemory(rxFilled, rxBuf.Length - rxFilled), token)
+                        .ConfigureAwait(false);
                     if (bytesRead <= 0)
                     {
                         break;
@@ -416,20 +438,24 @@ public sealed partial class ObxodkaStreamTransport
                     while (rxFilled - rxOffset >= ObxodkaFraming.HeaderSize)
                     {
                         var headerSpan = rxBuf.AsSpan(rxOffset, ObxodkaFraming.HeaderSize);
-                        var decodeKey = Volatile.Read(ref activeSessionKey);
+                        var decodeKey = Read(ref activeSessionKey);
                         if (decodeKey == 0 && candidateSessionKey != 0 &&
-                            ObxodkaFraming.TryDecodeHeader(headerSpan, out var candTotal, out _, out var candCmd, out _, candidateSessionKey) &&
+                            ObxodkaFraming.TryDecodeHeader(headerSpan, out var candTotal, out _, out var candCmd, out _,
+                                candidateSessionKey) &&
                             candCmd == ObxodkaFraming.CmdHandshakeResponse && candTotal <= 1024)
                         {
                             decodeKey = candidateSessionKey;
-                            Volatile.Write(ref activeSessionKey, candidateSessionKey);
+                            Write(ref activeSessionKey, candidateSessionKey);
                         }
-                        if (!ObxodkaFraming.TryDecodeHeader(headerSpan, out var totalLen, out var payloadLen, out var command, out var salt, decodeKey))
+
+                        if (!ObxodkaFraming.TryDecodeHeader(headerSpan, out var totalLen, out var payloadLen, out var command, out var salt,
+                                decodeKey))
                         {
-                            if (decodeKey == 0 && ObxodkaFraming.TryDecodeHeader(headerSpan, out totalLen, out payloadLen, out command, out salt, candidateSessionKey))
+                            if (decodeKey == 0 && ObxodkaFraming.TryDecodeHeader(headerSpan, out totalLen, out payloadLen, out command,
+                                    out salt, candidateSessionKey))
                             {
                                 decodeKey = candidateSessionKey;
-                                Volatile.Write(ref activeSessionKey, candidateSessionKey);
+                                Write(ref activeSessionKey, candidateSessionKey);
                             }
                             else
                             {
@@ -449,61 +475,66 @@ public sealed partial class ObxodkaStreamTransport
                         {
                             ObxodkaFraming.UnmaskPayload(payloadSpan, salt, decodeKey);
                         }
+
                         rxOffset += totalLen;
 
                         _inspector.RecordRx(ray, Stopwatch.GetTimestamp());
-                        if (ray == 0)
+                        switch (ray)
                         {
-                            Volatile.Write(ref _lastRxTicks0, Stopwatch.GetTimestamp());
-                        }
-                        else if (ray == 1)
-                        {
-                            Volatile.Write(ref _lastRxTicks1, Stopwatch.GetTimestamp());
-                        }
-                        else if (ray == 2)
-                        {
-                            Volatile.Write(ref _lastRxTicks2, Stopwatch.GetTimestamp());
+                            case 0:
+                                Write(ref _lastRxTicks0, Stopwatch.GetTimestamp());
+                                break;
+                            case 1:
+                                Write(ref _lastRxTicks1, Stopwatch.GetTimestamp());
+                                break;
+                            case 2:
+                                Write(ref _lastRxTicks2, Stopwatch.GetTimestamp());
+                                break;
                         }
 
                         if (command == ObxodkaFraming.CmdHandshakeResponse)
                         {
                             var info = Encoding.UTF8.GetString(payloadSpan);
-                            if (info.StartsWith("IP:", StringComparison.OrdinalIgnoreCase))
+                            if (!info.StartsWith("IP:", StringComparison.OrdinalIgnoreCase))
                             {
-                                var parts = info[3..].Split('|');
-                                var assignedIp = parts[0];
-                                var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                                for (var pIdx = 0; pIdx < parts.Length; pIdx++)
-                                {
-                                    var part = parts[pIdx];
-                                    if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                                        int.TryParse(part[4..], out var sMtu) &&
-                                        sMtu >= SmartMtuEngine.MinMtu && sMtu <= SmartMtuEngine.MaxMtu)
-                                    {
-                                        SmartMtuEngine.CurrentMtu = sMtu;
-                                    }
-                                }
-                                _assignedIp = assignedIp;
-                                Volatile.Write(ref _connected, true);
-                                var isFirst = _ipTcs.TrySetResult((assignedIp, assignedIpV6));
+                                continue;
+                            }
 
-                                if (isFirst)
+                            var parts = info[3..].Split('|');
+                            var assignedIp = parts[0];
+                            var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
+                            foreach (var part in parts)
+                            {
+                                if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
+                                    int.TryParse(part[4..], out var sMtu) &&
+                                    sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                                 {
-                                    Volatile.Write(ref _connectedAtTicks, Stopwatch.GetTimestamp());
-                                    //пользовательский preferredRay может быть только 0 или 1 (ray 2 зарезервирован под control plane)
-                                    Volatile.Write(ref _preferredRay, ray is 0 or 1 ? ray : 0);
-                                    EffectivePort = port;
-                                    AppLogger.Log($"[OBXODKA-ESTABLISHED] Tunnel online via Ray #{ray} (Port {port}). IPv4={assignedIp}, IPv6={assignedIpV6}, MTU={SmartMtuEngine.CurrentMtu}");
-                                    if (Interlocked.Exchange(ref _pingLoopStarted, 1) == 0)
-                                    {
-                                        _ = Task.Run(() => PingLoopAsync(_cts!.Token), _cts!.Token);
-                                    }
+                                    OnMtuUpdated?.Invoke(sMtu);
                                 }
-                                else
+                            }
+
+                            _assignedIp = assignedIp;
+                            Write(ref _connected, true);
+                            var isFirst = _ipTcs.TrySetResult((assignedIp, assignedIpV6));
+
+                            if (isFirst)
+                            {
+                                Write(ref _connectedAtTicks, Stopwatch.GetTimestamp());
+                                //пользовательский preferredRay может быть только 0 или 1 (ray 2 зарезервирован под control plane)
+                                Write(ref _preferredRay, ray is 0 or 1 ? ray : 0);
+                                EffectivePort = port;
+                                AppLogger.Log(
+                                    $"[OBXODKA-ESTABLISHED] Tunnel online via Ray #{ray} (Port {port}). IPv4={assignedIp}, IPv6={assignedIpV6}, MTU={SmartMtuEngine.CurrentMtu}");
+                                if (Interlocked.Exchange(ref _pingLoopStarted, 1) == 0)
                                 {
-                                    Volatile.Write(ref _activeRays, Math.Max(ray + 1, Volatile.Read(ref _activeRays)));
-                                    AppLogger.Log($"[OBXODKA-STREAM] Ray #{ray} online and synchronized on port {port}. Active rays = {Volatile.Read(ref _activeRays)}.");
+                                    _ = Task.Run(() => PingLoopAsync(_cts!.Token), _cts!.Token);
                                 }
+                            }
+                            else
+                            {
+                                Write(ref _activeRays, Math.Max(ray + 1, Read(ref _activeRays)));
+                                AppLogger.Log(
+                                    $"[OBXODKA-STREAM] Ray #{ray} online and synchronized on port {port}. Active rays = {Read(ref _activeRays)}.");
                             }
                         }
                         else if (command == ObxodkaFraming.CmdData)
@@ -513,32 +544,42 @@ public sealed partial class ObxodkaStreamTransport
                                 //ray 2 зарезервирован под инспектор телеметрии, пользовательские данные здесь запрещены
                                 continue;
                             }
+
                             _inspector.RecordDataRx(payloadLen);
-                            if (payloadLen >= 20 && !_deduplicator.IsDuplicate(payloadSpan) && OnPacketReceived is { } onPacketReceived)
+                            if (payloadLen < 20 || _deduplicator.IsDuplicate(payloadSpan) || OnPacketReceived is not { } onPacketReceived)
                             {
-                                var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
-                                payloadSpan.CopyTo(rented);
-                                onPacketReceived(rented, payloadLen);
+                                continue;
                             }
+
+                            var rented = ArrayPool<byte>.Shared.Rent(payloadLen);
+                            payloadSpan.CopyTo(rented);
+                            onPacketReceived(rented, payloadLen);
                         }
                         else if (command == ObxodkaFraming.CmdPong)
                         {
-                            var tsSpan = (payloadLen >= 10 && payloadSpan[0] == 0xAA && payloadSpan[1] == 0xBB)
+                            var tsSpan = payloadLen >= 10 && payloadSpan[0] == 0xAA && payloadSpan[1] == 0xBB
                                 ? payloadSpan.Slice(2, 8)
-                                : (payloadLen >= 8 ? payloadSpan[..8] : default);
+                                : payloadLen >= 8
+                                    ? payloadSpan[..8]
+                                    : default;
 
-                            if (!tsSpan.IsEmpty)
+                            if (tsSpan.IsEmpty)
                             {
-                                var sendTs = BinaryPrimitives.ReadInt64LittleEndian(tsSpan);
-                                var now = Stopwatch.GetTimestamp();
-                                var elapsedMs = (long)((now - sendTs) * 1000.0 / Stopwatch.Frequency);
-                                if (elapsedMs is >= 0 and < 5000)
-                                {
-                                    _inspector.RecordPong(ray, sendTs, now);
-                                    OnPingUpdated?.Invoke(elapsedMs);
-                                }
+                                continue;
+                            }
 
-                                if (_pendingMtuProbes.TryRemove(sendTs, out var probeTcs))
+                            var sendTs = BinaryPrimitives.ReadInt64LittleEndian(tsSpan);
+                            var now = Stopwatch.GetTimestamp();
+                            var elapsedMs = (long)((now - sendTs) * 1000.0 / Stopwatch.Frequency);
+                            if (elapsedMs is >= 0 and < 5000)
+                            {
+                                _inspector.RecordPong(ray, sendTs, now);
+                                OnPingUpdated?.Invoke(elapsedMs);
+                            }
+
+                            if (_pendingMtuProbes.TryRemove(sendTs, out var probeTcs))
+                            {
+                                if (probeTcs != null)
                                 {
                                     _ = probeTcs.TrySetResult(payloadLen);
                                 }
@@ -546,25 +587,30 @@ public sealed partial class ObxodkaStreamTransport
                         }
                         else if (command == ObxodkaFraming.CmdMtuSync)
                         {
-                            if (payloadLen >= 2)
+                            if (payloadLen < 2)
                             {
-                                var ackMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan[..2]);
-                                if (_pendingMtuSyncAcks.TryRemove(ackMtu, out var ackTcs))
-                                {
-                                    _ = ackTcs.TrySetResult(true);
-                                }
-                                AppLogger.Log($"[OBXODKA-STREAM] Server confirmed locked MTU {ackMtu}B");
+                                continue;
                             }
+
+                            var ackMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan[..2]);
+                            if (_pendingMtuSyncAcks.TryRemove(ackMtu, out var ackTcs))
+                            {
+                                _ = ackTcs.TrySetResult(true);
+                            }
+
+                            AppLogger.Log($"[OBXODKA-STREAM] Server confirmed locked MTU {ackMtu}B");
                         }
                         else if (command == ObxodkaFraming.CmdMtuBurstPayload)
                         {
-                            if (payloadLen >= 4 && payloadSpan[0] == 0xEE && payloadSpan[1] == 0x55)
+                            if (payloadLen < 4 || payloadSpan[0] != 0xEE || payloadSpan[1] != 0x55)
                             {
-                                var targetMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
-                                lock (_receivedBurstMtus)
-                                {
-                                    _receivedBurstMtus.Add(targetMtu);
-                                }
+                                continue;
+                            }
+
+                            var targetMtu = (int)BinaryPrimitives.ReadUInt16BigEndian(payloadSpan.Slice(2, 2));
+                            lock (_receivedBurstMtus)
+                            {
+                                _receivedBurstMtus.Add(targetMtu);
                             }
                         }
                         else if (command == ObxodkaFraming.CmdDisconnect)
@@ -575,16 +621,19 @@ public sealed partial class ObxodkaStreamTransport
                         }
                     }
 
-                    if (rxOffset > 0)
+                    if (rxOffset <= 0)
                     {
-                        var remaining = rxFilled - rxOffset;
-                        if (remaining > 0)
-                        {
-                            Buffer.BlockCopy(rxBuf, rxOffset, rxBuf, 0, remaining);
-                        }
-                        rxFilled = remaining;
-                        rxOffset = 0;
+                        continue;
                     }
+
+                    var remaining = rxFilled - rxOffset;
+                    if (remaining > 0)
+                    {
+                        Buffer.BlockCopy(rxBuf, rxOffset, rxBuf, 0, remaining);
+                    }
+
+                    rxFilled = remaining;
+                    rxOffset = 0;
                 }
             }
             finally
@@ -609,18 +658,26 @@ public sealed partial class ObxodkaStreamTransport
         }
         finally
         {
-            _ = Interlocked.CompareExchange(ref _rayCts[ray], null, rayCts);
+            // ReSharper disable RedundantTypeArgumentsOfMethod
+            // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+            // ReSharper disable ConditionIsAlwaysTrueOrFalse
+            _ = Interlocked.CompareExchange<CancellationTokenSource?>(ref _rayCts[ray], null, rayCts);
+            var migrated = false;
+
             if (ray is 0 or 1)
             {
                 //миграция допустима строго на второй рабочий data-луч (ray 0 или ray 1), ray 2 зарезервирован под control plane
                 var otherRay = ray == 0 ? 1 : 0;
-                var isOtherAlive = Volatile.Read(ref _rayCts[otherRay]) != null;
+                var isOtherAlive = Read<CancellationTokenSource?>(ref _rayCts[otherRay]) is not null;
+                // ReSharper restore ConditionIsAlwaysTrueOrFalse
+                // ReSharper restore ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+                // ReSharper restore RedundantTypeArgumentsOfMethod
 
-                if (isOtherAlive && Volatile.Read(ref _connected) && _cts?.IsCancellationRequested != true)
+                if (isOtherAlive && Read(ref _connected) && _cts?.IsCancellationRequested != true)
                 {
-                    if (Volatile.Read(ref _preferredRay) == ray)
+                    if (Read(ref _preferredRay) == ray)
                     {
-                        Volatile.Write(ref _preferredRay, otherRay);
+                        Write(ref _preferredRay, otherRay);
                         AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #{ray} offline. Migrated preferred ray to #{otherRay}.");
                     }
 
@@ -631,16 +688,12 @@ public sealed partial class ObxodkaStreamTransport
                             ArrayPool<byte>.Shared.Return(leftover.buffer);
                         }
                     }
-                }
-                else
-                {
-                    while (_txChannels[ray].TryDequeue(out var leftover))
-                    {
-                        ArrayPool<byte>.Shared.Return(leftover.buffer);
-                    }
+
+                    migrated = true;
                 }
             }
-            else
+
+            if (!migrated)
             {
                 while (_txChannels[ray].TryDequeue(out var leftover))
                 {

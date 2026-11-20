@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Win32;
 
 namespace obxodka.Platforms.Windows;
@@ -33,7 +34,8 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
                 //обратная совместимость со значениями, сохраненными без энтропии
                 decrypted = ProtectedData.Unprotect(data, null, DataProtectionScope.CurrentUser);
             }
-            return Task.FromResult<string?>(System.Text.Encoding.UTF8.GetString(decrypted));
+
+            return Task.FromResult<string?>(Encoding.UTF8.GetString(decrypted));
         }
         catch
         {
@@ -45,12 +47,12 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
     public Task SetAsync(string key, string value)
     {
         var sanitizedKey = SanitizeKey(key);
-        var data = System.Text.Encoding.UTF8.GetBytes(value);
+        var data = Encoding.UTF8.GetBytes(value);
         var encrypted = ProtectedData.Protect(data, s_entropy, DataProtectionScope.CurrentUser);
         var base64 = Convert.ToBase64String(encrypted);
 
         using var regKey = Registry.CurrentUser.CreateSubKey($@"{_subKey}\{sanitizedKey}");
-        regKey?.SetValue("Value", base64);
+        regKey.SetValue("Value", base64);
         return Task.CompletedTask;
     }
 
@@ -59,12 +61,13 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
     {
         var sanitizedKey = SanitizeKey(key);
         using var regKey = Registry.CurrentUser.OpenSubKey(_subKey, true);
-        if (regKey != null)
+        if (regKey == null)
         {
-            regKey.DeleteSubKeyTree(sanitizedKey, false);
-            return true;
+            return false;
         }
-        return false;
+
+        regKey.DeleteSubKeyTree(sanitizedKey, false);
+        return true;
     }
 
     //полная очистка всех сохраненных ключей пользователя
@@ -74,7 +77,10 @@ public sealed class WindowsSecureStorageService(string subKey = "obxodka_secure"
         {
             Registry.CurrentUser.DeleteSubKeyTree($@"{_subKey}", false);
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     private static string SanitizeKey(string key)

@@ -1,6 +1,6 @@
 namespace obxodka.Helpers;
 
-public static partial class UIAnimations
+public static partial class UiAnimations
 {
     public enum EntranceType
     {
@@ -13,72 +13,111 @@ public static partial class UIAnimations
         BindableProperty.CreateAttached(
             "AnimateEntrance",
             typeof(bool),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             false,
             propertyChanged: OnAnimateEntranceChanged);
-
-    public static bool GetAnimateEntrance(BindableObject view) => (bool)view.GetValue(AnimateEntranceProperty);
-    public static void SetAnimateEntrance(BindableObject view, bool value) => view.SetValue(AnimateEntranceProperty, value);
 
     public static readonly BindableProperty EntranceKindProperty =
         BindableProperty.CreateAttached(
             "EntranceKind",
             typeof(EntranceType),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             EntranceType.SlideUp);
-
-    public static EntranceType GetEntranceKind(BindableObject view) => (EntranceType)view.GetValue(EntranceKindProperty);
-    public static void SetEntranceKind(BindableObject view, EntranceType value) => view.SetValue(EntranceKindProperty, value);
 
     public static readonly BindableProperty EntranceDelayProperty =
         BindableProperty.CreateAttached(
             "EntranceDelay",
             typeof(int),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             0);
-
-    public static int GetEntranceDelay(BindableObject view) => (int)view.GetValue(EntranceDelayProperty);
-    public static void SetEntranceDelay(BindableObject view, int value) => view.SetValue(EntranceDelayProperty, value);
 
     public static readonly BindableProperty AutoStaggerProperty =
         BindableProperty.CreateAttached(
             "AutoStagger",
             typeof(bool),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             false);
-
-    public static bool GetAutoStagger(BindableObject view) => (bool)view.GetValue(AutoStaggerProperty);
-    public static void SetAutoStagger(BindableObject view, bool value) => view.SetValue(AutoStaggerProperty, value);
 
     public static readonly BindableProperty EntranceDurationProperty =
         BindableProperty.CreateAttached(
             "EntranceDuration",
             typeof(uint),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             DurNormal);
-
-    public static uint GetEntranceDuration(BindableObject view) => (uint)view.GetValue(EntranceDurationProperty);
-    public static void SetEntranceDuration(BindableObject view, uint value) => view.SetValue(EntranceDurationProperty, value);
 
     public static readonly BindableProperty EntranceFromYProperty =
         BindableProperty.CreateAttached(
             "EntranceFromY",
             typeof(double),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             28.0);
-
-    public static double GetEntranceFromY(BindableObject view) => (double)view.GetValue(EntranceFromYProperty);
-    public static void SetEntranceFromY(BindableObject view, double value) => view.SetValue(EntranceFromYProperty, value);
 
     public static readonly BindableProperty EntranceFromXProperty =
         BindableProperty.CreateAttached(
             "EntranceFromX",
             typeof(double),
-            typeof(UIAnimations),
+            typeof(UiAnimations),
             -36.0);
+
+    public static readonly BindableProperty BounceOnClickProperty =
+        BindableProperty.CreateAttached(
+            "BounceOnClick",
+            typeof(bool),
+            typeof(UiAnimations),
+            false,
+            propertyChanged: OnBounceOnClickChanged);
+
+    private static readonly BindableProperty s_isBounceGestureProperty =
+        BindableProperty.CreateAttached(
+            "IsBounceGesture",
+            typeof(bool),
+            typeof(UiAnimations),
+            false);
+
+    public static readonly BindableProperty SmoothHoverProperty =
+        BindableProperty.CreateAttached(
+            "SmoothHover",
+            typeof(bool),
+            typeof(UiAnimations),
+            false,
+            propertyChanged: OnSmoothHoverChanged);
+
+    private static readonly BindableProperty s_isSmoothHoverAttachedProperty =
+        BindableProperty.CreateAttached(
+            "IsSmoothHoverAttached",
+            typeof(bool),
+            typeof(UiAnimations),
+            false);
+
+    public static bool GetAnimateEntrance(BindableObject view) => (bool)view.GetValue(AnimateEntranceProperty);
+    public static void SetAnimateEntrance(BindableObject view, bool value) => view.SetValue(AnimateEntranceProperty, value);
+
+    public static EntranceType GetEntranceKind(BindableObject view) => (EntranceType)view.GetValue(EntranceKindProperty);
+    public static void SetEntranceKind(BindableObject view, EntranceType value) => view.SetValue(EntranceKindProperty, value);
+
+    public static int GetEntranceDelay(BindableObject view) => (int)view.GetValue(EntranceDelayProperty);
+    public static void SetEntranceDelay(BindableObject view, int value) => view.SetValue(EntranceDelayProperty, value);
+
+    public static bool GetAutoStagger(BindableObject view) => (bool)view.GetValue(AutoStaggerProperty);
+    public static void SetAutoStagger(BindableObject view, bool value) => view.SetValue(AutoStaggerProperty, value);
+
+    public static uint GetEntranceDuration(BindableObject view) => (uint)view.GetValue(EntranceDurationProperty);
+    public static void SetEntranceDuration(BindableObject view, uint value) => view.SetValue(EntranceDurationProperty, value);
+
+    public static double GetEntranceFromY(BindableObject view) => (double)view.GetValue(EntranceFromYProperty);
+    public static void SetEntranceFromY(BindableObject view, double value) => view.SetValue(EntranceFromYProperty, value);
 
     public static double GetEntranceFromX(BindableObject view) => (double)view.GetValue(EntranceFromXProperty);
     public static void SetEntranceFromX(BindableObject view, double value) => view.SetValue(EntranceFromXProperty, value);
+
+    public static bool GetSmoothHover(BindableObject view) => (bool)view.GetValue(SmoothHoverProperty);
+    public static void SetSmoothHover(BindableObject view, bool value) => view.SetValue(SmoothHoverProperty, value);
+
+    public static bool GetBounceOnClick(BindableObject view) => (bool)view.GetValue(BounceOnClickProperty);
+    public static void SetBounceOnClick(BindableObject view, bool value) => view.SetValue(BounceOnClickProperty, value);
+
+    private static int GetSiblingIndex(VisualElement element) =>
+        element.Parent is Layout layout ? layout.Children.IndexOf(element) : -1;
 
     private static void OnAnimateEntranceChanged(BindableObject bindable, object oldValue, object newValue)
     {
@@ -93,23 +132,29 @@ public static partial class UIAnimations
             {
                 element.Opacity = 0;
                 var kind = GetEntranceKind(element);
-                if (kind == EntranceType.SlideInLeft)
+                if (kind != EntranceType.SlideInLeft)
+                {
+                    if (kind != EntranceType.SlideUp)
+                    {
+                        if (kind == EntranceType.FadeScale)
+                        {
+                            element.Scale = 0.82;
+                        }
+                    }
+                    else
+                    {
+                        element.TranslationY = GetEntranceFromY(element);
+                        element.Scale = 0.97;
+                    }
+                }
+                else
                 {
                     element.TranslationX = GetEntranceFromX(element);
                 }
-                else if (kind == EntranceType.SlideUp)
-                {
-                    element.TranslationY = GetEntranceFromY(element);
-                    element.Scale = 0.97;
-                }
-                else if (kind == EntranceType.FadeScale)
-                {
-                    element.Scale = 0.82;
-                }
             }
 
-            element.Loaded -= OnElementLoadedForEntranceAsync;
-            element.Loaded += OnElementLoadedForEntranceAsync;
+            element.Loaded -= OnElementLoadedForEntrance;
+            element.Loaded += OnElementLoadedForEntrance;
 
             if (element.IsLoaded)
             {
@@ -118,7 +163,7 @@ public static partial class UIAnimations
         }
         else
         {
-            element.Loaded -= OnElementLoadedForEntranceAsync;
+            element.Loaded -= OnElementLoadedForEntrance;
             element.Opacity = 1.0;
             element.Scale = 1.0;
             element.TranslationX = 0;
@@ -126,12 +171,26 @@ public static partial class UIAnimations
         }
     }
 
-    private static async void OnElementLoadedForEntranceAsync(object? sender, EventArgs e)
+    private static void OnElementLoadedForEntrance(object? sender, EventArgs e)
     {
-        if (sender is VisualElement element)
+        if (sender is not VisualElement element)
         {
-            element.Loaded -= OnElementLoadedForEntranceAsync;
+            return;
+        }
+
+        element.Loaded -= OnElementLoadedForEntrance;
+        _ = SafeTriggerLoadedEntranceAsync(element);
+    }
+
+    private static async Task SafeTriggerLoadedEntranceAsync(VisualElement element)
+    {
+        try
+        {
             await CheckAndTriggerLoadedEntranceAsync(element);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[UiAnimations] {ex.Message}");
         }
     }
 
@@ -159,8 +218,8 @@ public static partial class UIAnimations
             return;
         }
 
-        var cards = new List<VisualElement>();
-        CollectAnimatedChildren(container, cards);
+        List<VisualElement> cards = [];
+        CollectChildContainers(container, cards);
 
         if (cards.Count > 0)
         {
@@ -168,32 +227,28 @@ public static partial class UIAnimations
         }
     }
 
-    private static void CollectAnimatedChildren(VisualElement root, List<VisualElement> result)
+    private static void CollectChildContainers(VisualElement node, List<VisualElement> result)
     {
-        if (!root.IsVisible)
+        if (!node.IsVisible)
         {
             return;
         }
 
-        switch (root)
+        if (node is not IContentView { Content: VisualElement cvContent })
         {
-            case IContentView cv when cv.Content is VisualElement cvContent:
-                CollectAnimatedElements(cvContent, result);
-                break;
-            case Layout layout:
-                foreach (var child in layout.Children.OfType<VisualElement>())
-                {
-                    CollectAnimatedElements(child, result);
-                }
-                break;
-            case ScrollView sv when sv.Content is VisualElement svContent:
-                CollectAnimatedElements(svContent, result);
-                break;
-            case Border b when b.Content is VisualElement bContent:
-                CollectAnimatedElements(bContent, result);
-                break;
-            default:
-                break;
+            if (node is not Layout layout)
+            {
+                return;
+            }
+
+            foreach (var child in layout.Children.OfType<VisualElement>())
+            {
+                CollectAnimatedElements(child, result);
+            }
+        }
+        else
+        {
+            CollectAnimatedElements(cvContent, result);
         }
     }
 
@@ -210,26 +265,7 @@ public static partial class UIAnimations
             return;
         }
 
-        switch (element)
-        {
-            case IContentView cv when cv.Content is VisualElement cvContent:
-                CollectAnimatedElements(cvContent, result);
-                break;
-            case Layout layout:
-                foreach (var child in layout.Children.OfType<VisualElement>())
-                {
-                    CollectAnimatedElements(child, result);
-                }
-                break;
-            case ScrollView sv when sv.Content is VisualElement svContent:
-                CollectAnimatedElements(svContent, result);
-                break;
-            case Border b when b.Content is VisualElement bContent:
-                CollectAnimatedElements(bContent, result);
-                break;
-            default:
-                break;
-        }
+        CollectChildContainers(element, result);
     }
 
     private static bool IsElementVisibleInHierarchy(VisualElement element)
@@ -241,8 +277,10 @@ public static partial class UIAnimations
             {
                 return false;
             }
+
             current = current.Parent;
         }
+
         return true;
     }
 
@@ -281,80 +319,46 @@ public static partial class UIAnimations
         }
     }
 
-    private static int GetSiblingIndex(VisualElement element) =>
-        element.Parent is Layout layout ? layout.Children.IndexOf(element) : -1;
-
-    public static readonly BindableProperty BounceOnClickProperty =
-        BindableProperty.CreateAttached(
-            "BounceOnClick",
-            typeof(bool),
-            typeof(UIAnimations),
-            false,
-            propertyChanged: OnBounceOnClickChanged);
-
-    public static bool GetBounceOnClick(BindableObject view) => (bool)view.GetValue(BounceOnClickProperty);
-    public static void SetBounceOnClick(BindableObject view, bool value) => view.SetValue(BounceOnClickProperty, value);
-
-    private static readonly BindableProperty s_isBounceGestureProperty =
-        BindableProperty.CreateAttached(
-            "IsBounceGesture",
-            typeof(bool),
-            typeof(UIAnimations),
-            false);
-
     private static void OnBounceOnClickChanged(BindableObject bindable, object oldValue, object newValue)
     {
         var enable = (bool)newValue;
 
-        if (bindable is Button button)
+        if (bindable is not Button button)
         {
-            button.Clicked -= OnButtonClickedBounceAsync;
-            if (enable)
+            if (bindable is not View view)
             {
-                button.Clicked += OnButtonClickedBounceAsync;
+                return;
             }
-            return;
-        }
 
-        if (bindable is View view)
-        {
             var existing = view.GestureRecognizers.OfType<TapGestureRecognizer>()
                 .FirstOrDefault(t => (bool)t.GetValue(s_isBounceGestureProperty));
 
             if (enable)
             {
-                if (existing is null)
+                if (existing is not null)
                 {
-                    var tap = new TapGestureRecognizer();
-                    tap.SetValue(s_isBounceGestureProperty, true);
-                    tap.Tapped += async (_, _) => await view.BounceClickAsync();
-                    view.GestureRecognizers.Add(tap);
+                    return;
                 }
+
+                var tap = new TapGestureRecognizer();
+                tap.SetValue(s_isBounceGestureProperty, true);
+                tap.Tapped += async (_, _) => await view.BounceClickAsync();
+                view.GestureRecognizers.Add(tap);
             }
             else if (existing is not null)
             {
                 _ = view.GestureRecognizers.Remove(existing);
             }
         }
+        else
+        {
+            button.Clicked -= OnButtonClickedBounce;
+            if (enable)
+            {
+                button.Clicked += OnButtonClickedBounce;
+            }
+        }
     }
-
-    public static readonly BindableProperty SmoothHoverProperty =
-        BindableProperty.CreateAttached(
-            "SmoothHover",
-            typeof(bool),
-            typeof(UIAnimations),
-            false,
-            propertyChanged: OnSmoothHoverChanged);
-
-    public static bool GetSmoothHover(BindableObject view) => (bool)view.GetValue(SmoothHoverProperty);
-    public static void SetSmoothHover(BindableObject view, bool value) => view.SetValue(SmoothHoverProperty, value);
-
-    private static readonly BindableProperty s_isSmoothHoverAttachedProperty =
-        BindableProperty.CreateAttached(
-            "IsSmoothHoverAttached",
-            typeof(bool),
-            typeof(UIAnimations),
-            false);
 
     private static void OnSmoothHoverChanged(BindableObject bindable, object oldValue, object newValue)
     {
@@ -369,22 +373,24 @@ public static partial class UIAnimations
 
         if (enable)
         {
-            if (existing is null)
+            if (existing is not null)
             {
-                var pointer = new PointerGestureRecognizer();
-                pointer.SetValue(s_isSmoothHoverAttachedProperty, true);
-                pointer.PointerEntered += (_, _) =>
-                {
-                    view.CancelAnimations();
-                    _ = view.ScaleToAsync(1.018, 140, Easing.CubicOut);
-                };
-                pointer.PointerExited += (_, _) =>
-                {
-                    view.CancelAnimations();
-                    _ = view.ScaleToAsync(1.0, 140, Easing.CubicOut);
-                };
-                view.GestureRecognizers.Add(pointer);
+                return;
             }
+
+            var pointer = new PointerGestureRecognizer();
+            pointer.SetValue(s_isSmoothHoverAttachedProperty, true);
+            pointer.PointerEntered += (_, _) =>
+            {
+                view.CancelAnimations();
+                _ = view.ScaleToAsync(1.018, 140, Easing.CubicOut);
+            };
+            pointer.PointerExited += (_, _) =>
+            {
+                view.CancelAnimations();
+                _ = view.ScaleToAsync(1.0, 140, Easing.CubicOut);
+            };
+            view.GestureRecognizers.Add(pointer);
         }
         else if (existing is not null)
         {
@@ -392,11 +398,23 @@ public static partial class UIAnimations
         }
     }
 
-    private static async void OnButtonClickedBounceAsync(object? sender, EventArgs e)
+    private static void OnButtonClickedBounce(object? sender, EventArgs e)
     {
         if (sender is Button { IsEnabled: true } btn)
         {
+            _ = SafeBounceClickAsync(btn);
+        }
+    }
+
+    private static async Task SafeBounceClickAsync(Button btn)
+    {
+        try
+        {
             await btn.BounceClickAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[UiAnimations] {ex.Message}");
         }
     }
 }

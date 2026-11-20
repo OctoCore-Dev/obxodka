@@ -8,8 +8,8 @@ public class NonParallelCollectionDefinition;
 [Trait("Category", "Unit")]
 public class ZeroAllocationNetworkTests : IDisposable
 {
-    private readonly byte[] _key = SHA256.HashData("TestKey_ZeroAllocation_2026"u8.ToArray());
     private readonly AesGcm _aes;
+    private readonly byte[] _key = SHA256.HashData("TestKey_ZeroAllocation_2026"u8.ToArray());
 
     public ZeroAllocationNetworkTests() => _aes = new AesGcm(_key, 16);
 
@@ -48,6 +48,7 @@ public class ZeroAllocationNetworkTests : IDisposable
             PacketRouter.GetRays(packet.AsSpan(), 3, out var r1, out var r2);
             _ = r1 + r2;
         }
+
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(0, allocAfter - allocBefore);
@@ -75,6 +76,7 @@ public class ZeroAllocationNetworkTests : IDisposable
             PacketRouter.GetRays(packet, 3, out var r1, out var r2);
             _ = r1 + r2;
         }
+
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(0, allocAfter - allocBefore);
@@ -99,6 +101,7 @@ public class ZeroAllocationNetworkTests : IDisposable
         {
             _ = deduplicator.IsDuplicate(packet.AsSpan());
         }
+
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(0, allocAfter - allocBefore);
@@ -110,7 +113,7 @@ public class ZeroAllocationNetworkTests : IDisposable
         Span<byte> frame = stackalloc byte[32];
         Span<byte> payload = stackalloc byte[16];
         payload.Fill(0x42);
-        ObxodkaFraming.WriteFrame(frame, ObxodkaFraming.CmdData, payload, paddingLen: 0, sessionKey: 0);
+        ObxodkaFraming.WriteFrame(frame, ObxodkaFraming.CmdData, payload, 0);
 
         for (var w = 0; w < 50; w++)
         {
@@ -123,6 +126,7 @@ public class ZeroAllocationNetworkTests : IDisposable
             _ = ObxodkaFraming.TryDecodeHeader(frame, out var tLen, out var pLen, out var cmd, out var salt);
             _ = tLen + pLen + cmd + salt;
         }
+
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(0, allocAfter - allocBefore);
@@ -148,6 +152,7 @@ public class ZeroAllocationNetworkTests : IDisposable
             _ = totalLength;
             ArrayPool<byte>.Shared.Return(packed);
         }
+
         var allocAfter = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(0, allocAfter - allocBefore);
@@ -206,5 +211,4 @@ public class ZeroAllocationNetworkTests : IDisposable
             Assert.Equal(1200, secondOut.length);
         }
     }
-
 }

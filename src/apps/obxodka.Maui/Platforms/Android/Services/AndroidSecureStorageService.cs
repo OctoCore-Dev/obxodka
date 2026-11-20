@@ -1,9 +1,9 @@
 using MauiSecureStorage = Microsoft.Maui.Storage.SecureStorage;
 
-namespace obxodka.Platforms.Android;
+namespace obxodka.Services;
 
-//адаптер защищенного хранилища maui securestorage для android
-public sealed class AndroidSecureStorageService() : ISecureStorageService
+//адаптер защищенного хранилища maui secure storage для android
+public sealed class AndroidSecureStorageService : ISecureStorageService
 {
     //чтение зашифрованного значения по ключу
     public Task<string?> GetAsync(string key) =>

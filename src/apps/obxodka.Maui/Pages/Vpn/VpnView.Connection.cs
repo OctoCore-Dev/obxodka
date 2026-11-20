@@ -1,7 +1,4 @@
-using Microsoft.Maui.Controls.Shapes;
-using Path = System.IO.Path;
-
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
 //стейт-машин подключения vpn, обработка ошибок, ip адреса и индикаторов
 public sealed partial class VpnView
@@ -10,31 +7,42 @@ public sealed partial class VpnView
     private void HandleProtocolChanged() =>
         UpdateActiveNode(_activeConnectedNode);
 
+    //переключение состояния vpn по нажатию системной плитки быстрого доступа
+    public void TriggerTileToggle() =>
+        MainThread.BeginInvokeOnMainThread(() => OnConnectClickedAsync(null, EventArgs.Empty));
+
     //обработка событий системного лога vpn
     private void HandleVpnLog(string logMsg) =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (_vpnService is null ||
-                _vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Disconnecting or AppVpnState.Error)
+            if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Disconnecting or AppVpnState.Error)
             {
                 return;
             }
+
             StatusLabel.Text = logMsg;
         });
 
     //переподключение по нажатию в системном уведомлении
     private void HandleNotificationReconnect()
     {
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
         {
-            if (ParentPage is not null)
+            try
             {
-                await ParentPage.SwitchTabAsync("vpn");
-            }
+                if (ParentPage is not null)
+                {
+                    await ParentPage.SwitchTabAsync("vpn");
+                }
 
-            if (_vpnService is null || _vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
+                if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
+                {
+                    OnConnectClickedAsync(null, EventArgs.Empty);
+                }
+            }
+            catch
             {
-                OnConnectClickedAsync(null, EventArgs.Empty);
+                // ignored
             }
         });
     }
@@ -44,23 +52,25 @@ public sealed partial class VpnView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (_vpnService == null || _vpnService.CurrentState == AppVpnState.Disconnected)
+            if (_vpnService.CurrentState == AppVpnState.Disconnected)
             {
                 NodeHostLabel?.Text = "Нет подключения";
                 return;
             }
 
-            var activeSni = OctopusEngine.Current?.ActiveSni;
+            var activeSni = OctopusEngine.Current.ActiveSni;
             _activeConnectedNode = !string.IsNullOrWhiteSpace(host) &&
-                !IPAddress.TryParse(host, out _) &&
-                !host.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) &&
-                !host.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase)
+                                   !IPAddress.TryParse(host, out _) &&
+                                   !host.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) &&
+                                   !host.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase)
                 ? host
-                : (!string.IsNullOrWhiteSpace(activeSni) ? activeSni : "Zero-SNI");
+                : !string.IsNullOrWhiteSpace(activeSni)
+                    ? activeSni
+                    : "Zero-SNI";
 
             var displayHost = _activeConnectedNode;
             if (string.IsNullOrWhiteSpace(displayHost) ||
-                IPAddress.TryParse(displayHost, out _) ||
+                IPAddress.TryParse((string?)displayHost, out _) ||
                 displayHost.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
                 displayHost.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase))
             {
@@ -84,9 +94,6 @@ public sealed partial class VpnView
         });
     }
 
-    //переключение состояния vpn по нажатию системной плитки быстрого доступа
-    public void TriggerTileToggle() =>
-        MainThread.BeginInvokeOnMainThread(() => OnConnectClickedAsync(null, EventArgs.Empty));
 
     //обновление статуса и цвета ip адреса
     private void UpdateIpStatusDisplay(string text, Color textColor, Color iconColor)
@@ -131,7 +138,7 @@ public sealed partial class VpnView
         var currentIp = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? v6 : v4;
         var tag = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? "v6" : "v4";
 
-        IpAddressLabel.Text = currentIp ?? "Подключен";
+        IpAddressLabel.Text = currentIp;
         IpAddressLabel.TextColor = GetAppColor("TextPrimary", Colors.White);
         IpVersionBadge.IsVisible = true;
         IpVersionLabel.Text = tag;
@@ -141,21 +148,25 @@ public sealed partial class VpnView
     //копирование ip адреса в буфер обмена
     private async void OnCopyIpClickedAsync(object? sender, EventArgs e)
     {
-        if (OctopusEngine.Current is not { IsConnected: true })
+        try
         {
-            return;
-        }
+            if (OctopusEngine.Current is not { IsConnected: true })
+            {
+                return;
+            }
 
-        var v4 = OctopusEngine.Current.AssignedIp;
-        var v6 = OctopusEngine.Current.AssignedIpV6;
-        var currentIp = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? v6 : v4;
-        var tag = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? "v6" : "v4";
+            var v4 = OctopusEngine.Current.AssignedIp;
+            var v6 = OctopusEngine.Current.AssignedIpV6;
+            var currentIp = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? v6 : v4;
+            var tag = _showIpV6 && !string.IsNullOrWhiteSpace(v6) ? "v6" : "v4";
 
-        if (!string.IsNullOrWhiteSpace(currentIp) && currentIp != "0.0.0.0")
-        {
+            if (string.IsNullOrWhiteSpace(currentIp) || currentIp == "0.0.0.0")
+            {
+                return;
+            }
+
             ThemeAudioService.PlayClick();
             await Clipboard.Default.SetTextAsync(currentIp);
-            var prevText = IpAddressLabel.Text;
             var prevColor = IpAddressLabel.TextColor;
             var successColor = GetAppColor("Success", s_greenText);
             IpAddressLabel.Text = $"{tag.ToUpperInvariant()} скопирован!";
@@ -163,16 +174,22 @@ public sealed partial class VpnView
             IpCopyIcon.Icon = FluentIcons.Checkmark20;
             IpCopyIcon.IconColor = successColor;
             await Task.Delay(1100);
-            if (OctopusEngine.Current.IsConnected)
+            if (!OctopusEngine.Current.IsConnected)
             {
-                var refreshedV4 = OctopusEngine.Current.AssignedIp;
-                var refreshedV6 = OctopusEngine.Current.AssignedIpV6;
-                var refreshedIp = _showIpV6 && !string.IsNullOrWhiteSpace(refreshedV6) ? refreshedV6 : refreshedV4;
-                IpAddressLabel.Text = refreshedIp ?? prevText;
-                IpAddressLabel.TextColor = prevColor;
-                IpCopyIcon.Icon = FluentIcons.Copy20;
-                IpCopyIcon.IconColor = GetAppColor("TextSecondary", s_grayText);
+                return;
             }
+
+            var refreshedV4 = OctopusEngine.Current.AssignedIp;
+            var refreshedV6 = OctopusEngine.Current.AssignedIpV6;
+            var refreshedIp = _showIpV6 && !string.IsNullOrWhiteSpace(refreshedV6) ? refreshedV6 : refreshedV4;
+            IpAddressLabel.Text = refreshedIp;
+            IpAddressLabel.TextColor = prevColor;
+            IpCopyIcon.Icon = FluentIcons.Copy20;
+            IpCopyIcon.IconColor = GetAppColor("TextSecondary", s_grayText);
+        }
+        catch
+        {
+            //игнор
         }
     }
 
@@ -195,15 +212,25 @@ public sealed partial class VpnView
         var friendlyMessage = FormatUserFriendlyError(err);
         _lastErrorMessage = friendlyMessage;
 
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
         {
-            StatusLabel.Text = friendlyMessage;
-            StatusLabel.TextColor = GetAppColor("Error", s_redDot);
             try
             {
-                await NeoAlert.ShowAsync("Сбой сети", friendlyMessage, "OK");
+                StatusLabel.Text = friendlyMessage;
+                StatusLabel.TextColor = GetAppColor("Error", s_redDot);
+                try
+                {
+                    await NeoAlert.ShowAsync("Сбой сети", friendlyMessage);
+                }
+                catch
+                {
+                    // ignored
+                }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         });
     }
 
@@ -219,7 +246,8 @@ public sealed partial class VpnView
             rawError.Contains("Timeout", StringComparison.OrdinalIgnoreCase) ||
             rawError.Contains("timed out", StringComparison.OrdinalIgnoreCase))
         {
-            return "Не удалось подключиться к серверу (таймаут ответа).\n\nВозможные причины:\n• Блокировка TLS/протокола провайдером\n• Нестабильный интернет\n\nПопробуйте повторить попытку.";
+            return
+                "Не удалось подключиться к серверу (таймаут ответа).\n\nВозможные причины:\n• Блокировка TLS/протокола провайдером\n• Нестабильный интернет\n\nПопробуйте повторить попытку.";
         }
 
         if (rawError.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) ||
@@ -241,16 +269,22 @@ public sealed partial class VpnView
             return "Ошибка проверки сертификата безопасности сервера. Пожалуйста, обновите список серверов или обратитесь в поддержку.";
         }
 
-        if (rawError.Contains("50052") || rawError.Contains("50051") || rawError.Contains("Unavailable", StringComparison.OrdinalIgnoreCase) ||
-            rawError.Contains("SocketException", StringComparison.OrdinalIgnoreCase) || rawError.Contains("не получен нужный отклик", StringComparison.OrdinalIgnoreCase) ||
+        if (rawError.Contains("50052") || rawError.Contains("50051") ||
+            rawError.Contains("Unavailable", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("SocketException", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("не получен нужный отклик", StringComparison.OrdinalIgnoreCase) ||
             rawError.Contains("от другого компьютера за требуемое время", StringComparison.OrdinalIgnoreCase) ||
-            rawError.Contains("GOAWAY", StringComparison.OrdinalIgnoreCase) || rawError.Contains("The SSL connection could not be established", StringComparison.OrdinalIgnoreCase) ||
-            rawError.Contains("reset by peer", StringComparison.OrdinalIgnoreCase) || rawError.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase))
+            rawError.Contains("GOAWAY", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("The SSL connection could not be established", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("reset by peer", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase))
         {
-            return "Сервер временно недоступен или связь была прервана сетью.\n\nПожалуйста, проверьте интернет-соединение или повторите попытку.";
+            return
+                "Сервер временно недоступен или связь была прервана сетью.\n\nПожалуйста, проверьте интернет-соединение или повторите попытку.";
         }
 
-        if (rawError.Contains("No such host is known", StringComparison.OrdinalIgnoreCase) || rawError.Contains("NameResolutionFailure", StringComparison.OrdinalIgnoreCase))
+        if (rawError.Contains("No such host is known", StringComparison.OrdinalIgnoreCase) ||
+            rawError.Contains("NameResolutionFailure", StringComparison.OrdinalIgnoreCase))
         {
             return "Не удалось найти сервер. Проверьте подключение вашего устройства к интернету.";
         }
@@ -259,7 +293,7 @@ public sealed partial class VpnView
         return firstLine.Length > 120 ? firstLine[..120] + "..." : firstLine;
     }
 
-    //сброс индикаторов сетевого пинга
+    //сброс индикаторов сетевого пинг
     private void ResetPingIndicators()
     {
         var muted = GetAppColor("TextMuted", s_grayText);
@@ -278,30 +312,36 @@ public sealed partial class VpnView
             if (OctopusEngine.Current is { IsConnected: true })
             {
                 UpdateIpStatusDisplay(
-                    OctopusEngine.Current.AssignedIp ?? "Подключен",
+                    OctopusEngine.Current.AssignedIp,
                     GetAppColor("TextPrimary", Colors.White),
                     GetAppColor("Accent", s_cyanAccent));
                 PingValueLabel.Text = $"{rtt} ms";
-                if (rtt < 75)
+                switch (rtt)
                 {
-                    var sc = GetAppColor("Success", s_greenDot);
-                    PingDot.Color = sc;
-                    PingBadge.Stroke = sc;
-                    PingValueLabel.TextColor = sc;
-                }
-                else if (rtt < 150)
-                {
-                    var wc = GetAppColor("Warning", s_amberDot);
-                    PingDot.Color = wc;
-                    PingBadge.Stroke = wc;
-                    PingValueLabel.TextColor = wc;
-                }
-                else
-                {
-                    var ec = GetAppColor("Error", s_redDot);
-                    PingDot.Color = ec;
-                    PingBadge.Stroke = ec;
-                    PingValueLabel.TextColor = ec;
+                    case < 75:
+                        {
+                            var sc = GetAppColor("Success", s_greenDot);
+                            PingDot.Color = sc;
+                            PingBadge.Stroke = sc;
+                            PingValueLabel.TextColor = sc;
+                            break;
+                        }
+                    case < 150:
+                        {
+                            var wc = GetAppColor("Warning", s_amberDot);
+                            PingDot.Color = wc;
+                            PingBadge.Stroke = wc;
+                            PingValueLabel.TextColor = wc;
+                            break;
+                        }
+                    default:
+                        {
+                            var ec = GetAppColor("Error", s_redDot);
+                            PingDot.Color = ec;
+                            PingBadge.Stroke = ec;
+                            PingValueLabel.TextColor = ec;
+                            break;
+                        }
                 }
             }
             else
@@ -314,114 +354,123 @@ public sealed partial class VpnView
     //обработка смены состояния vpn туннеля
     private void HandleAppVpnStateChanged(AppVpnState state)
     {
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
         {
-            ServerSelectorButton.Opacity = state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting ? 0.55 : 1.0;
-            var muted = GetAppColor("TextMuted", s_grayText);
-            var textPrimary = GetAppColor("TextPrimary", Colors.White);
-            var accent = GetAppColor("Accent", s_cyanAccent);
-
-            switch (state)
+            try
             {
-                case AppVpnState.Disconnected:
-                    if (_isHotSwapping)
-                    {
+                ServerSelectorButton.Opacity =
+                    state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting
+                        ? 0.55
+                        : 1.0;
+                var muted = GetAppColor("TextMuted", s_grayText);
+                var textPrimary = GetAppColor("TextPrimary", Colors.White);
+                var accent = GetAppColor("Accent", s_cyanAccent);
+
+                object? condition = null;
+                switch (state, condition)
+                {
+                    case (AppVpnState.Disconnected, _):
+                        if (_isHotSwapping)
+                        {
+                            break;
+                        }
+
+                        _isBusy = false;
+                        _isErrorState = false;
+                        _errorTransitionFactor = 0f;
+                        StopLoaderAnimation();
+                        StopGraphAnimation();
+                        ResetPingIndicators();
+                        TriggerShockwave(false);
+                        OuterAura.IsVisible = true;
+                        UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
+                        _activeConnectedNode = null;
+                        UpdateActiveNode();
+                        ConnectButtonCore.IsEnabled = true;
+                        await SetNeonStateAsync(
+                            GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected),
+                            GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction),
+                            AppVpnState.Disconnected);
+                        ParentPage?.NotifyVpnDisconnected();
                         break;
-                    }
-                    _isBusy = false;
-                    _isErrorState = false;
-                    _errorTransitionFactor = 0f;
-                    StopLoaderAnimation(animateExit: true);
-                    StopGraphAnimation();
-                    ResetPingIndicators();
-                    TriggerShockwave(isConnect: false);
-                    OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
-                    _activeConnectedNode = null;
-                    UpdateActiveNode();
-                    ConnectButtonCore.IsEnabled = true;
-                    await SetNeonStateAsync(
-                        GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected),
-                        GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction),
-                        AppVpnState.Disconnected);
-                    ParentPage?.NotifyVpnDisconnected();
-                    break;
 
-                case AppVpnState.Connected:
-                    _isBusy = false;
-                    _isErrorState = false;
-                    _errorTransitionFactor = 0f;
-                    StartLoaderAnimation(animateEntrance: false);
-                    StartGraphAnimation();
-                    AnimateReactorMorph(1.0f, 650);
-                    TriggerShockwave(isConnect: true);
-                    OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp ?? VpnStatusMessages.Connected, textPrimary, accent);
-                    UpdateActiveNode(_activeConnectedNode);
-                    ConnectButtonCore.IsEnabled = true;
-                    await SetNeonStateAsync(
-                        GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected),
-                        GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction),
-                        AppVpnState.Connected);
-                    ParentPage?.NotifyVpnConnected();
-                    break;
+                    case (AppVpnState.Connected, _):
+                        _isBusy = false;
+                        _isErrorState = false;
+                        _errorTransitionFactor = 0f;
+                        StartLoaderAnimation(false);
+                        StartGraphAnimation();
+                        AnimateReactorMorph(1.0f, 650);
+                        TriggerShockwave(true);
+                        OuterAura.IsVisible = true;
+                        UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp, textPrimary, accent);
+                        UpdateActiveNode(_activeConnectedNode);
+                        ConnectButtonCore.IsEnabled = true;
+                        await SetNeonStateAsync(
+                            GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected),
+                            GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction),
+                            AppVpnState.Connected);
+                        ParentPage?.NotifyVpnConnected();
+                        break;
 
-                case AppVpnState.Error:
-                    _isBusy = false;
-                    _isErrorState = true;
-                    StopGraphAnimation();
-                    ResetPingIndicators();
-                    AnimateErrorMorph(1.0f, 350);
-                    TriggerShockwave(isConnect: false);
-                    OuterAura.IsVisible = true;
-                    UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
-                    _activeConnectedNode = null;
-                    UpdateActiveNode();
-                    ConnectButtonCore.IsEnabled = true;
-                    PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
-                    var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage)
-                        ? _lastErrorMessage
-                        : GetStatusTextForState(AppVpnState.Error, VpnStatusMessages.DefaultConnectionError);
-                    await SetNeonStateAsync(
-                        errDisplay,
-                        GetButtonTextForState(AppVpnState.Error, VpnStatusMessages.Retry),
-                        AppVpnState.Error);
-                    ParentPage?.NotifyVpnDisconnected();
-                    StopLoaderAnimation(animateExit: true);
-                    break;
+                    case (AppVpnState.Error, _):
+                        _isBusy = false;
+                        _isErrorState = true;
+                        StopGraphAnimation();
+                        ResetPingIndicators();
+                        AnimateErrorMorph(1.0f, 350);
+                        TriggerShockwave(false);
+                        OuterAura.IsVisible = true;
+                        UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
+                        _activeConnectedNode = null;
+                        UpdateActiveNode();
+                        ConnectButtonCore.IsEnabled = true;
+                        PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
+                        var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage)
+                            ? _lastErrorMessage
+                            : GetStatusTextForState(AppVpnState.Error, VpnStatusMessages.DefaultConnectionError);
+                        await SetNeonStateAsync(
+                            errDisplay,
+                            GetButtonTextForState(AppVpnState.Error, VpnStatusMessages.Retry),
+                            AppVpnState.Error);
+                        ParentPage?.NotifyVpnDisconnected();
+                        StopLoaderAnimation();
+                        break;
 
-                case AppVpnState.Connecting:
-                case AppVpnState.Reconnecting:
-                    _isErrorState = false;
-                    _errorTransitionFactor = 0f;
-                    _reactorTransitionFactor = 0f;
-                    ResetPingIndicators();
-                    StartLoaderAnimation(animateEntrance: true);
-                    ConnectButtonCore.IsEnabled = true;
-                    UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, accent, accent);
-                    UpdateActiveNode();
-                    await SetNeonStateAsync(
-                        GetStatusTextForState(state, VpnStatusMessages.Connecting),
-                        GetButtonTextForState(state, VpnStatusMessages.PleaseWait),
-                        state);
-                    break;
+                    case (AppVpnState.Connecting, _):
+                    case (AppVpnState.Reconnecting, _):
+                        _isErrorState = false;
+                        _errorTransitionFactor = 0f;
+                        _reactorTransitionFactor = 0f;
+                        ResetPingIndicators();
+                        StartLoaderAnimation();
+                        ConnectButtonCore.IsEnabled = true;
+                        UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, accent, accent);
+                        UpdateActiveNode();
+                        await SetNeonStateAsync(
+                            GetStatusTextForState(state, VpnStatusMessages.Connecting),
+                            GetButtonTextForState(state, VpnStatusMessages.PleaseWait),
+                            state);
+                        break;
 
-                case AppVpnState.Disconnecting:
-                    StopGraphAnimation();
-                    ResetPingIndicators();
-                    ConnectButtonCore.IsEnabled = false;
-                    UpdateIpStatusDisplay(VpnStatusMessages.Disconnecting, muted, muted);
-                    NodeHostLabel.Text = VpnStatusMessages.Disconnecting;
-                    StatusLabel.Text = VpnStatusMessages.Disconnecting;
-                    ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnecting, VpnStatusMessages.PleaseWait);
-                    _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
-                    AnimateReactorMorph(0.0f, 350);
-                    SafeScaleTo(LoaderCanvas, 0.35, 400, Easing.CubicIn);
-                    SafeFadeTo(LoaderCanvas, 0, 350, Easing.CubicIn);
-                    break;
-
-                default:
-                    break;
+                    case (AppVpnState.Disconnecting, _):
+                        StopGraphAnimation();
+                        ResetPingIndicators();
+                        ConnectButtonCore.IsEnabled = false;
+                        UpdateIpStatusDisplay(VpnStatusMessages.Disconnecting, muted, muted);
+                        NodeHostLabel.Text = VpnStatusMessages.Disconnecting;
+                        StatusLabel.Text = VpnStatusMessages.Disconnecting;
+                        ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnecting, VpnStatusMessages.PleaseWait);
+                        _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
+                        AnimateReactorMorph(0.0f, 350);
+                        SafeScaleTo(LoaderCanvas, 0.35, 400, Easing.CubicIn);
+                        SafeFadeTo(LoaderCanvas, 0, 350, Easing.CubicIn);
+                        break;
+                }
+            }
+            catch
+            {
+                // ignored
             }
         });
     }
@@ -433,311 +482,338 @@ public sealed partial class VpnView
 
         _ = UpdateCustomButtonStateAsync(state);
 
-        if (state == AppVpnState.Connected)
+        switch (state)
         {
-            await UIAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-            var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
-            var accentColor = GetAppColor("Accent", s_cyanAccent);
-            if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
-            {
-                accentColor = ovColor;
-                StatusLabel.TextColor = ovColor;
-                ConnectIcon.IconColor = ovColor;
-            }
+            case AppVpnState.Connected:
+                {
+                    await UiAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
+                    var accentColor = GetAppColor("Accent", s_cyanAccent);
+                    if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
+                    {
+                        accentColor = ovColor;
+                        StatusLabel.TextColor = ovColor;
+                        ConnectIcon.IconColor = ovColor;
+                    }
 
-            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
-            {
-                ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
-                ConnectButtonCore.Stroke = accentColor;
-            }
-            var targetScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.05 : 1.12;
-            SafeScaleTo(LoaderCanvas, targetScale, 650, Easing.SpringOut);
-        }
-        else if (state == AppVpnState.Error)
-        {
-            await UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-            var errColor = GetAppColor("Error", s_redDot);
-            var errDim = GetAppColor("ErrorDim", s_redBg);
-            ConnectIcon.IconColor = errColor;
-            StatusLabel.TextColor = errColor;
-            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
-            {
-                ConnectButtonCore.BackgroundColor = errDim;
-                ConnectButtonCore.Stroke = errColor;
-            }
-        }
-        else if (state is AppVpnState.Connecting or AppVpnState.Reconnecting)
-        {
-            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
-            {
-                ConnectButtonCore.ClearValue(BackgroundColorProperty);
-                ConnectButtonCore.ClearValue(Border.StrokeProperty);
-                ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
-                ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
-            }
-            SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
-        }
-        else
-        {
-            await UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-            if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
-            {
-                ConnectButtonCore.ClearValue(BackgroundColorProperty);
-                ConnectButtonCore.ClearValue(Border.StrokeProperty);
-                ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
-                ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
-            }
-            SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
+                    if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+                    {
+                        ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
+                        ConnectButtonCore.Stroke = accentColor;
+                    }
+
+                    var targetScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.05 : 1.12;
+                    SafeScaleTo(LoaderCanvas, targetScale, 650, Easing.SpringOut);
+                    break;
+                }
+            case AppVpnState.Error:
+                {
+                    await UiAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    var errColor = GetAppColor("Error", s_redDot);
+                    var errDim = GetAppColor("ErrorDim", s_redBg);
+                    ConnectIcon.IconColor = errColor;
+                    StatusLabel.TextColor = errColor;
+                    if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+                    {
+                        ConnectButtonCore.BackgroundColor = errDim;
+                        ConnectButtonCore.Stroke = errColor;
+                    }
+
+                    break;
+                }
+            case AppVpnState.Connecting or AppVpnState.Reconnecting:
+                {
+                    if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+                    {
+                        ConnectButtonCore.ClearValue(BackgroundColorProperty);
+                        ConnectButtonCore.ClearValue(Border.StrokeProperty);
+                        ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+                        ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+                    }
+
+                    SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
+                    break;
+                }
+            default:
+                {
+                    await UiAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
+                    {
+                        ConnectButtonCore.ClearValue(BackgroundColorProperty);
+                        ConnectButtonCore.ClearValue(Border.StrokeProperty);
+                        ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+                        ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+                    }
+
+                    SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
+                    break;
+                }
         }
     }
 
     //нажатие кнопки подключения и отключения vpn
     private async void OnConnectClickedAsync(object? sender, EventArgs? e)
     {
-        if (_isBusy || _vpnService is null)
-        {
-            return;
-        }
-
-        ThemeAudioService.PlayClick();
-        if (ParentPage is not null)
-        {
-            float bx;
-            float by;
-            if (e is TappedEventArgs te && te.GetPosition(ParentPage) is { } pos)
-            {
-                bx = (float)pos.X;
-                by = (float)pos.Y;
-            }
-            else
-            {
-                bx = (float)(ParentPage.Width * 0.5);
-                by = (float)(ParentPage.Height * 0.5);
-            }
-            ParentPage.TriggerParticleBurst(bx, by);
-        }
-        _isBusy = true;
-
-        if (_vpnService.CurrentState is not (AppVpnState.Disconnected or AppVpnState.Error))
-        {
-            _ = ConnectButtonCore.BounceClickAsync();
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    _ = _apiService.StopVpnOnServerAsync();
-                    await _vpnService.StopVpnAsync();
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.LogError($"[VPN STOP ERROR] {ex.Message}", ex);
-                }
-                finally
-                {
-                    _isBusy = false;
-                }
-            });
-            return;
-        }
-
-        _lastErrorMessage = null;
-        await ConnectButtonCore.BounceClickAsync();
         try
         {
+            if (_isBusy)
+            {
+                return;
+            }
+
+            ThemeAudioService.PlayClick();
+            if (ParentPage is not null)
+            {
+                float bx;
+                float by;
+                if (e is TappedEventArgs te && te.GetPosition(ParentPage) is { } pos)
+                {
+                    bx = (float)pos.X;
+                    by = (float)pos.Y;
+                }
+                else
+                {
+                    bx = (float)(ParentPage.Width * 0.5);
+                    by = (float)(ParentPage.Height * 0.5);
+                }
+
+                ParentPage.TriggerParticleBurst(bx, by);
+            }
+
+            _isBusy = true;
+
+            if (_vpnService.CurrentState is not (AppVpnState.Disconnected or AppVpnState.Error))
+            {
+                _ = ConnectButtonCore.BounceClickAsync();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        _ = _apiService.StopVpnOnServerAsync();
+                        await _vpnService.StopVpnAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.LogError($"[VPN STOP ERROR] {ex.Message}", ex);
+                    }
+                    finally
+                    {
+                        _isBusy = false;
+                    }
+                });
+                return;
+            }
+
+            _lastErrorMessage = null;
+            await ConnectButtonCore.BounceClickAsync();
+            try
+            {
 #if ANDROID
-            var isDisclosureAccepted = Preferences.Get("VpnDisclosureAccepted", false);
-            if (!isDisclosureAccepted)
-            {
-                var accepted = ParentPage is not null && await ParentPage.DisplayAlertAsync(
-                    "Защита и использование VPN",
-                    "Приложение Obxodka использует службу Android VpnService для создания безопасного зашифрованного туннеля и защиты вашего интернет-трафика.\n\n" +
-                    "• Мы не сохраняем историю посещений, сетевые логи и личные данные.\n" +
-                    "• Все данные передаются в зашифрованном виде.\n\n" +
-                    "Вы согласны использовать VPN-соединение для защиты сети?",
-                    "Принять",
-                    "Отмена");
-
-                if (!accepted)
+                var isDisclosureAccepted = Preferences.Get("VpnDisclosureAccepted", false);
+                if (!isDisclosureAccepted)
                 {
-                    return;
-                }
-                Preferences.Set("VpnDisclosureAccepted", true);
-            }
-#endif
-
-            if (!OctopusEngine.IsUplinkAvailable)
-            {
-                await NeoAlert.ShowAsync(
-                    "Нет подключения к сети",
-                    "На устройстве отсутствует доступ в интернет (Wi-Fi или сетевой кабель отключены).\n\nПожалуйста, проверьте подключение к сети и повторите попытку.",
-                    "Понятно");
-                return;
-            }
-
-            //быстрая проверка реального выхода в интернет (баланс тарифа, авторизация в wi-fi)
-            var hasInternet = await OctopusEngine.VerifyPhysicalUplinkAsync(1200).ConfigureAwait(true);
-            if (!hasInternet)
-            {
-                await NeoAlert.ShowAsync(
-                    "Нет доступа в интернет",
-                    "Устройство подключено к сети, но выход в интернет отсутствует.\n\nВозможно, закончился баланс тарифа, требуется авторизация в сети (Wi-Fi) или на линии провайдера сбой.\n\nПроверьте соединение и повторите попытку.",
-                    "Понятно");
-                return;
-            }
-
-            var auditResult = await PlatformServices.CertificateAudit.CheckCertificatesAsync();
-            if (auditResult.HasUntrustedRoot)
-            {
-                var platformInstructions = DeviceInfo.Platform == DevicePlatform.Android
-                    ? "Как удалить:\n1. В открывшихся настройках выберите «Надежные сертификаты» (или «Хранилище учетных данных»).\n2. Перейдите во вкладку «Пользователь».\n3. Нажмите на сертификат и выберите «Удалить»."
-                    : "Как удалить:\n1. В открывшемся окне «certmgr» раскройте «Доверенные корневые центры сертификации» -> «Сертификаты».\n2. Найдите сертификат, нажмите правой кнопкой мыши -> «Удалить».";
-
-                var openSettings = ParentPage is not null && await ParentPage.DisplayAlertAsync(
-                    "Обнаружен сертификат перехвата!",
-                    $"На вашем устройстве установлен сторонний корневой сертификат:\n«{auditResult.CertificateName}»\n\n" +
-                    "ВНИМАНИЕ: Вне VPN этот сертификат позволяет операторам связи и третьим лицам расшифровывать ваш защищённый трафик (HTTPS), видеть переписки и перехватывать пароли.\n\n" +
-                    $"{platformInstructions}\n\n" +
-                    "Желаете открыть настройки для удаления?",
-                    "Открыть настройки",
-                    "Отмена");
-
-                if (openSettings)
-                {
-                    await PlatformServices.CertificateAudit.OpenCertificateSettingsAsync();
-                }
-
-                return;
-            }
-
-            if ((ParentPage?.RemainingSeconds ?? 0) <= 0)
-            {
-                if (ParentPage is not null)
-                {
-                    await ParentPage.DisplayAlertAsync("Внимание", "Нет доступного времени.", "OK");
-                }
-                return;
-            }
-
-            var conflictingVpn = _vpnService.DetectConflictingVpn();
-            if (!string.IsNullOrEmpty(conflictingVpn))
-            {
-                if (ParentPage is not null)
-                {
-                    var proceed = await ParentPage.DisplayAlertAsync(
-                        "Сторонний VPN",
-                        $"Обнаружен сторонний VPN ({conflictingVpn}).\n\nЕсли вы уже отключили тот VPN, Обходка автоматически нейтрализует оставшийся адаптер и подключится.\n\nПродолжить?",
-                        "Продолжить",
+                    var accepted = ParentPage is not null && await ParentPage.DisplayAlertAsync(
+                        "Защита и использование VPN",
+                        "Приложение Obxodka использует службу Android VpnService для создания безопасного зашифрованного туннеля и защиты вашего интернет-трафика.\n\n" +
+                        "• Мы не сохраняем историю посещений, сетевые логи и личные данные.\n" +
+                        "• Все данные передаются в зашифрованном виде.\n\n" +
+                        "Вы согласны использовать VPN-соединение для защиты сети?",
+                        "Принять",
                         "Отмена");
 
-                    if (!proceed)
+                    if (!accepted)
                     {
                         return;
                     }
+
+                    Preferences.Set("VpnDisclosureAccepted", true);
                 }
-            }
+#endif
 
-            StartLoaderAnimation();
-            ConnectButtonCore.IsEnabled = true;
-            var accent = GetAppColor("Accent", s_cyanAccent);
-            UpdateIpStatusDisplay("Получение...", accent, accent);
-            await SetNeonStateAsync(
-                GetStatusTextForState(AppVpnState.Connecting, "Подключение..."),
-                GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
-                AppVpnState.Connecting);
-
-            var preflightError = await Task.Run(_vpnService.RunNetworkPreflightAsync);
-            if (!string.IsNullOrEmpty(preflightError))
-            {
-                throw new InvalidOperationException(preflightError);
-            }
-
-            var (success, servers, errorMsg) = await _apiService.GetServersAsync();
-            if (!success || servers is null || servers.Count == 0)
-            {
-                if (AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
+                if (!OctopusEngine.IsUplinkAvailable)
                 {
-                    AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-                    (success, servers, errorMsg) = await _apiService.GetServersAsync();
+                    await NeoAlert.ShowAsync(
+                        "Нет подключения к сети",
+                        "На устройстве отсутствует доступ в интернет (Wi-Fi или сетевой кабель отключены).\n\nПожалуйста, проверьте подключение к сети и повторите попытку.",
+                        "Понятно");
+                    return;
                 }
-            }
 
-            if ((!success || servers is null || servers.Count == 0) && _cachedServers.Count > 0)
-            {
-                servers = _cachedServers;
-            }
-
-            if (servers is null || servers.Count == 0)
-            {
-                throw new InvalidOperationException("Не удалось получить список серверов. Проверьте интернет и нажмите «СТАРТ» для повтора.");
-            }
-
-            _cachedServers = servers;
-
-            VpnServerDto targetServer;
-            if (_selectedServer is not null && servers.Any(s => s.Ip == _selectedServer.Ip))
-            {
-                targetServer = servers.First(s => s.Ip == _selectedServer.Ip);
-            }
-            else
-            {
-                targetServer = servers[0];
-                _selectedServer = targetServer;
-                UpdateSelectedServerDisplay();
-            }
-
-            var orderedCandidates = new List<VpnServerDto> { targetServer };
-            orderedCandidates.AddRange(servers.Where(s => s.Ip != targetServer.Ip));
-
-            var directCertHash = orderedCandidates
-                .Select(s => s.CertHash)
-                .FirstOrDefault(h => !string.IsNullOrWhiteSpace(h));
-            if (!string.IsNullOrWhiteSpace(directCertHash))
-            {
-                OctopusEngine.DirectOriginCertHash = directCertHash;
-            }
-            else if (string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash))
-            {
-                var (successHash, hashData, _) = await _apiService.GetCertHashAsync();
-                if (successHash && hashData is not null && !string.IsNullOrEmpty(hashData.Hash))
+                //быстрая проверка реального выхода в интернет (баланс тарифа, авторизация в wi-fi)
+                var hasInternet = await OctopusEngine.VerifyPhysicalUplinkAsync(1200).ConfigureAwait(true);
+                if (!hasInternet)
                 {
-                    OctopusEngine.DirectOriginCertHash = hashData.Hash;
+                    await NeoAlert.ShowAsync(
+                        "Нет доступа в интернет",
+                        "Устройство подключено к сети, но выход в интернет отсутствует.\n\nВозможно, закончился баланс тарифа, требуется авторизация в сети (Wi-Fi) или на линии провайдера сбой.\n\nПроверьте соединение и повторите попытку.",
+                        "Понятно");
+                    return;
                 }
-            }
 
-            var isShieldNode = SniEngine.ConfigureServerSecurity(targetServer, out _);
-            if (!isShieldNode && string.IsNullOrWhiteSpace(OctopusEngine.DynamicSslPublicKeyHash) && !string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash))
+                var auditResult = await PlatformServices.CertificateAudit.CheckCertificatesAsync();
+                if (auditResult.HasUntrustedRoot)
+                {
+                    var platformInstructions = DeviceInfo.Platform == DevicePlatform.Android
+                        ? "Как удалить:\n1. В открывшихся настройках выберите «Надежные сертификаты» (или «Хранилище учетных данных»).\n2. Перейдите во вкладку «Пользователь».\n3. Нажмите на сертификат и выберите «Удалить»."
+                        : "Как удалить:\n1. В открывшемся окне «certmgr» раскройте «Доверенные корневые центры сертификации» -> «Сертификаты».\n2. Найдите сертификат, нажмите правой кнопкой мыши -> «Удалить».";
+
+                    var openSettings = ParentPage is not null && await ParentPage.DisplayAlertAsync(
+                        "Обнаружен сертификат перехвата!",
+                        $"На вашем устройстве установлен сторонний корневой сертификат:\n«{auditResult.CertificateName}»\n\n" +
+                        "ВНИМАНИЕ: Вне VPN этот сертификат позволяет операторам связи и третьим лицам расшифровывать ваш защищённый трафик (HTTPS), видеть переписки и перехватывать пароли.\n\n" +
+                        $"{platformInstructions}\n\n" +
+                        "Желаете открыть настройки для удаления?",
+                        "Открыть настройки",
+                        "Отмена");
+
+                    if (openSettings)
+                    {
+                        await PlatformServices.CertificateAudit.OpenCertificateSettingsAsync();
+                    }
+
+                    return;
+                }
+
+                if ((ParentPage?.RemainingSeconds ?? 0) <= 0)
+                {
+                    if (ParentPage is not null)
+                    {
+                        await ParentPage.DisplayAlertAsync("Внимание", "Нет доступного времени.", "OK");
+                    }
+
+                    return;
+                }
+
+                var conflictingVpn = _vpnService.DetectConflictingVpn();
+                if (!string.IsNullOrEmpty(conflictingVpn))
+                {
+                    if (ParentPage is not null)
+                    {
+                        var proceed = await ParentPage.DisplayAlertAsync(
+                            "Сторонний VPN",
+                            $"Обнаружен сторонний VPN ({conflictingVpn}).\n\nЕсли вы уже отключили тот VPN, Обходка автоматически нейтрализует оставшийся адаптер и подключится.\n\nПродолжить?",
+                            "Продолжить",
+                            "Отмена");
+
+                        if (!proceed)
+                        {
+                            return;
+                        }
+                    }
+                }
+
+                StartLoaderAnimation();
+                ConnectButtonCore.IsEnabled = true;
+                var accent = GetAppColor("Accent", s_cyanAccent);
+                UpdateIpStatusDisplay("Получение...", accent, accent);
+                await SetNeonStateAsync(
+                    GetStatusTextForState(AppVpnState.Connecting, "Подключение..."),
+                    GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
+                    AppVpnState.Connecting);
+
+                var preflightError = await Task.Run(_vpnService.RunNetworkPreflightAsync);
+                if (!string.IsNullOrEmpty(preflightError))
+                {
+                    throw new InvalidOperationException(preflightError);
+                }
+
+                var (success, servers, _) = await _apiService.GetServersAsync();
+                if (!success || servers is null || servers.Count == 0)
+                {
+                    if (AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
+                    {
+                        AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+                        (success, servers, _) = await _apiService.GetServersAsync();
+                    }
+                }
+
+                if ((!success || servers is null || servers.Count == 0) && _cachedServers.Count > 0)
+                {
+                    servers = _cachedServers;
+                }
+
+                if (servers is null || servers.Count == 0)
+                {
+                    throw new InvalidOperationException(
+                        "Не удалось получить список серверов. Проверьте интернет и нажмите «СТАРТ» для повтора.");
+                }
+
+                _cachedServers = servers;
+
+                VpnServerDto targetServer;
+                if (_selectedServer is not null && servers.Any(s => s.Ip == _selectedServer.Ip))
+                {
+                    targetServer = servers.First(s => s.Ip == _selectedServer.Ip);
+                }
+                else
+                {
+                    targetServer = servers[0];
+                    _selectedServer = targetServer;
+                    UpdateSelectedServerDisplay();
+                }
+
+                List<VpnServerDto> orderedCandidates =
+                [
+                    targetServer,
+                    .. servers.Where(s => s.Ip != targetServer.Ip)
+                ];
+
+                var directCertHash = orderedCandidates
+                    .Select(s => s.CertHash)
+                    .FirstOrDefault(h => !string.IsNullOrWhiteSpace(h));
+                if (!string.IsNullOrWhiteSpace(directCertHash))
+                {
+                    OctopusEngine.DirectOriginCertHash = directCertHash;
+                }
+                else if (string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash))
+                {
+                    var (successHash, hashData, _) = await _apiService.GetCertHashAsync();
+                    if (successHash && hashData is not null && !string.IsNullOrEmpty(hashData.Hash))
+                    {
+                        OctopusEngine.DirectOriginCertHash = hashData.Hash;
+                    }
+                }
+
+                var isShieldNode = SniEngine.ConfigureServerSecurity(targetServer, out _);
+                if (!isShieldNode && string.IsNullOrWhiteSpace(OctopusEngine.DynamicSslPublicKeyHash) &&
+                    !string.IsNullOrWhiteSpace(OctopusEngine.DirectOriginCertHash))
+                {
+                    OctopusEngine.DynamicSslPublicKeyHash = OctopusEngine.DirectOriginCertHash;
+                }
+
+                UpdateActiveNode(targetServer.Ip);
+
+                AppLogger.Log(
+                    $"[VPN-TARGET] User initiated connect to: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port}) | Role: {targetServer.Role ?? "worker"} | Provider: {targetServer.Provider} | Flag: {targetServer.Flag}");
+                await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, orderedCandidates));
+            }
+            catch (Exception ex)
             {
-                OctopusEngine.DynamicSslPublicKeyHash = OctopusEngine.DirectOriginCertHash;
+                AppLogger.LogError($"[VPN CONNECT ERROR] {ex.Message}", ex);
+                StopLoaderAnimation();
+                ConnectButtonCore.IsEnabled = true;
+                var muted = GetAppColor("TextMuted", s_grayText);
+                UpdateIpStatusDisplay("Не назначен", muted, muted);
+                await SetNeonStateAsync(
+                    GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
+                    GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
+                    AppVpnState.Disconnected);
+                var friendlyMsg = ex is SocketException or InvalidOperationException
+                    ? ex.Message
+                    : "Произошла ошибка при подключении/отключении";
+                var logHint = !string.IsNullOrEmpty(AppLogger.LogFilePath)
+                    ? $"\n\nПодробный лог сохранен в:\n{AppLogger.LogFilePath}"
+                    : "";
+                await NeoAlert.ShowAsync("Ошибка подключения", $"{friendlyMsg}{logHint}");
             }
-            UpdateActiveNode(targetServer.Ip);
-
-            AppLogger.Log($"[VPN-TARGET] User initiated connect to: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port}) | Role: {targetServer.Role ?? "worker"} | Provider: {targetServer.Provider} | Flag: {targetServer.Flag}");
-            await Task.Run(async () => await _vpnService.StartVpnAsync(targetServer.Ip, targetServer.Port, orderedCandidates));
+            finally
+            {
+                _isBusy = false;
+            }
         }
-        catch (Exception ex)
+        catch
         {
-            AppLogger.LogError($"[VPN CONNECT ERROR] {ex.Message}", ex);
-            StopLoaderAnimation();
-            ConnectButtonCore.IsEnabled = true;
-            var muted = GetAppColor("TextMuted", s_grayText);
-            UpdateIpStatusDisplay("Не назначен", muted, muted);
-            await SetNeonStateAsync(
-                GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
-                GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
-                AppVpnState.Disconnected);
-            var friendlyMsg = ex is SocketException or InvalidOperationException
-                ? ex.Message
-                : "Произошла ошибка при подключении/отключении";
-            var logHint = !string.IsNullOrEmpty(AppLogger.LogFilePath)
-                ? $"\n\nПодробный лог сохранен в:\n{AppLogger.LogFilePath}"
-                : "";
-            await NeoAlert.ShowAsync("Ошибка подключения", $"{friendlyMsg}{logHint}", "OK");
-        }
-        finally
-        {
-            _isBusy = false;
+            // ignored
         }
     }
-
-
 }

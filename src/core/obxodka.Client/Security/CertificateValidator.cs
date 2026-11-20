@@ -25,7 +25,8 @@ public static class CertificateValidator
             using var ownedCert = new X509Certificate2(certificate);
             return ValidateServerCertificateCore(ownedCert, chain, errors, dynamicPinningHash);
         }
-        catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NotSupportedException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NotSupportedException
+                                       or ObjectDisposedException or InvalidOperationException)
         {
             AppLogger.LogError($"[CERT ERROR] Exception during certificate validation: {ex.Message}", ex);
             return false;
@@ -51,12 +52,13 @@ public static class CertificateValidator
 
         //ожидаемый хэш открытого ключа
         var expectedPin = dynamicPinningHash is not null
-            ? (string.IsNullOrWhiteSpace(dynamicPinningHash) ? null : dynamicPinningHash)
+            ? string.IsNullOrWhiteSpace(dynamicPinningHash) ? null : dynamicPinningHash
             : OctopusEngine.DynamicSslPublicKeyHash;
 
         var pubKey = cert2.GetPublicKey();
         var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
-        AppLogger.Log($"[CERT] Validating server certificate: Subject='{cert2.Subject}', Thumbprint='{cert2.Thumbprint}', PubKeyHash='{hash}', NotAfter='{notAfterUtc:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
+        AppLogger.Log(
+            $"[CERT] Validating server certificate: Subject='{cert2.Subject}', Thumbprint='{cert2.Thumbprint}', PubKeyHash='{hash}', NotAfter='{notAfterUtc:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
 
         //сверка с ожидаемым пином
         if (!string.IsNullOrWhiteSpace(expectedPin))
@@ -88,17 +90,21 @@ public static class CertificateValidator
         //сверка с резервными зашитыми ключами
         foreach (var backupHash in AppSecrets.BackupPublicKeyHashes)
         {
-            if (string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase) || string.Equals(hash, backupHash, StringComparison.Ordinal))
+            if (!string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(hash, backupHash, StringComparison.Ordinal))
             {
-                AppLogger.Log($"[CERT OK] Matched hardcoded backup thumbprint '{backupHash}'");
-                return true;
+                continue;
             }
+
+            AppLogger.Log($"[CERT OK] Matched hardcoded backup thumbprint '{backupHash}'");
+            return true;
         }
 
         //если пиннинг был включен но ни один ключ не совпал отклоняем соединение до проверки доменного корня
         if (!string.IsNullOrWhiteSpace(expectedPin))
         {
-            AppLogger.LogError($"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
+            AppLogger.LogError(
+                $"[CERT PINNING MISMATCH] Expected pin: '{expectedPin}', Actual PubKeyHash: '{hash}', Thumbprint: '{cert2.Thumbprint}', SslErrors: '{errors}'");
             return false;
         }
 
@@ -111,9 +117,9 @@ public static class CertificateValidator
             if (nonNameErrors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors)
             {
                 using var verifyChain = new X509Chain();
-                verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
                 verifyChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
-                                                           X509VerificationFlags.IgnoreInvalidBasicConstraints;
+                                                            X509VerificationFlags.IgnoreInvalidBasicConstraints;
                 if (chain is not null)
                 {
                     foreach (var elem in chain.ChainElements)
@@ -130,7 +136,7 @@ public static class CertificateValidator
 
                 if (chain is not null)
                 {
-                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
                     chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested |
                                                           X509VerificationFlags.IgnoreInvalidBasicConstraints;
                     if (chain.Build(cert2))
@@ -154,7 +160,7 @@ public static class CertificateValidator
         if (errors == SslPolicyErrors.None)
         {
             using var verifyChain = new X509Chain();
-            verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
             if (verifyChain.Build(cert2))
             {
                 AppLogger.Log("[CERT OK] Default system root CA chain verified.");
@@ -163,7 +169,7 @@ public static class CertificateValidator
 
             if (chain is not null)
             {
-                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
                 if (chain.Build(cert2))
                 {
                     AppLogger.Log("[CERT OK] Default outer chain verified.");
@@ -179,18 +185,13 @@ public static class CertificateValidator
     //проверка наличия доменов обходки в san сертификата
     private static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
     {
-        foreach (var sanExt in cert2.Extensions.OfType<X509SubjectAlternativeNameExtension>())
+        if (cert2.Extensions.OfType<X509SubjectAlternativeNameExtension>().SelectMany(sanExt => sanExt.EnumerateDnsNames())
+            .Any(IsTrustedHostName))
         {
-            foreach (var dns in sanExt.EnumerateDnsNames())
-            {
-                if (IsTrustedHostName(dns))
-                {
-                    return true;
-                }
-            }
+            return true;
         }
 
-        var simpleName = cert2.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
+        var simpleName = cert2.GetNameInfo(X509NameType.SimpleName, false);
         return !string.IsNullOrWhiteSpace(simpleName) && IsTrustedHostName(simpleName.Trim());
     }
 
@@ -201,29 +202,11 @@ public static class CertificateValidator
         var primary = AppConfig.PrimaryDomain;
         var mirrorDomain = AppConfig.MirrorDomain;
 
-        if (!string.IsNullOrWhiteSpace(primary) &&
+        return !string.IsNullOrWhiteSpace(primary) &&
             (trimmed.Equals(primary, StringComparison.OrdinalIgnoreCase) ||
-             trimmed.EndsWith($".{primary}", StringComparison.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(mirrorDomain) &&
+             trimmed.EndsWith($".{primary}", StringComparison.OrdinalIgnoreCase)) || !string.IsNullOrWhiteSpace(mirrorDomain) &&
             (trimmed.Equals(mirrorDomain, StringComparison.OrdinalIgnoreCase) ||
-             trimmed.EndsWith($".{mirrorDomain}", StringComparison.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-
-        foreach (var m in BootstrapConfig.Mirrors)
-        {
-            if (trimmed.Equals(m, StringComparison.OrdinalIgnoreCase) ||
-                trimmed.EndsWith($".{m}", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+             trimmed.EndsWith($".{mirrorDomain}", StringComparison.OrdinalIgnoreCase)) || BootstrapConfig.Mirrors.Any(m =>
+                trimmed.Equals(m, StringComparison.OrdinalIgnoreCase) || trimmed.EndsWith($".{m}", StringComparison.OrdinalIgnoreCase));
     }
 }

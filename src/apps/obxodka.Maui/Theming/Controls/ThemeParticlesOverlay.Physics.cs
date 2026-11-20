@@ -3,48 +3,6 @@ namespace obxodka.Maui.Theming.Controls;
 [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "visual particle physics and rendering")]
 public sealed partial class ThemeParticlesOverlay
 {
-    //тип движения частиц
-    private enum MovementType
-    {
-        Falling,
-        Rising,
-        Floating
-    }
-
-    //состояние отдельной частицы фона
-    private sealed class Particle
-    {
-        public float X { get; set; }
-        public float Y { get; set; }
-        public float SpeedX { get; set; }
-        public float SpeedY { get; set; }
-        public float Rotation { get; set; }
-        public float RotationSpeed { get; set; }
-        public float Size { get; set; }
-        public float Depth { get; set; } = 1.0f;
-        public float BaseAlpha { get; set; }
-        public float CurrentAlpha { get; set; }
-        public float SwayPhase { get; set; }
-        public float SwaySpeed { get; set; }
-        public float TwinklePhase { get; set; }
-        public float TwinkleSpeed { get; set; }
-        public int SpriteIndex { get; set; }
-    }
-
-    //частица интерактивного взрыва при касании
-    private sealed class BurstParticle
-    {
-        public float X { get; set; }
-        public float Y { get; set; }
-        public float Vx { get; set; }
-        public float Vy { get; set; }
-        public float Size { get; set; }
-        public float Alpha { get; set; }
-        public float Life { get; set; }
-        public float MaxLife { get; set; }
-        public SKColor Color { get; set; }
-    }
-
     //обновление координат курсора
     public void SetPointerPosition(float x, float y, bool active)
     {
@@ -69,8 +27,8 @@ public sealed partial class ThemeParticlesOverlay
         for (var i = 0; i < count; i++)
         {
             var angle = (float)(_random.NextDouble() * Math.PI * 2);
-            var speed = (float)(1.8 + (_random.NextDouble() * 3.6));
-            var life = (float)(0.35 + (_random.NextDouble() * 0.45));
+            var speed = (float)(1.8 + _random.NextDouble() * 3.6);
+            var life = (float)(0.35 + _random.NextDouble() * 0.45);
             var color = _random.Next(2) == 0 ? _accentSkColor : _primarySkColor;
 
             _burstParticles.Add(new BurstParticle
@@ -79,7 +37,7 @@ public sealed partial class ThemeParticlesOverlay
                 Y = y,
                 Vx = MathF.Cos(angle) * speed,
                 Vy = MathF.Sin(angle) * speed,
-                Size = (float)(3.0 + (_random.NextDouble() * 4.5)),
+                Size = (float)(3.0 + _random.NextDouble() * 4.5),
                 Alpha = 1.0f,
                 Life = 0f,
                 MaxLife = life,
@@ -136,10 +94,10 @@ public sealed partial class ThemeParticlesOverlay
     {
         var activeOverlay = GetActiveOverlayName();
         var hasOverlay = !string.IsNullOrWhiteSpace(activeOverlay) &&
-            !string.Equals(activeOverlay, "none", StringComparison.OrdinalIgnoreCase);
+                         !string.Equals(activeOverlay, "none", StringComparison.OrdinalIgnoreCase);
         var hasParticles = _initialized &&
-            _particles.Count > 0 &&
-            !string.Equals(_particleTypeName, "none", StringComparison.OrdinalIgnoreCase);
+                           _particles.Count > 0 &&
+                           !string.Equals(_particleTypeName, "none", StringComparison.OrdinalIgnoreCase);
 
         return hasParticles || hasOverlay || _shockwaveActive || _burstParticles.Count > 0;
     }
@@ -187,8 +145,8 @@ public sealed partial class ThemeParticlesOverlay
             var swaySpeed = CalculateParticleSwaySpeed();
             var twinkleSpeed = CalculateParticleTwinkleSpeed();
 
-            var depth = (float)(0.40 + (_random.NextDouble() * 1.10));
-            var baseAlpha = (float)(0.30 + (_random.NextDouble() * 0.45)) * (0.65f + (depth * 0.35f));
+            var depth = (float)(0.40 + _random.NextDouble() * 1.10);
+            var baseAlpha = (float)(0.30 + _random.NextDouble() * 0.45) * (0.65f + depth * 0.35f);
 
             _particles.Add(new Particle
             {
@@ -196,7 +154,7 @@ public sealed partial class ThemeParticlesOverlay
                 Y = (float)(_random.NextDouble() * height),
                 SpeedX = speedX * _speedMultiplier * depth,
                 SpeedY = speedY * _speedMultiplier * depth,
-                Rotation = rotSpeed == 0f ? (_particleTypeName == "rain" ? 12f : 0f) : (float)(_random.NextDouble() * 360),
+                Rotation = rotSpeed == 0f ? _particleTypeName == "rain" ? 12f : 0f : (float)(_random.NextDouble() * 360),
                 RotationSpeed = rotSpeed,
                 Size = baseSize * _sizeMultiplier * depth,
                 Depth = depth,
@@ -219,18 +177,17 @@ public sealed partial class ThemeParticlesOverlay
         if (_customMinSize.HasValue || _customMaxSize.HasValue)
         {
             var minS = _customMinSize ?? (_movementType == MovementType.Floating ? 4f : 8f);
-            var maxS = Math.Max(minS + 1f, _customMaxSize ?? (minS + 14f));
-            return (float)(minS + (_random.NextDouble() * (maxS - minS)));
+            var maxS = Math.Max(minS + 1f, _customMaxSize ?? minS + 14f);
+            return (float)(minS + _random.NextDouble() * (maxS - minS));
         }
 
         return _particleTypeName == "rain"
-            ? (float)(12 + (_random.NextDouble() * 16))
+            ? (float)(12 + _random.NextDouble() * 16)
             : _movementType switch
             {
-                MovementType.Floating => (float)(4 + (_random.NextDouble() * 12)),
-                MovementType.Rising => (float)(5 + (_random.NextDouble() * 14)),
-                MovementType.Falling => (float)(9 + (_random.NextDouble() * 15)),
-                _ => (float)(9 + (_random.NextDouble() * 15))
+                MovementType.Floating => (float)(4 + _random.NextDouble() * 12),
+                MovementType.Rising => (float)(5 + _random.NextDouble() * 14),
+                _ => (float)(9 + _random.NextDouble() * 15)
             };
     }
 
@@ -238,36 +195,34 @@ public sealed partial class ThemeParticlesOverlay
     private float CalculateParticleSpeedX()
     {
         return _customSpeedX.HasValue
-            ? (float)(_customSpeedX.Value * (0.8 + (_random.NextDouble() * 0.4)))
+            ? (float)(_customSpeedX.Value * (0.8 + _random.NextDouble() * 0.4))
             : _particleTypeName == "matrix"
-            ? 0f
-            : _particleTypeName == "rain"
-            ? (float)(0.8 + (_random.NextDouble() * 0.8))
-            : _movementType switch
-            {
-                MovementType.Floating => (float)((_random.NextDouble() - 0.5) * 0.3),
-                MovementType.Rising => (float)((_random.NextDouble() - 0.5) * 0.8),
-                MovementType.Falling => (float)(0.3 + (_random.NextDouble() * 0.9)),
-                _ => (float)(0.3 + (_random.NextDouble() * 0.9))
-            };
+                ? 0f
+                : _particleTypeName == "rain"
+                    ? (float)(0.8 + _random.NextDouble() * 0.8)
+                    : _movementType switch
+                    {
+                        MovementType.Floating => (float)((_random.NextDouble() - 0.5) * 0.3),
+                        MovementType.Rising => (float)((_random.NextDouble() - 0.5) * 0.8),
+                        _ => (float)(0.3 + _random.NextDouble() * 0.9)
+                    };
     }
 
     //расчет вертикальной скорости частицы
     private float CalculateParticleSpeedY()
     {
         return _customSpeedY.HasValue
-            ? (float)(_customSpeedY.Value * (0.8 + (_random.NextDouble() * 0.4)))
+            ? (float)(_customSpeedY.Value * (0.8 + _random.NextDouble() * 0.4))
             : _particleTypeName == "rain"
-            ? (float)(4.5 + (_random.NextDouble() * 3.5))
-            : _particleTypeName == "matrix"
-            ? (float)(2.4 + (_random.NextDouble() * 2.8))
-            : _movementType switch
-            {
-                MovementType.Floating => (float)((_random.NextDouble() - 0.5) * 0.3),
-                MovementType.Rising => (float)(-0.8 - (_random.NextDouble() * 1.5)),
-                MovementType.Falling => (float)(1.0 + (_random.NextDouble() * 1.8)),
-                _ => (float)(1.0 + (_random.NextDouble() * 1.8))
-            };
+                ? (float)(4.5 + _random.NextDouble() * 3.5)
+                : _particleTypeName == "matrix"
+                    ? (float)(2.4 + _random.NextDouble() * 2.8)
+                    : _movementType switch
+                    {
+                        MovementType.Floating => (float)((_random.NextDouble() - 0.5) * 0.3),
+                        MovementType.Rising => (float)(-0.8 - _random.NextDouble() * 1.5),
+                        _ => (float)(1.0 + _random.NextDouble() * 1.8)
+                    };
     }
 
     //расчет угловой скорости вращения частицы
@@ -275,30 +230,36 @@ public sealed partial class ThemeParticlesOverlay
     {
         return _customRotationSpeed.HasValue
             ? (float)((_random.NextDouble() - 0.5) * _customRotationSpeed.Value * 2)
-            : _particleTypeName is "rain" or "matrix" ? 0f : (float)((_random.NextDouble() - 0.5) * 3.0);
+            : _particleTypeName is "rain" or "matrix"
+                ? 0f
+                : (float)((_random.NextDouble() - 0.5) * 3.0);
     }
 
     //расчет скорости горизонтального покачивания частицы
     private float CalculateParticleSwaySpeed()
     {
         return _customSwaySpeed.HasValue
-            ? (float)(_customSwaySpeed.Value * (0.8 + (_random.NextDouble() * 0.4)))
-            : _particleTypeName is "matrix" ? 0f : _particleTypeName is "rain" ? 0.01f : (float)(0.02 + (_random.NextDouble() * 0.04));
+            ? (float)(_customSwaySpeed.Value * (0.8 + _random.NextDouble() * 0.4))
+            : _particleTypeName is "matrix"
+                ? 0f
+                : _particleTypeName is "rain"
+                    ? 0.01f
+                    : (float)(0.02 + _random.NextDouble() * 0.04);
     }
 
     //расчет скорости мерцания частицы
     private float CalculateParticleTwinkleSpeed()
     {
         return _customTwinkleSpeed.HasValue
-            ? (float)(_customTwinkleSpeed.Value * (0.8 + (_random.NextDouble() * 0.4)))
-            : (float)(0.03 + (_random.NextDouble() * 0.06));
+            ? (float)(_customTwinkleSpeed.Value * (0.8 + _random.NextDouble() * 0.4))
+            : (float)(0.03 + _random.NextDouble() * 0.06);
     }
 
     //физическое обновление координат частиц импульсов и волн
     private void UpdatePhysics(float width, float height, float dt)
     {
-        var w = width > 1f ? width : (_lastWidth > 1f ? _lastWidth : 800f);
-        var h = height > 1f ? height : (_lastHeight > 1f ? _lastHeight : 600f);
+        var w = width > 1f ? width : _lastWidth > 1f ? _lastWidth : 800f;
+        var h = height > 1f ? height : _lastHeight > 1f ? _lastHeight : 600f;
         var step = dt * 36f;
         _shaderTime += dt;
 
@@ -313,11 +274,11 @@ public sealed partial class ThemeParticlesOverlay
             }
 
             var progress = bp.Life / bp.MaxLife;
-            bp.Alpha = 1.0f - (progress * progress);
+            bp.Alpha = 1.0f - progress * progress;
             bp.X += bp.Vx * step;
             bp.Y += bp.Vy * step;
             bp.Vx *= 0.94f;
-            bp.Vy = (bp.Vy * 0.94f) + (0.06f * step);
+            bp.Vy = bp.Vy * 0.94f + 0.06f * step;
         }
 
         if (_shockwaveActive)
@@ -363,7 +324,7 @@ public sealed partial class ThemeParticlesOverlay
             var twinkle = (float)Math.Sin(p.TwinklePhase) * twinkleAmp;
             p.CurrentAlpha = Math.Clamp(p.BaseAlpha + twinkle, 0.08f, 1.0f);
 
-            p.X += (p.SpeedX * speedScale) + sway;
+            p.X += p.SpeedX * speedScale + sway;
             p.Y += p.SpeedY * speedScale;
             p.Rotation += p.RotationSpeed * step;
 
@@ -371,30 +332,30 @@ public sealed partial class ThemeParticlesOverlay
             {
                 var cdx = centerX - p.X;
                 var cdy = centerY - p.Y;
-                var cDist = MathF.Sqrt((cdx * cdx) + (cdy * cdy));
+                var cDist = MathF.Sqrt(cdx * cdx + cdy * cdy);
                 if (cDist > 18f && cDist < Math.Max(w, h) * 0.65f)
                 {
-                    var pull = (1.0f - (cDist / (Math.Max(w, h) * 0.65f))) * 1.35f * step;
+                    var pull = (1.0f - cDist / (Math.Max(w, h) * 0.65f)) * 1.35f * step;
                     var nx = cdx / cDist;
                     var ny = cdy / cDist;
-                    p.X += (nx * pull) - (ny * pull * 0.6f);
-                    p.Y += (ny * pull) + (nx * pull * 0.6f);
+                    p.X += nx * pull - ny * pull * 0.6f;
+                    p.Y += ny * pull + nx * pull * 0.6f;
                 }
             }
 
             if (_shockwaveActive)
             {
-                var maxR = MathF.Sqrt((w * w) + (h * h)) * 0.65f;
+                var maxR = MathF.Sqrt(w * w + h * h) * 0.65f;
                 var easedR = 1f - MathF.Pow(1f - _shockwaveProgress, 3f);
-                var waveR = 24f + (maxR * easedR);
+                var waveR = 24f + maxR * easedR;
                 var cdx = p.X - centerX;
                 var cdy = p.Y - centerY;
-                var cDist = MathF.Sqrt((cdx * cdx) + (cdy * cdy));
+                var cDist = MathF.Sqrt(cdx * cdx + cdy * cdy);
                 var delta = MathF.Abs(cDist - waveR);
 
                 if (delta < 42f && cDist > 10f)
                 {
-                    var pushWave = (1f - (delta / 42f)) * 14f * (1f - _shockwaveProgress) * p.Depth;
+                    var pushWave = (1f - delta / 42f) * 14f * (1f - _shockwaveProgress) * p.Depth;
                     var nx = cdx / cDist;
                     var ny = cdy / cDist;
                     p.X += nx * pushWave;
@@ -407,18 +368,18 @@ public sealed partial class ThemeParticlesOverlay
             {
                 var dx = p.X - _pointerX;
                 var dy = p.Y - _pointerY;
-                var distSq = (dx * dx) + (dy * dy);
+                var distSq = dx * dx + dy * dy;
                 const float repulsionRadius = 150f;
 
                 if (distSq is > 0.01f and < repulsionRadius * repulsionRadius)
                 {
                     var dist = MathF.Sqrt(distSq);
-                    var factor = 1.0f - (dist / repulsionRadius);
+                    var factor = 1.0f - dist / repulsionRadius;
                     var push = factor * factor * 5.2f * step * p.Depth;
                     var nx = dx / dist;
                     var ny = dy / dist;
-                    p.X += (nx * push) - (ny * push * 0.45f * step);
-                    p.Y += (ny * push) + (nx * push * 0.45f * step);
+                    p.X += nx * push - ny * push * 0.45f * step;
+                    p.Y += ny * push + nx * push * 0.45f * step;
                     p.Rotation += factor * 3.5f * step;
                 }
             }
@@ -429,7 +390,7 @@ public sealed partial class ThemeParticlesOverlay
                     if (p.Y > h + 30 || p.X > w + 50 || p.X < -50)
                     {
                         p.Y = -25;
-                        p.X = (float)((_random.NextDouble() * (w + 100)) - 50);
+                        p.X = (float)(_random.NextDouble() * (w + 100) - 50);
                         if (p.RotationSpeed != 0f)
                         {
                             p.Rotation = (float)(_random.NextDouble() * 360);
@@ -470,10 +431,49 @@ public sealed partial class ThemeParticlesOverlay
                     }
 
                     break;
-
-                default:
-                    break;
             }
         }
+    }
+
+    //тип движения частиц
+    private enum MovementType
+    {
+        Falling,
+        Rising,
+        Floating
+    }
+
+    //состояние отдельной частицы фона
+    private sealed class Particle
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float SpeedX { get; init; }
+        public float SpeedY { get; init; }
+        public float Rotation { get; set; }
+        public float RotationSpeed { get; init; }
+        public float Size { get; init; }
+        public float Depth { get; init; } = 1.0f;
+        public float BaseAlpha { get; init; }
+        public float CurrentAlpha { get; set; }
+        public float SwayPhase { get; set; }
+        public float SwaySpeed { get; init; }
+        public float TwinklePhase { get; set; }
+        public float TwinkleSpeed { get; init; }
+        public int SpriteIndex { get; init; }
+    }
+
+    //частица интерактивного взрыва при касании
+    private sealed class BurstParticle
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Vx { get; set; }
+        public float Vy { get; set; }
+        public float Size { get; init; }
+        public float Alpha { get; set; }
+        public float Life { get; set; }
+        public float MaxLife { get; init; }
+        public SKColor Color { get; init; }
     }
 }

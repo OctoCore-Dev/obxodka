@@ -1,6 +1,7 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.PaymentView"
+    x:Class="obxodka.Pages.Store.PaymentView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:helpers="clr-namespace:obxodka.Helpers"
@@ -32,7 +33,6 @@
                 Text="Выберите удобный пакет часов доступа без ограничений по скорости" />
 
             <Border
-                x:Name="CurrencySwitcherBorder"
                 Margin="0,6,0,0"
                 Padding="3"
                 BackgroundColor="{DynamicResource BgElevated}"
@@ -92,7 +92,6 @@
             </Border>
 
             <Border
-                x:Name="MethodSwitcherBorder"
                 Margin="0,2,0,0"
                 Padding="3"
                 BackgroundColor="{DynamicResource BgElevated}"
@@ -210,7 +209,6 @@
                 </Border>
 
                 <Grid
-                    x:Name="CardsContainer"
                     ColumnDefinitions="{OnIdiom Desktop='*, *, *',
                                                 Phone='*'}"
                     ColumnSpacing="{OnIdiom Desktop=16,
@@ -312,7 +310,6 @@
                                     TextColor="{DynamicResource Accent}"
                                     VerticalOptions="Center" />
                                 <Border
-                                    x:Name="Card2BadgeBorder"
                                     Grid.Column="1"
                                     Padding="6,2"
                                     BackgroundColor="{DynamicResource BorderSubtle}"
@@ -458,6 +455,254 @@
                 </Grid>
 
                 <Border
+                    x:Name="CardGoogleExtra"
+                    Padding="20,16"
+                    IsVisible="False"
+                    Style="{StaticResource NeoCard}">
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="12"
+                                    Text="БОЛЬШЕ ВАРИАНТОВ (GOOGLE PLAY)"
+                                    TextColor="{DynamicResource Accent}" />
+                                <Label
+                                    FontSize="12"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="От 100 до 12 000 часов — цена автоматически в вашей валюте" />
+                            </VerticalStackLayout>
+                            <Border
+                                Grid.Column="1"
+                                Padding="8,4"
+                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                Stroke="{DynamicResource Primary}"
+                                StrokeShape="RoundRectangle 6"
+                                StrokeThickness="1"
+                                VerticalOptions="Start">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="10"
+                                    Text="GOOGLE PLAY"
+                                    TextColor="{DynamicResource Primary}" />
+                            </Border>
+                        </Grid>
+
+                        <VerticalStackLayout Spacing="10">
+                            <Grid
+                                x:Name="RowGoogle100"
+                                ColumnDefinitions="*, Auto"
+                                ColumnSpacing="12"
+                                IsVisible="False">
+                                <VerticalStackLayout
+                                    Grid.Column="0"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        Text="Мини — 100 часов"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="12"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Легкий старт без лишних затрат" />
+                                </VerticalStackLayout>
+                                <Border
+                                    x:Name="BtnGoogle100Border"
+                                    Grid.Column="1"
+                                    Padding="12,0"
+                                    HeightRequest="40"
+                                    MinimumWidthRequest="116"
+                                    Style="{StaticResource NeoBtnPrimary}"
+                                    VerticalOptions="Center">
+                                    <Grid>
+                                        <Button
+                                            x:Name="BtnGoogle100"
+                                            Padding="4,0"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuyGoogle100ClickedAsync"
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="13"
+                                            MinimumHeightRequest="0"
+                                            Text="99 ₽"
+                                            TextColor="{DynamicResource TextPrimary}"
+                                            VerticalOptions="Fill" />
+                                        <ActivityIndicator
+                                            x:Name="LoaderGoogle100"
+                                            HeightRequest="20"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="20"
+                                            Color="{DynamicResource TextPrimary}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid
+                                x:Name="RowGoogle250"
+                                ColumnDefinitions="*, Auto"
+                                ColumnSpacing="12"
+                                IsVisible="False">
+                                <VerticalStackLayout
+                                    Grid.Column="0"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        Text="Базовый — 260 часов (+4%)"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="12"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="250ч база + 10ч бонус" />
+                                </VerticalStackLayout>
+                                <Border
+                                    x:Name="BtnGoogle250Border"
+                                    Grid.Column="1"
+                                    Padding="12,0"
+                                    HeightRequest="40"
+                                    MinimumWidthRequest="116"
+                                    Style="{StaticResource NeoBtnPrimary}"
+                                    VerticalOptions="Center">
+                                    <Grid>
+                                        <Button
+                                            x:Name="BtnGoogle250"
+                                            Padding="4,0"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuyGoogle250ClickedAsync"
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="13"
+                                            MinimumHeightRequest="0"
+                                            Text="250 ₽"
+                                            TextColor="{DynamicResource TextPrimary}"
+                                            VerticalOptions="Fill" />
+                                        <ActivityIndicator
+                                            x:Name="LoaderGoogle250"
+                                            HeightRequest="20"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="20"
+                                            Color="{DynamicResource TextPrimary}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid
+                                x:Name="RowGoogle2000"
+                                ColumnDefinitions="*, Auto"
+                                ColumnSpacing="12"
+                                IsVisible="False">
+                                <VerticalStackLayout
+                                    Grid.Column="0"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        Text="Профи — 4700 часов (+135%)"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                    <Label
+                                        FontSize="12"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="2000ч база + 2700ч бонус" />
+                                </VerticalStackLayout>
+                                <Border
+                                    x:Name="BtnGoogle2000Border"
+                                    Grid.Column="1"
+                                    Padding="12,0"
+                                    HeightRequest="40"
+                                    MinimumWidthRequest="116"
+                                    Style="{StaticResource NeoBtnPrimary}"
+                                    VerticalOptions="Center">
+                                    <Grid>
+                                        <Button
+                                            x:Name="BtnGoogle2000"
+                                            Padding="4,0"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuyGoogle2000ClickedAsync"
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="13"
+                                            MinimumHeightRequest="0"
+                                            Text="2000 ₽"
+                                            TextColor="{DynamicResource TextPrimary}"
+                                            VerticalOptions="Fill" />
+                                        <ActivityIndicator
+                                            x:Name="LoaderGoogle2000"
+                                            HeightRequest="20"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="20"
+                                            Color="{DynamicResource TextPrimary}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid
+                                x:Name="RowGoogle5000"
+                                ColumnDefinitions="*, Auto"
+                                ColumnSpacing="12"
+                                IsVisible="False">
+                                <VerticalStackLayout
+                                    Grid.Column="0"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="14"
+                                        Text="Ультра — 12 000 часов (+140%)"
+                                        TextColor="{DynamicResource Accent}" />
+                                    <Label
+                                        FontSize="12"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="5000ч база + 7000ч бонус" />
+                                </VerticalStackLayout>
+                                <Border
+                                    x:Name="BtnGoogle5000Border"
+                                    Grid.Column="1"
+                                    Padding="12,0"
+                                    BackgroundColor="{DynamicResource Accent}"
+                                    HeightRequest="40"
+                                    MinimumWidthRequest="116"
+                                    Stroke="{DynamicResource Accent}"
+                                    Style="{StaticResource NeoBtnPrimary}"
+                                    VerticalOptions="Center">
+                                    <Grid>
+                                        <Button
+                                            x:Name="BtnGoogle5000"
+                                            Padding="4,0"
+                                            BackgroundColor="Transparent"
+                                            Clicked="OnBuyGoogle5000ClickedAsync"
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="13"
+                                            MinimumHeightRequest="0"
+                                            Text="5000 ₽"
+                                            TextColor="{DynamicResource BgBase}"
+                                            VerticalOptions="Fill" />
+                                        <ActivityIndicator
+                                            x:Name="LoaderGoogle5000"
+                                            HeightRequest="20"
+                                            HorizontalOptions="Center"
+                                            IsRunning="True"
+                                            IsVisible="False"
+                                            VerticalOptions="Center"
+                                            WidthRequest="20"
+                                            Color="{DynamicResource BgBase}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border
                     x:Name="CardConstructor"
                     Padding="22,18"
                     IsVisible="{OnPlatform WinUI=True,
@@ -467,7 +712,6 @@
                         <Grid ColumnDefinitions="*, Auto">
                             <VerticalStackLayout Grid.Column="0" Spacing="2">
                                 <Label
-                                    x:Name="ConstructorTitleLabel"
                                     FontFamily="{DynamicResource AppFontBold}"
                                     FontSize="12"
                                     Text="КОНСТРУКТОР ТАРИФА — СВОЯ СУММА"
@@ -717,7 +961,7 @@
                 <Border
                     x:Name="PaymentInfoCard"
                     Padding="16,12"
-                    helpers:UIAnimations.AnimateEntrance="True"
+                    helpers:UiAnimations.AnimateEntrance="True"
                     BackgroundColor="{DynamicResource PrimaryDim}"
                     IsVisible="{OnPlatform WinUI=True,
                                            Android=False,

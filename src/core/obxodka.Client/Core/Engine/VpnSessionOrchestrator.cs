@@ -4,31 +4,31 @@ namespace obxodka.Core;
 public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 {
     private readonly ITunnelPlatformAdapter _adapter;
+    private readonly Action<string> _certRevokedHandler;
     private readonly OctopusEngine _engine;
-    private readonly SemaphoreSlim _vpnGate = new(1, 1);
+    private readonly Action<int> _mtuUpdatedHandler;
+    private readonly EventHandler? _processExitHandler;
     private readonly Lock _roamingLock = new();
     private readonly Lock _routesLock = new();
     private readonly List<string> _serverIpsToRoute = [];
     private readonly Action<string> _statusMessageHandler;
-    private readonly Action<string> _certRevokedHandler;
-    private readonly Action<int> _mtuUpdatedHandler;
     private readonly Action<long, long> _trafficUpdatedHandler;
-    private readonly EventHandler? _processExitHandler;
-
-    private CancellationTokenSource? _sessionCts;
-    private CancellationTokenSource? _roamingCts;
-    private List<VpnServerDto> _fallbackServers = [];
-    private string _currentServerIp = "";
+    private readonly SemaphoreSlim _vpnGate = new(1, 1);
     private string _currentAssignedIp = "";
     private string? _currentAssignedIpV6;
-    private long _sessionEpoch;
-    private long _lastTrafficSent;
-    private long _lastTrafficReceived;
-    private long _lastTrafficTicks;
+    private string _currentServerIp = "";
+    private int _disposed;
+    private List<VpnServerDto> _fallbackServers = [];
     private int _isExplicitlyStopped;
     private int _isHandlingDeadConnection;
     private int _isHandlingDrop;
-    private int _disposed;
+    private long _lastTrafficReceived;
+    private long _lastTrafficSent;
+    private long _lastTrafficTicks;
+    private CancellationTokenSource? _roamingCts;
+
+    private CancellationTokenSource? _sessionCts;
+    private long _sessionEpoch;
 
     public VpnSessionOrchestrator(ITunnelPlatformAdapter adapter, OctopusEngine? engine = null, bool hookProcessExit = true)
     {
@@ -43,6 +43,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             {
                 return;
             }
+
             OnLogUpdated?.Invoke(msg);
         };
         _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
@@ -69,20 +70,60 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         _engine.OnTunnelIpChanged += HandleTunnelIpChanged;
         _adapter.OnPlatformNetworkChanged += HandlePlatformNetworkChanged;
 
-        if (hookProcessExit)
+        if (!hookProcessExit)
         {
-            _processExitHandler = (_, _) =>
-            {
-                try
-                {
-                    _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
-                }
-                catch
-                {
-                }
-            };
-            AppDomain.CurrentDomain.ProcessExit += _processExitHandler;
+            return;
         }
+
+        _processExitHandler = (_, _) =>
+        {
+            try
+            {
+                _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                // ignored
+            }
+        };
+        AppDomain.CurrentDomain.ProcessExit += _processExitHandler;
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        if (_processExitHandler is not null)
+        {
+            AppDomain.CurrentDomain.ProcessExit -= _processExitHandler;
+        }
+
+        _adapter.OnPlatformNetworkChanged -= HandlePlatformNetworkChanged;
+        _engine.OnStatusMessage -= _statusMessageHandler;
+        OctopusEngine.OnCertificateRevoked -= _certRevokedHandler;
+        _engine.OnTrafficUpdated -= _trafficUpdatedHandler;
+        _engine.OnMtuUpdated -= _mtuUpdatedHandler;
+        _engine.OnConnectionDropped -= HandleEngineDrop;
+        _engine.OnDeadConnectionDetected -= HandleDeadConnection;
+        _engine.OnUplinkLost -= HandleUplinkLost;
+        _engine.OnUplinkRestored -= HandleUplinkRestored;
+        _engine.OnTunnelIpChanged -= HandleTunnelIpChanged;
+        _engine.EnsureExternalHostRoutesAsync = null;
+
+        CancelRoamingUnsafe();
+        try
+        {
+            _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+        }
+        catch
+        {
+            // ignored
+        }
+
+        _vpnGate.Dispose();
     }
 
     public AppVpnState CurrentState { get; private set; } = AppVpnState.Disconnected;
@@ -104,218 +145,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
     //единый конвейер запуска vpn-подключения через круговое кольцо протоколов и серверов
     public Task StartVpnAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers) =>
-        StartVpnCoreAsync(serverIp, serverPort, fallbackServers, isUserInitiated: true, callerEpoch: null);
-
-    //фоновый перезапуск после обрыва/роуминга, не нарушающий ручную остановку пользователем
-    private Task StartBackgroundReconnectAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers, long callerEpoch) =>
-        StartVpnCoreAsync(serverIp, serverPort, fallbackServers, isUserInitiated: false, callerEpoch: callerEpoch);
-
-    private async Task StartVpnCoreAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers, bool isUserInitiated, long? callerEpoch)
-    {
-        if (Volatile.Read(ref _disposed) != 0)
-        {
-            return;
-        }
-
-        if (!isUserInitiated && (Volatile.Read(ref _isExplicitlyStopped) != 0 || (callerEpoch is { } preEp && IsSessionStale(preEp))))
-        {
-            return;
-        }
-
-        await _vpnGate.WaitAsync().ConfigureAwait(false);
-        if (!isUserInitiated && (Volatile.Read(ref _isExplicitlyStopped) != 0 || Volatile.Read(ref _disposed) != 0 || (callerEpoch is { } lockEp && IsSessionStale(lockEp))))
-        {
-            try
-            {
-                _ = _vpnGate.Release();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            return;
-        }
-
-        var epoch = Interlocked.Increment(ref _sessionEpoch);
-        try
-        {
-            _ = Interlocked.Exchange(ref _isExplicitlyStopped, 0);
-            CancelRoamingUnsafe();
-
-            _fallbackServers = fallbackServers is not null ? [.. fallbackServers] : [];
-            if (!string.IsNullOrEmpty(serverIp) && _fallbackServers.FindIndex(s => s.Ip == serverIp) < 0)
-            {
-                _fallbackServers.Insert(0, new VpnServerDto(serverIp, serverPort, "", true, 0, null));
-            }
-
-            UpdateState(AppVpnState.Connecting);
-            OnLogUpdated?.Invoke(VpnStatusMessages.CleaningOldSettings);
-
-            var activeCts = new CancellationTokenSource();
-            var oldSessionCts = Interlocked.Exchange(ref _sessionCts, activeCts);
-            if (oldSessionCts is not null)
-            {
-                try
-                {
-                    await oldSessionCts.CancelAsync().ConfigureAwait(false);
-                    oldSessionCts.Dispose();
-                }
-                catch
-                {
-                }
-            }
-
-            var ct = activeCts.Token;
-
-            await _adapter.CleanupBeforeConnectAsync(ct).ConfigureAwait(false);
-            if (IsSessionStale(epoch))
-            {
-                return;
-            }
-
-            var targetIp = serverIp;
-            if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
-            {
-                try
-                {
-                    var resolved = await ApiService.ResolveHostAntiPoisonAsync(serverIp, ct).ConfigureAwait(false);
-                    if (resolved.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        targetIp = resolved.ToString();
-                    }
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    AppLogger.LogWarning($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
-                }
-            }
-
-            _currentServerIp = targetIp;
-
-            if (!await _adapter.PreparePermissionsAndStartServiceAsync(ct).ConfigureAwait(false))
-            {
-                UpdateState(AppVpnState.Disconnected);
-                ReportError("VPN разрешение не выдано", stopTunnel: false);
-                return;
-            }
-
-            OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(targetIp));
-
-            SyncPipelinePreferences();
-            _engine.ProtectTransportSockets(_adapter.BindPhysicalSocket);
-            _engine.EnsureExternalHostRoutesAsync = TrackAndPrepareBypassHostsAsync;
-
-            var serversToTry = _fallbackServers.Count > 0
-                ? _fallbackServers
-                : [new VpnServerDto(serverIp, serverPort, "", true, 0, null)];
-
-            var forceWebSocket = PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
-            var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, configuredSni: null, forceWebSocket);
-            if (ring.Count == 0)
-            {
-                throw new InvalidOperationException("Нет доступных маршрутов или протоколов для подключения.");
-            }
-
-            lock (_routesLock)
-            {
-                _serverIpsToRoute.Clear();
-            }
-
-            var activeStep = await _engine.ConnectRotationRingAsync(
-                ring,
-                prepareTunnelBeforeVerifyAsync: async (step, stepToken) =>
-                {
-                    stepToken.ThrowIfCancellationRequested();
-                    if (IsSessionStale(epoch))
-                    {
-                        throw new OperationCanceledException("Сессия отменена.");
-                    }
-
-                    var resolvedStepIp = IPAddress.TryParse(step.Host, out _)
-                        ? step.Host
-                        : (GetFirstRoutedIpSnapshot() ?? targetIp);
-                    _currentServerIp = resolvedStepIp;
-                    OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingWithProtocol(step.Host, step.Port, _engine.ActiveProtocolDisplayName));
-
-                    var ipv4 = _engine.AssignedIp;
-                    var effectiveIpv6 = ValidateIpv6(_engine.AssignedIpV6);
-                    if (!IPAddress.TryParse(ipv4, out _))
-                    {
-                        throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
-                    }
-
-                    _currentAssignedIp = ipv4;
-                    _currentAssignedIpV6 = effectiveIpv6;
-                    await _adapter.ApplyTunnelInterfaceAsync(step, ipv4, effectiveIpv6, SmartMtuEngine.CurrentMtu, stepToken).ConfigureAwait(false);
-                    OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
-                },
-                ct: ct).ConfigureAwait(false);
-
-            if (IsSessionStale(epoch))
-            {
-                return;
-            }
-
-            var curTx = _engine.TotalBytesSent;
-            var curRx = _engine.TotalBytesReceived;
-            AppLogger.Log($"[VPN-ORCHESTRATOR] Ring connected on {activeStep.Kind} ({activeStep.Host}:{activeStep.Port}), TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu}");
-            OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedSecureDuplex(curTx, curRx));
-
-            _adapter.StartPacketPump(ct);
-
-            var ipsSnapshot = GetRoutedIpsSnapshot();
-            await _adapter.ActivateRoutingAndLeakGuardAsync(ipsSnapshot, _currentAssignedIp, _currentAssignedIpV6, ct).ConfigureAwait(false);
-
-            _engine.ResetTrafficCounters();
-            _engine.ArmTrafficWatchdog();
-            OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
-            UpdateState(AppVpnState.Connected);
-        }
-        catch (OperationCanceledException) when (IsSessionStale(epoch))
-        {
-            AppLogger.Log("[VPN DISCONNECT] Normal stop/cancellation.");
-            UpdateState(AppVpnState.Disconnected);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            await CancelAndDisposeSessionCtsAsync().ConfigureAwait(false);
-            try
-            {
-                await _adapter.ShutdownTunnelAsync(GetRoutedIpsSnapshot(), _currentAssignedIp, keepKillSwitch: false).ConfigureAwait(false);
-            }
-            catch
-            {
-            }
-
-            await _engine.DisposeAsync().ConfigureAwait(false);
-            _currentAssignedIp = "";
-            _currentAssignedIpV6 = null;
-
-            if (IsSessionStale(epoch))
-            {
-                UpdateState(AppVpnState.Disconnected);
-                return;
-            }
-
-            AppLogger.LogError($"[VPN-ORCHESTRATOR FATAL] Connection pipeline failed: {ex.Message}", ex);
-            var activePort = _engine.ConnectedServerPort > 0 ? _engine.ConnectedServerPort : serverPort;
-            var errMsg = ex is TimeoutException || ex.InnerException is TimeoutException
-                ? $"Таймаут подключения: сервер {_currentServerIp}:{activePort} не ответил на TLS хэндшейк."
-                : $"Ошибка подключения: {ex.Message}";
-            UpdateState(AppVpnState.Error);
-            OnLogUpdated?.Invoke(errMsg);
-            DispatchError(errMsg);
-        }
-        finally
-        {
-            try
-            {
-                _ = _vpnGate.Release();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-        }
-    }
+        StartVpnCoreAsync(serverIp, serverPort, fallbackServers, true, null);
 
     //единая остановка туннеля и полная очистка маршрутов/адаптера
     public async Task StopVpnAsync()
@@ -327,7 +157,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
         if (CurrentState == AppVpnState.Disconnected)
         {
-            await _adapter.ShutdownTunnelAsync(GetRoutedIpsSnapshot(), _currentAssignedIp, keepKillSwitch: false).ConfigureAwait(false);
+            await _adapter.ShutdownTunnelAsync(GetRoutedIpsSnapshot(), _currentAssignedIp, false).ConfigureAwait(false);
             await _engine.DisposeAsync().ConfigureAwait(false);
             return;
         }
@@ -347,6 +177,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                 }
                 catch
                 {
+                    // ignored
                 }
             }
 
@@ -360,7 +191,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
             try
             {
-                await _adapter.ShutdownTunnelAsync(ipsToClean, _currentAssignedIp, keepKillSwitch: false).ConfigureAwait(false);
+                await _adapter.ShutdownTunnelAsync(ipsToClean, _currentAssignedIp, false).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -397,7 +228,228 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                 }
                 catch
                 {
+                    // ignored
                 }
+            }
+        }
+    }
+
+    //фоновый перезапуск после обрыва/роуминга, не нарушающий ручную остановку пользователем
+    private Task StartBackgroundReconnectAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers,
+        long callerEpoch) =>
+        StartVpnCoreAsync(serverIp, serverPort, fallbackServers, false, callerEpoch);
+
+    private async Task StartVpnCoreAsync(string serverIp, int serverPort, IReadOnlyList<VpnServerDto>? fallbackServers,
+        bool isUserInitiated, long? callerEpoch)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
+        if (!isUserInitiated && (Volatile.Read(ref _isExplicitlyStopped) != 0 || callerEpoch is { } preEp && IsSessionStale(preEp)))
+        {
+            return;
+        }
+
+        await _vpnGate.WaitAsync().ConfigureAwait(false);
+        if (!isUserInitiated && (Volatile.Read(ref _isExplicitlyStopped) != 0 || Volatile.Read(ref _disposed) != 0 ||
+                                 callerEpoch is { } lockEp && IsSessionStale(lockEp)))
+        {
+            try
+            {
+                _ = _vpnGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            return;
+        }
+
+        var epoch = Interlocked.Increment(ref _sessionEpoch);
+        try
+        {
+            _ = Interlocked.Exchange(ref _isExplicitlyStopped, 0);
+            CancelRoamingUnsafe();
+
+            _fallbackServers = fallbackServers is not null ? [.. fallbackServers] : [];
+            if (!string.IsNullOrEmpty(serverIp) && _fallbackServers.FindIndex(s => s.Ip == serverIp) < 0)
+            {
+                _fallbackServers.Insert(0, new VpnServerDto(serverIp, serverPort, "", true, 0));
+            }
+
+            UpdateState(AppVpnState.Connecting);
+            OnLogUpdated?.Invoke(VpnStatusMessages.CleaningOldSettings);
+
+            var activeCts = new CancellationTokenSource();
+            var oldSessionCts = Interlocked.Exchange(ref _sessionCts, activeCts);
+            if (oldSessionCts is not null)
+            {
+                try
+                {
+                    await oldSessionCts.CancelAsync().ConfigureAwait(false);
+                    oldSessionCts.Dispose();
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
+            var ct = activeCts.Token;
+
+            await _adapter.CleanupBeforeConnectAsync(ct).ConfigureAwait(false);
+            if (IsSessionStale(epoch))
+            {
+                return;
+            }
+
+            var targetIp = serverIp;
+            if (Uri.CheckHostName(serverIp) == UriHostNameType.Dns)
+            {
+                try
+                {
+                    var resolved = await ApiService.ResolveHostAntiPoisonAsync(serverIp, ct).ConfigureAwait(false);
+                    if (resolved.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        targetIp = resolved.ToString();
+                    }
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    AppLogger.LogWarning($"[DNS ERROR] Could not resolve {serverIp}: {ex.Message}");
+                }
+            }
+
+            _currentServerIp = targetIp;
+
+            if (!await _adapter.PreparePermissionsAndStartServiceAsync(ct).ConfigureAwait(false))
+            {
+                UpdateState(AppVpnState.Disconnected);
+                ReportError("VPN разрешение не выдано", false);
+                return;
+            }
+
+            OnLogUpdated?.Invoke(VpnStatusMessages.DomainRoute(targetIp));
+
+            SyncPipelinePreferences();
+            _engine.ProtectTransportSockets(_adapter.BindPhysicalSocket);
+            _engine.EnsureExternalHostRoutesAsync = TrackAndPrepareBypassHostsAsync;
+
+            var serversToTry = _fallbackServers.Count > 0
+                ? _fallbackServers
+                : [new VpnServerDto(serverIp, serverPort, "", true, 0)];
+
+            var forceWebSocket = PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+            var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, null, forceWebSocket);
+            if (ring.Count == 0)
+            {
+                throw new InvalidOperationException("Нет доступных маршрутов или протоколов для подключения.");
+            }
+
+            lock (_routesLock)
+            {
+                _serverIpsToRoute.Clear();
+            }
+
+            var activeStep = await _engine.ConnectRotationRingAsync(
+                ring,
+                async (step, stepToken) =>
+                {
+                    stepToken.ThrowIfCancellationRequested();
+                    if (IsSessionStale(epoch))
+                    {
+                        throw new OperationCanceledException("Сессия отменена.");
+                    }
+
+                    var resolvedStepIp = IPAddress.TryParse(step.Host, out _)
+                        ? step.Host
+                        : GetFirstRoutedIpSnapshot() ?? targetIp;
+                    _currentServerIp = resolvedStepIp;
+                    OnLogUpdated?.Invoke(VpnStatusMessages.ConnectingWithProtocol(step.Host, step.Port, _engine.ActiveProtocolDisplayName));
+
+                    var ipv4 = _engine.AssignedIp;
+                    var effectiveIpv6 = ValidateIpv6(_engine.AssignedIpV6);
+                    if (!IPAddress.TryParse(ipv4, out _))
+                    {
+                        throw new InvalidOperationException("Получен некорректный IP-адрес от сервера.");
+                    }
+
+                    _currentAssignedIp = ipv4;
+                    _currentAssignedIpV6 = effectiveIpv6;
+                    await _adapter.ApplyTunnelInterfaceAsync(step, ipv4, effectiveIpv6, SmartMtuEngine.CurrentMtu, stepToken)
+                        .ConfigureAwait(false);
+                    OnLogUpdated?.Invoke(VpnStatusMessages.CheckingChannelDuplex);
+                },
+                ct).ConfigureAwait(false);
+
+            if (IsSessionStale(epoch))
+            {
+                return;
+            }
+
+            var curTx = _engine.TotalBytesSent;
+            var curRx = _engine.TotalBytesReceived;
+            AppLogger.Log(
+                $"[VPN-ORCHESTRATOR] Ring connected on {activeStep.Kind} ({activeStep.Host}:{activeStep.Port}), TX={curTx} B, RX={curRx} B, MTU={SmartMtuEngine.CurrentMtu}");
+            OnLogUpdated?.Invoke(VpnStatusMessages.ChannelVerifiedSecureDuplex(curTx, curRx));
+
+            _adapter.StartPacketPump(ct);
+
+            var ipsSnapshot = GetRoutedIpsSnapshot();
+            await _adapter.ActivateRoutingAndLeakGuardAsync(ipsSnapshot, _currentAssignedIp, _currentAssignedIpV6, ct)
+                .ConfigureAwait(false);
+
+            _engine.ResetTrafficCounters();
+            _engine.ArmTrafficWatchdog();
+            OnLogUpdated?.Invoke(VpnStatusMessages.ProtectedConnectionActive);
+            UpdateState(AppVpnState.Connected);
+        }
+        catch (OperationCanceledException) when (IsSessionStale(epoch))
+        {
+            AppLogger.Log("[VPN DISCONNECT] Normal stop/cancellation.");
+            UpdateState(AppVpnState.Disconnected);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            await CancelAndDisposeSessionCtsAsync().ConfigureAwait(false);
+            try
+            {
+                await _adapter.ShutdownTunnelAsync(GetRoutedIpsSnapshot(), _currentAssignedIp, false).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignored
+            }
+
+            await _engine.DisposeAsync().ConfigureAwait(false);
+            _currentAssignedIp = "";
+            _currentAssignedIpV6 = null;
+
+            if (IsSessionStale(epoch))
+            {
+                UpdateState(AppVpnState.Disconnected);
+                return;
+            }
+
+            AppLogger.LogError($"[VPN-ORCHESTRATOR FATAL] Connection pipeline failed: {ex.Message}", ex);
+            var activePort = _engine.ConnectedServerPort > 0 ? _engine.ConnectedServerPort : serverPort;
+            var errMsg = ex is TimeoutException || ex.InnerException is TimeoutException
+                ? $"Таймаут подключения: сервер {_currentServerIp}:{activePort} не ответил на TLS хэндшейк."
+                : $"Ошибка подключения: {ex.Message}";
+            UpdateState(AppVpnState.Error);
+            OnLogUpdated?.Invoke(errMsg);
+            DispatchError(errMsg);
+        }
+        finally
+        {
+            try
+            {
+                _ = _vpnGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
     }
@@ -459,23 +511,25 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                     {
                         AppLogger.Log($"[NETWORK ROAMING] Fast reconnect attempt #{attempt}...");
                         SyncPipelinePreferences();
-                        await _engine.ReconnectAsync().ConfigureAwait(false);
+                        await _engine.ReconnectAsync(GetActiveSessionToken()).ConfigureAwait(false);
                         ct.ThrowIfCancellationRequested();
                         await SyncAssignedIpWithAdapterAsync(epoch, ct).ConfigureAwait(false);
-                        var verified = await _engine.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), forceFreshProbe: true, ct: ct).ConfigureAwait(false);
+                        var verified = await _engine.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), true, ct).ConfigureAwait(false);
                         if (ct.IsCancellationRequested || IsSessionStale(epoch))
                         {
                             return;
                         }
 
-                        if (verified)
+                        if (!verified)
                         {
-                            _engine.ResetTrafficCounters();
-                            _engine.ArmTrafficWatchdog();
-                            UpdateState(AppVpnState.Connected);
-                            AppLogger.Log("[NETWORK ROAMING] Connected to new network interface seamlessly!");
-                            return;
+                            continue;
                         }
+
+                        _engine.ResetTrafficCounters();
+                        _engine.ArmTrafficWatchdog();
+                        UpdateState(AppVpnState.Connected);
+                        AppLogger.Log("[NETWORK ROAMING] Connected to new network interface seamlessly!");
+                        return;
                     }
                     catch (Exception ex) when (ex is not OutOfMemoryException and not OperationCanceledException)
                     {
@@ -651,7 +705,8 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                     return;
                 }
 
-                AppLogger.LogWarning($"[DEAD CONNECTION] Packet blackhole detected. Initiating circular protocol recovery from {_currentServerIp}:{_engine.ConnectedServerPort}...");
+                AppLogger.LogWarning(
+                    $"[DEAD CONNECTION] Packet blackhole detected. Initiating circular protocol recovery from {_currentServerIp}:{_engine.ConnectedServerPort}...");
                 OnLogUpdated?.Invoke(VpnStatusMessages.PacketLossDetected);
                 UpdateState(AppVpnState.Reconnecting);
 
@@ -693,14 +748,14 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                     try
                     {
                         SyncPipelinePreferences();
-                        await _engine.ReconnectAsync().ConfigureAwait(false);
+                        await _engine.ReconnectAsync(GetActiveSessionToken()).ConfigureAwait(false);
                         if (IsSessionStale(epoch))
                         {
                             return;
                         }
 
                         await SyncAssignedIpWithAdapterAsync(epoch, CancellationToken.None).ConfigureAwait(false);
-                        var verified = await _engine.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), forceFreshProbe: true).ConfigureAwait(false);
+                        var verified = await _engine.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(5000), true).ConfigureAwait(false);
                         if (IsSessionStale(epoch))
                         {
                             return;
@@ -733,7 +788,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                 }
 
                 await StopVpnAsync().ConfigureAwait(false);
-                ReportError("Ни один из протоколов не получил ответного трафика (0 RX).", stopTunnel: false);
+                ReportError("Ни один из протоколов не получил ответного трафика (0 RX).", false);
             }
             finally
             {
@@ -763,7 +818,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                     await StopVpnAsync().ConfigureAwait(false);
                 }
 
-                ReportError("Связь с сервером потеряна.", stopTunnel: false);
+                ReportError("Связь с сервером потеряна.", false);
             });
             return;
         }
@@ -791,7 +846,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
                 for (var attempt = 0; attempt < 5; attempt++)
                 {
-                    var backoffMs = 1000 + (attempt * 1000);
+                    var backoffMs = 1000 + attempt * 1000;
                     await Task.Delay(backoffMs).ConfigureAwait(false);
                     if (IsSessionStale(epoch) || !OctopusEngine.IsUplinkAvailable)
                     {
@@ -801,7 +856,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                     try
                     {
                         SyncPipelinePreferences();
-                        await _engine.ReconnectAsync().ConfigureAwait(false);
+                        await _engine.ReconnectAsync(GetActiveSessionToken()).ConfigureAwait(false);
                         if (IsSessionStale(epoch))
                         {
                             return;
@@ -814,7 +869,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                         }
 
                         await SyncAssignedIpWithAdapterAsync(epoch, CancellationToken.None).ConfigureAwait(false);
-                        var verified = await _engine.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4500), forceFreshProbe: true).ConfigureAwait(false);
+                        var verified = await _engine.VerifyDownlinkAsync(TimeSpan.FromMilliseconds(4500), true).ConfigureAwait(false);
                         if (IsSessionStale(epoch))
                         {
                             return;
@@ -845,12 +900,12 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
                 if (killSwitch && _adapter.SupportsKillSwitch)
                 {
-                    ReportError("Не удалось восстановить связь. Kill Switch блокирует утечку IP. Нажмите «Стоп» для отключения.", stopTunnel: false);
+                    ReportError("Не удалось восстановить связь. Kill Switch блокирует утечку IP. Нажмите «Стоп» для отключения.", false);
                 }
                 else
                 {
                     await StopVpnAsync().ConfigureAwait(false);
-                    ReportError("Связь с сервером потеряна. Не удалось восстановить подключение.", stopTunnel: false);
+                    ReportError("Связь с сервером потеряна. Не удалось восстановить подключение.", false);
                 }
             }
             finally
@@ -860,7 +915,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         });
     }
 
-    private async Task TrackAndPrepareBypassHostsAsync(string[] ips, CancellationToken ct)
+    private async Task TrackAndPrepareBypassHostsAsync(string[]? ips, CancellationToken ct)
     {
         if (ips is null || ips.Length == 0)
         {
@@ -903,7 +958,8 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             AppLogger.Log($"[VPN-ORCHESTRATOR] Assigned tunnel IP changed ({_currentAssignedIp} -> {newIpv4}). Syncing OS adapter...");
             _currentAssignedIp = newIpv4;
             _currentAssignedIpV6 = newIpv6;
-            await _adapter.SyncTunnelIpAndRoutesAsync(GetRoutedIpsSnapshot(), newIpv4, newIpv6, SmartMtuEngine.CurrentMtu, ct).ConfigureAwait(false);
+            await _adapter.SyncTunnelIpAndRoutesAsync(GetRoutedIpsSnapshot(), newIpv4, newIpv6, SmartMtuEngine.CurrentMtu, ct)
+                .ConfigureAwait(false);
         }
         else
         {
@@ -953,6 +1009,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch
             {
+                // ignored
             }
             finally
             {
@@ -972,12 +1029,19 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch
             {
+                // ignored
             }
             finally
             {
                 cts.Dispose();
             }
         }
+    }
+
+    private CancellationToken GetActiveSessionToken()
+    {
+        var cts = Volatile.Read(ref _sessionCts);
+        return cts?.Token ?? CancellationToken.None;
     }
 
     private void UpdateState(AppVpnState newState)
@@ -993,40 +1057,4 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
     private void DispatchError(string message) =>
         PlatformServices.MainThread.BeginInvokeOnMainThread(() => OnErrorOccurred?.Invoke(message));
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
-        if (_processExitHandler is not null)
-        {
-            AppDomain.CurrentDomain.ProcessExit -= _processExitHandler;
-        }
-
-        _adapter.OnPlatformNetworkChanged -= HandlePlatformNetworkChanged;
-        _engine.OnStatusMessage -= _statusMessageHandler;
-        OctopusEngine.OnCertificateRevoked -= _certRevokedHandler;
-        _engine.OnTrafficUpdated -= _trafficUpdatedHandler;
-        _engine.OnMtuUpdated -= _mtuUpdatedHandler;
-        _engine.OnConnectionDropped -= HandleEngineDrop;
-        _engine.OnDeadConnectionDetected -= HandleDeadConnection;
-        _engine.OnUplinkLost -= HandleUplinkLost;
-        _engine.OnUplinkRestored -= HandleUplinkRestored;
-        _engine.OnTunnelIpChanged -= HandleTunnelIpChanged;
-        _engine.EnsureExternalHostRoutesAsync = null;
-
-        CancelRoamingUnsafe();
-        try
-        {
-            _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
-        }
-        catch
-        {
-        }
-
-        _vpnGate.Dispose();
-    }
 }

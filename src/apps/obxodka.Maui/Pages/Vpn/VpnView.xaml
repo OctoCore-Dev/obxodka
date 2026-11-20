@@ -1,6 +1,7 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.VpnView"
+    x:Class="obxodka.Pages.Vpn.VpnView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
@@ -13,7 +14,6 @@
                           Default='24,24'}"
         SafeAreaEdges="None">
         <ScrollView
-            x:Name="VpnScrollView"
             HorizontalScrollBarVisibility="Never"
             Orientation="Vertical"
             VerticalScrollBarVisibility="Never">
@@ -51,7 +51,6 @@
                     VerticalOptions="Fill">
 
                     <Grid
-                        x:Name="CardIpWrapper"
                         Grid.Row="0"
                         VerticalOptions="Fill">
                         <Border
@@ -67,7 +66,6 @@
                                     Spacing="6"
                                     VerticalOptions="Center">
                                     <Border
-                                        x:Name="IpBadge"
                                         Padding="7,2"
                                         BackgroundColor="{DynamicResource BgElevated}"
                                         Stroke="{DynamicResource BorderMedium}"
@@ -133,7 +131,6 @@
                                     </Border>
 
                                     <Border
-                                        x:Name="NodeBadge"
                                         Padding="7,2"
                                         BackgroundColor="{DynamicResource BgElevated}"
                                         Stroke="{DynamicResource BorderMedium}"
@@ -142,7 +139,6 @@
                                         VerticalOptions="Center">
                                         <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                                             <mi:MauiIcon
-                                                x:Name="NodeIcon"
                                                 Icon="{mi:Fluent Icon=Server24}"
                                                 IconColor="{DynamicResource Accent}"
                                                 IconSize="11"
@@ -190,7 +186,6 @@
                     </Grid>
 
                     <Grid
-                        x:Name="Card2Wrapper"
                         Grid.Row="1"
                         VerticalOptions="Fill">
                         <Border
@@ -265,7 +260,6 @@
                     </Grid>
 
                     <Grid
-                        x:Name="Card5Wrapper"
                         Grid.Row="2"
                         ColumnDefinitions="*, *"
                         ColumnSpacing="{OnIdiom Phone=10,
@@ -428,7 +422,6 @@
                                 </Border.GestureRecognizers>
                                 <HorizontalStackLayout Spacing="9" VerticalOptions="Center">
                                     <Border
-                                        x:Name="SelectedServerFlagBorder"
                                         Margin="{OnPlatform Android='0,-2.5,0,0',
                                                             Default='0'}"
                                         HeightRequest="17"
@@ -479,7 +472,6 @@
                                                     TextColor="{DynamicResource Accent}" />
                                             </Border>
                                             <BoxView
-                                                x:Name="SelectedServerPingDot"
                                                 CornerRadius="2.5"
                                                 HeightRequest="5"
                                                 VerticalOptions="Center"
@@ -754,7 +746,6 @@
                     </ScrollView>
 
                     <Button
-                        x:Name="RefreshServersButton"
                         Grid.Row="3"
                         Clicked="OnRefreshServersClickedAsync"
                         CornerRadius="10"
@@ -766,4 +757,3 @@
         </Grid>
     </Grid>
 </ContentView>
-

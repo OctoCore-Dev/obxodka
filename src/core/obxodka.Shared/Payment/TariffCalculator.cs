@@ -8,6 +8,15 @@ public readonly record struct TariffBreakdown(
     int BonusPercent,
     decimal EffectiveRubAmount);
 
+//спецификация разового товара google play
+public readonly record struct GooglePlayProductSpec(
+    string ProductId,
+    int Hours,
+    decimal ReferenceRubAmount,
+    string ReferenceUsdPrice,
+    int BonusPercent,
+    bool IsBaseTier);
+
 //единый источник истины для валют, лимитов, методов оплаты и расчета часов
 public static class TariffCalculator
 {
@@ -15,6 +24,58 @@ public static class TariffCalculator
     public const string MethodSbp = "SBP";
     public const string MethodPayPal = "PAYPAL";
     public const string MethodApplePay = "APPLE_PAY";
+
+    public const string GooglePlaySku100 = "obxodka_100_hours";
+    public const string GooglePlaySku250 = "obxodka_250_hours";
+    public const string GooglePlaySku300 = "obxodka_300_hours";
+    public const string GooglePlaySku500 = "obxodka_500_hours";
+    public const string GooglePlaySku1000 = "obxodka_1000_hours";
+    public const string GooglePlaySku2000 = "obxodka_2000_hours";
+    public const string GooglePlaySku5000 = "obxodka_5000_hours";
+
+    //каталог всех поддерживаемых товаров google play
+    public static IReadOnlyList<GooglePlayProductSpec> GooglePlayProducts { get; } =
+    [
+        new(GooglePlaySku100, 100, 99m, "$0.99", 0, false),
+        new(GooglePlaySku250, 260, 250m, "$2.49", 4, false),
+        new(GooglePlaySku300, 350, 300m, "$2.99", 17, true),
+        new(GooglePlaySku500, 750, 500m, "$4.99", 50, true),
+        new(GooglePlaySku1000, 2200, 1000m, "$9.99", 120, true),
+        new(GooglePlaySku2000, 4700, 2000m, "$19.99", 135, false),
+        new(GooglePlaySku5000, 12000, 5000m, "$49.99", 140, false)
+    ];
+
+    //идентификаторы товаров google play для запроса витрины
+    public static string[] GetGooglePlayProductIds() =>
+    [
+        GooglePlaySku100,
+        GooglePlaySku250,
+        GooglePlaySku300,
+        GooglePlaySku500,
+        GooglePlaySku1000,
+        GooglePlaySku2000,
+        GooglePlaySku5000
+    ];
+
+    //поиск спецификации товара google play по sku
+    public static bool TryGetGooglePlayProduct(string? productId, out GooglePlayProductSpec product)
+    {
+        if (!string.IsNullOrWhiteSpace(productId))
+        {
+            var normalized = productId.Trim();
+            foreach (var item in GooglePlayProducts)
+            {
+                if (string.Equals(item.ProductId, normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    product = item;
+                    return true;
+                }
+            }
+        }
+
+        product = default;
+        return false;
+    }
 
     //нормализует код валюты и проверяет поддержку
     public static string? NormalizeCurrency(string? currency)

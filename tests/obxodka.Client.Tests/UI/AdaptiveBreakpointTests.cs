@@ -47,7 +47,7 @@ public class AdaptiveBreakpointTests
     public void CalculateVpnViewDimensionsOnNormalPhoneReservesBottomNav()
     {
         var (buttonSize, graphHeight, bottomNavReserve) =
-            AdaptiveLayoutHelper.CalculateVpnViewDimensions(390, 844, topInset: 40);
+            AdaptiveLayoutHelper.CalculateVpnViewDimensions(390, 844, 40);
 
         Assert.True(buttonSize is >= 160.0 and <= 240.0, $"Button size {buttonSize} should be in standard phone range");
         Assert.True(graphHeight is >= 75.0 and <= 180.0, $"Graph height {graphHeight} should be in standard phone range");
@@ -58,7 +58,7 @@ public class AdaptiveBreakpointTests
     public void CalculateVpnViewDimensionsOnFlipCoverScreenScalesDownGracefully()
     {
         var (buttonSize, graphHeight, bottomNavReserve) =
-            AdaptiveLayoutHelper.CalculateVpnViewDimensions(360, 360, topInset: 0);
+            AdaptiveLayoutHelper.CalculateVpnViewDimensions(360, 360);
 
         Assert.True(buttonSize is >= 130.0 and <= 180.0, $"Cover screen button {buttonSize} should scale down");
         Assert.True(graphHeight is >= 50.0 and <= 100.0, $"Cover screen graph {graphHeight} should scale down");

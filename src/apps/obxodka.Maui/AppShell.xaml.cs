@@ -1,6 +1,6 @@
 namespace obxodka;
 
-public sealed partial class AppShell : Shell
+public sealed partial class AppShell
 {
     public AppShell()
     {

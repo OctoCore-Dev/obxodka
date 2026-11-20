@@ -1,6 +1,6 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
-public sealed partial class VpnView : ContentView, IDisposable
+public sealed partial class VpnView : IDisposable
 {
     private static readonly Color s_greenDot = Color.FromArgb("#10B981");
     private static readonly Color s_greenText = Color.FromArgb("#34D399");
@@ -64,49 +64,58 @@ public sealed partial class VpnView : ContentView, IDisposable
         StrokeWidth = 3.5f,
         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 8f)
     };
+
     private readonly SKPaint _polyCorePaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Stroke,
         StrokeWidth = 1.6f
     };
+
     private readonly SKPaint _crystalAmbientPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill,
         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 26f)
     };
+
     private readonly SKPaint _reactorSparkPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill
     };
+
     private readonly SKPaint _reactorSparkGlowPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill,
         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 6f)
     };
+
     private readonly SKPaint _reactorTrackPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Stroke,
         StrokeWidth = 1.5f
     };
+
     private readonly SKPaint _shockwavePaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Stroke
     };
+
     private readonly SKPaint _auraPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill
     };
+
     private readonly SKPaint _customButtonBitmapPaint = new()
     {
         IsAntialias = true
     };
+
     private float _shockwaveProgress = -1f;
     private bool _shockwaveIsConnect;
     private float _loaderAngle;
@@ -115,19 +124,53 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private static readonly (float speed, float delay, float ox, float oy, float size, int sides)[] s_polyConfigs =
     [
-        ( 1.0f,   0f, 0.5f, 0.5f, 0.76f, 5),
-        (-1.0f,   0f, 0.5f, 0.5f, 0.66f, 6),
-        ( 1.5f,  60f, 0.5f, 0.6f, 0.56f, 5),
+        (1.0f, 0f, 0.5f, 0.5f, 0.76f, 5),
+        (-1.0f, 0f, 0.5f, 0.5f, 0.66f, 6),
+        (1.5f, 60f, 0.5f, 0.6f, 0.56f, 5),
         (-1.5f, -60f, 0.4f, 0.4f, 0.46f, 4),
-        ( 2.0f, 120f, 0.6f, 0.4f, 0.38f, 6),
+        (2.0f, 120f, 0.6f, 0.4f, 0.38f, 6)
     ];
 
-    private readonly SKPaint _graphStrokeUpPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
-    private readonly SKPaint _graphStrokeDownPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
-    private readonly SKPaint _graphFillPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _graphDotGlowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _graphDotSolidPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly SKPaint _graphStrokeUpPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = 2.5f,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round
+    };
+
+    private readonly SKPaint _graphStrokeDownPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = 2.5f,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round
+    };
+
+    private readonly SKPaint _graphFillPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
+    private readonly SKPaint _graphDotGlowPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
+    private readonly SKPaint _graphDotSolidPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
     private readonly List<SKPoint> _graphPointsBuffer = [with(256)];
+    private readonly List<GraphSample> _graphSamplesSnapshot = [with(256)];
+    private readonly SKPathBuilder _graphStrokeBuilder = new();
+    private readonly SKPathBuilder _graphFillBuilder = new();
     private SKShader? _cachedAuraShader;
     private float _lastAuraCx, _lastAuraCy, _lastAuraR, _lastAuraGlow;
     private SKColor _lastAuraColor, _lastAuraBloomColor;
@@ -172,15 +215,17 @@ public sealed partial class VpnView : ContentView, IDisposable
     public VpnView()
     {
         InitializeComponent();
-        RootLayoutGrid.SizeChanged += (s, e) =>
+        RootLayoutGrid.SizeChanged += (_, _) =>
         {
-            if (RootLayoutGrid.Width > 0)
+            if (!(RootLayoutGrid.Width > 0))
             {
-                var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
-                if (avail > 0)
-                {
-                    ApplyCardWidth(avail);
-                }
+                return;
+            }
+
+            var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
+            if (avail > 0)
+            {
+                ApplyCardWidth(avail);
             }
         };
 
@@ -259,19 +304,16 @@ public sealed partial class VpnView : ContentView, IDisposable
     //отписка от сетевых событий и остановка фоновых таймеров
     public void UnsubscribeEvents()
     {
-        if (_vpnService is not null)
-        {
-            _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
-            _vpnService.OnErrorOccurred -= HandleVpnError;
-            _vpnService.OnLogUpdated -= HandleVpnLog;
-        }
+        _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
+        _vpnService.OnErrorOccurred -= HandleVpnError;
+        _vpnService.OnLogUpdated -= HandleVpnLog;
 
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
         OctopusEngine.Current.OnProtocolChanged -= HandleProtocolChanged;
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
 
-        StopLoaderAnimation(animateExit: false);
+        StopLoaderAnimation(false);
         StopGraphAnimation();
         DisposeAnimatedButtonResources();
         _ = this.AbortAnimation("ReactorMorph");
@@ -298,6 +340,8 @@ public sealed partial class VpnView : ContentView, IDisposable
         _cachedAuraShader?.Dispose();
         _cachedGraphUpFillShader?.Dispose();
         _cachedGraphDownFillShader?.Dispose();
+        _graphStrokeBuilder.Dispose();
+        _graphFillBuilder.Dispose();
         _graphStrokeUpPaint.Dispose();
         _graphStrokeDownPaint.Dispose();
         _graphFillPaint.Dispose();
@@ -330,7 +374,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     }
 
     //обновление отображения баланса времени и трафика
-    public void UpdateBalanceUI(string timeText, string? trafficText = null)
+    public void UpdateBalanceUi(string timeText, string? trafficText = null)
     {
         TokenAmountLabel.Text = timeText;
         if (trafficText is not null)
