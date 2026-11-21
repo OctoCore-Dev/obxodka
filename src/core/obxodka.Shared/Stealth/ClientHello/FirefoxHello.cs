@@ -121,7 +121,6 @@ public static class FirefoxHello
         WriteSupportedVersions(buffer, ref offset); //supported versions
         WriteSignatureAlgorithms(buffer, ref offset); //signature algorithms
         WriteExtension(buffer, ref offset, 0x002d, [0x01, 0x01]); //psk modes
-        // ReSharper disable once UseUtf8StringLiteral
         WriteExtension(buffer, ref offset, 0x001c, [0x40, 0x00]); //record size limit
     }
 

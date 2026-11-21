@@ -272,7 +272,6 @@ public sealed partial class ObxodkaStreamTransport
                         }
 
                         await stream.FlushAsync(pumpToken).ConfigureAwait(false);
-                        // ReSharper disable once AccessToModifiedClosure
                         _ = Interlocked.Add(ref raySharedBytes, hsTotalLen);
                     }
                     finally
@@ -313,7 +312,6 @@ public sealed partial class ObxodkaStreamTransport
                                         coalescedLen = 0;
                                     }
 
-                                    // ReSharper disable once AccessToModifiedClosure
                                     var txKey = Read(ref activeSessionKey);
                                     if (totalLen <= coalesceBuf.Length)
                                     {
@@ -658,9 +656,6 @@ public sealed partial class ObxodkaStreamTransport
         }
         finally
         {
-            // ReSharper disable RedundantTypeArgumentsOfMethod
-            // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
-            // ReSharper disable ConditionIsAlwaysTrueOrFalse
             _ = Interlocked.CompareExchange<CancellationTokenSource?>(ref _rayCts[ray], null, rayCts);
             var migrated = false;
 
@@ -669,9 +664,6 @@ public sealed partial class ObxodkaStreamTransport
                 //миграция допустима строго на второй рабочий data-луч (ray 0 или ray 1), ray 2 зарезервирован под control plane
                 var otherRay = ray == 0 ? 1 : 0;
                 var isOtherAlive = Read<CancellationTokenSource?>(ref _rayCts[otherRay]) is not null;
-                // ReSharper restore ConditionIsAlwaysTrueOrFalse
-                // ReSharper restore ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
-                // ReSharper restore RedundantTypeArgumentsOfMethod
 
                 if (isOtherAlive && Read(ref _connected) && _cts?.IsCancellationRequested != true)
                 {

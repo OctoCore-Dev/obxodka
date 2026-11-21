@@ -69,7 +69,6 @@ public interface INotificationService
 }
 
 //результат проверки сертификатов
-// ReSharper disable once NotAccessedPositionalProperty.Global
 public sealed record CertificateAuditResult(bool HasUntrustedRoot, string? CertificateName, string? Thumbprint, string? Details);
 
 //событие изменения подключения к сети
@@ -81,7 +80,6 @@ public sealed class AppConnectivityChangedEventArgs(AppNetworkAccess networkAcce
 }
 
 //профиль сетевого адаптера
-// ReSharper disable once NotAccessedPositionalProperty.Global
 public sealed record AppConnectionProfile(NetworkConnectionType ConnectionType, AppNetworkAccess NetworkAccess);
 
 public enum NetworkConnectionType { Unknown, Cellular, Wifi, Bluetooth, Ethernet, Other }

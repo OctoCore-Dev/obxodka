@@ -58,14 +58,14 @@ public static partial class StoreVersionParser
 
         var lines = body.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return (from match in lines.Select(line => Sha256ChecksumLineRegex().Match(line))
-            where match.Success
-            let hash = match.Groups[1].Value.ToLowerInvariant()
-            let file = match.Groups[2].Value
-            where !string.IsNullOrWhiteSpace(targetFileName) && (file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
-                                                                 targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)) ||
-                  string.IsNullOrWhiteSpace(targetFileName) && (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                                                                file.Contains("Setup", StringComparison.OrdinalIgnoreCase))
-            select hash).FirstOrDefault();
+                where match.Success
+                let hash = match.Groups[1].Value.ToLowerInvariant()
+                let file = match.Groups[2].Value
+                where !string.IsNullOrWhiteSpace(targetFileName) && (file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
+                                                                     targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)) ||
+                      string.IsNullOrWhiteSpace(targetFileName) && (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                                                                    file.Contains("Setup", StringComparison.OrdinalIgnoreCase))
+                select hash).FirstOrDefault();
     }
 
     //очистка текста релиза от технических хешей sha256 и служебных секций

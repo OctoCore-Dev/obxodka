@@ -145,7 +145,7 @@ public class TrafficGraphControl : Control
             for (int i = 0; i < pointsCount; i++)
             {
                 double x = i * stepX;
-                double waveT = (i * 0.44) - phase;
+                double waveT = i * 0.44 - phase;
 
                 double norm;
                 if (!isActive)
@@ -155,19 +155,19 @@ public class TrafficGraphControl : Control
                 else if (isUpload)
                 {
                     // Upload stream: bursts of purple packets in lower half (~0.16 - 0.42)
-                    double baseWave = 0.24 + (0.07 * Math.Sin(waveT * 1.6)) + (0.04 * Math.Cos(waveT * 3.3));
-                    double packetPulse = Math.Pow(Math.Max(0, Math.Sin((waveT * 0.95) + 1.2)), 6) * 0.14;
+                    double baseWave = 0.24 + 0.07 * Math.Sin(waveT * 1.6) + 0.04 * Math.Cos(waveT * 3.3);
+                    double packetPulse = Math.Pow(Math.Max(0, Math.Sin(waveT * 0.95 + 1.2)), 6) * 0.14;
                     norm = Math.Clamp(baseWave + packetPulse, 0.10, 0.48);
                 }
                 else
                 {
                     // Download stream: intense bursts of cyan packets in upper half (~0.30 - 0.94)
-                    double baseWave = 0.54 + (0.24 * Math.Sin(waveT * 1.3)) + (0.16 * Math.Cos(waveT * 2.9));
+                    double baseWave = 0.54 + 0.24 * Math.Sin(waveT * 1.3) + 0.16 * Math.Cos(waveT * 2.9);
                     double packetPulse = Math.Pow(Math.Max(0, Math.Sin(waveT * 0.72)), 5) * 0.26;
                     norm = Math.Clamp(baseWave + packetPulse, 0.20, 0.96);
                 }
 
-                double y = height - (norm * (height - 14)) - 7;
+                double y = height - norm * (height - 14) - 7;
                 var currentPoint = new Point(x, y);
 
                 if (!started)
@@ -214,7 +214,7 @@ public class TrafficGraphControl : Control
         if (isActive)
         {
             // Draw glowing pulsating head dot at the front edge of the packet stream
-            double pulseRadius = 4.5 + (1.8 * Math.Sin(pulsePhase));
+            double pulseRadius = 4.5 + 1.8 * Math.Sin(pulsePhase);
             var glowBrush = new SolidColorBrush(glowColor);
 
             context.DrawEllipse(glowBrush, null, lastPoint, pulseRadius, pulseRadius);

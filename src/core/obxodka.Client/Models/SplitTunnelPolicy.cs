@@ -89,7 +89,7 @@ public sealed class SplitTunnelPolicy
     public List<string> CustomBypassIps { get; private set; } = [];
 
     //потокобезопасное получение или перезапись списка активных динамических маршрутов
-    public List<BypassRouteEntry>? ActiveBypassRoutes
+    public List<BypassRouteEntry> ActiveBypassRoutes
     {
         get => GetActiveBypassRoutes();
         set
