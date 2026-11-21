@@ -82,12 +82,12 @@ public sealed partial class OctopusVpnService : VpnService
         }
     }
 
-    [LibraryImport("libc", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("libc", EntryPoint = "read", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial nint Read(int fd, byte* buf, nuint count);
 
-    [LibraryImport("libc", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("libc", EntryPoint = "write", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial nint Write(int fd, byte* buf, nuint count);
 
     //удержание блокировки процессора для предотвращения засыпания сокетов в фоне
@@ -659,9 +659,14 @@ public sealed partial class OctopusVpnService : VpnService
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
+                    if (!ct.IsCancellationRequested)
+                    {
+                        AppLogger.LogError($"[TUN READ ERROR] {ex.Message}");
+                    }
+
                     break;
                 }
 
@@ -716,6 +721,12 @@ public sealed partial class OctopusVpnService : VpnService
         var tunIf = _tunInterface;
         _tunInterface = null;
 
+        var txThread = _txThread;
+        _txThread = null;
+
+        var rxThread = _rxThread;
+        _rxThread = null;
+
         try
         {
             cts?.Cancel();
@@ -745,20 +756,31 @@ public sealed partial class OctopusVpnService : VpnService
             }
         }
 
-        if (cts != null)
+        if (cts != null || tunIf != null)
         {
+            //дожидаемся выхода рабочих потоков tun0 перед освобождением дескриптора без передачи отмененного токена
             _ = Task.Run(() =>
             {
                 try
                 {
-                    cts.Dispose();
+                    if (txThread is { IsAlive: true } && Thread.CurrentThread != txThread)
+                    {
+                        _ = txThread.Join(500);
+                    }
+
+                    if (rxThread is { IsAlive: true } && Thread.CurrentThread != rxThread)
+                    {
+                        _ = rxThread.Join(500);
+                    }
+
+                    cts?.Dispose();
                     tunIf?.Dispose();
                 }
                 catch
                 {
                     // ignored
                 }
-            }, cts.Token);
+            });
         }
 
         MainThread.BeginInvokeOnMainThread(() =>
