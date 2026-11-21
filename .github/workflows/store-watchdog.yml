@@ -239,13 +239,16 @@ jobs:
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: "[BADGES] Sync Store Badges from Watchdog"
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
         shell: pwsh
         run: |
           $mstate = "${{ steps.drain-mstore.outputs.state }}"
           $pstate = "${{ steps.drain-playstore.outputs.state }}"
           $tag = "${{ steps.gh-release.outputs.latest_tag }}"
           $ver = if ($tag -match 'v?([\d\.]+)') { $matches[1] } else { $tag }
+
+          git fetch origin main --depth=1
+          git checkout -f -B main origin/main
 
           New-Item -ItemType Directory -Force -Path ".github/badges" | Out-Null
           $changed = $false
