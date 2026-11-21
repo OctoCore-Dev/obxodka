@@ -222,6 +222,7 @@ public sealed partial class VpnView
         var paddingY = 6f;
         var usableH = h - paddingY * 2f;
 
+        s_skGridPaint.Color = GetSkiaThemeColor("BorderSubtle", new SKColor(128, 128, 128)).WithAlpha(130);
         for (var line = 1; line <= 3; line++)
         {
             var y = paddingY + usableH * (line / 4f);

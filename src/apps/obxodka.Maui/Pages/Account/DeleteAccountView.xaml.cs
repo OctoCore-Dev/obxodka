@@ -1,7 +1,7 @@
 namespace obxodka.Pages.Account;
 
 //экран подтверждения безвозвратного удаления аккаунта
-public sealed partial class DeleteAccountView
+public sealed partial class DeleteAccountView : IAdaptivePage
 {
     private ApiService _apiService = null!;
     private MainPage _parent = null!;
@@ -40,12 +40,27 @@ public sealed partial class DeleteAccountView
         DeleteCardContainer.BackgroundColor = bgSurface;
     }
 
-    //отступ под системный статусбар мобильных устройств
-    public void SetHeaderTopInset(double top)
+    //единая адаптация экрана удаления аккаунта по ssot-снимку геометрии окна
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootDeleteGrid != null)
+        if (RootDeleteGrid is not null)
         {
-            RootDeleteGrid.Padding = new Thickness(20, Math.Max(top + 16, 16), 20, 16);
+            var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+                ? Math.Max(viewport.SafeTop + 16.0, 24.0)
+                : 24.0;
+            var bottomPad = !viewport.UseSidebar
+                ? Math.Max(104.0, viewport.SafeBottom + 92.0)
+                : Math.Max(24.0, viewport.SafeBottom + 16.0);
+            RootDeleteGrid.Padding = new Thickness(20, topPad, 20, bottomPad);
+        }
+
+        if (DeleteCardContainer is not null && viewport.ContentWidth > 0)
+        {
+            var targetWidth = Math.Clamp(viewport.ContentWidth - 40.0, 260.0, 480.0);
+            if (Math.Abs(DeleteCardContainer.WidthRequest - targetWidth) > 0.5)
+            {
+                DeleteCardContainer.WidthRequest = targetWidth;
+            }
         }
     }
 

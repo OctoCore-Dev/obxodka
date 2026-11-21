@@ -4,7 +4,6 @@ public sealed partial class SplitView
 {
     public async Task LoadSplitAppsAsync()
     {
-        ForceLayoutWidth();
         UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();

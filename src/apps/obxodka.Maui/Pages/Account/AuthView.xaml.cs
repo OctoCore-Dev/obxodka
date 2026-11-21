@@ -1,7 +1,7 @@
 namespace obxodka.Pages.Account;
 
 //экран входа по email, qr коду и deep link
-public sealed partial class AuthView
+public sealed partial class AuthView : IAdaptivePage
 {
     private ApiService _apiService = null!;
     private bool _isVerifying;
@@ -75,12 +75,32 @@ public sealed partial class AuthView
         FormContainer.BackgroundColor = bgSurface;
     }
 
-    //отступ под системный статусбар для мобильных устройств
-    public void SetHeaderTopInset(double top)
+    //единая адаптация экрана авторизации по ssot-снимку геометрии окна
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone && ContentLayout != null)
+        if (ContentLayout is not null)
         {
-            ContentLayout.Padding = new Thickness(24, Math.Max(top + 16, 48), 24, 48);
+            var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+                ? viewport.IsShortScreen
+                    ? Math.Max(viewport.SafeTop + 8.0, 14.0)
+                    : Math.Max(viewport.SafeTop + 16.0, 32.0)
+                : viewport.IsShortScreen ? 14.0 : 32.0;
+            var bottomPad = viewport.IsShortScreen
+                ? Math.Max(viewport.SafeBottom + 8.0, 14.0)
+                : Math.Max(viewport.SafeBottom + 16.0, 32.0);
+            var sidePad = viewport.IsCompact ? 20.0 : 28.0;
+            ContentLayout.Padding = new Thickness(sidePad, topPad, sidePad, bottomPad);
+            ContentLayout.Spacing = viewport.IsShortScreen ? 12.0 : 24.0;
+        }
+
+        if (FormContainer is not null && viewport.ContentWidth > 0)
+        {
+            var maxFormWidth = viewport.IsCompact ? 360.0 : 400.0;
+            var targetWidth = Math.Clamp(viewport.ContentWidth - 40.0, 260.0, maxFormWidth);
+            if (Math.Abs(FormContainer.WidthRequest - targetWidth) > 0.5)
+            {
+                FormContainer.WidthRequest = targetWidth;
+            }
         }
     }
 

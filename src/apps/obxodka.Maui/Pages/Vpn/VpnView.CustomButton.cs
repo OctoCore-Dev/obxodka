@@ -56,7 +56,43 @@ public sealed partial class VpnView
         }
     }
 
-    //запуск таймера анимации кастомной кнопки темы
+    //шаг обновления кадра кастомной анимированной кнопки темы
+    private void StepCustomButtonFrame()
+    {
+        var nowTicks = _buttonAnimStopwatch.ElapsedTicks;
+        var dtMs = (int)Math.Clamp((nowTicks - _lastButtonAnimTicks) * 1000.0 / Stopwatch.Frequency, 4.0, 100.0);
+        _lastButtonAnimTicks = nowTicks;
+
+        _buttonAnimatedCurrent?.Advance(dtMs);
+        if (_buttonAnimatedPrev is not null)
+        {
+            _buttonAnimatedPrev.Advance(dtMs);
+            _buttonTransitionProgress = Math.Min(1f, _buttonTransitionProgress + dtMs / 300f);
+            if (_buttonTransitionProgress >= 1f)
+            {
+                _buttonAnimatedPrev = null;
+            }
+        }
+
+        CustomButtonAnimatedCanvas.InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратная синхронизация кадров кастомной кнопки через vsync экрана
+    private void OnCustomButtonVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _buttonLastVsyncTicks < 15)
+        {
+            return;
+        }
+
+        _buttonLastVsyncTicks = nowTicks;
+        StepCustomButtonFrame();
+    }
+#endif
+
+    //запуск цикла анимации кастомной кнопки темы
     private void StartButtonAnimation()
     {
         if (!_isWindowFocused)
@@ -64,6 +100,18 @@ public sealed partial class VpnView
             return;
         }
 
+#if WINDOWS
+        if (_buttonVsyncActive)
+        {
+            return;
+        }
+
+        _buttonAnimStopwatch.Restart();
+        _lastButtonAnimTicks = 0;
+        _buttonLastVsyncTicks = 0;
+        _buttonVsyncActive = true;
+        Platforms.Windows.WinUiVsync.Subscribe(OnCustomButtonVsyncRendering);
+#else
         if (_buttonAnimationTimer is not null)
         {
             return;
@@ -73,35 +121,24 @@ public sealed partial class VpnView
         _lastButtonAnimTicks = 0;
         _buttonAnimationTimer = Dispatcher.CreateTimer();
         _buttonAnimationTimer.Interval = TimeSpan.FromMilliseconds(16);
-#pragma warning disable IDE0058
-        _buttonAnimationTimer.Tick += (_, _) =>
-        {
-            var nowTicks = _buttonAnimStopwatch.ElapsedTicks;
-            var dtMs = (int)Math.Clamp((nowTicks - _lastButtonAnimTicks) * 1000.0 / Stopwatch.Frequency, 4.0, 100.0);
-            _lastButtonAnimTicks = nowTicks;
-
-            _buttonAnimatedCurrent?.Advance(dtMs);
-            if (_buttonAnimatedPrev is not null)
-            {
-                _buttonAnimatedPrev.Advance(dtMs);
-                _buttonTransitionProgress = Math.Min(1f, _buttonTransitionProgress + dtMs / 300f);
-                if (_buttonTransitionProgress >= 1f)
-                {
-                    _buttonAnimatedPrev = null;
-                }
-            }
-
-            CustomButtonAnimatedCanvas.InvalidateSurface();
-        };
-#pragma warning restore IDE0058
+        _buttonAnimationTimer.Tick += (_, _) => StepCustomButtonFrame();
         _buttonAnimationTimer.Start();
+#endif
     }
 
-    //остановка таймера анимации кнопки темы
+    //остановка цикла анимации кнопки темы
     private void StopButtonAnimation()
     {
+#if WINDOWS
+        if (_buttonVsyncActive)
+        {
+            _buttonVsyncActive = false;
+            Platforms.Windows.WinUiVsync.Unsubscribe(OnCustomButtonVsyncRendering);
+        }
+#else
         _buttonAnimationTimer?.Stop();
         _buttonAnimationTimer = null;
+#endif
         _buttonAnimStopwatch.Stop();
     }
 

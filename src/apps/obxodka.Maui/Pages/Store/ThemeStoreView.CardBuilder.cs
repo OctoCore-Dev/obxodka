@@ -4,23 +4,23 @@ public sealed partial class ThemeStoreView
 {
     private (Border CardBorder, HorizontalStackLayout ActionLayout) CreateThemeCard(ThemeCardModel model)
     {
+        var cornerRadius = Application.Current?.Resources.TryGetValue("CardCornerRadius", out var cr) == true &&
+                           cr is CornerRadius themeRadius
+            ? themeRadius
+            : new CornerRadius(16);
+
         var cardBorder = new Border
         {
+            HorizontalOptions = LayoutOptions.Fill,
             Padding = new Thickness(16),
             StrokeThickness = model.IsActive ? 2.0 : 1.0,
             StrokeShape = new RoundRectangle
             {
-                CornerRadius = new CornerRadius(16)
+                CornerRadius = cornerRadius
             }
         };
         cardBorder.SetDynamicResource(BackgroundColorProperty, "BgSurface");
         cardBorder.SetDynamicResource(Border.StrokeProperty, model.IsActive ? "Primary" : "BorderSubtle");
-
-        if (_currentSafeWidth > 0)
-        {
-            cardBorder.WidthRequest = _currentSafeWidth;
-            cardBorder.MaximumWidthRequest = _currentSafeWidth;
-        }
 
         var mainLayout = new Grid
         {

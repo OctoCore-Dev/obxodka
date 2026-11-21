@@ -6,21 +6,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
     <Grid
         x:Name="RootLayout"
-        Padding="{OnIdiom Desktop='32,28',
-                          Phone='16,20,16,0',
-                          Default='16,20'}"
+        Padding="16,20,16,0"
         RowDefinitions="Auto, *"
-        RowSpacing="16"
+        RowSpacing="14"
         SafeAreaEdges="None">
 
         <Label
             Grid.Row="0"
-            FontFamily="{DynamicResource AppFontTitle}"
-            FontSize="{OnIdiom Desktop=22,
-                               Default=24}"
-            HorizontalOptions="Center"
+            HorizontalOptions="Start"
+            Style="{StaticResource PageHeaderTitle}"
             Text="Устройства"
-            TextColor="{DynamicResource TextPrimary}"
             VerticalOptions="Center" />
 
         <Grid
@@ -47,13 +42,11 @@
                 VerticalScrollBarVisibility="Never">
                 <Grid
                     x:Name="DevicesGrid"
-                    Padding="{OnIdiom Phone='0,0,0,130',
-                                      Default='0'}"
-                    ColumnDefinitions="{OnIdiom Desktop='*, *',
-                                                Default='*'}"
-                    ColumnSpacing="28"
-                    HorizontalOptions="Start"
-                    RowSpacing="24"
+                    Padding="0,0,0,28"
+                    ColumnDefinitions="*"
+                    ColumnSpacing="0"
+                    HorizontalOptions="Fill"
+                    RowSpacing="14"
                     VerticalOptions="Start" />
             </ScrollView>
         </Grid>

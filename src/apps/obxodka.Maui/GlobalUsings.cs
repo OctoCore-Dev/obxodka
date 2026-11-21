@@ -26,6 +26,7 @@ global using obxodka.Config;
 global using obxodka.Core;
 global using obxodka.Core.Transports;
 global using obxodka.Controls.Dialogs;
+global using obxodka.Controls.Ui;
 global using obxodka.Helpers;
 global using obxodka.Maui.Services;
 global using obxodka.Maui.Theming.Models;

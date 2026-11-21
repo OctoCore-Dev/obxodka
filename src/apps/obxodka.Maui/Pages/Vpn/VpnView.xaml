@@ -4,14 +4,15 @@
     x:Class="obxodka.Pages.Vpn.VpnView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:helpers="clr-namespace:obxodka.Helpers"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
     xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls">
     <Grid
         x:Name="RootLayoutGrid"
-        Padding="{OnIdiom Desktop='32,28',
-                          Tablet='32,28',
+        Padding="{OnIdiom Desktop='28,24',
+                          Tablet='24,20',
                           Phone='8,0,8,0',
-                          Default='24,24'}"
+                          Default='16,16'}"
         SafeAreaEdges="None">
         <ScrollView
             HorizontalScrollBarVisibility="Never"
@@ -19,32 +20,19 @@
             VerticalScrollBarVisibility="Never">
             <Grid
                 x:Name="ContentGrid"
-                Padding="{OnIdiom Phone='0,50,0,96',
-                                  Default='0'}"
-                ColumnDefinitions="{OnIdiom Desktop='5*, 4*',
-                                            Tablet='5*, 4*',
-                                            Default='*'}"
-                ColumnSpacing="{OnIdiom Desktop=28,
-                                        Tablet=28,
-                                        Default=0}"
-                HorizontalOptions="{OnIdiom Desktop=Start,
-                                            Tablet=Center,
-                                            Default=Fill}"
-                RowDefinitions="{OnIdiom Phone='Auto, *',
-                                         Default='*'}"
-                RowSpacing="{OnIdiom Phone=10,
-                                     Default=0}">
+                Padding="0"
+                ColumnDefinitions="*"
+                ColumnSpacing="0"
+                HorizontalOptions="Fill"
+                RowDefinitions="Auto, Auto"
+                RowSpacing="12">
 
                 <Grid
                     x:Name="TopCardsGrid"
-                    Grid.Row="{OnIdiom Desktop=0,
-                                       Tablet=0,
-                                       Default=0}"
+                    Grid.Row="0"
                     Grid.Column="{OnIdiom Desktop=1,
-                                          Tablet=1,
                                           Default=0}"
                     RowDefinitions="{OnIdiom Desktop='Auto, 2*, *',
-                                             Tablet='Auto, 2*, *',
                                              Default='Auto, Auto, Auto'}"
                     RowSpacing="{OnIdiom Phone=10,
                                          Default=16}"
@@ -55,133 +43,134 @@
                         VerticalOptions="Fill">
                         <Border
                             x:Name="CardIp"
-                            Padding="{OnIdiom Desktop='16,10',
-                                              Phone='12,8',
-                                              Default='16,10'}"
+                            Padding="{OnIdiom Desktop='14,10',
+                                              Phone='10,8',
+                                              Default='14,10'}"
                             Style="{StaticResource NeoCard}"
                             VerticalOptions="Fill">
-                            <Grid VerticalOptions="Center">
-                                <HorizontalStackLayout
-                                    HorizontalOptions="Center"
-                                    Spacing="6"
+                            <FlexLayout
+                                AlignItems="Center"
+                                JustifyContent="Center"
+                                Wrap="Wrap">
+                                <Border
+                                    Margin="3,2"
+                                    Padding="9,4"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    Stroke="{DynamicResource BorderMedium}"
+                                    StrokeShape="RoundRectangle 999"
+                                    StrokeThickness="1"
                                     VerticalOptions="Center">
-                                    <Border
-                                        Padding="7,2"
-                                        BackgroundColor="{DynamicResource BgElevated}"
-                                        Stroke="{DynamicResource BorderMedium}"
-                                        StrokeShape="RoundRectangle 6"
-                                        StrokeThickness="1"
-                                        VerticalOptions="Center">
-                                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-                                            <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                                                <HorizontalStackLayout.GestureRecognizers>
-                                                    <TapGestureRecognizer Tapped="OnToggleIpVersionClicked" />
-                                                </HorizontalStackLayout.GestureRecognizers>
-                                                <mi:MauiIcon
-                                                    x:Name="IpStatusIcon"
-                                                    Icon="{mi:Fluent Icon=ShieldCheckmark24}"
-                                                    IconColor="{DynamicResource Accent}"
-                                                    IconSize="11"
-                                                    VerticalOptions="Center" />
-                                                <Label
-                                                    x:Name="IpAddressLabel"
-                                                    FontFamily="{DynamicResource AppFontBold}"
-                                                    FontSize="11"
-                                                    LineBreakMode="TailTruncation"
-                                                    Text="Не назначен"
-                                                    TextColor="{DynamicResource TextPrimary}"
-                                                    VerticalOptions="Center" />
-                                                <Border
-                                                    x:Name="IpVersionBadge"
-                                                    Padding="4,1"
-                                                    BackgroundColor="{DynamicResource AccentDim}"
-                                                    IsVisible="False"
-                                                    Stroke="{DynamicResource Accent}"
-                                                    StrokeShape="RoundRectangle 3"
-                                                    StrokeThickness="0.6"
-                                                    VerticalOptions="Center">
-                                                    <Label
-                                                        x:Name="IpVersionLabel"
-                                                        FontFamily="{DynamicResource AppFontBold}"
-                                                        FontSize="8"
-                                                        Text="v4"
-                                                        TextColor="{DynamicResource Accent}"
-                                                        VerticalOptions="Center" />
-                                                </Border>
-                                            </HorizontalStackLayout>
+                                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                        <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                            <HorizontalStackLayout.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnToggleIpVersionClicked" />
+                                            </HorizontalStackLayout.GestureRecognizers>
+                                            <mi:MauiIcon
+                                                x:Name="IpStatusIcon"
+                                                Icon="{mi:Fluent Icon=ShieldCheckmark24}"
+                                                IconColor="{DynamicResource Accent}"
+                                                IconSize="12"
+                                                VerticalOptions="Center" />
+                                            <Label
+                                                x:Name="IpAddressLabel"
+                                                FontFamily="{DynamicResource AppFontBold}"
+                                                FontSize="11.5"
+                                                LineBreakMode="TailTruncation"
+                                                Text="Не назначен"
+                                                TextColor="{DynamicResource TextPrimary}"
+                                                VerticalOptions="Center" />
                                             <Border
-                                                x:Name="IpCopyButton"
-                                                Padding="3,1"
-                                                BackgroundColor="Transparent"
+                                                x:Name="IpVersionBadge"
+                                                Padding="4,1"
+                                                BackgroundColor="{DynamicResource AccentDim}"
                                                 IsVisible="False"
-                                                Stroke="Transparent"
+                                                Stroke="{DynamicResource Accent}"
                                                 StrokeShape="RoundRectangle 4"
+                                                StrokeThickness="0.6"
                                                 VerticalOptions="Center">
-                                                <Border.GestureRecognizers>
-                                                    <TapGestureRecognizer Tapped="OnCopyIpClickedAsync" />
-                                                </Border.GestureRecognizers>
-                                                <mi:MauiIcon
-                                                    x:Name="IpCopyIcon"
-                                                    Icon="{mi:Fluent Icon=Copy20}"
-                                                    IconColor="{DynamicResource TextSecondary}"
-                                                    IconSize="11"
+                                                <Label
+                                                    x:Name="IpVersionLabel"
+                                                    FontFamily="{DynamicResource AppFontBold}"
+                                                    FontSize="8.5"
+                                                    Text="v4"
+                                                    TextColor="{DynamicResource Accent}"
                                                     VerticalOptions="Center" />
                                             </Border>
                                         </HorizontalStackLayout>
-                                    </Border>
-
-                                    <Border
-                                        Padding="7,2"
-                                        BackgroundColor="{DynamicResource BgElevated}"
-                                        Stroke="{DynamicResource BorderMedium}"
-                                        StrokeShape="RoundRectangle 6"
-                                        StrokeThickness="1"
-                                        VerticalOptions="Center">
-                                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <Border
+                                            x:Name="IpCopyButton"
+                                            Padding="3,1"
+                                            BackgroundColor="Transparent"
+                                            IsVisible="False"
+                                            Stroke="Transparent"
+                                            StrokeShape="RoundRectangle 4"
+                                            VerticalOptions="Center">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnCopyIpClickedAsync" />
+                                            </Border.GestureRecognizers>
                                             <mi:MauiIcon
-                                                Icon="{mi:Fluent Icon=Server24}"
-                                                IconColor="{DynamicResource Accent}"
-                                                IconSize="11"
+                                                x:Name="IpCopyIcon"
+                                                Icon="{mi:Fluent Icon=Copy20}"
+                                                IconColor="{DynamicResource TextSecondary}"
+                                                IconSize="12"
                                                 VerticalOptions="Center" />
-                                            <Label
-                                                x:Name="NodeHostLabel"
-                                                FontFamily="{DynamicResource AppFontMedium}"
-                                                FontSize="11"
-                                                LineBreakMode="TailTruncation"
-                                                MaximumWidthRequest="130"
-                                                Text="Нет подключения"
-                                                TextColor="{DynamicResource TextSecondary}"
-                                                VerticalOptions="Center" />
-                                        </HorizontalStackLayout>
-                                    </Border>
+                                        </Border>
+                                    </HorizontalStackLayout>
+                                </Border>
 
-                                    <Border
-                                        x:Name="PingBadge"
-                                        Padding="7,2"
-                                        BackgroundColor="{DynamicResource SuccessDim}"
-                                        Stroke="{DynamicResource Success}"
-                                        StrokeShape="RoundRectangle 6"
-                                        StrokeThickness="1"
-                                        VerticalOptions="Center">
-                                        <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                                            <BoxView
-                                                x:Name="PingDot"
-                                                CornerRadius="3"
-                                                HeightRequest="6"
-                                                VerticalOptions="Center"
-                                                WidthRequest="6"
-                                                Color="{DynamicResource Success}" />
-                                            <Label
-                                                x:Name="PingValueLabel"
-                                                FontFamily="{DynamicResource AppFontBold}"
-                                                FontSize="11"
-                                                Text="-- ms"
-                                                TextColor="{DynamicResource Success}"
-                                                VerticalOptions="Center" />
-                                        </HorizontalStackLayout>
-                                    </Border>
-                                </HorizontalStackLayout>
-                            </Grid>
+                                <Border
+                                    Margin="3,2"
+                                    Padding="9,4"
+                                    BackgroundColor="{DynamicResource BgElevated}"
+                                    Stroke="{DynamicResource BorderMedium}"
+                                    StrokeShape="RoundRectangle 999"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                        <mi:MauiIcon
+                                            Icon="{mi:Fluent Icon=Server24}"
+                                            IconColor="{DynamicResource Accent}"
+                                            IconSize="12"
+                                            VerticalOptions="Center" />
+                                        <Label
+                                            x:Name="NodeHostLabel"
+                                            FontFamily="{DynamicResource AppFontMedium}"
+                                            FontSize="11.5"
+                                            LineBreakMode="TailTruncation"
+                                            MaximumWidthRequest="140"
+                                            Text="Нет подключения"
+                                            TextColor="{DynamicResource TextSecondary}"
+                                            VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Border
+                                    x:Name="PingBadge"
+                                    Margin="3,2"
+                                    Padding="9,4"
+                                    BackgroundColor="{DynamicResource SuccessDim}"
+                                    Stroke="{DynamicResource Success}"
+                                    StrokeShape="RoundRectangle 999"
+                                    StrokeThickness="1"
+                                    VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                        <BoxView
+                                            x:Name="PingDot"
+                                            CornerRadius="3"
+                                            HeightRequest="6"
+                                            VerticalOptions="Center"
+                                            WidthRequest="6"
+                                            Color="{DynamicResource Success}" />
+                                        <Label
+                                            x:Name="PingValueLabel"
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="11.5"
+                                            Text="-- ms"
+                                            TextColor="{DynamicResource Success}"
+                                            VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                            </FlexLayout>
                         </Border>
                     </Grid>
 
@@ -247,7 +236,9 @@
                                     Grid.Row="1"
                                     Margin="0,4,0,0"
                                     HeightRequest="{OnIdiom Desktop=-1,
-                                                            Phone=100}"
+                                                            Tablet=140,
+                                                            Phone=110,
+                                                            Default=110}"
                                     VerticalOptions="Fill">
                                     <skia:SKCanvasView
                                         x:Name="TrafficGraphCanvas"
@@ -272,7 +263,8 @@
                                               Phone='12,8',
                                               Default='14,12'}"
                             HeightRequest="{OnIdiom Desktop=-1,
-                                                    Phone=64}"
+                                                    Phone=68,
+                                                    Default=72}"
                             Style="{StaticResource NeoCard}"
                             VerticalOptions="Fill">
                             <Grid RowDefinitions="Auto, *">
@@ -323,7 +315,8 @@
                                               Phone='12,8',
                                               Default='14,12'}"
                             HeightRequest="{OnIdiom Desktop=-1,
-                                                    Phone=64}"
+                                                    Phone=68,
+                                                    Default=72}"
                             Style="{StaticResource NeoCard}"
                             VerticalOptions="Fill">
                             <Grid RowDefinitions="Auto, *">
@@ -373,10 +366,9 @@
                 <Border
                     x:Name="Card1Wrapper"
                     Grid.Row="{OnIdiom Desktop=0,
-                                       Tablet=0,
                                        Default=1}"
                     Grid.Column="0"
-                    MinimumHeightRequest="{OnIdiom Phone=340,
+                    MinimumHeightRequest="{OnIdiom Phone=320,
                                                    Default=-1}"
                     Style="{StaticResource NeoCard}"
                     VerticalOptions="Fill">
@@ -451,8 +443,11 @@
                                             x:Name="SelectedServerLocationLabel"
                                             FontFamily="{DynamicResource AppFontBold}"
                                             FontSize="{OnIdiom Desktop=13,
-                                                               Phone=12,
+                                                               Phone=12.5,
                                                                Default=13}"
+                                            LineBreakMode="TailTruncation"
+                                            MaxLines="1"
+                                            MaximumWidthRequest="220"
                                             Text="Швеция, Стокгольм"
                                             TextColor="{DynamicResource TextPrimary}"
                                             VerticalOptions="Center" />
@@ -635,7 +630,8 @@
                                 x:Name="StatusLabel"
                                 Grid.Row="2"
                                 Margin="{OnIdiom Desktop='0,14,0,0',
-                                                 Phone='0,6,0,0'}"
+                                                 Phone='0,6,0,0',
+                                                 Default='0,10,0,0'}"
                                 AutomationId="VpnStatusLabel"
                                 FontFamily="{DynamicResource AppFontMedium}"
                                 FontSize="{OnIdiom Phone=13,
@@ -671,27 +667,25 @@
             <Border
                 x:Name="ServerModalCard"
                 Margin="20"
-                Padding="22"
+                Padding="20"
+                helpers:UiAnimations.AnimateEntrance="False"
                 HorizontalOptions="Center"
-                MaximumHeightRequest="{OnIdiom Desktop=540,
-                                               Phone=490,
-                                               Default=520}"
-                MaximumWidthRequest="{OnIdiom Desktop=460,
-                                              Phone=360,
-                                              Default=420}"
+                MaximumHeightRequest="560"
+                MaximumWidthRequest="440"
                 Stroke="{DynamicResource BorderMedium}"
                 StrokeShape="RoundRectangle 20"
                 StrokeThickness="1.2"
                 Style="{StaticResource NeoCard}"
                 VerticalOptions="Center"
-                WidthRequest="{OnIdiom Desktop=440,
-                                       Phone=340,
-                                       Default=400}">
+                WidthRequest="400">
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer />
                 </Border.GestureRecognizers>
 
-                <Grid RowDefinitions="Auto, Auto, *, Auto" RowSpacing="14">
+                <Grid
+                    HorizontalOptions="Fill"
+                    RowDefinitions="Auto, Auto, *, Auto"
+                    RowSpacing="14">
                     <Grid
                         Grid.Row="0"
                         ColumnDefinitions="*, Auto"
@@ -740,9 +734,13 @@
 
                     <ScrollView
                         Grid.Row="2"
+                        HorizontalOptions="Fill"
                         HorizontalScrollBarVisibility="Never"
                         VerticalScrollBarVisibility="Default">
-                        <VerticalStackLayout x:Name="ServerItemsContainer" Spacing="8" />
+                        <VerticalStackLayout
+                            x:Name="ServerItemsContainer"
+                            HorizontalOptions="Fill"
+                            Spacing="8" />
                     </ScrollView>
 
                     <Button

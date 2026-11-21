@@ -374,7 +374,7 @@ public sealed partial class ThemeStoreView
     private void RefreshStaticThemeColors()
     {
         var primaryColor = GetAppColor("Primary", Color.FromArgb("#7C3AED"));
-        var primaryDim = GetAppColor("PrimaryDim", primaryColor.WithAlpha(0.22f));
+        var badgeTint = primaryColor.WithAlpha(0.16f);
         var accentColor = GetAppColor("Accent", Color.FromArgb("#00E5FF"));
         var textPrimaryColor = GetAppColor("TextPrimary", Colors.White);
         var textMutedColor = GetAppColor("TextMuted", Color.FromArgb("#A0A0B0"));
@@ -385,7 +385,7 @@ public sealed partial class ThemeStoreView
         BtnBack.Stroke = borderSubtleColor;
         BtnResetTheme.Stroke = borderSubtleColor;
 
-        HeaderIconBadge.BackgroundColor = primaryDim;
+        HeaderIconBadge.BackgroundColor = badgeTint;
         HeaderIcon.IconColor = primaryColor;
 
         CardSearch.Stroke = borderSubtleColor;
@@ -397,19 +397,19 @@ public sealed partial class ThemeStoreView
 
         CardVfxSettings.Stroke = borderSubtleColor;
 
-        BadgeSounds.BackgroundColor = primaryDim;
+        BadgeSounds.BackgroundColor = badgeTint;
         IconSounds.IconColor = primaryColor;
-        BadgeParticles.BackgroundColor = primaryDim;
+        BadgeParticles.BackgroundColor = badgeTint;
         IconParticles.IconColor = accentColor;
-        BadgeFrames.BackgroundColor = primaryDim;
+        BadgeFrames.BackgroundColor = badgeTint;
         IconFrames.IconColor = primaryColor;
-        BadgeVideo.BackgroundColor = primaryDim;
+        BadgeVideo.BackgroundColor = badgeTint;
         IconVideo.IconColor = primaryColor;
-        BadgeAlwaysPlay.BackgroundColor = primaryDim;
+        BadgeAlwaysPlay.BackgroundColor = badgeTint;
         IconAlwaysPlay.IconColor = accentColor;
-        BadgeOpacity.BackgroundColor = primaryDim;
+        BadgeOpacity.BackgroundColor = badgeTint;
         IconOpacity.IconColor = primaryColor;
-        BadgeGlow.BackgroundColor = primaryDim;
+        BadgeGlow.BackgroundColor = badgeTint;
         IconGlow.IconColor = accentColor;
 
         SepVfx1.Color = borderSubtleColor;

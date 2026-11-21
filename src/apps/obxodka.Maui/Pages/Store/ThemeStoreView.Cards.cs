@@ -117,12 +117,6 @@ public sealed partial class ThemeStoreView
             ThemesContainer.Add(card);
             _cardMap[model.Id] = (card, actionLayout, model);
 
-            if (_currentSafeWidth > 0)
-            {
-                card.WidthRequest = _currentSafeWidth;
-                card.MaximumWidthRequest = _currentSafeWidth;
-            }
-
             if (!animate || index < 4)
             {
                 card.Opacity = 1.0;

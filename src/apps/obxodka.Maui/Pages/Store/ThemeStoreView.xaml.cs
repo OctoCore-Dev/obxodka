@@ -1,13 +1,12 @@
 namespace obxodka.Pages.Store;
 
-public sealed partial class ThemeStoreView
+public sealed partial class ThemeStoreView : IAdaptivePage
 {
     private readonly Dictionary<string, Label> _activeDownloadLabels = [];
     private readonly Dictionary<string, (Border CardBorder, HorizontalStackLayout ActionLayout, ThemeCardModel Model)> _cardMap = [];
     private readonly HashSet<VisualElement> _revealedCards = [];
     private string _activeFilter = "all";
     private ThemeCatalogResponse? _currentCatalog;
-    private double _currentSafeWidth = -1;
     private string _currentTab = "community";
     private bool _isUpdatingSliderInternally;
     private ThemeCardModel? _previewModalModel;
@@ -17,20 +16,6 @@ public sealed partial class ThemeStoreView
     public ThemeStoreView()
     {
         InitializeComponent();
-
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
-        {
-            BtnBackText.IsVisible = false;
-            BtnResetText.IsVisible = false;
-        }
-
-        ThemeScrollView.SizeChanged += (_, _) =>
-        {
-            if (ThemeScrollView.Width > 0)
-            {
-                ApplyCardWidth(ThemeScrollView.Width);
-            }
-        };
 
         ThemeScrollView.Scrolled += OnThemeScrollViewScrolled;
 
@@ -96,91 +81,45 @@ public sealed partial class ThemeStoreView
         _themeManager = null;
     }
 
-    public void ForceLayoutWidth()
+    //адаптация отступов и модального окна каталога тем по единому снимку экрана
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (ThemeScrollView.Width > 0)
-        {
-            ApplyCardWidth(ThemeScrollView.Width);
-        }
-        else if (Width > 0 && RootLayout is not null)
-        {
-            var avail = Width - RootLayout.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    public void SetHeaderTopInset(double top)
-    {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            var topAir = Math.Max(top + 16, 50);
-            RootLayout.Padding = new Thickness(16, topAir, 16, 0);
-        }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            RootLayout.Padding = new Thickness(16, Math.Max(top + 4, 10), 16, 0);
-        }
-    }
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width > 0 && RootLayout is not null)
-        {
-            var availableWidth = width - RootLayout.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
-    }
-
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0)
+        if (RootLayout is null || ThemeCardsStack is null)
         {
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
+
+        var topAir = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 44.0 : 24.0)
+            : isCompact ? 14.0 : 24.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
+
+        var pad = new Thickness(sidePad, topAir, sidePad, 0);
+        RootLayout.Padding = pad;
+        ThemeCardsStack.HorizontalOptions = LayoutOptions.Fill;
+        ThemeCardsStack.Padding = new Thickness(0, 0, 0, bottomPad);
+        ThemePreviewModalOverlay?.Margin = new Thickness(-pad.Left, -pad.Top, -pad.Right, -pad.Bottom);
+
+        if (ThemePreviewModalCard is not null && viewport.ContentWidth > 0)
         {
-            return;
+            var modalW = Math.Clamp(viewport.ContentWidth - 40.0, 280.0, 500.0);
+            ThemePreviewModalCard.MaximumWidthRequest = modalW;
+            ThemePreviewModalCard.WidthRequest = modalW;
         }
 
-        _currentSafeWidth = safeWidth;
-
-        ThemeCardsStack.WidthRequest = safeWidth;
-        ThemeCardsStack.MaximumWidthRequest = safeWidth;
-
-        CardSearch.WidthRequest = safeWidth;
-        CardSearch.MaximumWidthRequest = safeWidth;
-
-        TabsGrid.WidthRequest = safeWidth;
-        TabsGrid.MaximumWidthRequest = safeWidth;
-
-        FilterChipsScrollView.WidthRequest = safeWidth;
-        FilterChipsScrollView.MaximumWidthRequest = safeWidth;
-
-        CardVfxSettings.WidthRequest = safeWidth;
-        CardVfxSettings.MaximumWidthRequest = safeWidth;
-
-        ThemesContainer.WidthRequest = safeWidth;
-        ThemesContainer.MaximumWidthRequest = safeWidth;
-
-        foreach (var child in ThemesContainer.Children)
-        {
-            if (child is not VisualElement visual)
-            {
-                continue;
-            }
-
-            visual.WidthRequest = safeWidth;
-            visual.MaximumWidthRequest = safeWidth;
-        }
+        BtnBackText.IsVisible = !isCompact;
+        BtnResetText.IsVisible = !isCompact;
+        LabelHeaderSubtitle.IsVisible = !isCompact;
+        BtnBack.Padding = isCompact ? new Thickness(0) : new Thickness(12, 0);
+        BtnBack.WidthRequest = isCompact ? 40 : -1;
+        BtnResetTheme.Padding = isCompact ? new Thickness(0) : new Thickness(12, 0);
+        BtnResetTheme.WidthRequest = isCompact ? 40 : -1;
     }
 
     public void Initialize(ThemeManager themeManager)
@@ -439,18 +378,6 @@ public sealed partial class ThemeStoreView
                 _ = visual.FadeToAsync(1.0, 200, Easing.CubicOut);
                 _ = visual.TranslateToAsync(0, 0, 200, Easing.CubicOut);
             }
-        }
-
-        if (ThemesContainer.Children.Count > 0)
-        {
-            CardStackScrollHelper.ApplyToChildren(
-                ThemesContainer.Children.OfType<VisualElement>(),
-                scrollY,
-                viewportHeight,
-                ThemesContainer.Y,
-                70.0,
-                0.92,
-                2.2);
         }
     }
 

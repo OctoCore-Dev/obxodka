@@ -98,64 +98,86 @@
                 x:Name="ThemeCornerTopLeft"
                 Aspect="AspectFit"
                 HeightRequest="{OnIdiom Desktop=160,
-                                        Phone=110}"
+                                        Tablet=136,
+                                        Default=110}"
                 HorizontalOptions="Start"
                 InputTransparent="True"
                 IsVisible="False"
                 VerticalOptions="Start"
                 WidthRequest="{OnIdiom Desktop=160,
-                                       Phone=110}" />
+                                       Tablet=136,
+                                       Default=110}" />
 
             <Image
                 x:Name="ThemeCornerTopRight"
                 Aspect="AspectFit"
                 HeightRequest="{OnIdiom Desktop=160,
-                                        Phone=110}"
+                                        Tablet=136,
+                                        Default=110}"
                 HorizontalOptions="End"
                 InputTransparent="True"
                 IsVisible="False"
                 VerticalOptions="Start"
                 WidthRequest="{OnIdiom Desktop=160,
-                                       Phone=110}" />
+                                       Tablet=136,
+                                       Default=110}" />
 
             <Image
                 x:Name="ThemeCornerBottomLeft"
                 Aspect="AspectFit"
                 HeightRequest="{OnIdiom Desktop=140,
-                                        Phone=90}"
+                                        Tablet=116,
+                                        Default=90}"
                 HorizontalOptions="Start"
                 InputTransparent="True"
                 IsVisible="False"
                 VerticalOptions="End"
                 WidthRequest="{OnIdiom Desktop=140,
-                                       Phone=90}" />
+                                       Tablet=116,
+                                       Default=90}" />
 
             <Image
                 x:Name="ThemeCornerBottomRight"
                 Aspect="AspectFit"
                 HeightRequest="{OnIdiom Desktop=140,
-                                        Phone=90}"
+                                        Tablet=116,
+                                        Default=90}"
                 HorizontalOptions="End"
                 InputTransparent="True"
                 IsVisible="False"
                 VerticalOptions="End"
                 WidthRequest="{OnIdiom Desktop=140,
-                                       Phone=90}" />
+                                       Tablet=116,
+                                       Default=90}" />
         </Grid>
 
         <Grid
-            ColumnDefinitions="Auto, *"
+            x:Name="RootShellGrid"
+            ColumnDefinitions="0, *"
             RowDefinitions="*, Auto"
             SafeAreaEdges="None"
             ZIndex="10">
+            <BoxView
+                x:Name="SidebarOverlayBackdrop"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.Column="0"
+                Grid.ColumnSpan="2"
+                BackgroundColor="{DynamicResource BgOverlay}"
+                InputTransparent="True"
+                IsVisible="False"
+                Opacity="0"
+                ZIndex="55">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSidebarOverlayBackdropTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
             <navigation:DesktopSidebarView
                 x:Name="DesktopSidebar"
                 Grid.Row="0"
                 Grid.RowSpan="2"
                 Grid.Column="0"
-                IsVisible="{OnIdiom Desktop=True,
-                                    Tablet=True,
-                                    Default=False}" />
+                IsVisible="False" />
             <BoxView
                 x:Name="SidebarDimmer"
                 Grid.Row="0"
@@ -165,7 +187,7 @@
                 InputTransparent="True"
                 IsVisible="False"
                 Opacity="0"
-                ZIndex="50">
+                ZIndex="65">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnSidebarDimmerTapped" />
                 </BoxView.GestureRecognizers>
@@ -174,12 +196,9 @@
                 x:Name="MainContentContainer"
                 Grid.Row="0"
                 Grid.RowSpan="2"
-                Grid.Column="{OnIdiom Desktop=1,
-                                      Tablet=1,
-                                      Default=0}"
-                Grid.ColumnSpan="{OnIdiom Desktop=1,
-                                          Tablet=1,
-                                          Default=2}"
+                Grid.Column="1"
+                Grid.ColumnSpan="1"
+                IsClippedToBounds="True"
                 SafeAreaEdges="None">
                 <Grid.GestureRecognizers>
                     <SwipeGestureRecognizer Direction="Left" Swiped="OnContentSwipedLeft" />

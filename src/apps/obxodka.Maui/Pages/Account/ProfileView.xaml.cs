@@ -1,13 +1,13 @@
 namespace obxodka.Pages.Account;
 
 //экран профиля пользователя, баланса, adblock и рефералов
-public sealed partial class ProfileView
+public sealed partial class ProfileView : IAdaptivePage
 {
     public static readonly BindableProperty IsEditingAllowedProperty =
         BindableProperty.Create(nameof(IsEditingAllowed), typeof(bool), typeof(ProfileView), true);
 
     private ApiService? _apiService;
-
+    private bool? _isTwoColumns;
     private long _lastRemainingSeconds;
     private string? _myReferralCode;
     private MainPage? _parent;
@@ -21,27 +21,6 @@ public sealed partial class ProfileView
         DnsAdBlocker.IsAdBlockEnabled = isAdblock;
         UpdateAdBlockSubtitle();
         TelemetrySwitch.IsToggled = Preferences.Default.Get(AppPreferenceKeys.UseTelemetry, true);
-
-        if (DeviceInfo.Idiom != DeviceIdiom.Phone)
-        {
-            CardLogout.IsVisible = false;
-        }
-
-        ProfileScrollView.SizeChanged += (_, _) =>
-        {
-            if (ProfileScrollView.Width > 0)
-            {
-                ApplyCardWidth(ProfileScrollView.Width);
-            }
-        };
-
-        ProfileScrollView.Scrolled += (_, _) =>
-            CardStackScrollHelper.ApplyToChildren(
-                ProfileScrollView,
-                ContentGrid.Children,
-                65.0,
-                0.92,
-                2.5);
 
         Unloaded += OnUnloaded;
     }
@@ -99,54 +78,63 @@ public sealed partial class ProfileView
     public event EventHandler? BalanceRefreshRequested;
 
 
-    //расчет ширины для перестроения интерфейса
-    public void ForceLayoutWidth()
+    //единая адаптация экрана профиля по ssot-снимку геометрии окна без ручного widthrequest
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (ProfileScrollView.Width > 0)
-        {
-            ApplyCardWidth(ProfileScrollView.Width);
-        }
-        else if (Width > 0 && RootLayoutGrid is not null)
-        {
-            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (!(width > 0) || RootLayoutGrid is null)
+        if (RootLayoutGrid is null || ContentStack is null || ProfileTopGrid is null)
         {
             return;
         }
 
-        var availableWidth = width - RootLayoutGrid.Padding.HorizontalThickness;
-        if (availableWidth > 0)
-        {
-            ApplyCardWidth(availableWidth);
-        }
-    }
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
+        var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
+            : isCompact ? 16.0 : 24.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
 
-    //подгонка ширины карточек с ограничением максимума
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0 || ContentGrid is null)
+        RootLayoutGrid.Padding = new Thickness(sidePad, 0, sidePad, 0);
+        ContentStack.Padding = new Thickness(0, topPad, 0, bottomPad);
+        CardLogout.IsVisible = !viewport.UseSidebar;
+
+        var isTwoColumns = viewport.UseMultiColumnContent;
+        if (_isTwoColumns == isTwoColumns)
         {
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        _isTwoColumns = isTwoColumns;
+        ProfileTopGrid.ColumnDefinitions.Clear();
+        ProfileTopGrid.RowDefinitions.Clear();
+        if (isTwoColumns)
         {
-            return;
-        }
+            ProfileTopGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ProfileTopGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ProfileTopGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ProfileTopGrid.ColumnSpacing = 16;
+            ProfileTopGrid.RowSpacing = 0;
 
-        ContentGrid.WidthRequest = safeWidth;
-        ContentGrid.MaximumWidthRequest = safeWidth;
+            Grid.SetRow(CardProfile, 0);
+            Grid.SetColumn(CardProfile, 0);
+            Grid.SetRow(CardBalance, 0);
+            Grid.SetColumn(CardBalance, 1);
+        }
+        else
+        {
+            ProfileTopGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ProfileTopGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ProfileTopGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ProfileTopGrid.ColumnSpacing = 0;
+            ProfileTopGrid.RowSpacing = 14;
+
+            Grid.SetRow(CardProfile, 0);
+            Grid.SetColumn(CardProfile, 0);
+            Grid.SetRow(CardBalance, 1);
+            Grid.SetColumn(CardBalance, 0);
+        }
     }
 
     //инициализация зависимостей и подписка на статус vpn
@@ -373,25 +361,6 @@ public sealed partial class ProfileView
         CardLogout.Stroke = borderSubtle;
         CardDeleteAccount.BackgroundColor = bgSurface;
         CardDeleteAccount.Stroke = borderSubtle;
-    }
-
-    //компенсация отступа под статусбар на мобильных устройствах
-    public void SetHeaderTopInset(double top)
-    {
-        if (DeviceInfo.Platform != DevicePlatform.Android || DeviceInfo.Idiom != DeviceIdiom.Phone)
-        {
-            return;
-        }
-
-        RootLayoutGrid?.Padding = new Thickness(16, 0, 16, 0);
-
-        if (ContentGrid == null)
-        {
-            return;
-        }
-
-        var topAir = Math.Max(top + 16, 50);
-        ContentGrid.Padding = new Thickness(0, topAir, 0, 140);
     }
 
     //переключение adblock dns фильтрации

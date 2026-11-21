@@ -1,6 +1,6 @@
 namespace obxodka.Pages.Vpn;
 
-public sealed partial class VpnView : IDisposable
+public sealed partial class VpnView : IDisposable, IAdaptivePage
 {
     private static readonly Color s_greenDot = Color.FromArgb("#10B981");
     private static readonly Color s_greenText = Color.FromArgb("#34D399");
@@ -208,67 +208,19 @@ public sealed partial class VpnView : IDisposable
     private float _buttonTransitionProgress = 1f;
     private readonly Stopwatch _buttonAnimStopwatch = new();
     private long _lastButtonAnimTicks;
+#if WINDOWS
+    private bool _buttonVsyncActive;
+    private long _buttonLastVsyncTicks;
+#else
     private IDispatcherTimer? _buttonAnimationTimer;
+#endif
     private CancellationTokenSource? _buttonAnimCts;
     private bool _isWindowFocused = true;
 
     public VpnView()
     {
         InitializeComponent();
-        RootLayoutGrid.SizeChanged += (_, _) =>
-        {
-            if (!(RootLayoutGrid.Width > 0))
-            {
-                return;
-            }
-
-            var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        };
-
         Unloaded += (_, _) => Dispose();
-    }
-
-    //принудительный пересчет ширины карточки при изменении размера
-    public void ForceLayoutWidth()
-    {
-        if (Width > 0 && RootLayoutGrid is not null)
-        {
-            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-        else if (RootLayoutGrid is { Width: > 0 })
-        {
-            var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    //установка адаптивной ширины карточки
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0 || ContentGrid is null)
-        {
-            return;
-        }
-
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
-        {
-            return;
-        }
-
-        ContentGrid.WidthRequest = safeWidth;
-        ContentGrid.MaximumWidthRequest = safeWidth;
     }
 
     //инициализация сервисов и подписка на события туннеля

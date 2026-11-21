@@ -23,14 +23,14 @@ public sealed partial class ThemeManager
     private readonly ThemeStorageService _storageService;
 
     private double? _cachedGlowIntensity;
-
     private double? _cachedSoundVolume;
+    private bool _isSystemThemeSubscribed;
 
     public ThemeManager()
     {
         Instance = this;
         _storageService = new ThemeStorageService(Path.Combine(FileSystem.AppDataDirectory, "themes"));
-        CaptureDefaultResourcesSnapshot();
+        EnsureSystemThemeTracking();
     }
 
     public ThemeManifest? ActiveTheme { get; private set; }
@@ -169,6 +169,7 @@ public sealed partial class ThemeManager
 
     public event Action<ThemeAppliedEventArgs>? OnThemeApplied;
     public event Action? OnThemeReset;
+    public event Action? OnSystemThemeSynced;
     public event Action<ThemeCatalogResponse>? OnCatalogUpdated;
     public event Action<bool>? VideoEnabledChanged;
     public event Action<bool>? SoundsEnabledChanged;
@@ -242,15 +243,70 @@ public sealed partial class ThemeManager
             ? ApplyTheme(manifest)
             : await MainThread.InvokeOnMainThreadAsync(() => ApplyTheme(manifest)).ConfigureAwait(false));
 
+    //проверка что пользователь использует тему по умолчанию а не кастомную тему
+    public bool IsUsingSystemDefaultTheme()
+    {
+        if (ActiveTheme is not null)
+        {
+            return false;
+        }
+
+        var savedId = Preferences.Default.Get<string?>(ActiveThemeKey, null);
+        return string.IsNullOrWhiteSpace(savedId) ||
+               string.Equals(savedId, DefaultThemePreferenceValue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    //подписка на переключение светлой и темной темы ос для темы по умолчанию
+    private void EnsureSystemThemeTracking()
+    {
+        if (_isSystemThemeSubscribed || Application.Current is not { } app)
+        {
+            return;
+        }
+
+        _isSystemThemeSubscribed = true;
+        app.RequestedThemeChanged += OnAppRequestedThemeChanged;
+    }
+
+    private void OnAppRequestedThemeChanged(object? sender, AppThemeChangedEventArgs e)
+    {
+        if (!IsUsingSystemDefaultTheme())
+        {
+            return;
+        }
+
+        var targetTheme = e.RequestedTheme == AppTheme.Light ? AppTheme.Light : AppTheme.Dark;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!IsUsingSystemDefaultTheme())
+            {
+                return;
+            }
+
+            ApplySystemDefaultPalette(targetTheme);
+            OnSystemThemeSynced?.Invoke();
+        });
+    }
+
     //восстановление активной темы при запуске приложения из локального хранилища
     public void RestoreActiveThemeAtStartup()
     {
-        EnsureDefaultResourcesCaptured();
+        EnsureSystemThemeTracking();
 
         var activeId = Preferences.Default.Get<string?>(ActiveThemeKey, null);
         if (string.IsNullOrWhiteSpace(activeId) ||
             string.Equals(activeId, DefaultThemePreferenceValue, StringComparison.OrdinalIgnoreCase))
         {
+            if (MainThread.IsMainThread)
+            {
+                ApplySystemDefaultPalette(GetEffectiveSystemTheme());
+            }
+            else
+            {
+                MainThread.BeginInvokeOnMainThread(() => ApplySystemDefaultPalette(GetEffectiveSystemTheme()));
+            }
+
+            OnSystemThemeSynced?.Invoke();
             return;
         }
 

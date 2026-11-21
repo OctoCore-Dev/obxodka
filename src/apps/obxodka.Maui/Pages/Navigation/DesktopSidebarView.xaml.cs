@@ -1,17 +1,19 @@
 namespace obxodka.Pages.Navigation;
 
-//боковая панель навигации для десктопной версии приложения
+//боковая панель навигации (windows fluent 2 navigation view и android tablet navigation rail/drawer)
 public sealed partial class DesktopSidebarView
 {
-    private static readonly Color s_cyanColor = Color.FromArgb("#00E5FF");
-    private static readonly Color s_mutedColor = Color.FromArgb("#6A5A8A");
-    private static readonly Color s_inactiveLightColor = Color.FromArgb("#9080B0");
-    private static readonly Color s_inactiveDarkColor = Color.FromArgb("#6A5A8A");
+    private const double CollapsedWidth = 76.0;
+    private const double ExpandedWidth = 248.0;
+    private const double SideMargin = 12.0;
 
     private IAppUpdaterService? _appUpdaterService;
     private string _currentTab = "vpn";
-    private bool _isExpanded;
+    private bool _isCompactHeight;
+    private bool _isOverlayMode;
     private bool _isVpnConnected;
+    private double _lastSafeBottom;
+    private double _lastSafeTop;
 
     public DesktopSidebarView()
     {
@@ -20,16 +22,103 @@ public sealed partial class DesktopSidebarView
         UpdateSeasonalLogo();
     }
 
-    private static Color ActiveColor => Application.Current?.Resources.TryGetValue("Primary", out var val) == true && val is Color c
-        ? c
-        : Color.FromArgb("#7C3AED");
+    private static Color GetResourceColor(string key, Color fallback) =>
+        Application.Current?.Resources.TryGetValue(key, out var val) == true && val is Color c ? c : fallback;
+
+    private static string GetResourceFont(string key, string fallback) =>
+        Application.Current?.Resources.TryGetValue(key, out var val) == true && val is string s && !string.IsNullOrWhiteSpace(s)
+            ? s
+            : fallback;
+
+    private static Color ActiveColor => GetResourceColor("Primary", Color.FromArgb("#0078D4"));
 
     private static Color ActiveBgColor => ActiveColor.WithAlpha(0.14f);
 
+    private static Color HoverBgColor => GetResourceColor("BgElevated", Color.FromArgb("#202030")).WithAlpha(0.75f);
+
+    private static Color InactiveTextColor => GetResourceColor("TextMuted", Color.FromArgb("#90FFFFFF"));
+
+    public bool IsExpanded { get; private set; }
+
     //ширина занимаемого пространства для адаптивной верстки
     public double OccupiedWidth => IsVisible && DesktopSidebar.IsVisible
-        ? (DesktopSidebar.WidthRequest > 0 ? DesktopSidebar.WidthRequest : 84) + 16
+        ? (DesktopSidebar.WidthRequest > 0 ? DesktopSidebar.WidthRequest : CollapsedWidth) + SideMargin
         : 0;
+
+    //режим наложения поверх контента для планшетов и узких окон
+    public void SetOverlayMode(bool isOverlay)
+    {
+        _isOverlayMode = isOverlay;
+        UpdateCardOpacity();
+    }
+
+    //сворачивание панели при открытой навигации в overlay-режиме
+    public void Collapse()
+    {
+        if (IsExpanded)
+        {
+            ToggleSidebar();
+        }
+    }
+
+    //учет безопасных отступов сверху и снизу на мобильных и планшетных экранах
+    public void ApplySafeAreaInsets(double top, double bottom)
+    {
+        _lastSafeTop = top;
+        _lastSafeBottom = bottom;
+        ApplySidebarOuterMargin();
+    }
+
+    //переключение компактной плотности по высоте для альбомных телефонов и низких окон
+    public void SetCompactHeightMode(bool isCompactHeight)
+    {
+        if (_isCompactHeight == isCompactHeight)
+        {
+            return;
+        }
+
+        _isCompactHeight = isCompactHeight;
+        ApplySidebarOuterMargin();
+        ApplyHeightDensity();
+    }
+
+    //применение внешних отступов панели с учетом компактного режима по высоте
+    private void ApplySidebarOuterMargin()
+    {
+        var minVert = _isCompactHeight ? 8.0 : SideMargin;
+        var extra = _isCompactHeight ? 4.0 : 8.0;
+        var topMargin = Math.Max(_lastSafeTop + extra, minVert);
+        var bottomMargin = Math.Max(_lastSafeBottom + extra, minVert);
+        DesktopSidebar.Margin = new Thickness(_isCompactHeight ? 8.0 : SideMargin, topMargin, 0, bottomMargin);
+    }
+
+    //адаптация высоты и состава пунктов панели чтобы иконки никогда не налезали друг на друга
+    private void ApplyHeightDensity()
+    {
+        var compactRail = _isCompactHeight && !IsExpanded;
+        var showSecondary = !compactRail;
+
+        DesktopSidebar.Padding = _isCompactHeight ? new Thickness(8, 10) : new Thickness(10, 16);
+        LogoRowGrid.HeightRequest = _isCompactHeight ? 34 : 42;
+        LogoRowGrid.Margin = _isCompactHeight ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 0, 20);
+        NavItemsStack.Spacing = _isCompactHeight ? 2 : 4;
+
+        var itemH = _isCompactHeight ? 36.0 : 42.0;
+        SideNavVpn.HeightRequest = itemH;
+        SideNavProfile.HeightRequest = itemH;
+        SideNavConfiguration.HeightRequest = itemH;
+        SideNavDevices.HeightRequest = itemH;
+        SideNavSplit.HeightRequest = itemH;
+
+        NavDivider.IsVisible = showSecondary;
+        NavBug.IsVisible = showSecondary;
+        NavReviews.IsVisible = showSecondary;
+        VpnStatusPill.IsVisible = showSecondary;
+
+        FooterStack.Margin = _isCompactHeight ? new Thickness(0, 6, 0, 0) : new Thickness(0, 12, 0, 0);
+        FooterStack.Spacing = _isCompactHeight ? 4 : 8;
+        LogoutButtonBorder.HeightRequest = _isCompactHeight ? 36 : 40;
+    }
 
     //скрытие боковой панели
     public void HideSidebar() => DesktopSidebar.IsVisible = false;
@@ -37,6 +126,7 @@ public sealed partial class DesktopSidebarView
     public event EventHandler<string>? NavTapped;
     public event EventHandler? LogoutTapped;
     public event EventHandler? SidebarWidthChanged;
+    public event EventHandler<bool>? ExpandedChanged;
 
     //передача сервиса обновлений
     public void Initialize(IAppUpdaterService? appUpdaterService = null) =>
@@ -70,66 +160,66 @@ public sealed partial class DesktopSidebarView
         var customStatus = ThemeManager.Instance?.ActiveTheme?.Vfx?.StatusText;
         if (isConnected)
         {
-            var accent = Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac ? ac : s_cyanColor;
-            VpnStatusDot.Color = accent;
+            var success = GetResourceColor("Success", Color.FromArgb("#10B981"));
+            var successDim = GetResourceColor("SuccessDim", success.WithAlpha(0.14f));
+            VpnStatusDot.Color = success;
             VpnStatusLabel.Text = !string.IsNullOrWhiteSpace(customStatus?.Connected) ? customStatus.Connected : "Защищено";
-            VpnStatusLabel.TextColor = accent;
+            VpnStatusLabel.TextColor = success;
+            VpnStatusPill.BackgroundColor = IsExpanded ? successDim : Colors.Transparent;
+            VpnStatusPill.Stroke = IsExpanded ? success.WithAlpha(0.35f) : Colors.Transparent;
         }
         else
         {
-            var muted = Application.Current?.Resources.TryGetValue("TextMuted", out var m) == true && m is Color mc ? mc : s_mutedColor;
+            var muted = InactiveTextColor;
             VpnStatusDot.Color = muted;
             VpnStatusLabel.Text = !string.IsNullOrWhiteSpace(customStatus?.Disconnected) ? customStatus.Disconnected : "Отключен";
             VpnStatusLabel.TextColor = muted;
+            VpnStatusPill.BackgroundColor = Colors.Transparent;
+            VpnStatusPill.Stroke = Colors.Transparent;
         }
     }
 
-    //актуализация цвета фона под активную тему
+    //актуализация цвета фона и границ под активную тему
     public void UpdateCardOpacity()
     {
-        var bgSurface = Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor
-            ? bgColor
-            : Color.FromArgb("#161622");
-        var borderSubtle = Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsColor
-            ? bsColor
-            : Color.FromArgb("#282838");
+        var bgSurface = GetResourceColor("BgSurface", Color.FromArgb("#161622"));
+        var borderColor = _isOverlayMode
+            ? GetResourceColor("BorderMedium", Color.FromArgb("#363650"))
+            : GetResourceColor("BorderSubtle", Color.FromArgb("#28283C"));
 
         DesktopSidebar.BackgroundColor = bgSurface;
-        DesktopSidebar.Stroke = borderSubtle;
+        DesktopSidebar.Stroke = borderColor;
     }
 
     //реакция на смену темы оформления
     public void OnThemeChanged() =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            UpdateSeasonalLogo();
             UpdateCardOpacity();
             UpdateActiveTab(_currentTab);
             UpdateVpnStatus(_isVpnConnected);
 
-            var textPrimary = Application.Current?.Resources.TryGetValue("TextPrimary", out var tp) == true && tp is Color tpc
-                ? tpc
-                : Colors.White;
-            var textMuted = Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc
-                ? tmc
-                : s_mutedColor;
+            var textPrimary = GetResourceColor("TextPrimary", Colors.White);
+            var textSecondary = GetResourceColor("TextSecondary", Color.FromArgb("#D0FFFFFF"));
+            var textMuted = InactiveTextColor;
+            var errorColor = GetResourceColor("Error", Color.FromArgb("#EF4444"));
 
             AppLogoText.TextColor = textPrimary;
-            LabelVpn.TextColor = textPrimary;
-            LabelProfile.TextColor = textPrimary;
-            LabelConfiguration.TextColor = textPrimary;
-            LabelDevices.TextColor = textPrimary;
-            LabelSplit.TextColor = textPrimary;
-            LabelBug.TextColor = textPrimary;
-            LabelReviews.TextColor = textPrimary;
-
+            CollapseChevronIcon.IconColor = textMuted;
+            LabelBug.TextColor = textSecondary;
+            LabelReviews.TextColor = textSecondary;
             NavBugIcon.IconColor = textMuted;
             NavReviewsIcon.IconColor = textMuted;
+            LogoutIcon.IconColor = errorColor;
+            LogoutText.TextColor = errorColor;
+            AppVersionLabel.TextColor = textMuted;
         });
 
     //разворачивание панели по клику в свернутом виде
     private void OnSidebarTapped(object? sender, TappedEventArgs e)
     {
-        if (!_isExpanded)
+        if (!IsExpanded)
         {
             ToggleSidebar();
         }
@@ -143,66 +233,82 @@ public sealed partial class DesktopSidebarView
         ToggleSidebar();
     }
 
-    //анимация аккордеона ширины панели и текста
+    //плавная анимация ширины панели с каскадным появлением подписей без шторма событий
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
         Justification = "MAUI Animation is managed and executed by the visual element animation extension")]
     private void ToggleSidebar()
     {
-        _isExpanded = !_isExpanded;
-        var targetWidth = _isExpanded ? 260 : 84;
+        IsExpanded = !IsExpanded;
+        ApplyHeightDensity();
+        ExpandedChanged?.Invoke(this, IsExpanded);
+        var targetWidth = IsExpanded ? ExpandedWidth : CollapsedWidth;
+        var currentWidth = DesktopSidebar.Width > 0 ? DesktopSidebar.Width : DesktopSidebar.WidthRequest;
 
-        if (!_isExpanded)
+        VisualElement[] labels =
+        [
+            AppLogoText,
+            CollapseChevronIcon,
+            LabelVpn,
+            LabelProfile,
+            LabelConfiguration,
+            LabelDevices,
+            LabelSplit,
+            LabelBug,
+            LabelReviews,
+            VpnStatusLabel,
+            LogoutText
+        ];
+
+        _ = this.AbortAnimation("SidebarResize");
+
+        if (IsExpanded)
         {
-            _ = AppLogoImage.RotateToAsync(0, 200, Easing.CubicInOut);
+            AppLogoImage.Rotation = 0;
+            _ = AppLogoImage.RotateToAsync(360, 240, Easing.CubicOut);
+            VersionBadge.IsVisible = true;
 
-            _ = AnimateLabelHideAsync(AppLogoText);
-            _ = AnimateLabelHideAsync(LabelVpn);
-            _ = AnimateLabelHideAsync(LabelProfile);
-            _ = AnimateLabelHideAsync(LabelConfiguration);
-            _ = AnimateLabelHideAsync(LabelDevices);
-            _ = AnimateLabelHideAsync(LabelSplit);
-            _ = AnimateLabelHideAsync(LabelBug);
-            _ = AnimateLabelHideAsync(LabelReviews);
-            _ = AnimateLabelHideAsync(VpnStatusLabel);
-            _ = AnimateLabelHideAsync(AppVersionLabel);
-            _ = AnimateLabelHideAsync(LogoutText);
-            _ = LogoutIcon.FadeToAsync(1, 140);
-
-            var anim = new Animation(v =>
+            for (var i = 0; i < labels.Length; i++)
             {
-                DesktopSidebar.WidthRequest = v;
-                SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
-            }, DesktopSidebar.Width, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicInOut, (_, _) => SidebarWidthChanged?.Invoke(this, EventArgs.Empty));
+                _ = AnimateLabelShowAsync(labels[i], i * 14);
+            }
+
+            _ = AnimateLabelShowAsync(AppVersionLabel, labels.Length * 14, 0.65);
+            UpdateVpnStatus(_isVpnConnected);
+
+            var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
+            anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicOut, (_, _) =>
+            {
+                if (!_isOverlayMode)
+                {
+                    SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+                }
+            });
         }
         else
         {
-            _ = AppLogoImage.RotateToAsync(360, 240, Easing.CubicOut);
-
-            _ = AnimateLabelShowAsync(AppLogoText, 10);
-            _ = AnimateLabelShowAsync(LabelVpn, 25);
-            _ = AnimateLabelShowAsync(LabelProfile, 40);
-            _ = AnimateLabelShowAsync(LabelConfiguration, 55);
-            _ = AnimateLabelShowAsync(LabelDevices, 70);
-            _ = AnimateLabelShowAsync(LabelSplit, 85);
-            _ = AnimateLabelShowAsync(LabelBug, 100);
-            _ = AnimateLabelShowAsync(LabelReviews, 115);
-            _ = AnimateLabelShowAsync(VpnStatusLabel, 125);
-            _ = AnimateLabelShowAsync(LogoutText, 135);
-            _ = AnimateLabelShowAsync(AppVersionLabel, 145, 0.5);
-            _ = LogoutIcon.FadeToAsync(0, 120);
-
-            var anim = new Animation(v =>
+            _ = AppLogoImage.RotateToAsync(0, 200, Easing.CubicInOut);
+            foreach (var item in labels)
             {
-                DesktopSidebar.WidthRequest = v;
-                SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
-            }, DesktopSidebar.Width, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 220, Easing.CubicOut, (_, _) => SidebarWidthChanged?.Invoke(this, EventArgs.Empty));
+                _ = AnimateLabelHideAsync(item);
+            }
+
+            _ = AnimateLabelHideAsync(AppVersionLabel);
+            VersionBadge.IsVisible = false;
+            UpdateVpnStatus(_isVpnConnected);
+
+            var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
+            anim.Commit(this, "SidebarResize", 16, 180, Easing.CubicInOut, (_, _) =>
+            {
+                if (!_isOverlayMode)
+                {
+                    SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+                }
+            });
         }
     }
 
-    //плавный выезд подписи вкладки
-    private static async Task AnimateLabelShowAsync(VisualElement? label, int delayMs, double targetOpacity = 1.0)
+    //плавный выезд подписи пункта меню при раскрытии панели с защитой от гонки быстрого клика
+    private async Task AnimateLabelShowAsync(VisualElement? label, int delayMs, double targetOpacity = 1.0)
     {
         if (label is null)
         {
@@ -210,20 +316,29 @@ public sealed partial class DesktopSidebarView
         }
 
         label.CancelAnimations();
+        label.IsVisible = true;
+        label.TranslationX = -8;
+        label.Opacity = 0;
 
         if (delayMs > 0)
         {
             await Task.Delay(delayMs);
         }
 
-        label.TranslationX = -8;
-        label.Opacity = 0;
+        if (!IsExpanded)
+        {
+            label.TranslationX = 0;
+            label.Opacity = 0;
+            label.IsVisible = false;
+            return;
+        }
+
         _ = label.TranslateToAsync(0, 0, 160, Easing.SpringOut);
         _ = label.FadeToAsync(targetOpacity, 140, Easing.CubicOut);
     }
 
-    //скрытие подписи вкладки со смещением
-    private static async Task AnimateLabelHideAsync(VisualElement? label)
+    //плавное скрытие подписи пункта меню при сворачивании панели
+    private async Task AnimateLabelHideAsync(VisualElement? label)
     {
         if (label is null)
         {
@@ -231,81 +346,119 @@ public sealed partial class DesktopSidebarView
         }
 
         label.CancelAnimations();
-        _ = label.TranslateToAsync(-8, 0, 100, Easing.CubicIn);
-        _ = await label.FadeToAsync(0, 100, Easing.CubicIn);
+        _ = label.TranslateToAsync(-8, 0, 90, Easing.CubicIn);
+        _ = await label.FadeToAsync(0, 90, Easing.CubicIn);
         label.TranslationX = 0;
+        if (!IsExpanded)
+        {
+            label.IsVisible = false;
+        }
     }
 
-    //подсветка активной вкладки
+    //подсветка активной вкладки с fluent 2 индикатором и микро-анимацией иконки
     public void UpdateActiveTab(string tabName)
     {
         _currentTab = tabName;
         ResetAllSideNavItems();
 
+        var activeColor = ActiveColor;
+        var activeBg = ActiveBgColor;
+        var textPrimary = GetResourceColor("TextPrimary", Colors.White);
+        var boldFont = GetResourceFont("AppFontBold", "RobotoBold");
+
         switch (tabName)
         {
             case "vpn":
-                SideNavVpn.BackgroundColor = ActiveBgColor;
-                NavVpnIcon.IconColor = ActiveColor;
-                _ = SideNavVpn.ScaleToAsync(1.03, 150, Easing.SpringOut);
+                ApplyActiveNav(SideNavVpn, IndicatorVpn, NavVpnIcon, LabelVpn, activeBg, activeColor, textPrimary, boldFont);
                 _ = NavVpnIcon.PlayIconSpringHoverAsync(1.2);
                 break;
             case "profile":
-                SideNavProfile.BackgroundColor = ActiveBgColor;
-                NavProfileIcon.IconColor = ActiveColor;
-                _ = SideNavProfile.ScaleToAsync(1.03, 150, Easing.SpringOut);
+                ApplyActiveNav(SideNavProfile, IndicatorProfile, NavProfileIcon, LabelProfile, activeBg, activeColor, textPrimary, boldFont);
                 _ = NavProfileIcon.PlayIconBounceJumpAsync(-3);
                 break;
             case "configuration" or "themes":
-                SideNavConfiguration.BackgroundColor = ActiveBgColor;
-                NavConfigurationIcon.IconColor = ActiveColor;
-                _ = SideNavConfiguration.ScaleToAsync(1.03, 150, Easing.SpringOut);
+                ApplyActiveNav(SideNavConfiguration, IndicatorConfiguration, NavConfigurationIcon, LabelConfiguration, activeBg, activeColor, textPrimary, boldFont);
                 _ = NavConfigurationIcon.PlayIconSpinAsync(90, 200);
                 break;
             case "devices":
-                SideNavDevices.BackgroundColor = ActiveBgColor;
-                NavDevicesIcon.IconColor = ActiveColor;
-                _ = SideNavDevices.ScaleToAsync(1.03, 150, Easing.SpringOut);
+                ApplyActiveNav(SideNavDevices, IndicatorDevices, NavDevicesIcon, LabelDevices, activeBg, activeColor, textPrimary, boldFont);
                 _ = NavDevicesIcon.PlayIconWiggleAsync(12);
                 break;
             case "split":
-                SideNavSplit.BackgroundColor = ActiveBgColor;
-                NavSplitIcon.IconColor = ActiveColor;
-                _ = SideNavSplit.ScaleToAsync(1.03, 150, Easing.SpringOut);
+                ApplyActiveNav(SideNavSplit, IndicatorSplit, NavSplitIcon, LabelSplit, activeBg, activeColor, textPrimary, boldFont);
                 _ = NavSplitIcon.PlayIconSpringHoverAsync(1.2);
                 break;
         }
     }
 
+    //применение активного состояния на элемент навигации
+    private static void ApplyActiveNav(
+        Border container,
+        BoxView indicator,
+        MauiIcon icon,
+        Label label,
+        Color activeBg,
+        Color activeColor,
+        Color textPrimary,
+        string boldFont)
+    {
+        container.BackgroundColor = activeBg;
+        indicator.Color = activeColor;
+        indicator.IsVisible = true;
+        icon.IconColor = activeColor;
+        label.TextColor = textPrimary;
+        label.FontFamily = boldFont;
+        _ = container.ScaleToAsync(1.02, 150, Easing.SpringOut);
+    }
+
     //сброс визуального состояния всех пунктов меню
     private void ResetAllSideNavItems()
     {
-        SideNavVpn.BackgroundColor = Colors.Transparent;
-        SideNavProfile.BackgroundColor = Colors.Transparent;
-        SideNavConfiguration.BackgroundColor = Colors.Transparent;
-        SideNavDevices.BackgroundColor = Colors.Transparent;
-        SideNavSplit.BackgroundColor = Colors.Transparent;
+        var inactiveColor = InactiveTextColor;
+        var textSecondary = GetResourceColor("TextSecondary", Color.FromArgb("#D0FFFFFF"));
+        var mediumFont = GetResourceFont("AppFontMedium", "RobotoMedium");
 
-        SideNavVpn.Scale = 1.0;
-        SideNavProfile.Scale = 1.0;
-        SideNavConfiguration.Scale = 1.0;
-        SideNavDevices.Scale = 1.0;
-        SideNavSplit.Scale = 1.0;
+        ResetNavItem(SideNavVpn, IndicatorVpn, NavVpnIcon, LabelVpn, inactiveColor, textSecondary, mediumFont);
+        ResetNavItem(SideNavProfile, IndicatorProfile, NavProfileIcon, LabelProfile, inactiveColor, textSecondary, mediumFont);
+        ResetNavItem(SideNavConfiguration, IndicatorConfiguration, NavConfigurationIcon, LabelConfiguration, inactiveColor, textSecondary, mediumFont);
+        ResetNavItem(SideNavDevices, IndicatorDevices, NavDevicesIcon, LabelDevices, inactiveColor, textSecondary, mediumFont);
+        ResetNavItem(SideNavSplit, IndicatorSplit, NavSplitIcon, LabelSplit, inactiveColor, textSecondary, mediumFont);
 
-        var inactiveColor = Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc
-            ? tmc
-            : Application.Current?.RequestedTheme == AppTheme.Light
-                ? s_inactiveLightColor
-                : s_inactiveDarkColor;
-
-        NavVpnIcon.IconColor = inactiveColor;
-        NavProfileIcon.IconColor = inactiveColor;
-        NavConfigurationIcon.IconColor = inactiveColor;
-        NavDevicesIcon.IconColor = inactiveColor;
-        NavSplitIcon.IconColor = inactiveColor;
-        NavBugIcon.IconColor = inactiveColor;
-        NavReviewsIcon.IconColor = inactiveColor;
+        NavBug.BackgroundColor = Colors.Transparent;
+        NavReviews.BackgroundColor = Colors.Transparent;
+        LogoutButtonBorder.BackgroundColor = Colors.Transparent;
     }
+
+    //сброс одного пункта меню
+    private static void ResetNavItem(
+        Border container,
+        BoxView indicator,
+        MauiIcon icon,
+        Label label,
+        Color inactiveIconColor,
+        Color inactiveLabelColor,
+        string mediumFont)
+    {
+        container.CancelAnimations();
+        container.BackgroundColor = Colors.Transparent;
+        container.Scale = 1.0;
+        indicator.IsVisible = false;
+        icon.CancelAnimations();
+        icon.Rotation = 0;
+        icon.Scale = 1.0;
+        icon.TranslationY = 0;
+        icon.IconColor = inactiveIconColor;
+        label.TextColor = inactiveLabelColor;
+        label.FontFamily = mediumFont;
+    }
+
+    //проверка активности пункта меню для hover-подсветки
+    private bool IsNavItemActive(Border border) =>
+        _currentTab == "vpn" && border == SideNavVpn ||
+        _currentTab == "profile" && border == SideNavProfile ||
+        _currentTab is "configuration" or "themes" && border == SideNavConfiguration ||
+        _currentTab == "devices" && border == SideNavDevices ||
+        _currentTab == "split" && border == SideNavSplit;
 
     //выбор вкладки vpn
     private void OnNavVpnTapped(object? sender, TappedEventArgs e)
@@ -351,7 +504,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavBugTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = NavBug.BounceClickAsync();
         try
         {
             _ = Browser.Default.OpenAsync(AppConfig.ApiUrl("BugTracker/Index"), BrowserLaunchMode.SystemPreferred);
@@ -366,7 +518,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavReviewsTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = NavReviews.BounceClickAsync();
         try
         {
             _ = Browser.Default.OpenAsync(AppConfig.ApiUrl("Reviews/Index"), BrowserLaunchMode.SystemPreferred);
@@ -381,111 +532,40 @@ public sealed partial class DesktopSidebarView
     private void OnLogoutClicked(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = LogoutButtonBorder.BounceClickAsync();
         LogoutTapped?.Invoke(this, EventArgs.Empty);
     }
 
-    //анимация наведения курсора мыши
-    private async void OnPointerEnteredAsync(object? sender, PointerEventArgs e)
+    //деликатная подсветка при наведении курсора без скачков масштаба
+    private void OnPointerEntered(object? sender, PointerEventArgs e)
     {
-        try
+        if (sender is not Border border)
         {
-            if (sender is not Border border)
-            {
-                return;
-            }
-
-            ThemeAudioService.PlayHover();
-            _ = border.ScaleToAsync(1.04, 120, Easing.CubicOut);
-
-            if (border == SideNavVpn)
-            {
-                await NavVpnIcon.PlayIconSpringHoverAsync();
-            }
-            else if (border == SideNavProfile)
-            {
-                await NavProfileIcon.PlayIconBounceJumpAsync(-3);
-            }
-            else if (border == SideNavConfiguration)
-            {
-                await NavConfigurationIcon.PlayIconSpinAsync(180, 260);
-            }
-            else if (border == SideNavDevices)
-            {
-                await NavDevicesIcon.PlayIconWiggleAsync();
-            }
-            else if (border == SideNavSplit)
-            {
-                await NavSplitIcon.PlayIconSpringHoverAsync();
-            }
-            else if (border == NavBug)
-            {
-                await NavBugIcon.PlayIconWiggleAsync(16);
-            }
-            else if (border == NavReviews)
-            {
-                await NavReviewsIcon.PlayIconTwinkleAsync();
-            }
-            else if (border == LogoutButtonBorder)
-            {
-                _ = LogoutIcon.ScaleToAsync(1.2, 120, Easing.SpringOut);
-            }
+            return;
         }
-        catch (Exception ex)
+
+        ThemeAudioService.PlayHover();
+        if (border == LogoutButtonBorder)
         {
-            AppLogger.LogWarning($"[SIDEBAR HOVER ENTER ERROR] {ex.Message}");
+            var errorDim = GetResourceColor("ErrorDim", Color.FromArgb("#1FEF4444"));
+            border.BackgroundColor = errorDim;
+            return;
+        }
+
+        if (!IsNavItemActive(border))
+        {
+            border.BackgroundColor = HoverBgColor;
         }
     }
 
-    //анимация ухода курсора мыши
-    private async void OnPointerExitedAsync(object? sender, PointerEventArgs e)
+    //возврат состояния после ухода курсора
+    private void OnPointerExited(object? sender, PointerEventArgs e)
     {
-        try
+        if (sender is not Border border)
         {
-            if (sender is not Border border)
-            {
-                return;
-            }
-
-            _ = border.ScaleToAsync(1.0, 120, Easing.CubicIn);
-
-            if (border == SideNavVpn)
-            {
-                await NavVpnIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == SideNavProfile)
-            {
-                await NavProfileIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == SideNavConfiguration)
-            {
-                await NavConfigurationIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == SideNavDevices)
-            {
-                await NavDevicesIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == SideNavSplit)
-            {
-                await NavSplitIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == NavBug)
-            {
-                await NavBugIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == NavReviews)
-            {
-                await NavReviewsIcon.PlayIconHoverExitAsync();
-            }
-            else if (border == LogoutButtonBorder)
-            {
-                _ = LogoutIcon.ScaleToAsync(1.0, 120, Easing.CubicOut);
-            }
+            return;
         }
-        catch (Exception ex)
-        {
-            AppLogger.LogWarning($"[SIDEBAR HOVER EXIT ERROR] {ex.Message}");
-        }
+
+        border.BackgroundColor = IsNavItemActive(border) ? ActiveBgColor : Colors.Transparent;
     }
 
     //ручная проверка обновлений при клике на номер версии
@@ -494,11 +574,6 @@ public sealed partial class DesktopSidebarView
         try
         {
             ThemeAudioService.PlayClick();
-            if (sender is VisualElement ve)
-            {
-                _ = ve.BounceClickAsync();
-            }
-
             var updater = _appUpdaterService ?? IPlatformApplication.Current?.Services.GetService<IAppUpdaterService>();
             if (updater is not null)
             {

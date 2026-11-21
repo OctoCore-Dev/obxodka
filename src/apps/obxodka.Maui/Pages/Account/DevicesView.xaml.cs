@@ -1,34 +1,16 @@
 namespace obxodka.Pages.Account;
 
 //экран списка авторизованных устройств пользователя
-public sealed partial class DevicesView
+public sealed partial class DevicesView : IAdaptivePage
 {
     private static readonly TimeSpan s_cacheTtl = TimeSpan.FromSeconds(30);
     private ApiService _apiService = null!;
+    private int _columnsCount = 1;
     private DateTime _lastFetchTime = DateTime.MinValue;
 
     private MainPage _parent = null!;
 
-    public DevicesView()
-    {
-        InitializeComponent();
-
-        DevicesScrollView.SizeChanged += (_, _) =>
-        {
-            if (DevicesScrollView.Width > 0)
-            {
-                ApplyCardWidth(DevicesScrollView.Width);
-            }
-        };
-
-        DevicesScrollView.Scrolled += (_, _) =>
-            CardStackScrollHelper.ApplyToChildren(
-                DevicesScrollView,
-                DevicesGrid.Children,
-                65.0,
-                0.92,
-                2.5);
-    }
+    public DevicesView() => InitializeComponent();
 
     public ObservableCollection<DeviceItem> ConnectedDevices { get; set; } = [];
 
@@ -39,54 +21,48 @@ public sealed partial class DevicesView
     //сброс кэша времени обновления устройств
     public void InvalidateCache() => _lastFetchTime = DateTime.MinValue;
 
-    //расчет ширины для перестроения интерфейса
-    public void ForceLayoutWidth()
+    //единая адаптация экрана устройств по ssot-снимку геометрии окна без ручного widthrequest
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (DevicesScrollView.Width > 0)
-        {
-            ApplyCardWidth(DevicesScrollView.Width);
-        }
-        else if (Width > 0 && RootLayout is not null)
-        {
-            var avail = Width - RootLayout.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (!(width > 0) || RootLayout is null)
+        if (RootLayout is null || DevicesGrid is null)
         {
             return;
         }
 
-        var availableWidth = width - RootLayout.Padding.HorizontalThickness;
-        if (availableWidth > 0)
-        {
-            ApplyCardWidth(availableWidth);
-        }
-    }
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
+        var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
+            : isCompact ? 16.0 : 24.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
 
-    //подгонка ширины карточек устройств
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0 || DevicesGrid is null)
+        RootLayout.Padding = new Thickness(sidePad, topPad, sidePad, 0);
+        DevicesGrid.HorizontalOptions = LayoutOptions.Fill;
+        DevicesGrid.Padding = new Thickness(0, 0, 0, bottomPad);
+
+        var newCols = viewport.UseMultiColumnContent ? 2 : 1;
+        if (_columnsCount == newCols)
         {
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        _columnsCount = newCols;
+        DevicesGrid.ColumnDefinitions.Clear();
+        DevicesGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        if (newCols == 2)
         {
-            return;
+            DevicesGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            DevicesGrid.ColumnSpacing = 16;
+        }
+        else
+        {
+            DevicesGrid.ColumnSpacing = 0;
         }
 
-        DevicesGrid.WidthRequest = safeWidth;
-        DevicesGrid.MaximumWidthRequest = safeWidth;
+        RebuildDevicesGrid();
     }
 
     //инициализация зависимостей экрана устройств
@@ -171,20 +147,6 @@ public sealed partial class DevicesView
         }
     }
 
-    //отступ сверху под системные элементы управления
-    public void SetHeaderTopInset(double top)
-    {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            var topAir = Math.Max(top + 16, 50);
-            RootLayout.Padding = new Thickness(16, topAir, 16, 0);
-        }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            RootLayout.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
-        }
-    }
-
     //построение плитки устройств с текущим во главе
     private void RebuildDevicesGrid()
     {
@@ -214,7 +176,7 @@ public sealed partial class DevicesView
             .ThenByDescending(d => d.LastActive)
             .ToList();
 
-        var columnsCount = DeviceInfo.Idiom == DeviceIdiom.Desktop ? 2 : 1;
+        var columnsCount = _columnsCount;
         var col = 0;
         var row = 0;
 

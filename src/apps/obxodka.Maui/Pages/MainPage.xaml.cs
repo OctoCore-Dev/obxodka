@@ -18,11 +18,14 @@ public sealed partial class MainPage : IDisposable
     private ThemeVfx? _activeVfx;
     private bool _hasThemeCornerDecorations;
     private bool _isDecorationsFaded;
-    private bool _isLoggingOut;
+    private int _forceLogoutActive;
     private int _isSyncingBalance;
     private bool _isThemeVideoActive;
     private bool _isVpnTabInitialized;
 
+    private AdaptiveViewport _currentViewport;
+    private bool? _isNavChromeVisible;
+    private bool _isOverlaySidebar;
     private bool? _isWideLayout;
     private bool _isWindowActive = true;
     private double _lastAppliedBottomInset = -1;
@@ -67,6 +70,7 @@ public sealed partial class MainPage : IDisposable
 
         _themeManager.OnThemeApplied += HandleThemeApplied;
         _themeManager.OnThemeReset += HandleThemeReset;
+        _themeManager.OnSystemThemeSynced += HandleSystemThemeSynced;
         _themeManager.VideoEnabledChanged += OnThemeVideoEnabledChanged;
         _themeManager.ParticlesEnabledChanged += OnThemeParticlesEnabledChanged;
         _themeManager.FramesEnabledChanged += OnThemeFramesEnabledChanged;
@@ -102,6 +106,8 @@ public sealed partial class MainPage : IDisposable
             }
         }
 
+        RefreshAdaptiveLayout(forceApply: true);
+
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
         VpnService.OnForceLogoutRequested += HandleForceLogout;
         VpnService.OnStateChanged -= OnVpnStateChangedForTheme;
@@ -129,6 +135,8 @@ public sealed partial class MainPage : IDisposable
 
         DesktopSidebar.NavTapped += OnSidebarNavTapped;
         DesktopSidebar.LogoutTapped += OnSidebarLogoutTappedAsync;
+        DesktopSidebar.ExpandedChanged += OnSidebarExpandedChanged;
+        DesktopSidebar.SidebarWidthChanged += OnSidebarWidthChanged;
         MobileBottomBar.NavTapped += OnBottomBarNavTapped;
 
         SafeAreaHelper.InsetsChanged -= OnSafeAreaInsetsChanged;
@@ -204,6 +212,7 @@ public sealed partial class MainPage : IDisposable
 
         _themeManager.OnThemeApplied -= HandleThemeApplied;
         _themeManager.OnThemeReset -= HandleThemeReset;
+        _themeManager.OnSystemThemeSynced -= HandleSystemThemeSynced;
         _themeManager.VideoEnabledChanged -= OnThemeVideoEnabledChanged;
         _themeManager.ParticlesEnabledChanged -= OnThemeParticlesEnabledChanged;
         _themeManager.FramesEnabledChanged -= OnThemeFramesEnabledChanged;
@@ -242,6 +251,8 @@ public sealed partial class MainPage : IDisposable
 
         DesktopSidebar.NavTapped -= OnSidebarNavTapped;
         DesktopSidebar.LogoutTapped -= OnSidebarLogoutTappedAsync;
+        DesktopSidebar.ExpandedChanged -= OnSidebarExpandedChanged;
+        DesktopSidebar.SidebarWidthChanged -= OnSidebarWidthChanged;
         MobileBottomBar.NavTapped -= OnBottomBarNavTapped;
         SafeAreaHelper.InsetsChanged -= OnSafeAreaInsetsChanged;
         if (Current == this)
@@ -380,23 +391,36 @@ public sealed partial class MainPage : IDisposable
 
     private void HandleForceLogout(string message)
     {
-        if (_isLoggingOut)
+        if (_activeTab == "auth")
         {
             return;
         }
 
-        _isLoggingOut = true;
+        if (Interlocked.CompareExchange(ref _forceLogoutActive, 1, 0) != 0)
+        {
+            return;
+        }
+
         MainThread.BeginInvokeOnMainThread(async void () =>
         {
             try
             {
-                await DisplayAlertAsync("Внимание", message, "OK");
+                if (_activeTab == "auth")
+                {
+                    return;
+                }
+
+                //сначала очищаем сессию и переводим на экран входа чтобы фоновые запросы больше не вызывали 401
                 await PerformLogoutAsync();
-                _isLoggingOut = false;
+                await DisplayAlertAsync("Внимание", message, "OK");
             }
-            catch
+            catch (Exception ex)
             {
-                // ignored
+                AppLogger.LogWarning($"[FORCE LOGOUT ERROR] {ex.Message}");
+            }
+            finally
+            {
+                Volatile.Write(ref _forceLogoutActive, 0);
             }
         });
     }
@@ -527,6 +551,7 @@ public sealed partial class MainPage : IDisposable
 
     public async Task SwitchToAppAfterAuthAsync(UserSession? preloadedSession = null)
     {
+        ApiService.ResetUnauthorizedState();
         var session = preloadedSession ?? await AuthManager.LoadSessionAsync();
         ApplySessionBalance(session);
 
@@ -538,11 +563,6 @@ public sealed partial class MainPage : IDisposable
 
         var animateEntrance = _activeTab == "auth" || SplashOverlay.IsVisible;
         await SwitchTabAsync("vpn", animateEntrance);
-
-        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
-        var isWide = _isWideLayout ?? AdaptiveLayoutHelper.IsWideLayout(Width, isDesktopOrTablet);
-        _isWideLayout = isWide;
-        ApplyAdaptiveLayout(isWide);
 
         await SyncBalanceFromServerAsync(session);
     }
@@ -575,6 +595,7 @@ public sealed partial class MainPage : IDisposable
             await cts.CancelAsync().ConfigureAwait(false);
         }
 
+        _tabContentPayment?.StopPaymentPolling();
         _tabContentVpn?.UnsubscribeEvents();
         _ = Task.Run(async () =>
         {
@@ -592,11 +613,11 @@ public sealed partial class MainPage : IDisposable
         AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
         _tabContentVpn?.UpdateActiveNode();
 
-        MainThread.BeginInvokeOnMainThread(() =>
+        await MainThread.InvokeOnMainThreadAsync(async () =>
         {
             DesktopSidebar.HideSidebar();
             MobileBottomBar.HideSidebar();
-            _ = SwitchTabAsync("auth");
+            await SwitchTabAsync("auth");
         });
     }
 }

@@ -8,9 +8,7 @@
 
     <Grid
         x:Name="RootLayoutGrid"
-        Padding="{OnIdiom Desktop='28,16',
-                          Phone='16,0,16,0',
-                          Default='24,24'}"
+        Padding="16,0"
         SafeAreaEdges="None">
         <ScrollView
             x:Name="ConfigScrollView"
@@ -20,31 +18,33 @@
             VerticalScrollBarVisibility="Never">
             <Grid
                 x:Name="MainContentGrid"
-                Padding="{OnIdiom Desktop='0',
-                                  Phone='0,50,0,140'}"
-                HorizontalOptions="Start"
+                Padding="0,24,0,28"
+                HorizontalOptions="Fill"
                 RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto"
-                RowSpacing="{OnIdiom Desktop=12,
-                                     Phone=18}">
+                RowSpacing="14">
 
-                <Grid Grid.Row="0" ColumnDefinitions="Auto, *">
+                <FlexLayout
+                    Grid.Row="0"
+                    AlignItems="Center"
+                    Direction="Row"
+                    JustifyContent="Start"
+                    Wrap="Wrap">
                     <Label
-                        Grid.Column="0"
-                        FontFamily="{DynamicResource AppFontTitle}"
-                        FontSize="{OnIdiom Desktop=22,
-                                           Default=24}"
-                        Text="Конфигурация"
-                        TextColor="{DynamicResource TextPrimary}" />
-                    <Label
-                        x:Name="CurrentSelectionLabel"
-                        Grid.Column="1"
-                        Margin="16,0,0,0"
-                        FontFamily="{DynamicResource AppFontBold}"
-                        FontSize="14"
-                        Text="[ obxodka Stream • HTTP/2 ]"
-                        TextColor="{DynamicResource Accent}"
-                        VerticalOptions="Center" />
-                </Grid>
+                        Margin="0,0,12,4"
+                        Style="{StaticResource PageHeaderTitle}"
+                        Text="Конфигурация" />
+                    <Border
+                        Margin="0,0,0,4"
+                        Style="{StaticResource BadgePill}">
+                        <Label
+                            x:Name="CurrentSelectionLabel"
+                            FontFamily="{DynamicResource AppFontBold}"
+                            FontSize="12"
+                            Text="obxodka Stream • HTTP/2"
+                            TextColor="{DynamicResource Accent}"
+                            VerticalOptions="Center" />
+                    </Border>
+                </FlexLayout>
 
                 <Label
                     Grid.Row="1"
@@ -59,20 +59,17 @@
                 <Grid
                     x:Name="ProtocolHeaderGrid"
                     Grid.Row="2"
-                    Margin="0,4,0,0"
+                    Margin="0,6,0,0"
                     ColumnDefinitions="*">
                     <Label
-                        FontFamily="{DynamicResource AppFontBold}"
-                        FontSize="15"
-                        Text="Протокол и транспорт"
-                        TextColor="{DynamicResource TextPrimary}" />
+                        Style="{StaticResource SectionTitle}"
+                        Text="ПРОТОКОЛ И ТРАНСПОРТ" />
                 </Grid>
 
                 <Border
                     x:Name="ProtocolInfoCard"
                     Grid.Row="3"
-                    Padding="{OnIdiom Desktop='16,14',
-                                      Phone='16'}"
+                    Padding="16,14"
                     Style="{StaticResource NeoCard}">
                     <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                         <Border
@@ -127,23 +124,19 @@
                 <Grid
                     x:Name="SecurityHeaderGrid"
                     Grid.Row="4"
-                    Margin="0,4,0,0"
+                    Margin="0,6,0,0"
                     ColumnDefinitions="*">
                     <Label
-                        FontFamily="{DynamicResource AppFontBold}"
-                        FontSize="15"
-                        Text="Надёжность и Безопасность"
-                        TextColor="{DynamicResource TextPrimary}" />
+                        Style="{StaticResource SectionTitle}"
+                        Text="НАДЁЖНОСТЬ И БЕЗОПАСНОСТЬ" />
                 </Grid>
 
                 <Grid
+                    x:Name="SecuritySettingsGrid"
                     Grid.Row="5"
-                    ColumnDefinitions="{OnIdiom Desktop='*, *',
-                                                Phone='*'}"
-                    ColumnSpacing="{OnIdiom Desktop=12,
-                                            Phone=0}"
-                    RowSpacing="{OnIdiom Desktop=10,
-                                         Phone=12}">
+                    ColumnDefinitions="*"
+                    ColumnSpacing="0"
+                    RowSpacing="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -159,12 +152,10 @@
                         x:Name="AutoReconnectCard"
                         Grid.Row="0"
                         Grid.Column="0"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Padding="16,14"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=ArrowSync24}"
@@ -177,12 +168,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Авто-переподключение" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -199,16 +190,12 @@
 
                     <Border
                         x:Name="KillSwitchCard"
-                        Grid.Row="{OnIdiom Desktop=0,
-                                           Phone=1}"
-                        Grid.Column="{OnIdiom Desktop=1,
-                                              Phone=0}"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Padding="16,14"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=ShieldDismiss24}"
@@ -221,12 +208,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Kill Switch (Защита)" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -243,15 +230,12 @@
 
                     <Border
                         x:Name="ForceCloudflareCard"
-                        Grid.Row="{OnIdiom Desktop=1,
-                                           Phone=2}"
+                        Grid.Row="2"
                         Grid.Column="0"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Padding="16,14"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=GlobeShield24}"
@@ -264,12 +248,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Только через Cloudflare" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -286,16 +270,12 @@
 
                     <Border
                         x:Name="BlockIpv6Card"
-                        Grid.Row="{OnIdiom Desktop=1,
-                                           Phone=3}"
-                        Grid.Column="{OnIdiom Desktop=1,
-                                              Phone=0}"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Grid.Row="3"
+                        Grid.Column="0"
+                        Padding="16,14"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Shield24}"
@@ -308,12 +288,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Режим только IPv4" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -330,19 +310,14 @@
 
                     <Border
                         x:Name="RuAutoBypassCard"
-                        Grid.Row="{OnIdiom Desktop=2,
-                                           Phone=4}"
+                        Grid.Row="4"
                         Grid.Column="0"
-                        Grid.ColumnSpan="{OnIdiom Desktop=2,
-                                                  Phone=1}"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        IsVisible="{OnIdiom Desktop=True,
-                                            Phone=False}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Padding="16,14"
+                        IsVisible="{OnPlatform WinUI=True,
+                                               Default=False}"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Globe24}"
@@ -355,12 +330,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Полный обход РФ" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -377,19 +352,14 @@
 
                     <Border
                         x:Name="RunOnStartupCard"
-                        Grid.Row="{OnIdiom Desktop=3,
-                                           Phone=5}"
+                        Grid.Row="5"
                         Grid.Column="0"
-                        Grid.ColumnSpan="{OnIdiom Desktop=2,
-                                                  Phone=1}"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        IsVisible="{OnIdiom Desktop=True,
-                                            Phone=False}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Padding="16,14"
+                        IsVisible="{OnPlatform WinUI=True,
+                                               Default=False}"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Rocket24}"
@@ -402,12 +372,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Запуск со стартом Windows" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -424,17 +394,12 @@
 
                     <Border
                         x:Name="SpeedTestCard"
-                        Grid.Row="{OnIdiom Desktop=4,
-                                           Phone=6}"
+                        Grid.Row="6"
                         Grid.Column="0"
-                        Grid.ColumnSpan="{OnIdiom Desktop=2,
-                                                  Phone=1}"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        Style="{StaticResource NeoCard}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        Padding="16,14"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 x:Name="SpeedGaugeIcon"
                                 Grid.Column="0"
@@ -448,13 +413,13 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Тест скорости сети" />
                                 <Label
                                     x:Name="SpeedTestResultLabel"
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"
@@ -463,10 +428,10 @@
                             <Border
                                 x:Name="SpeedTestBtnBorder"
                                 Grid.Column="2"
-                                Padding="10,6"
-                                BackgroundColor="{DynamicResource PrimaryDim}"
+                                Padding="12,6"
+                                BackgroundColor="{DynamicResource BgElevated}"
                                 Stroke="{DynamicResource Primary}"
-                                StrokeShape="RoundRectangle 6"
+                                StrokeShape="RoundRectangle 8"
                                 StrokeThickness="1"
                                 VerticalOptions="Center">
                                 <Border.GestureRecognizers>
@@ -475,9 +440,9 @@
                                 <Label
                                     x:Name="SpeedTestBtnText"
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="11"
+                                    FontSize="11.5"
                                     Text="ТЕСТ"
-                                    TextColor="{DynamicResource PrimaryBright}"
+                                    TextColor="{DynamicResource Primary}"
                                     VerticalOptions="Center" />
                             </Border>
                         </Grid>
@@ -485,20 +450,15 @@
 
                     <Border
                         x:Name="ThemesSettingsCard"
-                        Grid.Row="{OnIdiom Desktop=5,
-                                           Phone=7}"
+                        Grid.Row="7"
                         Grid.Column="0"
-                        Grid.ColumnSpan="{OnIdiom Desktop=2,
-                                                  Phone=1}"
-                        Padding="{OnIdiom Desktop='12,10',
-                                          Phone='16'}"
-                        HeightRequest="{OnIdiom Desktop=66,
-                                                Default=-1}"
-                        Style="{StaticResource NeoCard}">
+                        Padding="16,14"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnThemesSettingsTapped" />
                         </Border.GestureRecognizers>
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Color24}"
@@ -511,12 +471,12 @@
                                 VerticalOptions="Center">
                                 <Label
                                     FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=13,
+                                    FontSize="{OnIdiom Desktop=13.5,
                                                        Default=15}"
                                     LineBreakMode="TailTruncation"
                                     Text="Темы оформления" />
                                 <Label
-                                    FontSize="{OnIdiom Desktop=11,
+                                    FontSize="{OnIdiom Desktop=11.5,
                                                        Default=12}"
                                     LineBreakMode="WordWrap"
                                     Style="{StaticResource LabelMuted}"

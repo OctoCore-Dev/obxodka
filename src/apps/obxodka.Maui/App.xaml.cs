@@ -283,6 +283,7 @@ internal sealed partial class App
                 {
                     tm.OnThemeApplied += _ => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
                     tm.OnThemeReset += () => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                    tm.OnSystemThemeSynced += () => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
                 }
             }
         };

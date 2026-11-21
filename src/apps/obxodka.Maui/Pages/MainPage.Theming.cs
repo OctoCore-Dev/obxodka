@@ -363,6 +363,37 @@ public sealed partial class MainPage
         });
     }
 
+    //мгновенная синхронизация системной темы ос без оверлея перехода и без влияния на кастомные темы
+    private void HandleSystemThemeSynced()
+    {
+        if (_themeManager.ActiveTheme is not null)
+        {
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_themeManager.ActiveTheme is not null)
+            {
+                return;
+            }
+
+            var bgBase = Application.Current?.Resources.TryGetValue("BgBase", out var bgObj) == true && bgObj is Color c
+                ? c
+                : Color.FromArgb("#202020");
+
+            ThisPage.BackgroundColor = bgBase;
+            BackgroundColor = bgBase;
+#if ANDROID
+            if (OperatingSystem.IsAndroidVersionAtLeast(30))
+            {
+                MainActivity.UpdateSystemBarsTheme(bgBase);
+            }
+#endif
+            NotifyViewsThemeChanged();
+        });
+    }
+
     private void HandleThemeReset()
     {
         _lastAppliedThemeArgs = null;
@@ -370,9 +401,11 @@ public sealed partial class MainPage
         {
             try
             {
-                await ShowThemeTransitionAsync("Сброс темы...", "Возвращение к стандартному оформлению");
+                await ShowThemeTransitionAsync("Сброс темы...", "Возвращение к системному оформлению");
 
-                var defaultBg = (Color)(Application.Current?.Resources["BgBase"] ?? Color.FromArgb("#0E0E14"));
+                var defaultBg = Application.Current?.Resources.TryGetValue("BgBase", out var bgObj) == true && bgObj is Color c
+                    ? c
+                    : Color.FromArgb("#202020");
                 ThisPage.BackgroundColor = defaultBg;
                 BackgroundColor = defaultBg;
 #if ANDROID

@@ -2,7 +2,7 @@ namespace obxodka.Pages.Settings;
 
 [SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
     Justification = "ContentView lifecycle is managed by MAUI visual tree")]
-public sealed partial class SplitView
+public sealed partial class SplitView : IAdaptivePage
 {
     public static readonly BindableProperty IsSplitEditingAllowedProperty =
         BindableProperty.Create(nameof(IsSplitEditingAllowed), typeof(bool), typeof(SplitView), false);
@@ -13,21 +13,18 @@ public sealed partial class SplitView
     private CancellationTokenSource? _headerAnimCts;
     private bool _isHeaderHidden;
     private bool _isSitesTabActive;
-    private double _lastAppliedWidth = -1;
     private double _lastAppsScrollY;
     private double _lastSitesScrollY;
     private MainPage _parent = null!;
     private CancellationTokenSource? _saveDebounceCts;
     private CancellationTokenSource? _searchDebounceCts;
     private bool _showOnlyBypassed;
-    private DesktopSidebarView? _sidebar;
     private CancellationTokenSource? _toastCts;
 
     public SplitView()
     {
         InitializeComponent();
         Unloaded += OnUnloaded;
-        RootLayout.SizeChanged += OnRootLayoutSizeChanged;
         HeaderContainer.SizeChanged += OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled += OnSitesScrollViewScrolled;
         SplitAppsScrollView.Scrolled += OnSplitAppsScrollViewScrolled;
@@ -87,9 +84,6 @@ public sealed partial class SplitView
         _parent = parent;
         _appManager = appManager;
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
-        _parent.SizeChanged += OnParentOrSidebarSizeChanged;
-        _sidebar = _parent.FindByName<DesktopSidebarView>("DesktopSidebar");
-        _sidebar?.SidebarWidthChanged += OnParentOrSidebarSizeChanged;
         UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
     }
 
@@ -112,14 +106,10 @@ public sealed partial class SplitView
 
         _headerAnimCts?.Cancel();
         _toastCts?.Cancel();
-        RootLayout.SizeChanged -= OnRootLayoutSizeChanged;
         HeaderContainer.SizeChanged -= OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled -= OnSitesScrollViewScrolled;
         SplitAppsScrollView.Scrolled -= OnSplitAppsScrollViewScrolled;
         _parent.VpnService.OnStateChanged -= OnVpnStateChanged;
-        _parent.SizeChanged -= OnParentOrSidebarSizeChanged;
-
-        _sidebar?.SidebarWidthChanged -= OnParentOrSidebarSizeChanged;
 #if WINDOWS
         _routesDebounceCts?.Cancel();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))

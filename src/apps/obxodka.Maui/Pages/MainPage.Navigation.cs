@@ -2,8 +2,20 @@ namespace obxodka.Pages;
 
 public sealed partial class MainPage
 {
+    private double _pendingLayoutWidth;
+    private double _pendingLayoutHeight;
+    private bool _isLayoutDispatchPending;
+
     private void OnSafeAreaInsetsChanged(double top, double bottom) =>
         ApplySafeArea(top, bottom);
+
+    private void OnSidebarWidthChanged(object? sender, EventArgs e)
+    {
+        if (!_isOverlaySidebar)
+        {
+            RefreshAdaptiveLayout(forceApply: true);
+        }
+    }
 
     protected override void OnSizeAllocated(double width, double height)
     {
@@ -13,44 +25,160 @@ public sealed partial class MainPage
             return;
         }
 
-        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
-        var isWide = AdaptiveLayoutHelper.IsWideLayout(width, isDesktopOrTablet);
-        if (_isWideLayout != isWide)
+        //откладываем перестроение колонок за пределы текущего onlayout прохода android (исключает requestlayout during layout)
+        _pendingLayoutWidth = width;
+        _pendingLayoutHeight = height;
+        if (_isLayoutDispatchPending)
         {
-            _isWideLayout = isWide;
-            ApplyAdaptiveLayout(isWide);
+            return;
         }
 
-        if (!isWide)
+        _isLayoutDispatchPending = true;
+        _ = Dispatcher.Dispatch(() =>
         {
-            MobileBottomBar.SetCompactMode(AdaptiveLayoutHelper.IsShortScreen(height));
-        }
+            _isLayoutDispatchPending = false;
+            if (_pendingLayoutWidth > 0 && _pendingLayoutHeight > 0)
+            {
+                RefreshAdaptiveLayout(overrideWidth: _pendingLayoutWidth, overrideHeight: _pendingLayoutHeight);
+            }
+        });
     }
 
-    private void ApplyAdaptiveLayout(bool isWide)
+    private bool ShouldShowNavigationChrome() =>
+        !string.IsNullOrEmpty(_activeTab) && _activeTab != "auth";
+
+    private void RefreshAdaptiveLayout(bool forceApply = false, double? overrideWidth = null, double? overrideHeight = null)
     {
-        if (isWide)
+        var windowWidth = overrideWidth is > 0 ? overrideWidth.Value : Width;
+        var windowHeight = overrideHeight is > 0 ? overrideHeight.Value : Height;
+        var isTablet = DeviceInfo.Idiom == DeviceIdiom.Tablet;
+        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || isTablet;
+        var showNav = ShouldShowNavigationChrome();
+        var safeTop = _lastAppliedTopInset > 0 ? _lastAppliedTopInset : Math.Max(0, SafeAreaHelper.TopInset);
+        var safeBottom = _lastAppliedBottomInset > 0 ? _lastAppliedBottomInset : Math.Max(0, SafeAreaHelper.BottomInset);
+        var dockedWidth = DesktopSidebar.OccupiedWidth > 0
+            ? DesktopSidebar.OccupiedWidth
+            : AdaptiveLayoutHelper.CollapsedSidebarRailWidth;
+
+        var rawViewport = AdaptiveLayoutHelper.CreateViewport(
+            windowWidth,
+            windowHeight,
+            safeTop,
+            safeBottom,
+            isDesktopOrTablet,
+            isTablet,
+            dockedWidth);
+
+        //на экране входа сайдбар скрыт и контент занимает всю ширину окна
+        var viewport = showNav
+            ? rawViewport
+            : rawViewport with
+            {
+                ContentWidth = windowWidth > 0 ? windowWidth : rawViewport.ContentWidth,
+                UseSidebar = false,
+                UseOverlaySidebar = false
+            };
+
+        var chromeChanged = _isWideLayout != viewport.UseSidebar ||
+                            _isOverlaySidebar != viewport.UseOverlaySidebar ||
+                            _isNavChromeVisible != showNav;
+        var viewportChanged = _currentViewport != viewport;
+
+        if (!forceApply && !chromeChanged && !viewportChanged)
+        {
+            return;
+        }
+
+        var wasNavVisible = _isNavChromeVisible == true;
+        var wasWideLayout = _isWideLayout == true;
+        _isWideLayout = viewport.UseSidebar;
+        _isOverlaySidebar = viewport.UseOverlaySidebar;
+        _isNavChromeVisible = showNav;
+        _currentViewport = viewport;
+
+        if (chromeChanged || forceApply)
+        {
+            ApplyAdaptiveLayout(viewport.UseSidebar, viewport.UseOverlaySidebar, showNav, wasNavVisible, wasWideLayout);
+        }
+
+        if (viewport.UseSidebar)
+        {
+            DesktopSidebar.SetCompactHeightMode(viewport.IsShortScreen);
+        }
+        else
+        {
+            MobileBottomBar.SetCompactMode(viewport.IsShortScreen);
+        }
+
+        BroadcastViewportToTabs();
+    }
+
+    private void ApplyAdaptiveLayout(bool useSidebar, bool useOverlay, bool showNav, bool wasNavVisible, bool wasWideLayout)
+    {
+        if (!showNav)
+        {
+            DesktopSidebar.Collapse();
+            DesktopSidebar.IsVisible = false;
+            DesktopSidebar.HideSidebar();
+            MobileBottomBar.IsVisible = false;
+            MobileBottomBar.HideSidebar();
+            _ = SetSidebarOverlayBackdropAsync(false);
+            RootShellGrid.ColumnDefinitions[0].Width = new GridLength(0);
+            return;
+        }
+
+        if (useSidebar)
         {
             MobileBottomBar.IsVisible = false;
             MobileBottomBar.HideSidebar();
             DesktopSidebar.IsVisible = true;
-            Grid.SetColumn(MainContentContainer, 1);
-            Grid.SetColumnSpan(MainContentContainer, 1);
-            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
+            DesktopSidebar.SetOverlayMode(useOverlay);
+
+            if (useOverlay)
+            {
+                RootShellGrid.ColumnDefinitions[0].Width = new GridLength(AdaptiveLayoutHelper.CollapsedSidebarRailWidth);
+                Grid.SetColumnSpan(DesktopSidebar, 2);
+                DesktopSidebar.HorizontalOptions = LayoutOptions.Start;
+                DesktopSidebar.ZIndex = 60;
+                _ = SetSidebarOverlayBackdropAsync(DesktopSidebar.IsExpanded);
+            }
+            else
+            {
+                RootShellGrid.ColumnDefinitions[0].Width = GridLength.Auto;
+                Grid.SetColumnSpan(DesktopSidebar, 1);
+                DesktopSidebar.HorizontalOptions = LayoutOptions.Fill;
+                DesktopSidebar.ZIndex = 10;
+                _ = SetSidebarOverlayBackdropAsync(false);
+            }
+
+            if (!wasNavVisible || !wasWideLayout)
             {
                 _ = DesktopSidebar.PlayEntranceAnimationAsync();
             }
         }
         else
         {
+            DesktopSidebar.Collapse();
             DesktopSidebar.IsVisible = false;
             DesktopSidebar.HideSidebar();
+            _ = SetSidebarOverlayBackdropAsync(false);
+            RootShellGrid.ColumnDefinitions[0].Width = new GridLength(0);
             MobileBottomBar.IsVisible = true;
-            Grid.SetColumn(MainContentContainer, 0);
-            Grid.SetColumnSpan(MainContentContainer, 2);
-            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
+            if (!wasNavVisible || wasWideLayout)
             {
                 _ = MobileBottomBar.PlayEntranceAnimationAsync();
+            }
+        }
+    }
+
+    //единая рассылка актуального снимка геометрии всем открытым вкладкам
+    private void BroadcastViewportToTabs()
+    {
+        foreach (var child in MainContentContainer.Children)
+        {
+            if (child is IAdaptivePage adaptivePage)
+            {
+                adaptivePage.ApplyViewport(_currentViewport);
             }
         }
     }
@@ -97,19 +225,29 @@ public sealed partial class MainPage
         }
 
         _activeTab = tab;
+        RefreshAdaptiveLayout();
+
+        if (_isOverlaySidebar && DesktopSidebar.IsExpanded)
+        {
+            DesktopSidebar.Collapse();
+        }
 
         DesktopSidebar.UpdateActiveTab(tab);
         MobileBottomBar.UpdateActiveTab(tab);
 
         var outgoing = GetTabContent(prevTab);
         var incoming = EnsureTabCreated(tab);
+        if (incoming is IAdaptivePage adaptiveIncoming)
+        {
+            adaptiveIncoming.ApplyViewport(_currentViewport);
+        }
+
         await UiAnimations.SwitchViewAsync(outgoing, incoming, animate);
         UpdateAllViewsOpacity();
 
         switch (tab)
         {
             case "vpn":
-                _tabContentVpn?.ForceLayoutWidth();
                 if (animate)
                 {
                     _ = _tabContentVpn?.PlayEntranceAnimationAsync();
@@ -121,7 +259,6 @@ public sealed partial class MainPage
 
                 break;
             case "configuration":
-                _tabContentConfiguration?.ForceLayoutWidth();
                 _tabContentConfiguration?.OnAppearing();
                 if (animate)
                 {
@@ -130,7 +267,6 @@ public sealed partial class MainPage
 
                 break;
             case "profile":
-                _tabContentProfile?.ForceLayoutWidth();
                 var session = await AuthManager.LoadSessionAsync();
                 _tabContentProfile?.UpdateProfileInfo(session);
                 _tabContentProfile?.UpdateBalance(RemainingSeconds);
@@ -146,7 +282,6 @@ public sealed partial class MainPage
                 _ = SyncBalanceFromServerAsync(session);
                 break;
             case "devices":
-                _tabContentDevices?.ForceLayoutWidth();
                 if (_tabContentDevices is not null)
                 {
                     if (animate)
@@ -159,7 +294,6 @@ public sealed partial class MainPage
 
                 break;
             case "split":
-                _tabContentSplit?.ForceLayoutWidth();
                 if (_tabContentSplit is not null)
                 {
                     if (animate)
@@ -193,7 +327,6 @@ public sealed partial class MainPage
 
                 break;
             case "themes":
-                _tabContentThemeStore?.ForceLayoutWidth();
                 if (_tabContentThemeStore is not null)
                 {
                     if (animate)
@@ -387,42 +520,12 @@ public sealed partial class MainPage
         }
     }
 
-    //применение актуальных отступов и темы на лениво созданную вкладку
+    //применение актуальной геометрии и темы на лениво созданную вкладку
     private void ApplyInitialDecorations(VisualElement view)
     {
-        if (_lastAppliedTopInset > 0)
+        if (view is IAdaptivePage adaptive)
         {
-            var safeTop = Math.Max(0, _lastAppliedTopInset);
-            switch (view)
-            {
-                case VpnView v:
-                    v.SetHeaderTopInset(safeTop);
-                    break;
-                case ConfigurationView c:
-                    c.SetHeaderTopInset(safeTop);
-                    break;
-                case SplitView s:
-                    s.SetHeaderTopInset(safeTop);
-                    break;
-                case ProfileView p:
-                    p.SetHeaderTopInset(safeTop);
-                    break;
-                case ThemeStoreView ts:
-                    ts.SetHeaderTopInset(safeTop);
-                    break;
-                case DevicesView d:
-                    d.SetHeaderTopInset(safeTop);
-                    break;
-                case AuthView a:
-                    a.SetHeaderTopInset(safeTop);
-                    break;
-                case PaymentView pm:
-                    pm.SetHeaderTopInset(safeTop);
-                    break;
-                case DeleteAccountView da:
-                    da.SetHeaderTopInset(safeTop);
-                    break;
-            }
+            adaptive.ApplyViewport(_currentViewport);
         }
 
         UpdateAllViewsOpacity();
@@ -458,17 +561,8 @@ public sealed partial class MainPage
         _lastAppliedBottomInset = bottom;
 
         MainContentContainer.Padding = new Thickness(0);
+        DesktopSidebar.ApplySafeAreaInsets(top, bottom);
         MobileBottomBar.ApplyBottomInset(bottom);
-
-        var safeTop = Math.Max(0, top);
-        _tabContentVpn?.SetHeaderTopInset(safeTop);
-        _tabContentConfiguration?.SetHeaderTopInset(safeTop);
-        _tabContentSplit?.SetHeaderTopInset(safeTop);
-        _tabContentProfile?.SetHeaderTopInset(safeTop);
-        _tabContentThemeStore?.SetHeaderTopInset(safeTop);
-        _tabContentDevices?.SetHeaderTopInset(safeTop);
-        _tabContentAuth?.SetHeaderTopInset(safeTop);
-        _tabContentPayment?.SetHeaderTopInset(safeTop);
-        _tabContentDelete?.SetHeaderTopInset(safeTop);
+        RefreshAdaptiveLayout(forceApply: true);
     }
 }

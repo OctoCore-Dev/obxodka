@@ -290,16 +290,22 @@ public sealed partial class VpnView
 
             var currentSelectedIp = _selectedServer?.Ip ?? (_cachedServers.Count > 0 ? _cachedServers[0].Ip : string.Empty);
 
+            var cardCornerRadius = Application.Current?.Resources.TryGetValue("CardCornerRadius", out var cr) == true &&
+                                   cr is CornerRadius themeCr
+                ? themeCr
+                : new CornerRadius(14);
+
             foreach (var server in _cachedServers)
             {
                 var isSelected = string.Equals(server.Ip, currentSelectedIp, StringComparison.OrdinalIgnoreCase);
 
                 var card = new Border
                 {
+                    HorizontalOptions = LayoutOptions.Fill,
                     Padding = new Thickness(14, 10),
                     StrokeShape = new RoundRectangle
                     {
-                        CornerRadius = new CornerRadius(14)
+                        CornerRadius = cardCornerRadius
                     },
                     StrokeThickness = isSelected ? 1.5 : 1.0,
                     BackgroundColor = isSelected ? bgElevated : bgSurface,
@@ -308,6 +314,7 @@ public sealed partial class VpnView
 
                 var grid = new Grid
                 {
+                    HorizontalOptions = LayoutOptions.Fill,
                     ColumnDefinitions =
                     [
                         new ColumnDefinition(GridLength.Auto),
@@ -378,6 +385,7 @@ public sealed partial class VpnView
 
                 var infoStack = new VerticalStackLayout
                 {
+                    HorizontalOptions = LayoutOptions.Fill,
                     Spacing = 3,
                     VerticalOptions = LayoutOptions.Center
                 };
@@ -386,6 +394,8 @@ public sealed partial class VpnView
                 {
                     Text = server.Location,
                     FontSize = 13,
+                    LineBreakMode = LineBreakMode.TailTruncation,
+                    MaxLines = 1,
                     TextColor = textPrimary
                 };
                 nameLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");

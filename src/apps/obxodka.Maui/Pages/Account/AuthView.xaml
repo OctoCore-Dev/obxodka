@@ -8,6 +8,7 @@
         <VerticalStackLayout
             x:Name="ContentLayout"
             Padding="{OnIdiom Phone='24,48',
+                              Tablet='24,48',
                               Desktop='0,40'}"
             HorizontalOptions="Center"
             Spacing="0"
