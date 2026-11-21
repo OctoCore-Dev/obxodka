@@ -29,6 +29,10 @@ public sealed class AuthManager
             s_cachedAuthHeader = string.IsNullOrEmpty(session.JwtToken)
                 ? null
                 : new AuthenticationHeaderValue("Bearer", session.JwtToken);
+            if (!string.IsNullOrEmpty(session.JwtToken))
+            {
+                ApiService.ResetUnauthorizedState();
+            }
 
             PlatformServices.Preferences.Set(AppPreferenceKeys.UserEmail, session.Email ?? string.Empty);
             PlatformServices.Preferences.Set(AppPreferenceKeys.UserIsLogged, session.IsLoggedIn);

@@ -138,11 +138,20 @@ public sealed class ApiService(HttpClient client)
         };
     });
 
+    //флаг одноразового уведомления о протухшей сессии до нового входа
+    private static int s_unauthorizedNotified;
+
     //общий экземпляр для фоновых сервисов без di (телеметрия и инспектор)
     internal static ApiService Shared { get; } = new(s_fallbackNative.Value);
 
+    //признак уже отправленного сигнала истечения текущей сессии
+    public static bool IsUnauthorizedPending => Volatile.Read(ref s_unauthorizedNotified) != 0;
+
     //событие сброса авторизации при 401
     public static event Action? OnUnauthorized;
+
+    //сброс защелки 401 при сохранении новой авторизованной сессии
+    public static void ResetUnauthorizedState() => Volatile.Write(ref s_unauthorizedNotified, 0);
 
     //создание базового обработчика с шифрованным doh и обходом dpi без привязки к пину туннеля
     private static SocketsHttpHandler CreateApiSocketsHandler() => new()
@@ -422,8 +431,15 @@ public sealed class ApiService(HttpClient client)
 
                     if (response.StatusCode == HttpStatusCode.Unauthorized)
                     {
-                        NotifyUnauthorized();
-                        return (false, null, "Сессия истекла или устройство было удалено.");
+                        if (includeAuth && request.Headers.Authorization is not null)
+                        {
+                            NotifyUnauthorized();
+                        }
+
+                        var authErr = !includeAuth ? await ReadHttpErrorAsync(response, ct).ConfigureAwait(false) : null;
+                        return (false, null, string.IsNullOrWhiteSpace(authErr)
+                            ? "Сессия истекла или устройство было удалено."
+                            : authErr);
                     }
 
                     if (response.IsSuccessStatusCode)
@@ -505,8 +521,15 @@ public sealed class ApiService(HttpClient client)
 
                     if (response.StatusCode == HttpStatusCode.Unauthorized)
                     {
-                        NotifyUnauthorized();
-                        return (false, null, "Сессия истекла или устройство было удалено.");
+                        if (includeAuth && request.Headers.Authorization is not null)
+                        {
+                            NotifyUnauthorized();
+                        }
+
+                        var authErr = !includeAuth ? await ReadHttpErrorAsync(response, ct).ConfigureAwait(false) : null;
+                        return (false, null, string.IsNullOrWhiteSpace(authErr)
+                            ? "Сессия истекла или устройство было удалено."
+                            : authErr);
                     }
 
                     if (response.IsSuccessStatusCode)
@@ -555,6 +578,11 @@ public sealed class ApiService(HttpClient client)
 
     private static void NotifyUnauthorized()
     {
+        if (Interlocked.CompareExchange(ref s_unauthorizedNotified, 1, 0) != 0)
+        {
+            return;
+        }
+
         try
         {
             PlatformServices.MainThread?.BeginInvokeOnMainThread(() => OnUnauthorized?.Invoke());
@@ -750,6 +778,11 @@ public sealed class ApiService(HttpClient client)
             if (result is { Success: true, Data.Count: > 0 })
             {
                 return result;
+            }
+
+            if (IsUnauthorizedPending || await AuthManager.GetAuthHeaderAsync().ConfigureAwait(false) is null)
+            {
+                break;
             }
 
             if (PlatformServices.Connectivity != null &&

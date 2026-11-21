@@ -69,8 +69,13 @@ public sealed partial class MainPage
 
     private async Task SyncBalanceFromServerAsync(UserSession? session = null, int retryCount = 0)
     {
+        if (_activeTab == "auth" || Volatile.Read(ref _forceLogoutActive) != 0 || ApiService.IsUnauthorizedPending)
+        {
+            return;
+        }
+
         session ??= await AuthManager.LoadSessionAsync();
-        if (string.IsNullOrEmpty(session.JwtToken))
+        if (!session.IsLoggedIn || string.IsNullOrEmpty(session.JwtToken))
         {
             return;
         }
@@ -145,12 +150,16 @@ public sealed partial class MainPage
                     UpdateBalanceUi();
                 });
 
-                if (retryCount < 3)
+                if (retryCount < 3 &&
+                    _activeTab != "auth" &&
+                    Volatile.Read(ref _forceLogoutActive) == 0 &&
+                    !ApiService.IsUnauthorizedPending &&
+                    await AuthManager.GetAuthHeaderAsync().ConfigureAwait(false) is not null)
                 {
                     _ = Task.Run(async () =>
                     {
                         await Task.Delay((retryCount + 1) * 2500);
-                        await SyncBalanceFromServerAsync(session, retryCount + 1);
+                        await SyncBalanceFromServerAsync(null, retryCount + 1);
                     });
                 }
             }
@@ -229,6 +238,43 @@ public sealed partial class MainPage
         if (_tabContentThemeStore?.IsPreviewModalOpen == true)
         {
             _ = _tabContentThemeStore.ClosePreviewModalAsync();
+        }
+    }
+
+    //обработка раскрытия боковой панели в режиме наложения поверх контента
+    private void OnSidebarExpandedChanged(object? sender, bool isExpanded)
+    {
+        if (!_isOverlaySidebar)
+        {
+            return;
+        }
+
+        _ = SetSidebarOverlayBackdropAsync(isExpanded);
+    }
+
+    //сворачивание overlay-сайдбара по нажатию на затемненную область контента
+    private void OnSidebarOverlayBackdropTapped(object? sender, EventArgs e) =>
+        DesktopSidebar.Collapse();
+
+    //плавное затемнение контента при раскрытом overlay-сайдбаре
+    private async Task SetSidebarOverlayBackdropAsync(bool visible)
+    {
+        if (SidebarOverlayBackdrop is null)
+        {
+            return;
+        }
+
+        if (visible)
+        {
+            SidebarOverlayBackdrop.IsVisible = true;
+            SidebarOverlayBackdrop.InputTransparent = false;
+            _ = await SidebarOverlayBackdrop.FadeToAsync(1.0, 180, Easing.CubicOut);
+        }
+        else
+        {
+            SidebarOverlayBackdrop.InputTransparent = true;
+            _ = await SidebarOverlayBackdrop.FadeToAsync(0.0, 150, Easing.CubicIn);
+            SidebarOverlayBackdrop.IsVisible = false;
         }
     }
 

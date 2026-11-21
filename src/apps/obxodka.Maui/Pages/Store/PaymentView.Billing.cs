@@ -352,6 +352,12 @@ public sealed partial class PaymentView
 
     private async Task<bool> CheckIfBalanceIncreasedAsync(long baselineSeconds)
     {
+        if (ApiService.IsUnauthorizedPending || await AuthManager.GetAuthHeaderAsync() is null)
+        {
+            StopPaymentPolling();
+            return false;
+        }
+
         try
         {
             _ = await _apiService.SyncPendingPaymentsAsync();

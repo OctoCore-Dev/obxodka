@@ -70,7 +70,7 @@ public class ApiServiceTests : IDisposable
         var (success, error) = await _apiService.RequestCodeAsync(request);
 
         Assert.False(success);
-        Assert.Equal("Сессия истекла или устройство было удалено.", error);
+        Assert.Equal("Ошибка сервера 401: Unauthorized", error);
     }
 
     [Fact]
@@ -184,5 +184,108 @@ public class ApiServiceTests : IDisposable
         Assert.True(data.Credited);
         Assert.Equal(2703600L, data.BalanceSeconds);
         Assert.Equal(0, data.PendingCount);
+    }
+
+    [Fact]
+    public async Task VerifyCodeAsyncWhenUnauthorizedDoesNotTriggerSessionExpiredEventAsync()
+    {
+        ApiService.ResetUnauthorizedState();
+        var unauthorizedCount = 0;
+        void OnUnauthorized() => Interlocked.Increment(ref unauthorizedCount);
+        ApiService.OnUnauthorized += OnUnauthorized;
+
+        try
+        {
+            using var response = new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Unauthorized,
+                Content = new StringContent("""{"message":"Неверный код подтверждения."}""", Encoding.UTF8, "application/json")
+            };
+
+            _ = _httpMessageHandlerMock
+                .Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(response);
+
+            var request = new EmailVerifyRequest("test@example.com", "000000", "hwid", "Phone");
+            var (success, data, error) = await _apiService.VerifyCodeAsync(request);
+
+            Assert.False(success);
+            Assert.Null(data);
+            Assert.Equal("Неверный код подтверждения.", error);
+            Assert.Equal(0, unauthorizedCount);
+            Assert.False(ApiService.IsUnauthorizedPending);
+        }
+        finally
+        {
+            ApiService.OnUnauthorized -= OnUnauthorized;
+            ApiService.ResetUnauthorizedState();
+        }
+    }
+
+    [Fact]
+    public async Task AuthorizedRequestsWhenUnauthorizedFireOnUnauthorizedOnlyOnceUntilReloginAsync()
+    {
+        ApiService.ResetUnauthorizedState();
+        var unauthorizedCount = 0;
+        void OnUnauthorized() => Interlocked.Increment(ref unauthorizedCount);
+        ApiService.OnUnauthorized += OnUnauthorized;
+
+        try
+        {
+            await AuthManager.SaveSessionAsync(new UserSession
+            {
+                Email = "user@example.com",
+                IsLoggedIn = true,
+                JwtToken = "expired-jwt-token"
+            });
+
+            _ = _httpMessageHandlerMock
+                .Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(() => new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.Unauthorized,
+                    Content = new StringContent("", Encoding.UTF8, "application/json")
+                });
+
+            //три параллельных или последовательных 401 должны выдать событие ровно один раз
+            _ = await _apiService.GetProfileAsync();
+            _ = await _apiService.GetProfileAsync();
+            _ = await _apiService.GetProfileAsync();
+
+            Assert.Equal(1, unauthorizedCount);
+            Assert.True(ApiService.IsUnauthorizedPending);
+
+            //после очистки сессии повторный запрос без токена не должен снова вызывать onunauthorized
+            await AuthManager.ClearSessionAsync();
+            ApiService.ResetUnauthorizedState();
+            _ = await _apiService.GetProfileAsync();
+            Assert.Equal(1, unauthorizedCount);
+
+            //после сохранения новой сессии защелка сбрасывается и может снова сработать один раз
+            await AuthManager.SaveSessionAsync(new UserSession
+            {
+                Email = "user@example.com",
+                IsLoggedIn = true,
+                JwtToken = "new-jwt-token"
+            });
+            Assert.False(ApiService.IsUnauthorizedPending);
+
+            _ = await _apiService.GetProfileAsync();
+            Assert.Equal(2, unauthorizedCount);
+        }
+        finally
+        {
+            ApiService.OnUnauthorized -= OnUnauthorized;
+            await AuthManager.ClearSessionAsync();
+            ApiService.ResetUnauthorizedState();
+        }
     }
 }
