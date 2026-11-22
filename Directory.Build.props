@@ -54,6 +54,7 @@
     <PackageMode Condition="'$(PackageMode)' == ''">MSIX</PackageMode>
     <NoWarn>$(NoWarn);SigningCertificateNoCertSpecified;</NoWarn>
     <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+    <DefineConstants Condition="'$(IsTestingBuild)' == 'true'">$(DefineConstants);TESTING_BUILD</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>

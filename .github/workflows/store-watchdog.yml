@@ -43,10 +43,12 @@ jobs:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v7
 
-      - name: "[SETUP] .NET 10 SDK"
+      - name: "[SETUP] .NET 10 + 11 SDK"
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: "[TOOL] Install OctoPublisher Global Tool"
         run: |
@@ -63,7 +65,7 @@ jobs:
           $tagName = $releaseJson.tagName
           Write-Host "Found latest release tag: $tagName" -ForegroundColor Green
 
-          $msixAsset = $releaseJson.assets | Where-Object { $_.name -like "*.msix" } | Select-Object -First 1
+          $msixAsset = $releaseJson.assets | Where-Object { $_.name -match '\.(msixupload|appxupload|msixbundle|msix)$' } | Select-Object -First 1
           $aabAsset = $releaseJson.assets | Where-Object { $_.name -like "*.aab" } | Select-Object -First 1
 
           "latest_tag=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -113,8 +115,8 @@ jobs:
             if ($msixName) {
               Write-Host "Downloading $msixName from GitHub release $targetTag..." -ForegroundColor Cyan
               New-Item -ItemType Directory -Force -Path "./downloads/windows" | Out-Null
-              gh release download $targetTag --repo OctoCore-Dev/obxodka --pattern "*.msix" --dir "./downloads/windows" --clobber
-              $pkgPath = (Get-ChildItem ./downloads/windows/*.msix | Select-Object -First 1).FullName
+              gh release download $targetTag --repo OctoCore-Dev/obxodka --pattern "$msixName" --dir "./downloads/windows" --clobber
+              $pkgPath = (Get-ChildItem ./downloads/windows/* -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Select-Object -First 1).FullName
 
               Write-Host "Triggering autonomous deploy of $pkgPath..." -ForegroundColor Green
               try {

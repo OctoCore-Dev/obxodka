@@ -111,7 +111,7 @@ jobs:
           echo -e "${CYAN}[INFO] Target Version:${RESET} $CUR_VER"
           echo -e "${CYAN}[INFO] Build Number:${RESET} $CUR_BUILD"
 
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" != "tag" ]; then
             PREV_PROPS=$(git show HEAD~1:"$PROPS" 2>/dev/null || echo "")
             if [ -n "$PREV_PROPS" ]; then
               PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
@@ -140,7 +140,13 @@ jobs:
           TAG_NAME="v$CUR_VER"
           REL_TITLE="Obxodka v$CUR_VER (Build $CUR_BUILD)"
 
-          if [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG_NAME="$BRANCH"
+            if [[ "$BRANCH" == *"-"* ]]; then
+              IS_DEV="true"
+              REL_TITLE="Obxodka v$CUR_VER Pre-Release (Build $CUR_BUILD)"
+            fi
+          elif [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
             IS_DEV="true"
             TAG_NAME="v$CUR_VER-build.$CUR_BUILD"
             REL_TITLE="Obxodka v$CUR_VER Pre-Release (Build $CUR_BUILD)"
@@ -292,7 +298,7 @@ jobs:
           fi
 
           if [ "${{ needs.check-version.outputs.is_prerelease }}" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS -p:DefineConstants=TESTING_BUILD"
+            EXTRA_ARGS="$EXTRA_ARGS -p:IsTestingBuild=true"
           fi
 
           SIGNING_ARGS=""
@@ -413,7 +419,7 @@ jobs:
           }
 
           if ("${{ needs.check-version.outputs.is_prerelease }}" -eq "true") {
-            $extraArgs += "-p:DefineConstants=TESTING_BUILD"
+            $extraArgs += "-p:IsTestingBuild=true"
           }
 
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
@@ -460,12 +466,18 @@ jobs:
           }
           if (-not $ver) { $ver = "6.0.8" }
 
+          $unpackagedArgs = @()
+          if ("${{ needs.check-version.outputs.is_prerelease }}" -eq "true") {
+            $unpackagedArgs += "-p:IsTestingBuild=true"
+          }
+
           Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
             -p:BuildWindowsOnly=true `
             -p:PackageMode=None `
             -p:WindowsPackageType=None `
             -p:GenerateAppxPackageOnBuild=false `
+            $unpackagedArgs `
             -o ./win-unpackaged
 
           Write-Host "[INFO] Executing Inno Setup compiler (ISCC)..." -ForegroundColor Cyan
