@@ -112,7 +112,7 @@ public sealed partial class OctopusVpnService : VpnService
     private void EnsureWakeLockHeld()
     {
         var now = Environment.TickCount64;
-        if (now - Volatile.Read(ref _wakeLockRenewTicks) < 300_000L && _wakeLock is not { IsHeld: false })
+        if (_wakeLock is not null && now - Volatile.Read(ref _wakeLockRenewTicks) < 300_000L)
         {
             return;
         }
@@ -240,6 +240,8 @@ public sealed partial class OctopusVpnService : VpnService
     {
         try
         {
+            UnregisterNetworkCallback();
+
             var cm = (ConnectivityManager?)GetSystemService(ConnectivityService);
             if (cm is null)
             {
@@ -320,7 +322,7 @@ public sealed partial class OctopusVpnService : VpnService
     //инжекция входящего пакета от сервера в сетевой стек android
     private void InjectPacketToAndroid(byte[] packet, int length)
     {
-        if (!_isTunRunning || _vpnCts is null || _vpnCts.IsCancellationRequested)
+        if (!_isTunRunning)
         {
             ArrayPool<byte>.Shared.Return(packet);
             return;
@@ -382,25 +384,49 @@ public sealed partial class OctopusVpnService : VpnService
                 _isTunRunning = false;
                 _currentTunIp = null;
 
-                try
-                {
-                    _vpnCts?.Cancel();
-                }
-                catch
-                {
-                    // ignored
-                }
-
-                try
-                {
-                    _tunInterface?.Close();
-                }
-                catch
-                {
-                    // ignored
-                }
-
+                var oldCts = _vpnCts;
+                _vpnCts = null;
+                var oldTun = _tunInterface;
                 _tunInterface = null;
+                var oldTx = _txThread;
+                _txThread = null;
+                var oldRx = _rxThread;
+                _rxThread = null;
+
+                try
+                {
+                    oldCts?.Cancel();
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                try
+                {
+                    oldTun?.Close();
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                try
+                {
+                    if (oldTx is { IsAlive: true } && Thread.CurrentThread != oldTx)
+                    {
+                        _ = oldTx.Join(300);
+                    }
+
+                    if (oldRx is { IsAlive: true } && Thread.CurrentThread != oldRx)
+                    {
+                        _ = oldRx.Join(300);
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
 
                 while (_downstreamChannel.Reader.TryRead(out var stale))
                 {
@@ -409,7 +435,8 @@ public sealed partial class OctopusVpnService : VpnService
 
                 try
                 {
-                    _vpnCts?.Dispose();
+                    oldCts?.Dispose();
+                    oldTun?.Dispose();
                 }
                 catch
                 {
@@ -708,51 +735,59 @@ public sealed partial class OctopusVpnService : VpnService
     //полная остановка системного туннеля и освобождение ресурсов дескриптора
     public void StopNativeVpn()
     {
-        _ = Interlocked.Increment(ref _tunGeneration);
-        IsActive = false;
-        _currentTunIp = null;
-        _isTunRunning = false;
+        CancellationTokenSource? cts;
+        ParcelFileDescriptor? tunIf;
+        Thread? txThread;
+        Thread? rxThread;
 
-        OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
-
-        var cts = _vpnCts;
-        _vpnCts = null;
-
-        var tunIf = _tunInterface;
-        _tunInterface = null;
-
-        var txThread = _txThread;
-        _txThread = null;
-
-        var rxThread = _rxThread;
-        _rxThread = null;
-
-        try
+        lock (_tunLock)
         {
-            cts?.Cancel();
-        }
-        catch
-        {
-            // ignored
-        }
+            _ = Interlocked.Increment(ref _tunGeneration);
+            IsActive = false;
+            _currentTunIp = null;
+            _isTunRunning = false;
 
-        try
-        {
-            tunIf?.Close();
-        }
-        catch
-        {
-            // ignored
-        }
+            OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
 
-        ReleaseWakeLock();
-        UnregisterNetworkCallback();
+            cts = _vpnCts;
+            _vpnCts = null;
 
-        while (_downstreamChannel.Reader.TryRead(out var stale))
-        {
-            if (stale.buffer is { Length: > 0 })
+            tunIf = _tunInterface;
+            _tunInterface = null;
+
+            txThread = _txThread;
+            _txThread = null;
+
+            rxThread = _rxThread;
+            _rxThread = null;
+
+            try
             {
-                ArrayPool<byte>.Shared.Return(stale.buffer);
+                cts?.Cancel();
+            }
+            catch
+            {
+                // ignored
+            }
+
+            try
+            {
+                tunIf?.Close();
+            }
+            catch
+            {
+                // ignored
+            }
+
+            ReleaseWakeLock();
+            UnregisterNetworkCallback();
+
+            while (_downstreamChannel.Reader.TryRead(out var stale))
+            {
+                if (stale.buffer is { Length: > 0 })
+                {
+                    ArrayPool<byte>.Shared.Return(stale.buffer);
+                }
             }
         }
 
