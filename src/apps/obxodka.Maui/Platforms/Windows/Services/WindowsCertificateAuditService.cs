@@ -111,9 +111,10 @@ public sealed class WindowsCertificateAuditService : ICertificateAuditService
             using var store = new X509Store(StoreName.Root, location);
             store.Open(OpenFlags.ReadOnly);
 
-            foreach (var cert in store.Certificates)
+            var certs = store.Certificates;
+            try
             {
-                try
+                foreach (var cert in certs)
                 {
                     var thumbprint = cert.Thumbprint;
                     var issuer = cert.Issuer;
@@ -144,7 +145,10 @@ public sealed class WindowsCertificateAuditService : ICertificateAuditService
                     var details = $"Найден в '{locName}'. Отпечаток: {thumbprint}";
                     return new CertificateAuditResult(true, name, thumbprint, details);
                 }
-                finally
+            }
+            finally
+            {
+                foreach (var cert in certs)
                 {
                     cert.Dispose();
                 }

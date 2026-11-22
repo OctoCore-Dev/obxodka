@@ -18,6 +18,11 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
         Timeout = TimeSpan.FromSeconds(15)
     };
 
+    private static readonly HttpClient s_downloadClient = new()
+    {
+        Timeout = TimeSpan.FromMinutes(5)
+    };
+
     //проверка наличия новой версии в microsoft store или github releases
     public async Task<StoreUpdateInfo> CheckVersionAsync()
     {
@@ -307,11 +312,109 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
     }
 
     //проверка наличия и валидности сертификата authenticode у исполняемого файла
+    private static readonly Guid s_wintrustActionGenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinTrustFileInfo
+    {
+        public uint CbStruct;
+        public IntPtr PcwszFilePath;
+        public IntPtr HFile;
+        public IntPtr PgKnownSubject;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinTrustData
+    {
+        public uint CbStruct;
+        public IntPtr PPolicyCallbackData;
+        public IntPtr PSipClientData;
+        public uint DwUiChoice;
+        public uint FdwRevocationChecks;
+        public uint DwUnionChoice;
+        public IntPtr PFile;
+        public uint DwStateAction;
+        public IntPtr HWvtStateData;
+        public IntPtr PwszUrlReference;
+        public uint DwProvFlags;
+        public uint DwUiContext;
+        public IntPtr PSignatureSettings;
+    }
+
+    [LibraryImport("wintrust.dll", EntryPoint = "WinVerifyTrust")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int WinVerifyTrust(IntPtr hwnd, ref Guid pgActionID, ref WinTrustData pWVTData);
+
+    private static int VerifyPeTrust(string filePath)
+    {
+        var filePathPtr = Marshal.StringToCoTaskMemUni(filePath);
+        var fileInfoPtr = IntPtr.Zero;
+        try
+        {
+            var fileInfoSize = Marshal.SizeOf<WinTrustFileInfo>();
+            var fileInfo = new WinTrustFileInfo
+            {
+                CbStruct = (uint)fileInfoSize,
+                PcwszFilePath = filePathPtr
+            };
+            fileInfoPtr = Marshal.AllocCoTaskMem(fileInfoSize);
+            Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
+
+            var trustData = new WinTrustData
+            {
+                CbStruct = (uint)Marshal.SizeOf<WinTrustData>(),
+                DwUiChoice = 2, //WTD_UI_NONE
+                FdwRevocationChecks = 0, //WTD_REVOKE_NONE
+                DwUnionChoice = 1, //WTD_CHOICE_FILE
+                PFile = fileInfoPtr,
+                DwStateAction = 1, //WTD_STATEACTION_VERIFY
+                DwProvFlags = 0x00000010 | 0x00000080 //WTD_SAFER_FLAG | WTD_CACHE_ONLY_URL_RETRIEVAL
+            };
+
+            var actionId = s_wintrustActionGenericVerifyV2;
+            var hr = WinVerifyTrust(new IntPtr(-1), ref actionId, ref trustData);
+
+            trustData.DwStateAction = 2; //WTD_STATEACTION_CLOSE
+            _ = WinVerifyTrust(new IntPtr(-1), ref actionId, ref trustData);
+            return hr;
+        }
+        finally
+        {
+            if (fileInfoPtr != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(fileInfoPtr);
+            }
+
+            if (filePathPtr != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(filePathPtr);
+            }
+        }
+    }
+
     [Obsolete("Obsolete")]
     private static AuthenticodeCheckStatus CheckAuthenticodeSignature(string filePath)
     {
         try
         {
+            var wvtHr = VerifyPeTrust(filePath);
+            if (wvtHr == 0)
+            {
+                return AuthenticodeCheckStatus.TrustedChain;
+            }
+
+            //TRUST_E_NOSIGNATURE (0x800B0100) — подпись отсутствует
+            if (wvtHr == unchecked((int)0x800B0100))
+            {
+                return AuthenticodeCheckStatus.Unsigned;
+            }
+
+            //TRUST_E_BAD_DIGEST (0x80096010) или TRUST_E_SUBJECT_NOT_TRUSTED — целостность PE нарушена
+            if (wvtHr is unchecked((int)0x80096010) or unchecked((int)0x800B0004))
+            {
+                return AuthenticodeCheckStatus.InvalidSignature;
+            }
+
             using var rawCert = X509Certificate.CreateFromSignedFile(filePath);
             using var cert = new X509Certificate2(rawCert);
 
@@ -380,13 +483,14 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 AppLogger.LogError($"[UPDATE-SECURITY ALERT] Untrusted update URL blocked: {url}");
             }
 
-            _ = await Launcher.OpenAsync(new Uri($"https://github.com/{GitHubRepo}/releases/latest"));
+            _ = await MainThread.InvokeOnMainThreadAsync(() =>
+                Launcher.OpenAsync(new Uri($"https://github.com/{GitHubRepo}/releases/latest"))).ConfigureAwait(false);
             return;
         }
 
         if (updateUri.AbsolutePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            var updateDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "obxodka", "updates");
+            var updateDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "obxodka", "updates");
             _ = Directory.CreateDirectory(updateDir);
             var safeVersion = string.Concat(version.Where(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_'));
             if (string.IsNullOrEmpty(safeVersion))
@@ -400,7 +504,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 using var req = new HttpRequestMessage(HttpMethod.Get, updateUri);
                 req.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
 
-                using var resp = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                using var resp = await s_downloadClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
                 {
                     await using (var fs = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -513,7 +617,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             }
         }
 
-        _ = await Launcher.OpenAsync(updateUri);
+        _ = await MainThread.InvokeOnMainThreadAsync(() => Launcher.OpenAsync(updateUri)).ConfigureAwait(false);
     }
 
     //безопасное удаление временного файла установщика
