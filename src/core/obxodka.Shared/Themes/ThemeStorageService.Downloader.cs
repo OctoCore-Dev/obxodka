@@ -115,7 +115,7 @@ public sealed partial class ThemeStorageService
                     _ = Directory.CreateDirectory(parentDir);
                 }
 
-                await DownloadThemeAssetWithMirrorsAsync(themeId, rel, dest, ct, isIcon).ConfigureAwait(false);
+                await DownloadThemeAssetWithMirrorsAsync(themeId, rel, dest, ct, !isIcon).ConfigureAwait(false);
                 processed++;
                 Report(0.3 + 0.65 * processed / Math.Max(1, totalAssets));
             }

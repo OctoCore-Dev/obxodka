@@ -18,7 +18,10 @@ public sealed partial class ThemeStorageService
             return null;
         }
 
-        var cleanRel = relativePath.Replace('/', Path.DirectorySeparatorChar).TrimStart('/', '\\');
+        var cleanRel = relativePath
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .TrimStart('/', '\\');
         var baseDir = Path.GetFullPath(folderPath);
         if (!baseDir.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
         {
@@ -46,7 +49,10 @@ public sealed partial class ThemeStorageService
         {
             if (!string.IsNullOrWhiteSpace(path))
             {
-                var clean = path.Replace('/', Path.DirectorySeparatorChar).TrimStart('/', '\\');
+                var clean = path
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar)
+                    .TrimStart('/', '\\');
                 if (clean.Length > 0 && !clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
                     !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {

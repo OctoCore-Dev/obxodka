@@ -188,12 +188,13 @@ public sealed partial class ThemeManager
 
     public bool ApplyThemeById(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
+        var themeDir = _storageService.ResolveSafeThemeDirectory(themeId);
+        if (themeDir == null)
         {
             return false;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
+        var manifestPath = Path.Join(themeDir, "theme.json");
         if (!File.Exists(manifestPath))
         {
             return false;
@@ -213,12 +214,13 @@ public sealed partial class ThemeManager
 
     public async Task<bool> ApplyThemeByIdAsync(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
+        var themeDir = _storageService.ResolveSafeThemeDirectory(themeId);
+        if (themeDir == null)
         {
             return false;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
+        var manifestPath = Path.Join(themeDir, "theme.json");
         if (!File.Exists(manifestPath))
         {
             return false;
@@ -310,8 +312,9 @@ public sealed partial class ThemeManager
             return;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, activeId.TrimStart('/', '\\'), "theme.json");
-        if (!File.Exists(manifestPath))
+        var themeDir = _storageService.ResolveSafeThemeDirectory(activeId);
+        var manifestPath = themeDir != null ? Path.Join(themeDir, "theme.json") : null;
+        if (manifestPath == null || !File.Exists(manifestPath))
         {
             Preferences.Default.Remove(ActiveThemeKey);
             ResetToDefault();

@@ -85,10 +85,9 @@ internal sealed partial class App
         }
 
         var isCustomScheme = string.Equals(uri.Scheme, "obxodka", StringComparison.OrdinalIgnoreCase);
-        var isWebQrLink = (string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ||
-                           string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase)) &&
-                          (uri.Host.EndsWith(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                           uri.Host.EndsWith(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase)) &&
+        var isWebQrLink = string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase) &&
+                          (IsTrustedDeepLinkHost(uri.Host, AppConfig.PrimaryDomain) ||
+                           IsTrustedDeepLinkHost(uri.Host, AppConfig.MirrorDomain)) &&
                           uri.AbsolutePath.StartsWith("/qr", StringComparison.OrdinalIgnoreCase);
 
         if (!isCustomScheme && !isWebQrLink)
@@ -128,6 +127,13 @@ internal sealed partial class App
                code.Length == 6 &&
                code.All(char.IsAsciiDigit);
     }
+
+    //проверка принадлежности хоста доверенному домену или его поддомену
+    private static bool IsTrustedDeepLinkHost(string? host, string? trustedDomain) =>
+        !string.IsNullOrWhiteSpace(host) &&
+        !string.IsNullOrWhiteSpace(trustedDomain) &&
+        (string.Equals(host, trustedDomain, StringComparison.OrdinalIgnoreCase) ||
+         host.EndsWith($".{trustedDomain}", StringComparison.OrdinalIgnoreCase));
 
     public static void HandleDeepLink(string? rawUri)
     {

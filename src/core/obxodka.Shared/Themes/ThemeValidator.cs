@@ -376,6 +376,8 @@ public static partial class ThemeValidator
             manifest.Decorations?.ButtonVideoActive,
             manifest.Decorations?.ButtonVideoError,
             manifest.Vfx?.ParticleSprite,
+            manifest.Vfx?.OverlayImage,
+            manifest.Vfx?.Physics?.OverlayImage,
             manifest.Core.Sounds?.Connect,
             manifest.Core.Sounds?.Disconnect,
             manifest.Core.Sounds?.Click,

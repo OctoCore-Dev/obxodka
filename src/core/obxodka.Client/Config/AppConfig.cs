@@ -48,9 +48,13 @@ public static class AppConfig
         get
         {
             var env = Environment.GetEnvironmentVariable("OBXODKA_ENVIRONMENT");
-            return !string.IsNullOrWhiteSpace(env) ? env.ToLowerInvariant() : "development";
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env.Trim().ToLowerInvariant();
+            }
 
 #if DEBUG
+            return "development";
 #elif TESTING_BUILD
             return "testing";
 #else

@@ -91,6 +91,9 @@ public sealed partial class ThemeManager
                 return;
             }
 
+            //сбрасываем базовые токены на темную палитру перед наложением кастомной темы, чтобы не оставались светлые цвета ос
+            ApplySystemDefaultPalette(AppTheme.Dark);
+
             Color? primaryColor = null;
             if (Color.TryParse(manifest.Core.Colors.Primary, out var parsedPrimary))
             {

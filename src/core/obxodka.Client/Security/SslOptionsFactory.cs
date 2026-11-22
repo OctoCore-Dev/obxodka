@@ -13,7 +13,7 @@ public static class SslOptionsFactory
         var options = new SslClientAuthenticationOptions
         {
             TargetHost = targetHost,
-            CertificateRevocationCheckMode = X509RevocationMode.Online,
+            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = applicationProtocols,
             RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
@@ -44,7 +44,7 @@ public static class SslOptionsFactory
         new()
         {
             TargetHost = targetHost,
-            CertificateRevocationCheckMode = X509RevocationMode.Online,
+            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = applicationProtocols
         };
