@@ -319,6 +319,13 @@ internal sealed partial class WindowsVpnService
                 {
                     var gwBytes = BitConverter.GetBytes(gwUint);
                     var gwIp = new IPAddress(gwBytes).ToString();
+                    if (gwIp == "100.64.0.1")
+                    {
+                        return !string.IsNullOrEmpty(s_savedPhysicalGateway) && s_savedPhysicalIfIndex > 0
+                            ? (s_savedPhysicalGateway, s_savedPhysicalIfIndex)
+                            : ("", 0);
+                    }
+
                     if (gwIp != "0.0.0.0" && !gwIp.Contains(':'))
                     {
                         return (gwIp, ifIndex);
@@ -327,7 +334,9 @@ internal sealed partial class WindowsVpnService
 
                 foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
                 {
-                    if (TryGetIpv4IfIndex(card) != ifIndex)
+                    if (TryGetIpv4IfIndex(card) != ifIndex ||
+                        card.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
+                        card.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
@@ -484,7 +493,10 @@ internal sealed partial class WindowsVpnService
                     var localIp = ep.Address;
                     foreach (var card in NetworkInterface.GetAllNetworkInterfaces())
                     {
-                        if (card.OperationalStatus != OperationalStatus.Up || card.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                        if (card.OperationalStatus != OperationalStatus.Up ||
+                            card.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                            card.Name.Contains("Obxodka", StringComparison.OrdinalIgnoreCase) ||
+                            card.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
                         }
@@ -728,24 +740,40 @@ internal sealed partial class WindowsVpnService
     {
         try
         {
-            var running = Process.GetProcesses().Any(p =>
+            var running = false;
+            var processes = Process.GetProcesses();
+            try
             {
-                try
+                foreach (var p in processes)
                 {
-                    var n = p.ProcessName;
-                    return n.Contains("AnyDesk", StringComparison.OrdinalIgnoreCase) ||
-                           n.Contains("TeamViewer", StringComparison.OrdinalIgnoreCase) ||
-                           n.Contains("RustDesk", StringComparison.OrdinalIgnoreCase);
+                    if (running)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var n = p.ProcessName;
+                        if (n.Contains("AnyDesk", StringComparison.OrdinalIgnoreCase) ||
+                            n.Contains("TeamViewer", StringComparison.OrdinalIgnoreCase) ||
+                            n.Contains("RustDesk", StringComparison.OrdinalIgnoreCase))
+                        {
+                            running = true;
+                        }
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
-                catch
-                {
-                    return false;
-                }
-                finally
+            }
+            finally
+            {
+                foreach (var p in processes)
                 {
                     p.Dispose();
                 }
-            });
+            }
 
             if (!running)
             {

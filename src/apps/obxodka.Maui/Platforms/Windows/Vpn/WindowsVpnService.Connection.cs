@@ -66,7 +66,7 @@ internal sealed partial class WindowsVpnService
     public async Task ActivateRoutingAndLeakGuardAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6,
         CancellationToken ct)
     {
-        _ = ct;
+        ct.ThrowIfCancellationRequested();
         var adapter = _adapter;
         if (adapter is null)
         {
@@ -75,7 +75,9 @@ internal sealed partial class WindowsVpnService
 
         using var suppressScope = SuppressNetworkChanges();
         await SetWindowsRoutesAsync(adapter, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         await EnableDnsLeakProtectionAsync(adapter, assignedIpv4).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         var (tunLuid, _) = ResolveAdapterIdentity(adapter);
         WindowsSplitTunnelEngine.SyncWfpLeakGuard();
         Win32WfpLeakGuard.Enable(tunLuid, serverIps);
@@ -85,7 +87,7 @@ internal sealed partial class WindowsVpnService
         CancellationToken ct)
     {
         _ = mtu;
-        _ = ct;
+        ct.ThrowIfCancellationRequested();
         var adapter = _adapter;
         if (adapter is null)
         {
@@ -94,8 +96,11 @@ internal sealed partial class WindowsVpnService
 
         using var suppressScope = SuppressNetworkChanges();
         await SetAdapterConfigAsync(adapter, assignedIpv4, 10, assignedIpv6).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         await SetWindowsRoutesAsync(adapter, serverIps, assignedIpv4, true, assignedIpv6).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         await EnableDnsLeakProtectionAsync(adapter, assignedIpv4).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         var (tunLuid, _) = ResolveAdapterIdentity(adapter);
         WindowsSplitTunnelEngine.SyncWfpLeakGuard();
         Win32WfpLeakGuard.Enable(tunLuid, serverIps);

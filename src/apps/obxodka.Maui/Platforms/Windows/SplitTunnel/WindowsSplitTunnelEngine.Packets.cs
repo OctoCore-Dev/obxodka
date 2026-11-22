@@ -58,7 +58,7 @@ internal static partial class WindowsSplitTunnelEngine
     //мгновенный сброс исходящего ipv6 tcp-соединения в режиме принудительной блокировки ipv6 (только ipv4)
     internal static bool TryRejectIpv6Packet(byte[]? origPacket, int length, WintunAdapter adapter)
     {
-        if (origPacket != null && (length < 60 || origPacket[0] >> 4 != 6 || origPacket[6] != 6))
+        if (origPacket is null || length < 60 || origPacket[0] >> 4 != 6 || origPacket[6] != 6)
         {
             return false;
         }

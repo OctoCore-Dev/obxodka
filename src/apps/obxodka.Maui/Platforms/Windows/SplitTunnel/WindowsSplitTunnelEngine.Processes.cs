@@ -150,8 +150,8 @@ internal static partial class WindowsSplitTunnelEngine
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost != localPortHostOrder && rowPortHost != portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
                                         continue;
                                     }
@@ -175,8 +175,8 @@ internal static partial class WindowsSplitTunnelEngine
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr6[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost != localPortHostOrder && rowPortHost != portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
                                         continue;
                                     }
@@ -223,8 +223,8 @@ internal static partial class WindowsSplitTunnelEngine
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost != localPortHostOrder && rowPortHost != portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
                                         continue;
                                     }
@@ -248,8 +248,8 @@ internal static partial class WindowsSplitTunnelEngine
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr6[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost != localPortHostOrder && rowPortHost != portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
                                         continue;
                                     }

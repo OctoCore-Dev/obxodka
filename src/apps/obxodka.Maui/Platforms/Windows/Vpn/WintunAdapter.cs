@@ -36,7 +36,7 @@ internal sealed partial class WintunAdapter : IDisposable
         Name = name;
         Pool = pool;
 
-        _adapter = WintunOpenAdapter(pool, name);
+        _adapter = WintunOpenAdapter(name);
         if (_adapter != IntPtr.Zero)
         {
             RefreshInterfaceIdentity();
@@ -47,7 +47,7 @@ internal sealed partial class WintunAdapter : IDisposable
         var openErr = Marshal.GetLastPInvokeError();
 
         var freshGuid = Guid.NewGuid();
-        _adapter = WintunCreateAdapter(pool, name, ref freshGuid, out _);
+        _adapter = WintunCreateAdapter(name, pool, ref freshGuid);
         if (_adapter != IntPtr.Zero)
         {
             RefreshInterfaceIdentity();
@@ -59,7 +59,7 @@ internal sealed partial class WintunAdapter : IDisposable
         AppLogger.LogWarning($"[WINTUN] Create with fresh GUID failed (Win32 {createErrFresh}). Trying default GUID...");
 
         var defaultGuid = s_defaultGuid;
-        _adapter = WintunCreateAdapter(pool, name, ref defaultGuid, out _);
+        _adapter = WintunCreateAdapter(name, pool, ref defaultGuid);
         if (_adapter != IntPtr.Zero)
         {
             RefreshInterfaceIdentity();
@@ -149,12 +149,11 @@ internal sealed partial class WintunAdapter : IDisposable
 
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial IntPtr WintunCreateAdapter(string pool, string name, ref Guid requestedGuid,
-        [MarshalAs(UnmanagedType.Bool)] out bool rebootRequired);
+    private static partial IntPtr WintunCreateAdapter(string name, string tunnelType, ref Guid requestedGuid);
 
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial IntPtr WintunOpenAdapter(string pool, string name);
+    private static partial IntPtr WintunOpenAdapter(string name);
 
     [LibraryImport(DllName)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

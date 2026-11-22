@@ -251,7 +251,6 @@ internal static partial class Win32WfpLeakGuard
                 _ = FwpmFilterDeleteById0(s_engineHandle, oldId);
             }
 
-            s_activeFilterIds.Clear();
             s_allowedDynamicV4.Clear();
 
             var newIds = new List<ulong>(64);
@@ -300,8 +299,8 @@ internal static partial class Win32WfpLeakGuard
             //приоритет 12: разрешить локальную сеть (lan / link-local / dhcp / multicast link)
             AddPermitLanRulesUnsafe(newIds);
 
-            //приоритет 12: разрешить правила активного split tunnel (приложения и маршруты обхода)
-            if (s_splitEnabled)
+            //приоритет 12: разрешить правила активного split tunnel только при активном туннеле (не в режиме kill-switch обрыва)
+            if (s_splitEnabled && s_tunLuid != 0)
             {
                 AddSplitTunnelPermitRulesUnsafe(newIds);
             }
@@ -321,6 +320,7 @@ internal static partial class Win32WfpLeakGuard
             if (commitStatus == ErrorSuccess)
             {
                 committed = true;
+                s_activeFilterIds.Clear();
                 s_activeFilterIds.AddRange(newIds);
                 AppLogger.Log($"[WFP] Anti-Leak rules active: {s_activeFilterIds.Count} filters (tunLuid={s_tunLuid}).");
             }
@@ -392,7 +392,7 @@ internal static partial class Win32WfpLeakGuard
     }
 
     //разрешение трафика конкретного исполняемого файла по пути через ale app id
-    private static void AddPermitAppRulesUnsafe(string exePath, string filterName, List<ulong> outIds)
+    private static void AddPermitAppRulesUnsafe(string exePath, string filterName, List<ulong> outIds, byte weight = 15)
     {
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
         {
@@ -415,12 +415,12 @@ internal static partial class Win32WfpLeakGuard
                     ConditionValue = new FwpConditionValue0 { Type = FwpByteBlobType, Ptr = appBlobPtr }
                 };
 
-                if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV4, FwpActionPermit, 15, filterName, (IntPtr)(&cond), 1, out var id4))
+                if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV4, FwpActionPermit, weight, filterName, (IntPtr)(&cond), 1, out var id4))
                 {
                     outIds.Add(id4);
                 }
 
-                if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionPermit, 15, filterName, (IntPtr)(&cond), 1, out var id6))
+                if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionPermit, weight, filterName, (IntPtr)(&cond), 1, out var id6))
                 {
                     outIds.Add(id6);
                 }
@@ -530,7 +530,7 @@ internal static partial class Win32WfpLeakGuard
 
         foreach (var path in allowedPaths)
         {
-            AddPermitAppRulesUnsafe(path, "Obxodka Allow SplitApp", outIds);
+            AddPermitAppRulesUnsafe(path, "Obxodka Allow SplitApp", outIds, 12);
         }
 
         foreach (var (netNetOrder, maskNetOrder) in s_splitPinnedRoutes)
