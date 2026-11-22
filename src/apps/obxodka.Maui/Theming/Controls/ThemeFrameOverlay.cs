@@ -138,31 +138,23 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
-        SKImage? img;
-        bool useNine;
-        SKRectI center;
-
-        lock (_lock)
-        {
-            img = _skImage;
-            useNine = _useNinePatch;
-            center = _cachedCenter;
-        }
-
-        if (img is null)
-        {
-            return;
-        }
-
         var info = e.Info;
         var dst = new SKRect(0, 0, info.Width, info.Height);
 
-        if (useNine)
+        lock (_lock)
         {
-            canvas.DrawImageNinePatch(img, center, dst, _paint);
-            return;
-        }
+            if (_skImage is null)
+            {
+                return;
+            }
 
-        canvas.DrawImage(img, dst, s_samplingOptions, _paint);
+            if (_useNinePatch)
+            {
+                canvas.DrawImageNinePatch(_skImage, _cachedCenter, dst, _paint);
+                return;
+            }
+
+            canvas.DrawImage(_skImage, dst, s_samplingOptions, _paint);
+        }
     }
 }

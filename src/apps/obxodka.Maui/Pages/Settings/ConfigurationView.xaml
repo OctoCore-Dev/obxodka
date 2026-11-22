@@ -192,6 +192,8 @@
                         x:Name="KillSwitchCard"
                         Grid.Row="1"
                         Grid.Column="0"
+                        IsVisible="{OnPlatform WinUI=True,
+                                               Default=False}"
                         Padding="16,14"
                         MinimumHeightRequest="66"
                         Style="{StaticResource SettingsRowCard}">

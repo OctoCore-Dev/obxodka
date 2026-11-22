@@ -268,7 +268,10 @@ public sealed partial class PaymentView
         {
             var baseline = _parent.RemainingSeconds;
             var (success, payUrl, error) = await _apiService.GeneratePaymentLinkAsync(amount, _selectedCurrency, _selectedPaymentMethod);
-            if (success && !string.IsNullOrEmpty(payUrl))
+            if (success &&
+                !string.IsNullOrEmpty(payUrl) &&
+                Uri.TryCreate(payUrl, UriKind.Absolute, out var payUri) &&
+                string.Equals(payUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
                 _baselineBalanceSeconds = baseline;
                 PendingPaymentBanner.IsVisible = true;
@@ -280,7 +283,7 @@ public sealed partial class PaymentView
                     _ => $"Счет на {amount:0} ₽ ({methodLabel}) открыт в браузере. После оплаты баланс обновится автоматически."
                 };
                 StartPaymentPolling(baseline);
-                _ = await Launcher.OpenAsync(new Uri(payUrl));
+                _ = await Launcher.OpenAsync(payUri);
             }
             else
             {
@@ -360,9 +363,11 @@ public sealed partial class PaymentView
 
         try
         {
-            _ = await _apiService.SyncPendingPaymentsAsync();
+            var (_, syncData, _) = await _apiService.SyncPendingPaymentsAsync();
             var (success, profile, _) = await _apiService.GetProfileAsync();
-            if (success && profile is not null && profile.BalanceSeconds > baselineSeconds)
+            if (success &&
+                profile is not null &&
+                (syncData is { Credited: true } || profile.BalanceSeconds >= baselineSeconds + 300))
             {
                 StopPaymentPolling();
                 await MainThread.InvokeOnMainThreadAsync(async () =>

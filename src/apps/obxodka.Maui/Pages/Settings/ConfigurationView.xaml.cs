@@ -354,8 +354,14 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             _isUpdating = true;
-            RunOnStartupToggle.IsToggled = isEnabled;
-            _isUpdating = false;
+            try
+            {
+                RunOnStartupToggle.IsToggled = isEnabled;
+            }
+            finally
+            {
+                _isUpdating = false;
+            }
         });
 #endif
 }

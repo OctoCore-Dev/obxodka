@@ -363,12 +363,35 @@ public sealed partial class ProfileView : IAdaptivePage
         CardDeleteAccount.Stroke = borderSubtle;
     }
 
+    //сброс кэшированных данных профиля при выходе из аккаунта
+    public void ResetAccountCache()
+    {
+        _myReferralCode = string.Empty;
+        MainThread.BeginInvokeOnMainThread(() => MyReferralCodeLabel.Text = "------");
+    }
+
+    private bool _isUpdatingAdBlockSwitch;
+
     //переключение adblock dns фильтрации
     private void OnAdBlockToggled(object? sender, ToggledEventArgs e)
     {
+        if (_isUpdatingAdBlockSwitch)
+        {
+            return;
+        }
+
         if (!IsEditingAllowed)
         {
-            AdBlockSwitch.IsToggled = !e.Value;
+            try
+            {
+                _isUpdatingAdBlockSwitch = true;
+                AdBlockSwitch.IsToggled = !e.Value;
+            }
+            finally
+            {
+                _isUpdatingAdBlockSwitch = false;
+            }
+
             return;
         }
 

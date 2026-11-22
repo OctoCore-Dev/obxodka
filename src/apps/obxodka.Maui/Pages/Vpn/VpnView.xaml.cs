@@ -39,7 +39,7 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
     private string? _lastErrorMessage;
     private VpnServerDto? _selectedServer;
     private List<VpnServerDto> _cachedServers = [];
-    private readonly Dictionary<string, long> _serverPings = [];
+    private readonly ConcurrentDictionary<string, long> _serverPings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Stopwatch _loaderStopwatch = new();
 #if WINDOWS
     private bool _loaderVsyncActive;
@@ -234,6 +234,12 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
         LoadSavedServerSelection();
         _ = RefreshServerListAsync();
 
+        SubscribeEvents();
+    }
+
+    //подписка на события состояния vpn и сетевого ядра
+    public void SubscribeEvents()
+    {
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
         _vpnService.OnLogUpdated -= HandleVpnLog;

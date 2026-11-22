@@ -362,6 +362,7 @@ public static partial class ThemeAudioService
                     };
                     player.Error += (s, e) =>
                     {
+                        e.Handled = true;
                         try
                         {
                             player.Release();

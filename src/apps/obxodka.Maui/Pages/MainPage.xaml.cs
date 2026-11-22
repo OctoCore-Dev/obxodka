@@ -588,15 +588,18 @@ public sealed partial class MainPage : IDisposable
         }
     }
 
+    private int _authGeneration;
+
     private async Task PerformLogoutAsync()
     {
+        _ = Interlocked.Increment(ref _authGeneration);
+
         if (_vpnCts is { } cts)
         {
             await cts.CancelAsync().ConfigureAwait(false);
         }
 
         _tabContentPayment?.StopPaymentPolling();
-        _tabContentVpn?.UnsubscribeEvents();
         _ = Task.Run(async () =>
         {
             try
@@ -609,12 +612,16 @@ public sealed partial class MainPage : IDisposable
             }
         });
 
-        await AuthManager.ClearSessionAsync();
+        await AuthManager.ClearSessionAsync().ConfigureAwait(false);
         AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-        _tabContentVpn?.UpdateActiveNode();
 
         await MainThread.InvokeOnMainThreadAsync(async () =>
         {
+            RemainingSeconds = 0;
+            _tabContentVpn?.UnsubscribeEvents();
+            _tabContentVpn?.UpdateActiveNode();
+            _tabContentProfile?.ResetAccountCache();
+            _tabContentDevices?.InvalidateCache();
             DesktopSidebar.HideSidebar();
             MobileBottomBar.HideSidebar();
             await SwitchTabAsync("auth");

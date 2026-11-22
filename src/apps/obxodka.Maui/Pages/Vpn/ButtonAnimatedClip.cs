@@ -75,47 +75,67 @@ internal sealed partial class ButtonAnimatedClip : IDisposable
 
             var count = codec.FrameCount;
             var clip = new ButtonAnimatedClip();
-            var frameInfos = codec.FrameInfo;
-
-            var step = count > maxFrames ? (int)Math.Ceiling((double)count / maxFrames) : 1;
-
-            for (var i = 0; i < count; i += step)
+            try
             {
-                if (ct.IsCancellationRequested)
+                var frameInfos = codec.FrameInfo;
+
+                var step = count > maxFrames ? (int)Math.Ceiling((double)count / maxFrames) : 1;
+
+                for (var i = 0; i < count; i += step)
                 {
-                    clip.Dispose();
-                    return null;
+                    if (ct.IsCancellationRequested)
+                    {
+                        clip.Dispose();
+                        return null;
+                    }
+
+                    var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+                    SKBitmap? bmp = new(info);
+                    try
+                    {
+                        var opts = new SKCodecOptions(i);
+                        var res = codec.GetPixels(info, bmp.GetPixels(), opts);
+                        if (res is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
+                        {
+                            bmp.Dispose();
+                            bmp = null;
+                            continue;
+                        }
+
+                        var dur = frameInfos is not null && frameInfos.Length > i ? frameInfos[i].Duration : 16;
+                        if (dur <= 0)
+                        {
+                            dur = 16;
+                        }
+
+                        dur *= step;
+
+                        var processedFrame = DownscaleIfNeeded(bmp);
+                        bmp = null;
+                        clip._frames.Add(processedFrame);
+                        clip._durations.Add(dur);
+                    }
+                    finally
+                    {
+                        bmp?.Dispose();
+                    }
                 }
 
-                var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
-                var bmp = new SKBitmap(info);
-                var opts = new SKCodecOptions(i);
-                var res = codec.GetPixels(info, bmp.GetPixels(), opts);
-                if (res is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
+                if (clip._frames.Count != 0)
                 {
-                    bmp.Dispose();
-                    continue;
+                    var result = clip;
+                    clip = null;
+                    return result;
                 }
 
-                var dur = frameInfos is not null && frameInfos.Length > i ? frameInfos[i].Duration : 16;
-                if (dur <= 0)
-                {
-                    dur = 16;
-                }
-
-                dur *= step;
-
-                clip._frames.Add(DownscaleIfNeeded(bmp));
-                clip._durations.Add(dur);
+                clip.Dispose();
+                return null;
             }
-
-            if (clip._frames.Count != 0)
+            catch
             {
-                return clip;
+                clip?.Dispose();
+                throw;
             }
-
-            clip.Dispose();
-            return null;
         }
         catch (Exception ex)
         {

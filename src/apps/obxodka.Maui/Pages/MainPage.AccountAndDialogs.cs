@@ -69,13 +69,14 @@ public sealed partial class MainPage
 
     private async Task SyncBalanceFromServerAsync(UserSession? session = null, int retryCount = 0)
     {
+        var authGen = Volatile.Read(ref _authGeneration);
         if (_activeTab == "auth" || Volatile.Read(ref _forceLogoutActive) != 0 || ApiService.IsUnauthorizedPending)
         {
             return;
         }
 
         session ??= await AuthManager.LoadSessionAsync();
-        if (!session.IsLoggedIn || string.IsNullOrEmpty(session.JwtToken))
+        if (!session.IsLoggedIn || string.IsNullOrEmpty(session.JwtToken) || authGen != Volatile.Read(ref _authGeneration))
         {
             return;
         }
@@ -112,6 +113,14 @@ public sealed partial class MainPage
         try
         {
             var (success, profile, error) = await _apiService.GetProfileAsync();
+            if (authGen != Volatile.Read(ref _authGeneration) ||
+                _activeTab == "auth" ||
+                Volatile.Read(ref _forceLogoutActive) != 0 ||
+                ApiService.IsUnauthorizedPending)
+            {
+                return;
+            }
+
             if (success && profile is not null)
             {
                 session.SubscriptionUntil = profile.SubscriptionUntil;
@@ -196,7 +205,7 @@ public sealed partial class MainPage
             }
         }
 
-        if (RemainingSeconds <= 0)
+        if (!ct.IsCancellationRequested && RemainingSeconds <= 0)
         {
             await VpnService.StopVpnAsync();
             await MainThread.InvokeOnMainThreadAsync(() =>

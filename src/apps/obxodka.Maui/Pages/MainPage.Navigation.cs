@@ -360,6 +360,7 @@ public sealed partial class MainPage
 
                     if (_isVpnTabInitialized)
                     {
+                        _tabContentVpn.SubscribeEvents();
                         return _tabContentVpn;
                     }
 
