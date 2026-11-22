@@ -131,7 +131,7 @@ public static class ChromiumHello
         WriteExtension(buffer, ref offset, 0x002d, [0x01, 0x01]); //psk modes
         WriteSupportedVersions(buffer, ref offset); //supported versions
         WriteExtension(buffer, ref offset, 0x001b, [0x02, 0x00, 0x02]); //brotli cert
-        WriteExtension(buffer, ref offset, 0x002c, [0x02, 0x68, 0x32]); //application settings
+        WriteExtension(buffer, ref offset, 0x4469, [0x00, 0x03, 0x02, 0x68, 0x32]); //application settings
 
         //паддинг для маскировки длины sni
         var targetSize = isPostQuantum ? 1400 : 512;

@@ -284,6 +284,11 @@ public sealed partial class ObxodkaStreamTransport
                     while (!pumpToken.IsCancellationRequested)
                     {
                         var firstItem = await txQueue.DequeueAsync(pumpToken).ConfigureAwait(false);
+                        if (firstItem.length <= 0)
+                        {
+                            break;
+                        }
+
                         var coalescedLen = 0;
                         var batchCount = 0;
                         var item = firstItem;

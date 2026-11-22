@@ -115,7 +115,7 @@ public sealed partial class OctopusEngine
 
             if (burstResults.Length > 0)
             {
-                var downlinkMax = optimalMtu;
+                var downlinkMax = burstResults.Max();
 
                 //проверяем проходимость найденного кандидата и в обратном направлении (uplink probe)
                 var steps = SmartMtuEngine.MtuEscalationSteps;
@@ -298,7 +298,6 @@ public sealed partial class OctopusEngine
                             switch (silenceSec)
                             {
                                 case >= 18.0 when Environment.TickCount64 - armedTicks >= 5000 &&
-                                                  await TryRotateProtocolAsync("PongSilenceTimeout", token).ConfigureAwait(false) &&
                                                   await TryRotateProtocolAsync("PongSilenceTimeout", token).ConfigureAwait(false):
                                     deadTicks = 0;
                                     lastSent = TotalBytesSent;

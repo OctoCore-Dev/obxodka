@@ -66,9 +66,15 @@ public sealed partial class ObxodkaStreamTransport
         var rxAliveMask = BuildRxAliveMask(nowTs, 3500, true);
 
         var activeRaysCount = Volatile.Read(ref _activeRays);
-        var raysToSend = Math.Min(_txChannels.Length, Math.Max(1, activeRaysCount));
-        for (var r = 0; r < raysToSend; r++)
+        var prefRay = Volatile.Read(ref _preferredRay);
+        var raysToSend = Math.Min(_txChannels.Length, Math.Max(Math.Max(1, activeRaysCount), prefRay + 1));
+        for (var r = 0; r < _txChannels.Length; r++)
         {
+            if (r >= raysToSend && Volatile.Read(ref _rayCts[r]) is null)
+            {
+                continue;
+            }
+
             var pingBuf = ArrayPool<byte>.Shared.Rent(11);
             pingBuf[0] = 0xAA;
             pingBuf[1] = 0xBB;

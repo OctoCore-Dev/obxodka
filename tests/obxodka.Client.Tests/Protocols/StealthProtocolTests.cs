@@ -1001,6 +1001,82 @@ public sealed class StealthProtocolTests
         }
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("../escape")]
+    [InlineData("..\\escape")]
+    [InlineData("theme/../../root")]
+    [InlineData("UPPERCASE_ID")]
+    public void ThemeStorageServiceResolveSafeThemeDirectoryRejectsTraversalAndInvalidIds(string? unsafeId)
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        try
+        {
+            var storage = new ThemeStorageService(tempRoot);
+            Assert.Null(storage.ResolveSafeThemeDirectory(unsafeId));
+            Assert.False(storage.DeleteTheme(unsafeId!));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ThemeStorageServiceResolveSafeThemeDirectoryAcceptsValidKebabCaseId()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        try
+        {
+            var storage = new ThemeStorageService(tempRoot);
+            var resolved = storage.ResolveSafeThemeDirectory("cyber-neon-2026");
+            Assert.NotNull(resolved);
+            Assert.StartsWith(Path.GetFullPath(tempRoot), resolved, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ChromiumHelloEmitsAlpsExtension0x4469InsteadOfInvalidCookie0x002c()
+    {
+        var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, "example.com"u8);
+        Assert.True(hello.Length > 60);
+
+        //ищем расширение alps 0x44 0x69 с длиной 0x00 0x05 и списком 0x00 0x03 0x02 'h' '2'
+        ReadOnlySpan<byte> expectedAlps = [0x44, 0x69, 0x00, 0x05, 0x00, 0x03, 0x02, 0x68, 0x32];
+        Assert.True(hello.AsSpan().IndexOf(expectedAlps) >= 0);
+    }
+
+    [Fact]
+    public void BuildProtocolRotationRingPreservesPerServerExpectedCertHash()
+    {
+        VpnServerDto[] servers =
+        [
+            new("185.10.20.30", 443, "NL-1", true, 10, CertHash: "HASH_NL_1"),
+            new("185.10.20.31", 443, "DE-1", true, 12, CertHash: "HASH_DE_1")
+        ];
+
+        var ring = SniEngine.BuildProtocolRotationRing(servers, "185.10.20.30", 443, null, false);
+        var nlStep = ring.FirstOrDefault(s => s.Host == "185.10.20.30" && s.Kind == TransportProtocolKind.ObxodkaStream);
+        var deStep = ring.FirstOrDefault(s => s.Host == "185.10.20.31" && s.Kind == TransportProtocolKind.ObxodkaStream);
+
+        Assert.NotNull(nlStep);
+        Assert.NotNull(deStep);
+        Assert.Equal("HASH_NL_1", nlStep.ExpectedCertHash);
+        Assert.Equal("HASH_DE_1", deStep.ExpectedCertHash);
+    }
+
     private sealed class TestRecordingStream : Stream
     {
         public List<byte[]> Writes { get; } = [];

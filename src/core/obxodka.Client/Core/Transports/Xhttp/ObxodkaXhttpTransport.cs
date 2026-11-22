@@ -699,6 +699,11 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
             while (!ct.IsCancellationRequested)
             {
                 var firstItem = await _txQueue.DequeueAsync(ct).ConfigureAwait(false);
+                if (firstItem.length <= 0)
+                {
+                    break;
+                }
+
                 var coalescedLen = 0;
                 var batchCount = 0;
                 var item = firstItem;
@@ -760,9 +765,9 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
-                                       or InvalidOperationException)
+                                       or InvalidOperationException or OperationCanceledException)
         {
             AppLogger.LogWarning($"[OBXODKA-XHTTP] Uplink writer stopped: {ex.Message}");
             NotifyDropOnce();

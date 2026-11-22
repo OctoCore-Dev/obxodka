@@ -224,7 +224,11 @@ public sealed partial class OctopusEngine
             ConnectedServerIp = step.Host;
             ConnectedServerPort = step.Port;
             ActiveTargetSni = step.TargetSni;
-            DynamicSslPublicKeyHash = step.ClearDynamicPinning ? null : DirectOriginCertHash;
+            DynamicSslPublicKeyHash = step.ClearDynamicPinning
+                ? null
+                : !string.IsNullOrWhiteSpace(step.ExpectedCertHash)
+                    ? step.ExpectedCertHash
+                    : DirectOriginCertHash;
 
             await PrepareExternalEndpointBypassAsync(step, ct).ConfigureAwait(false);
 
@@ -640,6 +644,7 @@ public sealed partial class OctopusEngine
             }
 
             var originalTransport = _transport;
+            var originalDynamicPinHash = DynamicSslPublicKeyHash;
             var totalSteps = _rotationRing.Count;
             string? failedCandidateName = null;
 
@@ -660,7 +665,11 @@ public sealed partial class OctopusEngine
                     continue;
                 }
 
-                DynamicSslPublicKeyHash = nextStep.ClearDynamicPinning ? null : DirectOriginCertHash;
+                DynamicSslPublicKeyHash = nextStep.ClearDynamicPinning
+                    ? null
+                    : !string.IsNullOrWhiteSpace(nextStep.ExpectedCertHash)
+                        ? nextStep.ExpectedCertHash
+                        : DirectOriginCertHash;
                 await PrepareExternalEndpointBypassAsync(nextStep, ct).ConfigureAwait(false);
 
                 var nextProtocolName = FormatStepProtocolName(nextStep);
@@ -792,6 +801,7 @@ public sealed partial class OctopusEngine
                 }
             }
 
+            DynamicSslPublicKeyHash = originalDynamicPinHash;
             return false;
         }
         finally

@@ -259,13 +259,13 @@ public static class SniEngine
                                                            !string.Equals(srv.Role, "shield", StringComparison.OrdinalIgnoreCase) &&
                                                            !string.Equals(srv.Provider, "Cloudflare", StringComparison.OrdinalIgnoreCase)))
         {
-            TryAddDirectServer(srv.Ip, srv.Port, srv.Location);
+            TryAddDirectServer(srv.Ip, srv.Port, srv.Location, srv.CertHash);
         }
 
         if (!string.IsNullOrWhiteSpace(AppConfig.DirectServerIp) &&
             !AppConfig.DirectServerIp.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
         {
-            TryAddDirectServer(AppConfig.DirectServerIp, 443, "Direct Origin");
+            TryAddDirectServer(AppConfig.DirectServerIp, 443, "Direct Origin", OctopusEngine.DirectOriginCertHash);
         }
 
         var preferredShieldHost = PickPreferredShieldHost(normalizedServers, configuredSni);
@@ -289,7 +289,7 @@ public static class SniEngine
 
         //резервный xhttp и ws напрямую к origin ip на случай полной блокировки всех cdn в регионе
         shieldXhttpSteps.AddRange(directStreamSteps.Select(direct => new ProtocolRouteStep(TransportProtocolKind.ObxodkaXhttp, direct.Host,
-            direct.Port, direct.Host, false, false, $"{direct.ServerLabel ?? direct.Host} (XHTTP)")));
+            direct.Port, direct.Host, false, false, $"{direct.ServerLabel ?? direct.Host} (XHTTP)", direct.ExpectedCertHash)));
 
         List<ProtocolRouteStep> penalizedDirect = [];
         List<ProtocolRouteStep> penalizedDirectXhttp = [];
@@ -338,7 +338,7 @@ public static class SniEngine
 
         return ring;
 
-        void TryAddDirectServer(string host, int port, string? label)
+        void TryAddDirectServer(string host, int port, string? label, string? certHash)
         {
             if (string.IsNullOrWhiteSpace(host) || IsShieldEndpoint(host, host) || !seenDirectHosts.Add(host))
             {
@@ -352,7 +352,8 @@ public static class SniEngine
                 null,
                 false,
                 false,
-                label));
+                label,
+                !string.IsNullOrWhiteSpace(certHash) ? certHash : OctopusEngine.DirectOriginCertHash));
         }
     }
 

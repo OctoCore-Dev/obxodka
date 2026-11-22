@@ -158,6 +158,8 @@ public sealed class ApiService(HttpClient client)
     {
         UseProxy = false,
         ConnectTimeout = TimeSpan.FromSeconds(5),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        PooledConnectionIdleTimeout = TimeSpan.FromSeconds(45),
         SslOptions = SslOptionsFactory.Create(dynamicPinningHash: ""),
         ConnectCallback = async (context, cToken) =>
         {
@@ -323,6 +325,8 @@ public sealed class ApiService(HttpClient client)
         {
             //подавление сетевой ошибки системного днс
         }
+
+        ct.ThrowIfCancellationRequested();
 
         if (!host.Contains("obxodka", StringComparison.OrdinalIgnoreCase) &&
             !host.Contains("octocore", StringComparison.OrdinalIgnoreCase))
@@ -749,11 +753,26 @@ public sealed class ApiService(HttpClient client)
         {
             var s = servers[i];
             var decodedIp = DecodeObfuscatedEndpoint(s.Ip);
-            if (!string.Equals(decodedIp, s.Ip, StringComparison.Ordinal))
+            string[]? decodedMirrors = null;
+            if (s.Mirrors is { Length: > 0 })
+            {
+                for (var m = 0; m < s.Mirrors.Length; m++)
+                {
+                    var dm = DecodeObfuscatedEndpoint(s.Mirrors[m]);
+                    if (!string.Equals(dm, s.Mirrors[m], StringComparison.Ordinal))
+                    {
+                        decodedMirrors ??= (string[])s.Mirrors.Clone();
+                        decodedMirrors[m] = dm;
+                    }
+                }
+            }
+
+            if (!string.Equals(decodedIp, s.Ip, StringComparison.Ordinal) || decodedMirrors is not null)
             {
                 servers[i] = s with
                 {
-                    Ip = decodedIp
+                    Ip = decodedIp,
+                    Mirrors = decodedMirrors ?? s.Mirrors
                 };
             }
         }

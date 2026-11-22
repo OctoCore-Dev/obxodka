@@ -31,7 +31,8 @@ public sealed record ProtocolRouteStep(
     string? TargetSni,
     bool ClearDynamicPinning,
     bool IsShield,
-    string? ServerLabel = null);
+    string? ServerLabel = null,
+    string? ExpectedCertHash = null);
 
 //контракт расширяемой фабрики транспортных протоколов
 public interface ITransportProtocolFactory

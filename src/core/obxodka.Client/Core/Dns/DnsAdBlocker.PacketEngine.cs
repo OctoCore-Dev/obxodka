@@ -273,7 +273,7 @@ public static partial class DnsAdBlocker
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
 
-            sum = ~sum;
+            sum = ~sum & 0xFFFF;
             if (sum == 0)
             {
                 sum = 0xFFFF;

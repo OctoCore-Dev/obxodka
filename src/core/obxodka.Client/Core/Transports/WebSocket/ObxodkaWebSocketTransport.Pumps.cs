@@ -224,6 +224,11 @@ public sealed partial class ObxodkaWebSocketTransport
             while (!ct.IsCancellationRequested)
             {
                 var firstItem = await _txQueue.DequeueAsync(ct).ConfigureAwait(false);
+                if (firstItem.length <= 0)
+                {
+                    break;
+                }
+
                 var coalescedLen = 0;
                 var batchCount = 0;
                 var item = firstItem;
