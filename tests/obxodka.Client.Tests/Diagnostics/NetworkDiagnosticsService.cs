@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace obxodka.Client.Diagnostics;
 
 //статус выполнения этапа сетевой диагностики
@@ -48,10 +50,12 @@ public sealed class DiagnosticReport
         {
             _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Дистанция до ТСПУ:     {TspuHopDistance} хопов (TTL-триангуляция)");
         }
+
         if (!string.IsNullOrEmpty(CanaryEchoDetails))
         {
             _ = sb.AppendLine(CultureInfo.InvariantCulture, $"Канареечное эхо:       {CanaryEchoDetails}");
         }
+
         _ = sb.AppendLine("--------------------------------------------------------------------------------");
         _ = sb.AppendLine("ЭТАПЫ ПРОВЕРКИ:");
         _ = sb.AppendLine("--------------------------------------------------------------------------------");
@@ -66,7 +70,8 @@ public sealed class DiagnosticReport
                 DiagnosticStatus.Skipped => "[SKIP]   ",
                 _ => "[INFO]   "
             };
-            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"{tag} {step.StepName,-32} ({step.Duration.TotalMilliseconds,5:F0} ms): {step.Details}");
+            _ = sb.AppendLine(CultureInfo.InvariantCulture,
+                $"{tag} {step.StepName,-32} ({step.Duration.TotalMilliseconds,5:F0} ms): {step.Details}");
         }
 
         _ = sb.AppendLine("--------------------------------------------------------------------------------");
@@ -82,7 +87,10 @@ public sealed class DiagnosticReport
 //служба комплексной диагностики сетевого подключения и обхода блокировок
 public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
 {
-    private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    private readonly HttpClient _httpClient = httpClient ?? new HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(5)
+    };
 
     //запуск полной цепочки сетевой диагностики
     public async Task<DiagnosticReport> RunFullDiagnosticsAsync(
@@ -98,7 +106,8 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         await RunStepAsync(report, "1. Локальная сеть и адаптер", () =>
         {
             InspectLocalEnvironment(report);
-            return (DiagnosticStatus.Passed, $"Интерфейс: {report.PrimaryInterfaceName}, MTU: {report.PrimaryInterfaceMtu}, Gateway: {report.DefaultGateway}");
+            return (DiagnosticStatus.Passed,
+                $"Интерфейс: {report.PrimaryInterfaceName}, MTU: {report.PrimaryInterfaceMtu}, Gateway: {report.DefaultGateway}");
         }, onStepCompleted);
 
         await RunStepAsync(report, "2. Системный DNS и DoH", async () =>
@@ -118,29 +127,36 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             var dohOk = await CheckDohConnectivityAsync(ct).ConfigureAwait(false);
             if (!dohOk)
             {
-                return (DiagnosticStatus.Warning, $"Системный DNS OK ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms), но DoH (dns.google) заблокирован");
+                return (DiagnosticStatus.Warning,
+                    $"Системный DNS OK ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms), но DoH (dns.google) заблокирован");
             }
 
-            return (DiagnosticStatus.Passed, $"Системный DNS ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms) и DoH (dns.google) доступны");
+            return (DiagnosticStatus.Passed,
+                $"Системный DNS ({systemAddrs.Length} IP, {systemDnsSw.ElapsedMilliseconds}ms) и DoH (dns.google) доступны");
         }, onStepCompleted);
 
         var tcp443Ok = false;
         await RunStepAsync(report, "3. Доступность TCP 443", async () =>
         {
-            using var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            using var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+            {
+                NoDelay = true
+            };
             var connectSw = Stopwatch.StartNew();
             try
             {
                 await socket.ConnectAsync(serverHost, serverPort, ct).ConfigureAwait(false);
                 connectSw.Stop();
                 tcp443Ok = true;
-                return (DiagnosticStatus.Passed, $"TCP 3-Way Handshake успешен для {serverHost}:{serverPort} (RTT: {connectSw.ElapsedMilliseconds} ms)");
+                return (DiagnosticStatus.Passed,
+                    $"TCP 3-Way Handshake успешен для {serverHost}:{serverPort} (RTT: {connectSw.ElapsedMilliseconds} ms)");
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
                 return (DiagnosticStatus.Failed, $"ТСПУ сбросил TCP SYN на {serverHost}:{serverPort} (TCP RST)");
             }
-            catch (Exception ex) when (ex is SocketException or OperationCanceledException or TimeoutException or ObjectDisposedException or InvalidOperationException)
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException or TimeoutException or ObjectDisposedException
+                                           or InvalidOperationException)
             {
                 return (DiagnosticStatus.Failed, $"Не удалось подключиться к {serverHost}:{serverPort}: {ex.Message}");
             }
@@ -159,7 +175,8 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         }
         else
         {
-            report.Steps.Add(new DiagnosticStepResult("4. Проверка TLS и ТСПУ", DiagnosticStatus.Skipped, "Пропущен, так как TCP 443 недоступен", TimeSpan.Zero));
+            report.Steps.Add(new DiagnosticStepResult("4. Проверка TLS и ТСПУ", DiagnosticStatus.Skipped,
+                "Пропущен, так как TCP 443 недоступен", TimeSpan.Zero));
         }
 
         var udp6767Ok = false;
@@ -170,6 +187,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             {
                 return (DiagnosticStatus.Passed, $"Порт {serverHost}:{udpPort} UDP отвечает");
             }
+
             return (DiagnosticStatus.Failed, $"Порт {serverHost}:{udpPort} UDP заблокирован или сброшен провайдером (Таймаут)");
         }, onStepCompleted);
 
@@ -180,12 +198,15 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             {
                 recommendedMtu = Math.Min(recommendedMtu, report.PrimaryInterfaceMtu - 80);
             }
-            return (DiagnosticStatus.Passed, $"Рекомендуемый безопасный MTU туннеля: {recommendedMtu} байт (Физический: {report.PrimaryInterfaceMtu})");
+
+            return (DiagnosticStatus.Passed,
+                $"Рекомендуемый безопасный MTU туннеля: {recommendedMtu} байт (Физический: {report.PrimaryInterfaceMtu})");
         }, onStepCompleted);
 
         await RunStepAsync(report, "7. TTL-триангуляция ТСПУ", async () =>
         {
-            var (hop, details) = await InSituDiagnosticsEngine.MapTspuHopDistanceAsync(serverHost, serverPort, 12, ct).ConfigureAwait(false);
+            var (hop, details) =
+                await InSituDiagnosticsEngine.MapTspuHopDistanceAsync(serverHost, serverPort, 12, ct).ConfigureAwait(false);
             report.TspuHopDistance = hop;
             var status = hop > 0 ? DiagnosticStatus.Warning : DiagnosticStatus.Passed;
             return (status, details);
@@ -233,7 +254,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 }
             }
         }
-        catch (Exception ex) when (ex is System.Net.NetworkInformation.NetworkInformationException or SocketException or PlatformNotSupportedException)
+        catch (Exception ex) when (ex is NetworkInformationException or SocketException or PlatformNotSupportedException)
         {
             report.PrimaryInterfaceName = "Default Physical Interface";
         }
@@ -260,7 +281,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                     {
                         //процесс завершился до чтения имени
                     }
-                    catch (System.ComponentModel.Win32Exception)
+                    catch (Win32Exception)
                     {
                         //нет прав на чтение системного процесса
                     }
@@ -276,7 +297,8 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
                 report.DetectedManagementSoftware = string.Join(", ", mgmtProcs);
             }
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException or PlatformNotSupportedException)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException
+                                       or PlatformNotSupportedException)
         {
             //подавление ошибки перечисления процессов операционной системы
         }
@@ -292,33 +314,39 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
             return resp.IsSuccessStatusCode;
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException
+                                       or OperationCanceledException)
         {
             return false;
         }
     }
 
     //проверка прохождения рукопожатия tls к серверу
-    [SuppressMessage("Security", "CA5359:DoNotDisableCertificateValidation", Justification = "Diagnostic probe requires checking TLS handshake independently of certificate trust.")]
+    [SuppressMessage("Security", "CA5359:DoNotDisableCertificateValidation",
+        Justification = "Diagnostic probe requires checking TLS handshake independently of certificate trust.")]
     private static async Task<(DiagnosticStatus status, string message)> TestTlsHandshakeAsync(
         string host,
         int port,
         CancellationToken ct)
     {
-        using var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        using var socket = new Socket(SocketType.Stream, ProtocolType.Tcp)
+        {
+            NoDelay = true
+        };
         try
         {
             await socket.ConnectAsync(host, port, ct).ConfigureAwait(false);
-            Stream netStream = new NetworkStream(socket, ownsSocket: true);
+            Stream netStream = new NetworkStream(socket, true);
 
-            using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false, (sender, cert, chain, errors) => true);
+            using var sslStream = new SslStream(netStream, false, (sender, cert, chain, errors) => true);
 
             var sslOptions = SslOptionsFactory.CreateStandard(
-                targetHost: "www.microsoft.com",
-                applicationProtocols: [SslApplicationProtocol.Http2]);
+                "www.microsoft.com",
+                [SslApplicationProtocol.Http2]);
 
             await sslStream.AuthenticateAsClientAsync(sslOptions, ct).ConfigureAwait(false);
-            return (DiagnosticStatus.Passed, $"Рукопожатие успешно (Протокол: {sslStream.SslProtocol}, ALPN: {sslStream.NegotiatedApplicationProtocol})");
+            return (DiagnosticStatus.Passed,
+                $"Рукопожатие успешно (Протокол: {sslStream.SslProtocol}, ALPN: {sslStream.NegotiatedApplicationProtocol})");
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == 10054)
         {
@@ -328,7 +356,8 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         {
             return (DiagnosticStatus.Failed, "ТСПУ оборвал соединение (TCP RST 10054) во время TLS ClientHello");
         }
-        catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException or TimeoutException or OperationCanceledException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException or TimeoutException
+                                       or OperationCanceledException or InvalidOperationException)
         {
             return (DiagnosticStatus.Failed, $"Ошибка TLS: {ex.Message}");
         }
@@ -351,7 +380,8 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             await Task.Delay(300, ct).ConfigureAwait(false);
             return true;
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException
+                                       or OperationCanceledException)
         {
             return false;
         }
@@ -385,7 +415,8 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
 
         if (report.TspuHopDistance > 0)
         {
-            _ = sb.AppendLine(CultureInfo.InvariantCulture, $"ТСПУ ЛОКАЛИЗОВАН: Дистанция до инспектора составляет {report.TspuHopDistance} хопов.");
+            _ = sb.AppendLine(CultureInfo.InvariantCulture,
+                $"ТСПУ ЛОКАЛИЗОВАН: Дистанция до инспектора составляет {report.TspuHopDistance} хопов.");
         }
 
         report.SummaryVerdict = sb.ToString().TrimEnd();
@@ -410,6 +441,7 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
             status = DiagnosticStatus.Failed;
             message = ex.Message;
         }
+
         sw.Stop();
 
         var result = new DiagnosticStepResult(stepName, status, message, sw.Elapsed);

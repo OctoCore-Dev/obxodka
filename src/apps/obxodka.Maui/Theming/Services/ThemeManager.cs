@@ -22,21 +22,16 @@ public sealed partial class ThemeManager
     //кроссплатформенный сервис хранения и загрузки ассетов тем
     private readonly ThemeStorageService _storageService;
 
-    public event Action<ThemeAppliedEventArgs>? OnThemeApplied;
-    public event Action? OnThemeReset;
-    public event Action<ThemeCatalogResponse>? OnCatalogUpdated;
-    public event Action<bool>? VideoEnabledChanged;
-    public event Action<bool>? SoundsEnabledChanged;
-    public event Action<bool>? ClickSoundsEnabledChanged;
-    public event Action<double>? SoundVolumeChanged;
-    public event Action<bool>? AmbientEnabledChanged;
-    public event Action<bool>? ParticlesEnabledChanged;
-    public event Action<bool>? FramesEnabledChanged;
-    public event Action<bool>? ParallaxEnabledChanged;
-    public event Action<bool>? AlwaysPlayVideoChanged;
-    public event Action<double>? CardOpacityChanged;
-    public event Action<double>? GlowIntensityChanged;
-    public event EventHandler<(string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error)>? ThemeDownloadProgressChanged;
+    private double? _cachedGlowIntensity;
+    private double? _cachedSoundVolume;
+    private bool _isSystemThemeSubscribed;
+
+    public ThemeManager()
+    {
+        Instance = this;
+        _storageService = new ThemeStorageService(Path.Combine(FileSystem.AppDataDirectory, "themes"));
+        EnsureSystemThemeTracking();
+    }
 
     public ThemeManifest? ActiveTheme { get; private set; }
     public string? ActiveThemeFolderPath { get; private set; }
@@ -52,6 +47,7 @@ public sealed partial class ThemeManager
             {
                 ThemeAudioService.UpdateAmbientState(false);
             }
+
             SoundsEnabledChanged?.Invoke(value);
         }
     }
@@ -65,8 +61,6 @@ public sealed partial class ThemeManager
             ClickSoundsEnabledChanged?.Invoke(value);
         }
     }
-
-    private double? _cachedSoundVolume;
 
     public double SoundVolume
     {
@@ -96,6 +90,7 @@ public sealed partial class ThemeManager
             {
                 ThemeAudioService.UpdateAmbientState(false);
             }
+
             AmbientEnabledChanged?.Invoke(value);
         }
     }
@@ -150,8 +145,6 @@ public sealed partial class ThemeManager
         }
     }
 
-    private double? _cachedGlowIntensity;
-
     public double GlowIntensity
     {
         get => _cachedGlowIntensity ??= Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
@@ -174,21 +167,34 @@ public sealed partial class ThemeManager
     public static ThemeManager? Instance { get; private set; }
     public static double CurrentGlowIntensity => Instance?.GlowIntensity ?? Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
 
-    public ThemeManager()
-    {
-        Instance = this;
-        _storageService = new ThemeStorageService(Path.Combine(FileSystem.AppDataDirectory, "themes"));
-        CaptureDefaultResourcesSnapshot();
-    }
+    public event Action<ThemeAppliedEventArgs>? OnThemeApplied;
+    public event Action? OnThemeReset;
+    public event Action? OnSystemThemeSynced;
+    public event Action<ThemeCatalogResponse>? OnCatalogUpdated;
+    public event Action<bool>? VideoEnabledChanged;
+    public event Action<bool>? SoundsEnabledChanged;
+    public event Action<bool>? ClickSoundsEnabledChanged;
+    public event Action<double>? SoundVolumeChanged;
+    public event Action<bool>? AmbientEnabledChanged;
+    public event Action<bool>? ParticlesEnabledChanged;
+    public event Action<bool>? FramesEnabledChanged;
+    public event Action<bool>? ParallaxEnabledChanged;
+    public event Action<bool>? AlwaysPlayVideoChanged;
+    public event Action<double>? CardOpacityChanged;
+    public event Action<double>? GlowIntensityChanged;
+
+    public event EventHandler<(string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error)>?
+        ThemeDownloadProgressChanged;
 
     public bool ApplyThemeById(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
+        var themeDir = _storageService.ResolveSafeThemeDirectory(themeId);
+        if (themeDir == null)
         {
             return false;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
+        var manifestPath = Path.Join(themeDir, "theme.json");
         if (!File.Exists(manifestPath))
         {
             return false;
@@ -208,12 +214,13 @@ public sealed partial class ThemeManager
 
     public async Task<bool> ApplyThemeByIdAsync(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
+        var themeDir = _storageService.ResolveSafeThemeDirectory(themeId);
+        if (themeDir == null)
         {
             return false;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
+        var manifestPath = Path.Join(themeDir, "theme.json");
         if (!File.Exists(manifestPath))
         {
             return false;
@@ -231,27 +238,83 @@ public sealed partial class ThemeManager
         }
     }
 
-    public async Task<bool> ApplyThemeAsync(ThemeManifest manifest) =>
+    public async Task<bool> ApplyThemeAsync(ThemeManifest? manifest) =>
         manifest != null &&
         ThemeValidator.ValidateManifest(manifest, out _) &&
         (MainThread.IsMainThread
             ? ApplyTheme(manifest)
             : await MainThread.InvokeOnMainThreadAsync(() => ApplyTheme(manifest)).ConfigureAwait(false));
 
+    //проверка что пользователь использует тему по умолчанию а не кастомную тему
+    public bool IsUsingSystemDefaultTheme()
+    {
+        if (ActiveTheme is not null)
+        {
+            return false;
+        }
+
+        var savedId = Preferences.Default.Get<string?>(ActiveThemeKey, null);
+        return string.IsNullOrWhiteSpace(savedId) ||
+               string.Equals(savedId, DefaultThemePreferenceValue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    //подписка на переключение светлой и темной темы ос для темы по умолчанию
+    private void EnsureSystemThemeTracking()
+    {
+        if (_isSystemThemeSubscribed || Application.Current is not { } app)
+        {
+            return;
+        }
+
+        _isSystemThemeSubscribed = true;
+        app.RequestedThemeChanged += OnAppRequestedThemeChanged;
+    }
+
+    private void OnAppRequestedThemeChanged(object? sender, AppThemeChangedEventArgs e)
+    {
+        if (!IsUsingSystemDefaultTheme())
+        {
+            return;
+        }
+
+        var targetTheme = e.RequestedTheme == AppTheme.Light ? AppTheme.Light : AppTheme.Dark;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!IsUsingSystemDefaultTheme())
+            {
+                return;
+            }
+
+            ApplySystemDefaultPalette(targetTheme);
+            OnSystemThemeSynced?.Invoke();
+        });
+    }
+
     //восстановление активной темы при запуске приложения из локального хранилища
     public void RestoreActiveThemeAtStartup()
     {
-        EnsureDefaultResourcesCaptured();
+        EnsureSystemThemeTracking();
 
         var activeId = Preferences.Default.Get<string?>(ActiveThemeKey, null);
         if (string.IsNullOrWhiteSpace(activeId) ||
             string.Equals(activeId, DefaultThemePreferenceValue, StringComparison.OrdinalIgnoreCase))
         {
+            if (MainThread.IsMainThread)
+            {
+                ApplySystemDefaultPalette(GetEffectiveSystemTheme());
+            }
+            else
+            {
+                MainThread.BeginInvokeOnMainThread(() => ApplySystemDefaultPalette(GetEffectiveSystemTheme()));
+            }
+
+            OnSystemThemeSynced?.Invoke();
             return;
         }
 
-        var manifestPath = Path.Combine(ThemesDirectory, activeId.TrimStart('/', '\\'), "theme.json");
-        if (!File.Exists(manifestPath))
+        var themeDir = _storageService.ResolveSafeThemeDirectory(activeId);
+        var manifestPath = themeDir != null ? Path.Join(themeDir, "theme.json") : null;
+        if (manifestPath == null || !File.Exists(manifestPath))
         {
             Preferences.Default.Remove(ActiveThemeKey);
             ResetToDefault();

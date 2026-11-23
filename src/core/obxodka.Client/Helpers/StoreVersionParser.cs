@@ -12,7 +12,8 @@ public static partial class StoreVersionParser
     [GeneratedRegex(@"\b([a-fA-F0-9]{64})\s+(\S+)")]
     private static partial Regex Sha256ChecksumLineRegex();
 
-    [GeneratedRegex(@"^\s*#+\s*(\[CHANGELOG\]|Release Notes|Что нового|What's Changed).*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    [GeneratedRegex(@"^\s*#+\s*(\[CHANGELOG\]|Release Notes|Что нового|What's Changed).*$",
+        RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex ChangelogHeaderRegex();
 
     [GeneratedRegex(@"^\s*#+\s*(\[CHECKSUMS\]|Checksums|SHA256).*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
@@ -48,7 +49,7 @@ public static partial class StoreVersionParser
     }
 
     //извлечение ожидаемого sha256 хеша для указанного файла из описания релиза
-    public static string? ExtractSha256FromReleaseBody(string? body, string? targetFileName)
+    private static string? ExtractSha256FromReleaseBody(string? body, string? targetFileName)
     {
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -56,32 +57,15 @@ public static partial class StoreVersionParser
         }
 
         var lines = body.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var match in lines.Select(line => Sha256ChecksumLineRegex().Match(line)))
-        {
-            if (!match.Success)
-            {
-                continue;
-            }
-
-            var hash = match.Groups[1].Value.ToLowerInvariant();
-            var file = match.Groups[2].Value;
-
-            if (!string.IsNullOrWhiteSpace(targetFileName) &&
-                (file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
-                 targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)))
-            {
-                return hash;
-            }
-
-            if (string.IsNullOrWhiteSpace(targetFileName) &&
-                (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                 file.Contains("Setup", StringComparison.OrdinalIgnoreCase)))
-            {
-                return hash;
-            }
-        }
-
-        return null;
+        return (from match in lines.Select(line => Sha256ChecksumLineRegex().Match(line))
+                where match.Success
+                let hash = match.Groups[1].Value.ToLowerInvariant()
+                let file = match.Groups[2].Value
+                where !string.IsNullOrWhiteSpace(targetFileName) && (file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
+                                                                     targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)) ||
+                      string.IsNullOrWhiteSpace(targetFileName) && (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                                                                    file.Contains("Setup", StringComparison.OrdinalIgnoreCase))
+                select hash).FirstOrDefault();
     }
 
     //очистка текста релиза от технических хешей sha256 и служебных секций
@@ -99,7 +83,7 @@ public static partial class StoreVersionParser
             : body;
 
         var lines = sourceText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var cleanedLines = new List<string>(lines.Length);
+        List<string> cleanedLines = [with(lines.Length)];
         var insideCodeBlock = false;
 
         foreach (var line in lines)
@@ -167,23 +151,29 @@ public static partial class StoreVersionParser
                 foreach (var asset in assets.EnumerateArray())
                 {
                     var name = asset.TryGetProperty("name", out var np) ? np.GetString() ?? string.Empty : string.Empty;
-                    if (asset.TryGetProperty("browser_download_url", out var urlProp))
+                    if (!asset.TryGetProperty("browser_download_url", out var urlProp))
                     {
-                        var url = urlProp.GetString();
-                        if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) || name.Contains("Installer", StringComparison.OrdinalIgnoreCase))
-                        {
-                            downloadUrl = url;
-                            installerFileName = name;
-                            break;
-                        }
-                        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                            name.EndsWith(".msixbundle", StringComparison.OrdinalIgnoreCase) ||
-                            name.EndsWith(".msix", StringComparison.OrdinalIgnoreCase))
-                        {
-                            downloadUrl = url;
-                            installerFileName = name;
-                        }
+                        continue;
                     }
+
+                    var url = urlProp.GetString();
+                    if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Installer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        downloadUrl = url;
+                        installerFileName = name;
+                        break;
+                    }
+
+                    if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                        !name.EndsWith(".msixbundle", StringComparison.OrdinalIgnoreCase) &&
+                        !name.EndsWith(".msix", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    downloadUrl = url;
+                    installerFileName = name;
                 }
             }
 
@@ -226,23 +216,25 @@ public static partial class StoreVersionParser
             }
 
             foreach (var pkgs in skus.EnumerateArray()
-                .Where(sku => sku.TryGetProperty("Sku", out var skuObj) &&
-                              skuObj.TryGetProperty("Properties", out var props) &&
-                              props.TryGetProperty("Packages", out var pkgs) &&
-                              pkgs.ValueKind == JsonValueKind.Array)
-                .Select(sku => sku.GetProperty("Sku").GetProperty("Properties").GetProperty("Packages")))
+                         .Where(sku => sku.TryGetProperty("Sku", out var skuObj) &&
+                                       skuObj.TryGetProperty("Properties", out var props) &&
+                                       props.TryGetProperty("Packages", out var pkgs) &&
+                                       pkgs.ValueKind == JsonValueKind.Array)
+                         .Select(sku => sku.GetProperty("Sku").GetProperty("Properties").GetProperty("Packages")))
             {
                 foreach (var rawVerStr in pkgs.EnumerateArray()
-                    .Select(pkg => pkg.TryGetProperty("Version", out var verProp) ? verProp.GetString() : null)
-                    .Where(static s => !string.IsNullOrEmpty(s)))
+                             .Select(pkg => pkg.TryGetProperty("Version", out var verProp) ? verProp.GetString() : null)
+                             .Where(static s => !string.IsNullOrEmpty(s)))
                 {
-                    if (ulong.TryParse(rawVerStr, out var rawVer) && rawVer > 0)
+                    if (!ulong.TryParse(rawVerStr, out var rawVer) || rawVer <= 0)
                     {
-                        var major = (rawVer >> 48) & 0xFFFF;
-                        var minor = (rawVer >> 32) & 0xFFFF;
-                        var build = (rawVer >> 16) & 0xFFFF;
-                        return $"{major}.{minor}.{build}";
+                        continue;
                     }
+
+                    var major = (rawVer >> 48) & 0xFFFF;
+                    var minor = (rawVer >> 32) & 0xFFFF;
+                    var build = (rawVer >> 16) & 0xFFFF;
+                    return $"{major}.{minor}.{build}";
                 }
             }
         }
@@ -314,6 +306,8 @@ public static partial class StoreVersionParser
         var parts = trimmed.Split('.');
         return parts.Length == 1 && int.TryParse(parts[0], out _)
             ? $"{parts[0]}.0.0"
-            : parts.Length == 2 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _) ? $"{parts[0]}.{parts[1]}.0" : trimmed;
+            : parts.Length == 2 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _)
+                ? $"{parts[0]}.{parts[1]}.0"
+                : trimmed;
     }
 }

@@ -2,7 +2,7 @@ namespace obxodka.Client.Tests.Security;
 
 public class ReleaseIntegrityTests
 {
-    private static readonly Dictionary<string, (string[] RequiredTokens, string Description)> t_criticalLibraries =
+    private static readonly Dictionary<string, (string[] RequiredTokens, string Description)> s_tCriticalLibraries =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["CommunityToolkit.Maui.MediaElement"] = (["media3", "exoplayer"], "MediaElement / ExoPlayer video engine"),
@@ -24,11 +24,7 @@ public class ReleaseIntegrityTests
             return ghWorkspace;
         }
 
-        var candidates = new[]
-        {
-            Directory.GetCurrentDirectory(),
-            AppContext.BaseDirectory
-        };
+        var candidates = new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory };
 
         foreach (var start in candidates)
         {
@@ -46,6 +42,7 @@ public class ReleaseIntegrityTests
                 {
                     return current.FullName;
                 }
+
                 current = current.Parent;
             }
         }
@@ -82,7 +79,7 @@ public class ReleaseIntegrityTests
 
         var rulesText = File.ReadAllText(proguardCfgPath);
 
-        foreach (var (pkgKey, (tokens, desc)) in t_criticalLibraries)
+        foreach (var (pkgKey, (tokens, desc)) in s_tCriticalLibraries)
         {
             var isReferenced = packageRefs.Any(p => p.Contains(pkgKey, StringComparison.OrdinalIgnoreCase));
             if (!isReferenced)
@@ -113,7 +110,8 @@ public class ReleaseIntegrityTests
             .Cast<string>()
             .ToList();
 
-        foreach (var perm in permissions.Where(p => p.StartsWith("android.permission.FOREGROUND_SERVICE_", StringComparison.OrdinalIgnoreCase)))
+        foreach (var perm in permissions.Where(p =>
+                     p.StartsWith("android.permission.FOREGROUND_SERVICE_", StringComparison.OrdinalIgnoreCase)))
         {
             var isAllowed = string.Equals(perm, "android.permission.FOREGROUND_SERVICE_SPECIAL_USE", StringComparison.OrdinalIgnoreCase);
             Assert.True(

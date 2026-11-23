@@ -23,6 +23,9 @@ updates:
           - "SkiaSharp*"
           - "CommunityToolkit.*"
           - "AathifMahir.*"
+      avalonia:
+        patterns:
+          - "Avalonia*"
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -2,15 +2,50 @@ namespace obxodka.Core;
 
 public sealed partial class OctopusEngine
 {
-    private long _watchdogArmedTicks;
-    private CancellationTokenSource? _mtuScanCts;
     private int _isScanningMtu;
+    private CancellationTokenSource? _mtuScanCts;
+    private long _watchdogArmedTicks;
 
     //взвод сторожевого таймера контроля зависания трафика
+    //включение фонового сторожевого контроля трафика и калибровки mtu
     public void ArmTrafficWatchdog()
     {
         Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
-        ScheduleSmartMtuScan(2500);
+        Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
+        if (_transport is ObxodkaWebSocketTransport or ObxodkaXhttpTransport)
+        {
+            //на облачных edge-каналах не бьем пачками зондов сразу после хэндшейка чтобы не триггерить тспу/waf
+            LockEdgeTransportMtu(_transport);
+            return;
+        }
+
+        ScheduleSmartMtuScan(4000);
+    }
+
+    //фиксация безопасного mtu 1280 для облачных транспортов с синхронизацией ос и сервера
+    private void LockEdgeTransportMtu(IVpnTransport? transport)
+    {
+        if (transport is null)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            const int targetMtu = SmartMtuEngine.DefaultMtu;
+            try
+            {
+                SmartMtuEngine.CurrentMtu = targetMtu;
+                EmitStatus(VpnStatusMessages.MtuSyncingWithServer(targetMtu));
+                await transport.SendMtuSyncAsync(targetMtu).ConfigureAwait(false);
+                OnMtuUpdated?.Invoke(targetMtu);
+                EmitStatus(VpnStatusMessages.MtuLocked(targetMtu));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                AppLogger.LogWarning($"[SMART MTU] Edge MTU lock sync error: {ex.Message}");
+            }
+        });
     }
 
     //планирование отложенного интеллектуального замера mtu
@@ -55,7 +90,8 @@ public sealed partial class OctopusEngine
                     _ = await ScanAndLockOptimalMtuAsync(token).ConfigureAwait(false);
                 }
             }
-            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or SocketException)
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException
+                                           or SocketException)
             {
                 //подавление отмены задачи фонового замера mtu
             }
@@ -66,26 +102,20 @@ public sealed partial class OctopusEngine
     public async Task<int> ScanAndLockOptimalMtuAsync(CancellationToken ct = default)
     {
         var transport = _transport;
-        if (!IsConnected || transport is null)
-        {
-            return SmartMtuEngine.CurrentMtu;
-        }
-
-        if (Interlocked.CompareExchange(ref _isScanningMtu, 1, 0) != 0)
+        if (!IsConnected || transport is null || Interlocked.CompareExchange(ref _isScanningMtu, 1, 0) != 0)
         {
             return SmartMtuEngine.CurrentMtu;
         }
 
         try
         {
-            EmitStatus(VpnStatusMessages.ScanningMtuHole(SmartMtuEngine.MaxMtu, SmartMtuEngine.MinMtu, 8));
+            EmitStatus(VpnStatusMessages.ScanningMtuHole(SmartMtuEngine.MaxMtu, SmartMtuEngine.MinMtu));
             var burstResults = await transport.MeasureBurstMtuAsync(ct).ConfigureAwait(false);
             var optimalMtu = SmartMtuEngine.DefaultMtu;
 
             if (burstResults.Length > 0)
             {
-                var downlinkMax = Math.Clamp(burstResults.Max(), SmartMtuEngine.MinMtu, SmartMtuEngine.MaxMtu);
-                optimalMtu = downlinkMax;
+                var downlinkMax = burstResults.Max();
 
                 //проверяем проходимость найденного кандидата и в обратном направлении (uplink probe)
                 var steps = SmartMtuEngine.MtuEscalationSteps;
@@ -97,11 +127,13 @@ public sealed partial class OctopusEngine
                         continue;
                     }
 
-                    if (await transport.ProbeMtuAsync(candidate, ct).ConfigureAwait(false))
+                    if (!await transport.ProbeMtuAsync(candidate, ct).ConfigureAwait(false))
                     {
-                        optimalMtu = candidate;
-                        break;
+                        continue;
                     }
+
+                    optimalMtu = candidate;
+                    break;
                 }
 
                 EmitStatus(VpnStatusMessages.MtuHoleFound(optimalMtu));
@@ -163,11 +195,6 @@ public sealed partial class OctopusEngine
             var mtuBlackholeWindows = 0;
             var deadTicks = 0;
 
-            void OnPing(long _)
-            {
-                deadTicks = 0;
-                rxStallStartSent = TotalBytesSent;
-            }
             OnPingUpdated += OnPing;
 
             try
@@ -199,19 +226,27 @@ public sealed partial class OctopusEngine
                         var elapsedMs = Environment.TickCount64 - armedTicks;
                         var bytesSentDuringStall = currentSent - rxStallStartSent;
 
-                        //периодическая проверка живучести канала эхо-зондом при накоплении задержки
-                        if (deadTicks >= 35 && deadTicks % 25 == 0)
+                        //ранний эхо-зонд при застое rx для быстрой проверки канала (на облачных каналах зондируем на 3с и 5с)
+                        var isDirectStream = _transport is ObxodkaStreamTransport;
+                        var sendActivePing = isDirectStream
+                            ? deadTicks == 20 || deadTicks >= 25 && deadTicks % 15 == 0
+                            : deadTicks == 15 || deadTicks == 25 || deadTicks >= 35 && deadTicks % 15 == 0;
+                        if (sendActivePing)
                         {
                             _ = _transport?.SendPingProbeAsync();
                         }
 
-                        //раннее обнаружение заморозки прямого h2 соединения тспу на пороге 16-32 кб с бесшовным уходом на щит
-                        if (_transport is ObxodkaStreamTransport &&
-                            deadTicks >= 25 &&
-                            (currentSent >= 16384 || bytesSentDuringStall >= 8192))
+                        //раннее переключение по круговому кольцу: для прямого потока при тспу 5с, для облачных щитов 9с с подтвержденным провалом пинга
+                        var shouldRotateEarly = isDirectStream
+                            ? deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192)
+                            : deadTicks >= 45 && bytesSentDuringStall >= 4096 || deadTicks >= 55;
+                        if (shouldRotateEarly)
                         {
-                            var escalated = await TryEscalateToShieldAsync("DirectStreamByteCapFreeze", token).ConfigureAwait(false);
-                            if (escalated)
+                            var reason = isDirectStream
+                                ? "DirectStreamByteCapFreeze"
+                                : "MidSessionRxStall";
+                            var rotated = await TryRotateProtocolAsync(reason, token).ConfigureAwait(false);
+                            if (rotated)
                             {
                                 deadTicks = 0;
                                 lastSent = TotalBytesSent;
@@ -222,18 +257,28 @@ public sealed partial class OctopusEngine
                         }
 
                         var isInitialBlackhole = currentReceived < 5000 &&
-                                                 elapsedMs is >= 12000 and < 60000 &&
-                                                 (currentSent > 20000 || bytesSentDuringStall > 16384) &&
-                                                 deadTicks >= 45;
+                                                 elapsedMs is >= 10000 and < 60000 &&
+                                                 (currentSent > 12000 || bytesSentDuringStall > 8192) &&
+                                                 deadTicks >= (isDirectStream ? 35 : 55);
 
                         var isDead = isInitialBlackhole ||
-                                     (_transport is ObxodkaStreamTransport && bytesSentDuringStall > 32768 && deadTicks >= 55) ||
-                                     (currentReceived < 5000 && deadTicks >= 70) ||
-                                     deadTicks >= 150;
+                                     bytesSentDuringStall > 32768 && deadTicks >= (isDirectStream ? 45 : 65) ||
+                                     currentReceived < 5000 && deadTicks >= (isDirectStream ? 55 : 70) ||
+                                     deadTicks >= 90;
 
                         if (isDead)
                         {
-                            AppLogger.LogWarning($"[ENGINE] Dead connection detected. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
+                            if (await TryRotateProtocolAsync("DeadConnectionRecovery", token).ConfigureAwait(false))
+                            {
+                                deadTicks = 0;
+                                lastSent = TotalBytesSent;
+                                lastReceived = TotalBytesReceived;
+                                rxStallStartSent = lastSent;
+                                continue;
+                            }
+
+                            AppLogger.LogWarning(
+                                $"[ENGINE] Dead connection detected across entire ring. InitialBlackhole={isInitialBlackhole}, TX={currentSent}, RX={currentReceived}, StallTX={bytesSentDuringStall}, DeadTicks={deadTicks}");
                             OnDeadConnectionDetected?.Invoke();
                             break;
                         }
@@ -242,6 +287,28 @@ public sealed partial class OctopusEngine
                     {
                         deadTicks = 0;
                         rxStallStartSent = currentSent;
+                    }
+                    else
+                    {
+                        //контроль тихой заморозки без активного tx (протухший keepalive/edge у cloudflare или тспу)
+                        var lastHealthy = Volatile.Read(ref _lastHealthyRxTicks);
+                        if (lastHealthy > 0)
+                        {
+                            var silenceSec = (Stopwatch.GetTimestamp() - lastHealthy) / (double)Stopwatch.Frequency;
+                            switch (silenceSec)
+                            {
+                                case >= 18.0 when Environment.TickCount64 - armedTicks >= 5000 &&
+                                                  await TryRotateProtocolAsync("PongSilenceTimeout", token).ConfigureAwait(false):
+                                    deadTicks = 0;
+                                    lastSent = TotalBytesSent;
+                                    lastReceived = TotalBytesReceived;
+                                    rxStallStartSent = lastSent;
+                                    continue;
+                                case >= 14.0 when deadTicks % 10 == 0:
+                                    _ = _transport?.SendPingProbeAsync();
+                                    break;
+                            }
+                        }
                     }
 
                     windowTicks++;
@@ -267,7 +334,8 @@ public sealed partial class OctopusEngine
                                     SmartMtuEngine.CurrentMtu = fallbackMtu;
                                     _ = _transport?.SendMtuSyncAsync(fallbackMtu);
                                     OnMtuUpdated?.Invoke(fallbackMtu);
-                                    AppLogger.LogWarning($"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, RX=0). Stepped down to {fallbackMtu}B and rescheduling scan.");
+                                    AppLogger.LogWarning(
+                                        $"[SMART MTU] Mid-session MTU blackhole detected (LargeTX={deltaLargeTx}, RX=0). Stepped down to {fallbackMtu}B and rescheduling scan.");
                                     ScheduleSmartMtuScan(4000);
                                 }
                             }
@@ -298,6 +366,14 @@ public sealed partial class OctopusEngine
             finally
             {
                 OnPingUpdated -= OnPing;
+            }
+
+            return;
+
+            void OnPing(long _)
+            {
+                deadTicks = 0;
+                rxStallStartSent = TotalBytesSent;
             }
         }, token);
     }

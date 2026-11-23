@@ -1,8 +1,3 @@
-using System.Buffers.Binary;
-using obxodka.Shared.MtuEngine;
-using obxodka.Shared.Stealth;
-using Xunit;
-
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Unit")]
@@ -107,7 +102,8 @@ public sealed class SmartMtuEngineTests
         originalPacket[19] = 1;
 
         var clientMtu = 1360;
-        var built = Ipv4MtuHandler.TryBuildIcmpFragmentationNeeded(originalPacket.AsSpan(0, 1400), 1400, clientMtu, out var icmpPkt, out var icmpLen);
+        var built = Ipv4MtuHandler.TryBuildIcmpFragmentationNeeded(originalPacket.AsSpan(0, 1400), 1400, clientMtu, out var icmpPkt,
+            out var icmpLen);
 
         Assert.True(built);
         Assert.NotNull(icmpPkt);
@@ -121,7 +117,7 @@ public sealed class SmartMtuEngineTests
         var reportedMtu = BinaryPrimitives.ReadUInt16BigEndian(icmpPkt.AsSpan(26, 2));
         Assert.Equal(clientMtu, reportedMtu);
 
-        System.Buffers.ArrayPool<byte>.Shared.Return(icmpPkt);
+        ArrayPool<byte>.Shared.Return(icmpPkt);
     }
 
     [Fact]
@@ -135,13 +131,15 @@ public sealed class SmartMtuEngineTests
         {
             originalPacket[i] = (byte)(i + 1);
         }
+
         for (var i = 24; i < 40; i++)
         {
             originalPacket[i] = (byte)(i + 2);
         }
 
         var clientMtu = 1300;
-        var built = Ipv6MtuHandler.TryBuildIcmpPacketTooBig(originalPacket.AsSpan(0, 1440), 1440, clientMtu, out var icmpPkt, out var icmpLen);
+        var built = Ipv6MtuHandler.TryBuildIcmpPacketTooBig(originalPacket.AsSpan(0, 1440), 1440, clientMtu, out var icmpPkt,
+            out var icmpLen);
 
         Assert.True(built);
         Assert.NotNull(icmpPkt);
@@ -155,7 +153,7 @@ public sealed class SmartMtuEngineTests
         var reportedMtu = BinaryPrimitives.ReadUInt32BigEndian(icmpPkt.AsSpan(44, 4));
         Assert.Equal((uint)clientMtu, reportedMtu);
 
-        System.Buffers.ArrayPool<byte>.Shared.Return(icmpPkt);
+        ArrayPool<byte>.Shared.Return(icmpPkt);
     }
 
     [Fact]

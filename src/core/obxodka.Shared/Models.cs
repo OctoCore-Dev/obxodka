@@ -43,8 +43,7 @@ public sealed record DeviceItem(
     string? Name,
     DateTime LastActive)
 {
-    [JsonIgnore]
-    public bool IsCurrentDevice { get; set; }
+    [JsonIgnore] public bool IsCurrentDevice { get; set; }
 
     public string LastActiveText => IsCurrentDevice
         ? "Активно сейчас"
@@ -135,6 +134,7 @@ public sealed record VpnServerDto(
                 hash.Add(Mirrors[i]);
             }
         }
+
         return hash.ToHashCode();
     }
 }
@@ -149,7 +149,9 @@ public sealed record TelemetryDto(
     string? Environment = "production");
 
 // сообщение
-public sealed record MessageResponse([property: JsonPropertyName("message")] string Message);
+public sealed record MessageResponse(
+    [property: JsonPropertyName("message")]
+    string Message);
 
 //получение ссылки для оплаты
 public sealed record PaymentLinkResponse([property: JsonPropertyName("url")] string Url);
@@ -158,25 +160,57 @@ public sealed record PaymentLinkResponse([property: JsonPropertyName("url")] str
 public sealed record CreateInvoiceRequest(
     [property: JsonPropertyName("email")] string Email,
     [property: JsonPropertyName("amount")] decimal Amount,
-    [property: JsonPropertyName("offerId")] string? OfferId = null,
-    [property: JsonPropertyName("returnUrl")] string? ReturnUrl = null,
-    [property: JsonPropertyName("autoCreateUser")] bool AutoCreateUser = false);
+    [property: JsonPropertyName("offerId")]
+    string? OfferId = null,
+    [property: JsonPropertyName("returnUrl")]
+    string? ReturnUrl = null,
+    [property: JsonPropertyName("autoCreateUser")]
+    bool AutoCreateUser = false,
+    [property: JsonPropertyName("currency")]
+    string Currency = "RUB",
+    [property: JsonPropertyName("paymentMethod")]
+    string? PaymentMethod = null);
+
+//результат сверки незавершенных платежей пользователя
+public sealed record PaymentSyncResponse(
+    [property: JsonPropertyName("credited")]
+    bool Credited,
+    [property: JsonPropertyName("balanceSeconds")]
+    long BalanceSeconds,
+    [property: JsonPropertyName("pendingCount")]
+    int PendingCount,
+    [property: JsonPropertyName("message")]
+    string? Message = null);
 
 // запрос от клиента к серверу
 public sealed record GooglePurchaseVerifyRequest(string ProductId, string PurchaseToken, string? OrderId);
+
 //ответ от сервера к клиенту
 public sealed record GooglePurchaseVerifyResponse(bool Success, int SecondsAdded = 0, long NewBalance = 0, string? Message = null);
 
 //отзывы
 public sealed record PostReviewRequest(string Text, int? Rating, Guid? ParentId);
+
 public sealed record PostReviewResponse(string Message, Guid Id);
+
 public sealed record ReviewReplyDto(Guid Id, string? Author, string Text, DateTime CreatedAt);
-public sealed record ReviewDto(Guid Id, string? Author, string Text, int? Rating, int Likes, DateTime CreatedAt, List<ReviewReplyDto> Replies);
+
+public sealed record ReviewDto(
+    Guid Id,
+    string? Author,
+    string Text,
+    int? Rating,
+    int Likes,
+    DateTime CreatedAt,
+    List<ReviewReplyDto> Replies);
+
 public sealed record LikeResponse(int Likes);
 
 //реферальная ссылка друга для приглашение
 public sealed record ReferralFriendDto(string EmailMasked, DateTime ActivatedAt, int BonusHours);
+
 public sealed record ReferralCodeResponse(string Code, int ActivatedCount, long BalanceSeconds, List<ReferralFriendDto> Friends);
+
 public sealed record ActivateReferralRequest(string Code);
 
 //диагностика и подключение

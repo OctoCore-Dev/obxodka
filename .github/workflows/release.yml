@@ -6,6 +6,7 @@ on:
       - main
       - master
       - develop
+      - feat/dotnet11
     paths-ignore:
       - '**.md'
       - '.gitignore'
@@ -74,7 +75,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 5
 
@@ -110,13 +111,13 @@ jobs:
           echo -e "${CYAN}[INFO] Target Version:${RESET} $CUR_VER"
           echo -e "${CYAN}[INFO] Build Number:${RESET} $CUR_BUILD"
 
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" != "tag" ]; then
             PREV_PROPS=$(git show HEAD~1:"$PROPS" 2>/dev/null || echo "")
             if [ -n "$PREV_PROPS" ]; then
               PREV_BUILD=$(echo "$PREV_PROPS" | grep -oPm1 "(?<=<AppBuildNumber>)[^<]+" || echo "")
               if [ -n "$PREV_BUILD" ] && [ "$CUR_BUILD" -le "$PREV_BUILD" ] 2>/dev/null; then
-                if [ "${{ github.ref_name }}" = "develop" ]; then
-                  echo -e "${CYAN}[INFO] Build number ($CUR_BUILD) <= previous commit ($PREV_BUILD) on develop.${RESET}"
+                if [ "${{ github.ref_name }}" = "develop" ] || [ "${{ github.ref_name }}" = "feat/dotnet11" ]; then
+                  echo -e "${CYAN}[INFO] Build number ($CUR_BUILD) <= previous commit ($PREV_BUILD) on ${{ github.ref_name }}.${RESET}"
                   echo -e "${CYAN}[INFO] Regular code push: skipping automated release pipeline.${RESET}"
                   echo "should_release=false" >> $GITHUB_OUTPUT
                   exit 0
@@ -139,7 +140,13 @@ jobs:
           TAG_NAME="v$CUR_VER"
           REL_TITLE="Obxodka v$CUR_VER (Build $CUR_BUILD)"
 
-          if [ "$BRANCH" = "develop" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG_NAME="$BRANCH"
+            if [[ "$BRANCH" == *"-"* ]]; then
+              IS_DEV="true"
+              REL_TITLE="Obxodka v$CUR_VER Pre-Release (Build $CUR_BUILD)"
+            fi
+          elif [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
             IS_DEV="true"
             TAG_NAME="v$CUR_VER-build.$CUR_BUILD"
             REL_TITLE="Obxodka v$CUR_VER Pre-Release (Build $CUR_BUILD)"
@@ -169,12 +176,12 @@ jobs:
   # ============================================================
   run-tests:
     name: "[TESTS] Automated Client xUnit Suite"
-    needs: [check-version]
+    needs: [ check-version ]
     if: needs.check-version.outputs.should_release != 'false'
     runs-on: windows-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -183,13 +190,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
-      - name: "[SETUP] .NET 10 SDK"
-        uses: actions/setup-dotnet@v4
+      - name: "[SETUP] .NET 11 SDK"
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] NuGet Package Dependencies"
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
@@ -217,31 +224,31 @@ jobs:
   # ============================================================
   build-android:
     name: "[BUILD-ANDROID] MAUI AAB & APK Packages"
-    needs: [check-version, run-tests]
+    needs: [ check-version, run-tests ]
     runs-on: ubuntu-latest
     if: |
       (needs.check-version.outputs.should_release != 'false') &&
       (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows')
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: "[SETUP] Microsoft OpenJDK 17"
-        uses: actions/setup-java@v4
+      - name: "[SETUP] Microsoft OpenJDK 21"
+        uses: actions/setup-java@v6
         with:
           distribution: "microsoft"
-          java-version: "17"
+          java-version: "21"
 
-      - name: "[SETUP] .NET 10 SDK"
-        uses: actions/setup-dotnet@v4
+      - name: "[SETUP] .NET 11 SDK"
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] NuGet Package Dependencies"
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
@@ -291,7 +298,7 @@ jobs:
           fi
 
           if [ "${{ needs.check-version.outputs.is_prerelease }}" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS -p:DefineConstants=TESTING_BUILD"
+            EXTRA_ARGS="$EXTRA_ARGS -p:IsTestingBuild=true"
           fi
 
           SIGNING_ARGS=""
@@ -305,7 +312,7 @@ jobs:
           echo -e "${CYAN}  [BUILD] COMPILING ANDROID APP BUNDLE (AAB)${RESET}"
           echo -e "${CYAN}============================================================${RESET}"
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-android -c Release \
             -p:EnableMauiLinux=true \
             $SIGNING_ARGS \
             $EXTRA_ARGS
@@ -314,7 +321,7 @@ jobs:
           echo -e "${CYAN}  [BUILD] COMPILING STANDALONE APK${RESET}"
           echo -e "${CYAN}============================================================${RESET}"
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-android -c Release \
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-android -c Release \
             -p:EnableMauiLinux=true \
             -p:AndroidPackageFormat=apk \
             $SIGNING_ARGS \
@@ -351,7 +358,7 @@ jobs:
           cat SHA256SUMS-android.txt
 
       - name: "[ARTIFACT] Upload Android Dist Package"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obxodka-android-dist
           path: ./android-dist/*
@@ -362,14 +369,14 @@ jobs:
   # ============================================================
   build-windows:
     name: "[BUILD-WINDOWS] MAUI MSIX & Setup EXE"
-    needs: [check-version, run-tests]
+    needs: [ check-version, run-tests ]
     runs-on: windows-latest
     if: |
       (needs.check-version.outputs.should_release != 'false') &&
       (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android')
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
@@ -379,13 +386,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
 
-      - name: "[SETUP] .NET 10 SDK"
-        uses: actions/setup-dotnet@v4
+      - name: "[SETUP] .NET 11 SDK"
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: "[CACHE] NuGet Package Dependencies"
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
@@ -412,10 +419,11 @@ jobs:
           }
 
           if ("${{ needs.check-version.outputs.is_prerelease }}" -eq "true") {
-            $extraArgs += "-p:DefineConstants=TESTING_BUILD"
+            $extraArgs += "-p:IsTestingBuild=true"
           }
 
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
+            -p:BuildWindowsOnly=true `
             -p:PackageMode=MSIX `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
@@ -458,11 +466,18 @@ jobs:
           }
           if (-not $ver) { $ver = "6.0.8" }
 
+          $unpackagedArgs = @()
+          if ("${{ needs.check-version.outputs.is_prerelease }}" -eq "true") {
+            $unpackagedArgs += "-p:IsTestingBuild=true"
+          }
+
           Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
-          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net10.0-windows10.0.19041.0 -c Release `
+          dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
+            -p:BuildWindowsOnly=true `
             -p:PackageMode=None `
             -p:WindowsPackageType=None `
             -p:GenerateAppxPackageOnBuild=false `
+            $unpackagedArgs `
             -o ./win-unpackaged
 
           Write-Host "[INFO] Executing Inno Setup compiler (ISCC)..." -ForegroundColor Cyan
@@ -495,7 +510,7 @@ jobs:
           Get-Content "./win-dist/SHA256SUMS-windows.txt"
 
       - name: "[ARTIFACT] Upload Windows Dist Package"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obxodka-windows-dist
           path: ./win-dist/*
@@ -506,7 +521,7 @@ jobs:
   # ============================================================
   deploy-android:
     name: "[PUBLISH-ANDROID] Google Play Console (OctoPublisher)"
-    needs: [check-version, build-android]
+    needs: [ check-version, build-android ]
     runs-on: ubuntu-latest
     outputs:
       deploy_state: ${{ steps.publish-play.outputs.deploy_state }}
@@ -520,16 +535,18 @@ jobs:
     env:
       PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
       PLAY_PACKAGE_NAME: ${{ secrets.PLAY_PACKAGE_NAME || 'com.octocore.obxodka' }}
-      ANDROID_TRACK: ${{ inputs.android_track || (github.ref_name == 'develop' && 'internal' || 'production') }}
+      ANDROID_TRACK: ${{ inputs.android_track || ((github.ref_name == 'main' || github.ref_name == 'master') && 'production' || 'internal') }}
 
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: "[SETUP] .NET 10 SDK"
-        uses: actions/setup-dotnet@v4
+      - name: "[SETUP] .NET 10 + 11 SDK"
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: "[TOOL] Install OctoPublisher Global Tool"
         run: |
@@ -539,7 +556,7 @@ jobs:
           octopublish --version
 
       - name: "[DOWNLOAD] Download Android Dist Artifacts"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: obxodka-android-dist
           path: ./android-dist
@@ -621,7 +638,7 @@ jobs:
   # ============================================================
   deploy-windows:
     name: "[PUBLISH-WINDOWS] Microsoft Partner Center (OctoPublisher)"
-    needs: [check-version, build-windows]
+    needs: [ check-version, build-windows ]
     runs-on: windows-latest
     outputs:
       deploy_state: ${{ steps.publish-mstore.outputs.deploy_state }}
@@ -641,12 +658,14 @@ jobs:
 
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: "[SETUP] .NET 10 SDK"
-        uses: actions/setup-dotnet@v4
+      - name: "[SETUP] .NET 10 + 11 SDK"
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: "[TOOL] Install OctoPublisher Global Tool"
         shell: pwsh
@@ -655,7 +674,7 @@ jobs:
           octopublish --version
 
       - name: "[DOWNLOAD] Download Windows Dist Artifacts"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: obxodka-windows-dist
           path: ./win-dist
@@ -779,7 +798,7 @@ jobs:
   # ============================================================
   create-release:
     name: "[RELEASE] GitHub Production Distribution"
-    needs: [check-version, build-android, build-windows, deploy-android, deploy-windows]
+    needs: [ check-version, build-android, build-windows, deploy-android, deploy-windows ]
     if: |
       always() &&
       (needs.check-version.outputs.should_release != 'false') &&
@@ -787,17 +806,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: "[DOWNLOAD] Download Android Dist Artifacts"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: obxodka-android-dist
           path: ./release-artifacts/android
 
       - name: "[DOWNLOAD] Download Windows Dist Artifacts"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: obxodka-windows-dist
@@ -820,12 +842,19 @@ jobs:
           if [ -s ../packaging/whatsnew/whatsnew-ru-RU ]; then
             echo "### [CHANGELOG] Release Notes" >> release_body.md
             cat ../packaging/whatsnew/whatsnew-ru-RU >> release_body.md
+            echo "" >> release_body.md
           fi
+
+          python3 ../.github/scripts/update_changelog.py \
+            --version "${{ needs.check-version.outputs.version }}" \
+            --build "${{ needs.check-version.outputs.build_number }}" \
+            --tag "${{ needs.check-version.outputs.tag }}" \
+            --stdout-only >> release_body.md || true
 
           echo "body_file=$(realpath release_body.md)" >> $GITHUB_OUTPUT
 
       - name: "[RELEASE] Publish GitHub Release & Attach Assets"
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.check-version.outputs.tag }}
           name: ${{ needs.check-version.outputs.release_title }}
@@ -845,14 +874,15 @@ jobs:
   # ============================================================
   telemetry-summary:
     name: "[SUMMARY] Pipeline Telemetry & Status"
-    needs: [check-version, run-tests, build-android, build-windows, deploy-android, deploy-windows, create-release]
+    needs: [ check-version, run-tests, build-android, build-windows, deploy-android, deploy-windows, create-release ]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: "[SUMMARY] Generate Executive Telemetry Dashboard"
         run: |
@@ -881,11 +911,20 @@ jobs:
           | 6 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} (${{ needs.check-version.outputs.is_prerelease == 'true' && 'Pre-Release' || 'Production' }}) |
 
           ---
-          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 10.*
+          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 11.*
           EOF
 
+      - name: "[CHANGELOG] Update CHANGELOG.md"
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && needs.create-release.result == 'success'
+        run: |
+          python3 .github/scripts/update_changelog.py \
+            --version "${{ needs.check-version.outputs.version }}" \
+            --build "${{ needs.check-version.outputs.build_number }}" \
+            --tag "${{ needs.check-version.outputs.tag }}" \
+            --changelog CHANGELOG.md
+
       - name: "[BADGES] Update Store Deployment Badges"
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.should_release != 'false' && (needs.deploy-android.result != 'skipped' || needs.deploy-windows.result != 'skipped' || needs.create-release.result == 'success')
         run: |
           mkdir -p .github/badges
           VERSION="${{ needs.check-version.outputs.version }}"
@@ -952,8 +991,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/badges/
+          git add .github/badges/ CHANGELOG.md
           if ! git diff --cached --quiet; then
-            git commit -m "chore(badges): update store deployment status badges [skip ci]"
+            git commit -m "chore(badges): update store deployment status badges and changelog [skip ci]"
+            git pull --rebase origin main || true
             git push origin main
           fi

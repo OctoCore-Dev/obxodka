@@ -3,9 +3,6 @@ namespace obxodka.Config;
 //ключи хэши ssl pinning и маскированные пароли
 public static class AppSecrets
 {
-    //динамический хэш сертификата сервера
-    public static string? SslPublicKeyHash { get; set; }
-
     //резервные хэши ключей для ротации сертификатов
     public static readonly string[] BackupPublicKeyHashes =
     [
@@ -22,6 +19,9 @@ public static class AppSecrets
     ];
 
     private static readonly byte[] s_secretMask = [0x5A, 0xC3, 0x7E, 0xA5];
+
+    //пароль для клиентского pfx сертификата
+    public static string InternalPfxPassword => ResolveInternalPassword();
 
     //обфускация адреса в формат obx://
     public static string EncodeObfuscatedEndpoint(string endpoint)
@@ -65,9 +65,6 @@ public static class AppSecrets
             return endpoint;
         }
     }
-
-    //пароль для клиентского pfx сертификата
-    public static string InternalPfxPassword => ResolveInternalPassword();
 
     private static string ResolveInternalPassword()
     {

@@ -14,30 +14,35 @@ public static partial class DnsAdBlocker
         try
         {
             var version = packet[0] >> 4;
-            var ipHeaderLen = 0;
-            var protocol = 0;
+            int ipHeaderLen;
+            int protocol;
 
-            if (version == 4)
+            switch (version)
             {
-                ipHeaderLen = (packet[0] & 0x0F) * 4;
-                if (ipHeaderLen < 20 || length < ipHeaderLen + 8)
-                {
+                case 4:
+                    {
+                        ipHeaderLen = (packet[0] & 0x0F) * 4;
+                        if (ipHeaderLen < 20 || length < ipHeaderLen + 8)
+                        {
+                            return null;
+                        }
+
+                        protocol = packet[9];
+                        break;
+                    }
+                case 6:
+                    {
+                        ipHeaderLen = 40;
+                        if (length < ipHeaderLen + 8)
+                        {
+                            return null;
+                        }
+
+                        protocol = packet[6];
+                        break;
+                    }
+                default:
                     return null;
-                }
-                protocol = packet[9];
-            }
-            else if (version == 6)
-            {
-                ipHeaderLen = 40;
-                if (length < ipHeaderLen + 8)
-                {
-                    return null;
-                }
-                protocol = packet[6];
-            }
-            else
-            {
-                return null;
             }
 
             if (protocol != 17)
@@ -78,7 +83,7 @@ public static partial class DnsAdBlocker
             if (IsBlocked(domainSpan))
             {
                 _ = Interlocked.Increment(ref s_blockedQueriesCount);
-                var isCanary = domainSpan.SequenceEqual("use-application-dns.net");
+                var isCanary = domainSpan is "use-application-dns.net";
                 return CreateDnsResponse(packet, ipHeaderLen, udpHeaderOffset, dnsOffset, bytesRead, version == 4, isCanary);
             }
         }
@@ -111,6 +116,7 @@ public static partial class DnsAdBlocker
                 {
                     return false;
                 }
+
                 currentOffset++;
                 break;
             }
@@ -121,6 +127,7 @@ public static partial class DnsAdBlocker
                 {
                     return false;
                 }
+
                 dest[charsWritten++] = '.';
             }
 
@@ -156,11 +163,12 @@ public static partial class DnsAdBlocker
     }
 
     //формирование поддельного dns ответа (0.0.0.0 или nxdomain)
-    private static byte[] CreateDnsResponse(byte[] req, int ipHdrLen, int udpOffset, int dnsOffset, int qNameLen, bool isIpv4, bool isNxDomain = false)
+    private static byte[] CreateDnsResponse(byte[] req, int ipHdrLen, int udpOffset, int dnsOffset, int qNameLen, bool isIpv4,
+        bool isNxDomain = false)
     {
         var qType = BinaryPrimitives.ReadUInt16BigEndian(req.AsSpan(dnsOffset + 12 + qNameLen, 2));
         var isAaaa = qType == 28;
-        var ansLen = (isAaaa || isNxDomain) ? 0 : 16;
+        var ansLen = isAaaa || isNxDomain ? 0 : 16;
         var totalLen = dnsOffset + 12 + qNameLen + 4 + ansLen;
         var resp = new byte[totalLen];
 
@@ -191,7 +199,9 @@ public static partial class DnsAdBlocker
 
         var flags = isNxDomain ? (ushort)0x8183 : (ushort)0x8180;
         BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(2, 2), flags);
-        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), (isAaaa || isNxDomain) ? (ushort)0 : (ushort)1);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(6, 2), isAaaa || isNxDomain ? (ushort)0 : (ushort)1);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(8, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(dnsSpan.Slice(10, 2), 0);
 
         if (!isAaaa && !isNxDomain)
         {
@@ -225,7 +235,7 @@ public static partial class DnsAdBlocker
                 sum += (uint)((resp[i] << 8) + resp[i + 1]);
             }
 
-            while ((sum >> 16) != 0)
+            while (sum >> 16 != 0)
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
@@ -258,12 +268,12 @@ public static partial class DnsAdBlocker
                 }
             }
 
-            while ((sum >> 16) != 0)
+            while (sum >> 16 != 0)
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
 
-            sum = ~sum;
+            sum = ~sum & 0xFFFF;
             if (sum == 0)
             {
                 sum = 0xFFFF;

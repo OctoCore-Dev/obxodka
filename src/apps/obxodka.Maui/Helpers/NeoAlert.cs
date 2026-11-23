@@ -7,22 +7,11 @@ public static class NeoAlert
 
     public static async Task<bool> ShowConfirmAsync(string title, string message, string accept = "OK", string cancel = "Отмена")
     {
-        if (MainPage.Current is not null)
-        {
-            return await MainPage.Current.ShowCustomDialogAsync(title, message, accept, cancel);
-        }
-
-        if (MainThread.IsMainThread)
-        {
-            var page = GetFallbackPage();
-            return page is not null && await page.DisplayAlertAsync(title, message, accept, cancel);
-        }
-
-        return await MainThread.InvokeOnMainThreadAsync(async () =>
-        {
-            var page = GetFallbackPage();
-            return page is not null && await page.DisplayAlertAsync(title, message, accept, cancel);
-        });
+        return MainPage.Current is not null
+            ? await MainPage.Current.ShowCustomDialogAsync(title, message, accept, cancel)
+            : MainThread.IsMainThread
+                ? await ShowFallbackConfirmAsync(title, message, accept, cancel)
+                : await MainThread.InvokeOnMainThreadAsync(() => ShowFallbackConfirmAsync(title, message, accept, cancel));
     }
 
     public static async Task ShowAsync(string title, string message, string cancel = "OK")
@@ -35,21 +24,25 @@ public static class NeoAlert
 
         if (MainThread.IsMainThread)
         {
-            var page = GetFallbackPage();
-            if (page is not null)
-            {
-                await page.DisplayAlertAsync(title, message, cancel);
-            }
+            await ShowFallbackAlertAsync(title, message, cancel);
             return;
         }
 
-        await MainThread.InvokeOnMainThreadAsync(async () =>
+        await MainThread.InvokeOnMainThreadAsync(() => ShowFallbackAlertAsync(title, message, cancel));
+    }
+
+    private static async Task<bool> ShowFallbackConfirmAsync(string title, string message, string accept, string cancel)
+    {
+        var page = GetFallbackPage();
+        return page is not null && await page.DisplayAlertAsync(title, message, accept, cancel);
+    }
+
+    private static async Task ShowFallbackAlertAsync(string title, string message, string cancel)
+    {
+        var page = GetFallbackPage();
+        if (page is not null)
         {
-            var page = GetFallbackPage();
-            if (page is not null)
-            {
-                await page.DisplayAlertAsync(title, message, cancel);
-            }
-        });
+            await page.DisplayAlertAsync(title, message, cancel);
+        }
     }
 }

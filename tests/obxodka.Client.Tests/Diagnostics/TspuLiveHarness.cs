@@ -3,14 +3,14 @@ namespace obxodka.Client.Diagnostics;
 //тестовый стенд для симуляции перехвата и фильтрации трафика тспу
 public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
 {
-    private readonly VirtualTspuEngine _engine = new();
     private readonly CancellationTokenSource _cts = new();
+    private readonly VirtualTspuEngine _engine = new();
+    private TcpListener? _mockTcpServer;
+    private Socket? _mockUdpServer;
+    private int _packetCounter;
+    private TcpListener? _tcpListener;
     private Socket? _udpDownstream;
     private Socket? _udpUpstream;
-    private TcpListener? _tcpListener;
-    private Socket? _mockUdpServer;
-    private TcpListener? _mockTcpServer;
-    private int _packetCounter;
 
     public int PacketsIntercepted => _packetCounter;
     public int ThreatsDetected { get; private set; }
@@ -18,6 +18,27 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
     public int PacketsForwarded { get; private set; }
     public bool EnforceBlocking { get; set; } = true;
     public List<TspuPacketAudit> AuditHistory { get; } = [];
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _cts.CancelAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+            //подавление ошибки асинхронной отмены токена стенда
+        }
+
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
 
     public event Action<TspuPacketAudit, bool>? OnPacketInspected;
 
@@ -87,7 +108,7 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                 lastClientEp = result.RemoteEndPoint;
 
                 var idx = Interlocked.Increment(ref _packetCounter);
-                var audit = _engine.InspectPacket(idx, clientBuf.AsSpan(0, receivedCount), isUdp: true);
+                var audit = _engine.InspectPacket(idx, clientBuf.AsSpan(0, receivedCount), true);
 
                 lock (AuditHistory)
                 {
@@ -208,10 +229,12 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                         {
                             break;
                         }
+
                         await clientStream.WriteAsync(retBuf.AsMemory(0, read), innerCts.Token);
                     }
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
+                catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException
+                                               or InvalidOperationException)
                 {
                     //закрытие канала чтения ответа от целевого tcp сервера
                 }
@@ -232,7 +255,7 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                     }
 
                     var idx = Interlocked.Increment(ref _packetCounter);
-                    var audit = _engine.InspectPacket(idx, buffer.AsSpan(0, read), isUdp: false);
+                    var audit = _engine.InspectPacket(idx, buffer.AsSpan(0, read), false);
 
                     lock (AuditHistory)
                     {
@@ -267,7 +290,8 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                 {
                     await targetToClientTask;
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
+                catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException
+                                               or InvalidOperationException)
                 {
                     //закрытие канала чтения ответа от целевого tcp сервера
                 }
@@ -304,10 +328,12 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
                             {
                                 break;
                             }
+
                             await stream.WriteAsync(buf.AsMemory(0, read), ct);
                         }
                     }
-                    catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
+                    catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
+                                                   or ObjectDisposedException)
                     {
                         //закрытие клиентского подключения к эхо серверу tcp
                     }
@@ -326,12 +352,6 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         {
             //закрытие сокета эхо сервера udp
         }
-    }
-
-    public void Dispose()
-    {
-        Dispose(true);
-        GC.SuppressFinalize(this);
     }
 
     private void Dispose(bool disposing)
@@ -354,20 +374,5 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
             _mockTcpServer?.Dispose();
             _cts.Dispose();
         }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        try
-        {
-            await _cts.CancelAsync();
-        }
-        catch (ObjectDisposedException)
-        {
-            //подавление ошибки асинхронной отмены токена стенда
-        }
-
-        Dispose(true);
-        GC.SuppressFinalize(this);
     }
 }

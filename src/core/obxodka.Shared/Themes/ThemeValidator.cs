@@ -3,6 +3,14 @@ namespace obxodka.Shared.Themes;
 //валидатор манифестов тем оформления, цветов, путей и сигнатур файлов
 public static partial class ThemeValidator
 {
+    //зарезервированные системные имена устройств dos/windows для защиты от спецфайлов
+    private static readonly FrozenSet<string> s_reservedDeviceNames =
+        new[]
+        {
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3",
+            "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     //регулярное выражение для проверки 6- и 8-значных hex цветов
     [GeneratedRegex("^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")]
     private static partial Regex HexColorRegex();
@@ -19,15 +27,6 @@ public static partial class ThemeValidator
     public static bool IsSafeId(string? id) =>
         !string.IsNullOrWhiteSpace(id) && SafeIdRegex().IsMatch(id.Trim());
 
-    //зарезервированные системные имена устройств dos/windows для защиты от спецфайлов
-    private static readonly FrozenSet<string> s_reservedDeviceNames =
-        new[]
-        {
-            "CON", "PRN", "AUX", "NUL",
-            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
     //проверка, совпадает ли сегмент с зарезервированным именем устройства без аллокаций
     private static bool IsReservedDeviceName(ReadOnlySpan<char> name)
     {
@@ -38,6 +37,7 @@ public static partial class ThemeValidator
                 return true;
             }
         }
+
         return false;
     }
 
@@ -136,7 +136,8 @@ public static partial class ThemeValidator
             errorMessage = null;
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException
+                                       or NotSupportedException)
         {
             errorMessage = $"Error inspecting asset file '{fullPath}': {ex.Message}";
             return false;
@@ -241,10 +242,10 @@ public static partial class ThemeValidator
         }
 
         return value.Contains('<', StringComparison.Ordinal) ||
-                value.Contains('>', StringComparison.Ordinal) ||
-                value.Contains("javascript:", StringComparison.OrdinalIgnoreCase) ||
-                value.Contains("vbscript:", StringComparison.OrdinalIgnoreCase) ||
-                value.Contains("data:text/html", StringComparison.OrdinalIgnoreCase);
+               value.Contains('>', StringComparison.Ordinal) ||
+               value.Contains("javascript:", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("vbscript:", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("data:text/html", StringComparison.OrdinalIgnoreCase);
     }
 
     //полная проверка целостности и безопасности манифеста темы оформления
@@ -258,7 +259,8 @@ public static partial class ThemeValidator
 
         if (string.IsNullOrWhiteSpace(manifest.Id) || manifest.Id.Length > 64 || !IsSafeId(manifest.Id))
         {
-            errorMessage = $"Theme ID '{manifest.Id}' is invalid. Must contain only lowercase letters, digits, dashes, and underscores (max 64 chars).";
+            errorMessage =
+                $"Theme ID '{manifest.Id}' is invalid. Must contain only lowercase letters, digits, dashes, and underscores (max 64 chars).";
             return false;
         }
 
@@ -374,6 +376,8 @@ public static partial class ThemeValidator
             manifest.Decorations?.ButtonVideoActive,
             manifest.Decorations?.ButtonVideoError,
             manifest.Vfx?.ParticleSprite,
+            manifest.Vfx?.OverlayImage,
+            manifest.Vfx?.Physics?.OverlayImage,
             manifest.Core.Sounds?.Connect,
             manifest.Core.Sounds?.Disconnect,
             manifest.Core.Sounds?.Click,

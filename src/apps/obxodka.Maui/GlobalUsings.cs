@@ -1,4 +1,5 @@
 global using System.Buffers;
+global using System.Collections.Concurrent;
 global using System.Collections.ObjectModel;
 global using System.Diagnostics;
 global using System.Diagnostics.CodeAnalysis;
@@ -15,6 +16,8 @@ global using CommunityToolkit.Maui;
 global using CommunityToolkit.Maui.Views;
 global using MauiIcons.Core;
 global using MauiIcons.Fluent;
+global using RoundRectangle = Microsoft.Maui.Controls.Shapes.RoundRectangle;
+global using RoundRectangleGeometry = Microsoft.Maui.Controls.Shapes.RoundRectangleGeometry;
 global using Microsoft.Maui.LifecycleEvents;
 global using obxodka.Client.Localization;
 global using obxodka.Client.Models;
@@ -23,7 +26,8 @@ global using obxodka.Client.Telemetry;
 global using obxodka.Config;
 global using obxodka.Core;
 global using obxodka.Core.Transports;
-global using obxodka.Dialogs;
+global using obxodka.Controls.Dialogs;
+global using obxodka.Controls.Ui;
 global using obxodka.Helpers;
 global using obxodka.Maui.Services;
 global using obxodka.Maui.Theming.Models;
@@ -39,7 +43,18 @@ global using SkiaSharp;
 global using SkiaSharp.Views.Maui;
 global using SkiaSharp.Views.Maui.Controls;
 global using SkiaSharp.Views.Maui.Controls.Hosting;
-[assembly: SupportedOSPlatform("android29.0")]
+global using obxodka.Pages.Account;
+global using obxodka.Core.Models;
+global using obxodka.Pages.Navigation;
+global using obxodka.Pages.Settings;
+global using obxodka.Pages.Store;
+global using obxodka.Pages.Vpn;
+
+#if WINDOWS
+global using obxodka.Platforms.Windows;
+#endif
+
+[assembly: SupportedOSPlatform("android30.0")]
 [assembly: SupportedOSPlatform("ios16.1")]
 [assembly: SupportedOSPlatform("maccatalyst16.1")]
 [assembly: SupportedOSPlatform("windows10.0.19041.0")]

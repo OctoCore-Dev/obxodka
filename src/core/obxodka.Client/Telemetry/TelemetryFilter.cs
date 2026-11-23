@@ -6,6 +6,30 @@ public static class TelemetryFilter
     private static readonly ConcurrentDictionary<int, long> s_recentErrorSignatures = new();
     private static readonly TimeSpan s_deduplicationWindow = TimeSpan.FromMinutes(5);
 
+    //simd-поисковик шумовых маркеров и отмененных операций без повторного прохода по строке
+    private static readonly SearchValues<string> s_ignoredMessageMarkers = SearchValues.Create(
+        [
+            "FORGED_HASH",
+            "FAKE_PIN",
+            "MOCK_CERT_PIN",
+            "[TEST-ONLY]",
+            "[TELEMETRY",
+            "api/Vpn/telemetry",
+            "OperationCanceledException",
+            "TaskCanceledException",
+            "The operation was canceled",
+            "429",
+            "TooManyRequests",
+            "слишком много запросов",
+            "401",
+            "Unauthorized",
+            "VERSION CHECK",
+            "UPDATE CHECK",
+            "PLAY STORE",
+            "WINDOWS STORE"
+        ],
+        StringComparison.OrdinalIgnoreCase);
+
     //определение запуска внутри тестового раннера для блокировки отправки моков в продакшен
     public static bool IsTestEnvironment { get; } = DetectTestEnvironment();
 
@@ -45,54 +69,17 @@ public static class TelemetryFilter
             return false;
         }
 
-        //отсеиваем синтетические маркеры негативных тестов безопасности
-        if (message.Contains("FORGED_HASH", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("FAKE_PIN", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("MOCK_CERT_PIN", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("[TEST-ONLY]", StringComparison.OrdinalIgnoreCase))
+        //отсеиваем отмену пользователем и штатный разрыв сокета
+        if (ex is OperationCanceledException or TaskCanceledException or SocketException
+            {
+                SocketErrorCode: SocketError.OperationAborted or SocketError.Interrupted
+            })
         {
             return false;
         }
 
-        //отсеиваем отмену пользователем
-        if (ex is OperationCanceledException or TaskCanceledException)
-        {
-            return false;
-        }
-
-        if (message.Contains("OperationCanceledException", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("TaskCanceledException", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("The operation was canceled", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        //отсеиваем частые клики и 429
-        if (message.Contains("429", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("TooManyRequests", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("слишком много запросов", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        //отсеиваем 401 при выходе из аккаунта
-        if (message.Contains("401", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        //отсеиваем штатный разрыв сокета
-        if (ex is SocketException { SocketErrorCode: SocketError.OperationAborted or SocketError.Interrupted })
-        {
-            return false;
-        }
-
-        //отсеиваем штатные сетевые сбои фоновой проверки обновлений в магазинах
-        if (message.Contains("VERSION CHECK", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("UPDATE CHECK", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("PLAY STORE", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("WINDOWS STORE", StringComparison.OrdinalIgnoreCase))
+        //отсеиваем синтетические маркеры, рекурсию, отмены, 429/401 и фоновые проверки обновлений за один simd-проход
+        if (message.AsSpan().ContainsAny(s_ignoredMessageMarkers))
         {
             return false;
         }

@@ -1,36 +1,31 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.ThemeStoreView"
+    x:Class="obxodka.Pages.Store.ThemeStoreView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:helpers="clr-namespace:obxodka.Helpers"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
 
     <Grid
         x:Name="RootLayout"
-        Padding="{OnIdiom Desktop='32,28',
-                          Phone='16,10,16,0',
-                          Default='16,20'}"
+        Padding="16,20,16,0"
         RowDefinitions="Auto, *"
         RowSpacing="16"
         SafeAreaEdges="None">
 
         <Grid
             Grid.Row="0"
-            Margin="{OnIdiom Phone='0,8,0,0',
-                             Default='0'}"
             ColumnDefinitions="Auto, *, Auto"
             ColumnSpacing="10"
             VerticalOptions="Center">
             <Border
                 x:Name="BtnBack"
                 Grid.Column="0"
-                Padding="{OnIdiom Phone='0',
-                                  Default='12,0'}"
+                Padding="12,0"
                 HeightRequest="40"
                 Style="{StaticResource NeoCard}"
-                VerticalOptions="Center"
-                WidthRequest="{OnIdiom Phone=40,
-                                       Default=-1}">
+                VerticalOptions="Center">
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnBackClicked" />
                 </Border.GestureRecognizers>
@@ -61,10 +56,11 @@
                 <Border
                     x:Name="HeaderIconBadge"
                     Grid.Column="0"
-                    BackgroundColor="{DynamicResource PrimaryDim}"
+                    BackgroundColor="{DynamicResource BgElevated}"
                     HeightRequest="36"
+                    Stroke="{DynamicResource BorderSubtle}"
                     StrokeShape="RoundRectangle 18"
-                    StrokeThickness="0"
+                    StrokeThickness="1"
                     VerticalOptions="Center"
                     WidthRequest="36">
                     <mi:MauiIcon
@@ -80,14 +76,14 @@
                         FontFamily="{DynamicResource AppFontTitle}"
                         FontSize="{OnIdiom Desktop=20,
                                            Phone=16,
+                                           Tablet=20,
                                            Default=18}"
                         LineBreakMode="TailTruncation"
                         Text="Темы оформления"
                         VerticalOptions="Center" />
                     <Label
+                        x:Name="LabelHeaderSubtitle"
                         FontSize="11"
-                        IsVisible="{OnIdiom Desktop=True,
-                                            Default=False}"
                         LineBreakMode="TailTruncation"
                         Style="{StaticResource LabelMuted}"
                         Text="Кастомизация приложения и живые темы" />
@@ -97,13 +93,10 @@
             <Border
                 x:Name="BtnResetTheme"
                 Grid.Column="2"
-                Padding="{OnIdiom Phone='0',
-                                  Default='12,0'}"
+                Padding="12,0"
                 HeightRequest="40"
                 Style="{StaticResource NeoCard}"
-                VerticalOptions="Center"
-                WidthRequest="{OnIdiom Phone=40,
-                                       Default=-1}">
+                VerticalOptions="Center">
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnResetThemeClicked" />
                 </Border.GestureRecognizers>
@@ -135,9 +128,8 @@
             VerticalScrollBarVisibility="Never">
             <VerticalStackLayout
                 x:Name="ThemeCardsStack"
-                Padding="{OnIdiom Phone='0,0,0,120',
-                                  Default='0,0,0,24'}"
-                HorizontalOptions="Start"
+                Padding="0,0,0,28"
+                HorizontalOptions="Fill"
                 Spacing="16">
 
                 <Border
@@ -269,7 +261,7 @@
                     x:Name="FilterChipsScrollView"
                     HorizontalScrollBarVisibility="Never"
                     Orientation="Horizontal">
-                    <HorizontalStackLayout x:Name="FilterChipsLayout" Spacing="8">
+                    <HorizontalStackLayout Spacing="8">
                         <Border
                             x:Name="ChipFilterAll"
                             Padding="14,7"
@@ -285,7 +277,7 @@
                                 FontFamily="{DynamicResource AppFontBold}"
                                 FontSize="12"
                                 Text="Все"
-                                TextColor="White"
+                                TextColor="{DynamicResource TextOnPrimary}"
                                 VerticalOptions="Center" />
                         </Border>
 
@@ -650,13 +642,11 @@
                         </Grid>
 
                         <BoxView
-                            x:Name="SepVfxParallax"
                             HeightRequest="1"
                             Color="{DynamicResource BorderSubtle}" />
 
                         <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
                             <Border
-                                x:Name="BadgeParallax"
                                 Grid.Column="0"
                                 BackgroundColor="{DynamicResource PrimaryDim}"
                                 HeightRequest="36"
@@ -665,7 +655,6 @@
                                 VerticalOptions="Center"
                                 WidthRequest="36">
                                 <mi:MauiIcon
-                                    x:Name="IconParallax"
                                     HorizontalOptions="Center"
                                     Icon="{mi:Fluent Icon=Glance24}"
                                     IconColor="{DynamicResource PrimaryBright}"
@@ -822,7 +811,7 @@
 
                 <VerticalStackLayout
                     x:Name="ThemesContainer"
-                    HorizontalOptions="Start"
+                    HorizontalOptions="Fill"
                     Spacing="14" />
 
             </VerticalStackLayout>
@@ -832,9 +821,7 @@
             x:Name="ThemePreviewModalOverlay"
             Grid.Row="0"
             Grid.RowSpan="2"
-            Margin="{OnIdiom Desktop='-32,-28',
-                             Phone='-16,-10,-16,0',
-                             Default='-16,-20'}"
+            Margin="-16,-20,-16,0"
             BackgroundColor="{DynamicResource BgOverlay}"
             HorizontalOptions="Fill"
             InputTransparent="True"
@@ -849,16 +836,14 @@
                 x:Name="ThemePreviewModalCard"
                 Margin="20"
                 Padding="22"
+                helpers:UiAnimations.AnimateEntrance="False"
                 HorizontalOptions="Center"
-                MaximumWidthRequest="520"
+                MaximumWidthRequest="500"
                 Stroke="{DynamicResource BorderMedium}"
                 StrokeShape="RoundRectangle 20"
                 StrokeThickness="1.2"
                 Style="{StaticResource NeoCard}"
-                VerticalOptions="Center"
-                WidthRequest="{OnIdiom Desktop=480,
-                                       Phone=340,
-                                       Default=440}">
+                VerticalOptions="Center">
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer />
                 </Border.GestureRecognizers>
@@ -953,7 +938,7 @@
                             FontSize="14"
                             HorizontalOptions="Center"
                             Text="Применить тему"
-                            TextColor="White"
+                            TextColor="{DynamicResource TextOnPrimary}"
                             VerticalOptions="Center" />
                     </Border>
                 </VerticalStackLayout>

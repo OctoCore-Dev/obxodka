@@ -9,15 +9,15 @@ public sealed partial class OctopusEngine
     private int _isUplinkListenerRegistered;
     private bool _lastReportedUplinkState = true;
 
+    //проверка наличия физического интернет-соединения без ложных срабатываний кэша
+    public static bool IsUplinkAvailable =>
+        PlatformServices.Connectivity.NetworkAccess != AppNetworkAccess.None;
+
     //событие потери физической сети (wi-fi, кабель или сотовая связь отключены)
     public event Action? OnUplinkLost;
 
     //событие восстановления физической сети
     public event Action? OnUplinkRestored;
-
-    //проверка наличия физического интернет-соединения без ложных срабатываний кэша
-    public static bool IsUplinkAvailable =>
-        PlatformServices.Connectivity.NetworkAccess != AppNetworkAccess.None;
 
     //инициализация кроссплатформенного слушателя физического состояния сети
     public void EnsureUplinkMonitoringInitialized()
@@ -65,25 +65,25 @@ public sealed partial class OctopusEngine
         {
             using var cts = new CancellationTokenSource(timeoutMs);
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket);
-            ObxodkaWebSocketTransport.OnSocketCreated?.Invoke(socket);
+            Current.ProtectSocket(socket);
             //прямой опрос глобального anycast ip cloudflare/google минуя dns кэш
             await socket.ConnectAsync(IPAddress.Parse("1.1.1.1"), 443, cts.Token).ConfigureAwait(false);
             return true;
         }
-        catch (Exception ex) when (ex is SocketException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException or ObjectDisposedException
+                                       or InvalidOperationException)
         {
             //запасная попытка через яндекс anycast для изолированных сегментов
             try
             {
                 using var cts2 = new CancellationTokenSource(timeoutMs);
                 using var socket2 = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                ObxodkaStreamTransport.OnSocketCreated?.Invoke(socket2);
-                ObxodkaWebSocketTransport.OnSocketCreated?.Invoke(socket2);
+                Current.ProtectSocket(socket2);
                 await socket2.ConnectAsync(IPAddress.Parse("77.88.55.242"), 443, cts2.Token).ConfigureAwait(false);
                 return true;
             }
-            catch (Exception innerEx) when (innerEx is SocketException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+            catch (Exception innerEx) when (innerEx is SocketException or OperationCanceledException or ObjectDisposedException
+                                                or InvalidOperationException)
             {
                 return false;
             }

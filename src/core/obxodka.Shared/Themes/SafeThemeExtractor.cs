@@ -6,10 +6,16 @@ public static class SafeThemeExtractor
     //максимальный суммарный размер распакованной темы оформления (35 мб)
     private const long MaxTotalExtractionSizeBytes = 35 * 1024 * 1024;
 
+    //лимит записей в архиве для защиты от архивов с миллионами мелких файлов
+    public const int MaxArchiveEntries = 100;
+
+    //максимальный размер графического изображения для предотвращения декомпрессионных атак на память
+    public const int MaxImageDimension = 4096;
+
     //разрешенные расширения файлов в теме оформления
     private static readonly FrozenSet<string> s_allowedExtensions =
         new[] { ".json", ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".wav", ".mp3", ".ogg", ".ttf", ".otf" }
-        .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+            .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     //сигнатуры внедренных веб-скриптов и командных оболочек для защиты от polyglot атак
     private static readonly byte[][] s_forbiddenPolyglotSignatures =
@@ -22,12 +28,6 @@ public static class SafeThemeExtractor
         "<?php"u8.ToArray(),
         "powershell"u8.ToArray()
     ];
-
-    //лимит записей в архиве для защиты от архивов с миллионами мелких файлов
-    public const int MaxArchiveEntries = 100;
-
-    //максимальный размер графического изображения для предотвращения декомпрессионных атак на память
-    public const int MaxImageDimension = 4096;
 
     //проверка разрешенного расширения файла
     public static bool IsAllowedExtension(string? extension) =>
@@ -59,10 +59,11 @@ public static class SafeThemeExtractor
 
         _ = Directory.CreateDirectory(targetFullPath);
 
-        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
+        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, true);
         if (archive.Entries.Count > MaxArchiveEntries)
         {
-            throw new SecurityException($"[ThemeSecurity] Блокировка: архив содержит слишком много файлов ({archive.Entries.Count} > {MaxArchiveEntries}).");
+            throw new SecurityException(
+                $"[ThemeSecurity] Блокировка: архив содержит слишком много файлов ({archive.Entries.Count} > {MaxArchiveEntries}).");
         }
 
         long totalBytesExtracted = 0;
@@ -115,11 +116,13 @@ public static class SafeThemeExtractor
             var headerBytesRead = 0;
             while (headerBytesRead < headerBuffer.Length)
             {
-                var read = await entryStream.ReadAsync(headerBuffer.AsMemory(headerBytesRead, headerBuffer.Length - headerBytesRead), ct).ConfigureAwait(false);
+                var read = await entryStream.ReadAsync(headerBuffer.AsMemory(headerBytesRead, headerBuffer.Length - headerBytesRead), ct)
+                    .ConfigureAwait(false);
                 if (read == 0)
                 {
                     break;
                 }
+
                 headerBytesRead += read;
             }
 
@@ -130,7 +133,8 @@ public static class SafeThemeExtractor
 
             if (!VerifyMagicBytes(extension, headerBuffer, headerBytesRead))
             {
-                throw new SecurityException($"[ThemeSecurity] Фальсификация файла: сигнатура файла '{entry.Name}' не соответствует формату {extension}!");
+                throw new SecurityException(
+                    $"[ThemeSecurity] Фальсификация файла: сигнатура файла '{entry.Name}' не соответствует формату {extension}!");
             }
 
             long fileBytesWritten = headerBytesRead;
@@ -138,47 +142,55 @@ public static class SafeThemeExtractor
 
             if (fileBytesWritten > maxAllowedSize)
             {
-                throw new SecurityException($"[ThemeSecurity] Блокировка: файл '{entry.Name}' превышает лимит {maxAllowedSize / 1024 / 1024} МБ.");
+                throw new SecurityException(
+                    $"[ThemeSecurity] Блокировка: файл '{entry.Name}' превышает лимит {maxAllowedSize / 1024 / 1024} МБ.");
             }
 
             if (totalBytesExtracted > MaxTotalExtractionSizeBytes)
             {
-                throw new SecurityException($"[ThemeSecurity] Блокировка Zip-бомбы: общий размер распаковки превысил лимит {MaxTotalExtractionSizeBytes / 1024 / 1024} МБ.");
+                throw new SecurityException(
+                    $"[ThemeSecurity] Блокировка Zip-бомбы: общий размер распаковки превысил лимит {MaxTotalExtractionSizeBytes / 1024 / 1024} МБ.");
             }
 
             try
             {
-                await using var fileStream = new FileStream(destinationFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                await using var fileStream =
+                    new FileStream(destinationFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true);
                 await fileStream.WriteAsync(headerBuffer.AsMemory(0, headerBytesRead), ct).ConfigureAwait(false);
 
                 var copyBuffer = ArrayPool<byte>.Shared.Rent(65536);
                 try
                 {
                     int bytesRead;
-                    while ((bytesRead = await entryStream.ReadAsync(copyBuffer.AsMemory(0, copyBuffer.Length), ct).ConfigureAwait(false)) > 0)
+                    while ((bytesRead = await entryStream.ReadAsync(copyBuffer.AsMemory(0, copyBuffer.Length), ct).ConfigureAwait(false)) >
+                           0)
                     {
                         fileBytesWritten += bytesRead;
                         totalBytesExtracted += bytesRead;
 
                         if (fileBytesWritten > maxAllowedSize)
                         {
-                            throw new SecurityException($"[ThemeSecurity] Блокировка: файл '{entry.Name}' превышает лимит {maxAllowedSize / 1024 / 1024} МБ.");
+                            throw new SecurityException(
+                                $"[ThemeSecurity] Блокировка: файл '{entry.Name}' превышает лимит {maxAllowedSize / 1024 / 1024} МБ.");
                         }
 
                         if (totalBytesExtracted > MaxTotalExtractionSizeBytes)
                         {
-                            throw new SecurityException($"[ThemeSecurity] Блокировка Zip-бомбы: общий размер распаковки превысил лимит {MaxTotalExtractionSizeBytes / 1024 / 1024} МБ.");
+                            throw new SecurityException(
+                                $"[ThemeSecurity] Блокировка Zip-бомбы: общий размер распаковки превысил лимит {MaxTotalExtractionSizeBytes / 1024 / 1024} МБ.");
                         }
 
                         //проверка на коэффициент сжатия для защиты от zip-бомбы
-                        if (entry.CompressedLength > 0 && fileBytesWritten > 256 * 1024 && (fileBytesWritten / entry.CompressedLength) > 100)
+                        if (entry.CompressedLength > 0 && fileBytesWritten > 256 * 1024 && fileBytesWritten / entry.CompressedLength > 100)
                         {
-                            throw new SecurityException($"[ThemeSecurity] Блокировка Zip-бомбы: аномальный коэффициент сжатия файла '{entry.Name}'.");
+                            throw new SecurityException(
+                                $"[ThemeSecurity] Блокировка Zip-бомбы: аномальный коэффициент сжатия файла '{entry.Name}'.");
                         }
 
                         if (ContainsPolyglotPayload(copyBuffer.AsSpan(0, bytesRead)))
                         {
-                            throw new SecurityException($"[ThemeSecurity] Блокировка Полиглот-файла: обнаружен внедренный скрипт в '{entry.Name}'.");
+                            throw new SecurityException(
+                                $"[ThemeSecurity] Блокировка Полиглот-файла: обнаружен внедренный скрипт в '{entry.Name}'.");
                         }
 
                         await fileStream.WriteAsync(copyBuffer.AsMemory(0, bytesRead), ct).ConfigureAwait(false);
@@ -202,6 +214,7 @@ public static class SafeThemeExtractor
                         //подавление ошибок очистки поврежденного файла
                     }
                 }
+
                 throw;
             }
         }
@@ -240,17 +253,20 @@ public static class SafeThemeExtractor
                 {
                     b = (byte)(b + 32);
                 }
+
                 if (b != needleLower[j])
                 {
                     match = false;
                     break;
                 }
             }
+
             if (match)
             {
                 return i;
             }
         }
+
         return -1;
     }
 
@@ -323,8 +339,8 @@ public static class SafeThemeExtractor
             ".jpg" or ".jpeg" => length >= 3 && span[0] == 0xFF && span[1] == 0xD8 && span[2] == 0xFF,
 
             ".wav" => length >= 12 &&
-                        BinaryPrimitives.ReadUInt32BigEndian(span) == 0x52494646 &&
-                        BinaryPrimitives.ReadUInt32BigEndian(span[8..]) == 0x57415645,
+                      BinaryPrimitives.ReadUInt32BigEndian(span) == 0x52494646 &&
+                      BinaryPrimitives.ReadUInt32BigEndian(span[8..]) == 0x57415645,
 
             ".ogg" => length >= 4 && BinaryPrimitives.ReadUInt32BigEndian(span) == 0x4F676753,
 
@@ -333,15 +349,15 @@ public static class SafeThemeExtractor
             ".webm" => length >= 4 && BinaryPrimitives.ReadUInt32BigEndian(span) == 0x1A45DFA3,
 
             ".webp" => length >= 12 &&
-                        BinaryPrimitives.ReadUInt32BigEndian(span) == 0x52494646 &&
-                        BinaryPrimitives.ReadUInt32BigEndian(span[8..]) == 0x57454250,
+                       BinaryPrimitives.ReadUInt32BigEndian(span) == 0x52494646 &&
+                       BinaryPrimitives.ReadUInt32BigEndian(span[8..]) == 0x57454250,
 
-            ".mp3" => (length >= 3 && span[0] == 0x49 && span[1] == 0x44 && span[2] == 0x33) ||
-                        (length >= 2 && span[0] == 0xFF && (span[1] & 0xE0) == 0xE0),
+            ".mp3" => length >= 3 && span[0] == 0x49 && span[1] == 0x44 && span[2] == 0x33 ||
+                      length >= 2 && span[0] == 0xFF && (span[1] & 0xE0) == 0xE0,
 
             ".ttf" => length >= 4 && (
-                        BinaryPrimitives.ReadUInt32BigEndian(span) == 0x00010000 ||
-                        BinaryPrimitives.ReadUInt32BigEndian(span) == 0x74727565),
+                BinaryPrimitives.ReadUInt32BigEndian(span) == 0x00010000 ||
+                BinaryPrimitives.ReadUInt32BigEndian(span) == 0x74727565),
 
             ".otf" => length >= 4 && BinaryPrimitives.ReadUInt32BigEndian(span) == 0x4F54544F,
 

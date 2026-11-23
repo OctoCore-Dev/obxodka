@@ -1,0 +1,43 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: "[CHECKOUT] Repository"
+        uses: actions/checkout@v7
+
+      - name: "[SETUP] .NET 11 SDK"
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "11.0.x"
+
+      - name: "[CACHE] NuGet Packages"
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-copilot-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          restore-keys: |
+            ${{ runner.os }}-copilot-nuget-
+
+      - name: "[RESTORE] Core, Desktop (Avalonia) & Tests"
+        run: |
+          dotnet restore src/core/obxodka.Shared/obxodka.Shared.csproj
+          dotnet restore src/core/obxodka.Client/obxodka.Client.csproj
+          dotnet restore src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj
+          dotnet restore tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj

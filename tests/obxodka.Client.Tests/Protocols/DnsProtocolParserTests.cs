@@ -36,7 +36,7 @@ public class DnsProtocolParserTests
     public void MalformedShortDnsPacketReturnsNullGracefully()
     {
         var tooShort = new byte[15];
-        var result = DnsAdBlocker.ProcessPacket(tooShort, tooShort.Length, useAdblock: true);
+        var result = DnsAdBlocker.ProcessPacket(tooShort, tooShort.Length, true);
         Assert.Null(result);
     }
 }

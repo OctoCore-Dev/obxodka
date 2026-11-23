@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.RegularExpressions;
-
 namespace obxodka.Shared.Validation;
 
 //валидатор и санитайзер пользовательского ввода и байтов изображений
@@ -101,7 +98,7 @@ public static partial class InputSanitizer
                 continue;
             }
 
-            if (ch is (>= '\u202A' and <= '\u202E') or (>= '\u2066' and <= '\u2069') or '<' or '>')
+            if (ch is >= '\u202A' and <= '\u202E' or >= '\u2066' and <= '\u2069' or '<' or '>')
             {
                 continue;
             }

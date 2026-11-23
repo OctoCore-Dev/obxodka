@@ -1,56 +1,59 @@
 namespace obxodka.Helpers;
 
-public static partial class UIAnimations
+public static partial class UiAnimations
 {
-    public static async Task BounceClickAsync(this VisualElement? view)
+    extension(VisualElement? element)
     {
-        if (view is null)
+        public async Task BounceClickAsync()
         {
-            return;
+            if (element is null)
+            {
+                return;
+            }
+
+            element.CancelAnimations();
+            _ = await element.ScaleToAsync(0.91, 90, Easing.CubicIn);
+            _ = await element.ScaleToAsync(1.0, DurNormal, Easing.SpringOut);
         }
 
-        view.CancelAnimations();
-        _ = await view.ScaleToAsync(0.91, 90, Easing.CubicIn);
-        _ = await view.ScaleToAsync(1.0, DurNormal, Easing.SpringOut);
-    }
-
-    public static Task PressDownAsync(this VisualElement? view)
-    {
-        view?.CancelAnimations();
-        return view?.ScaleToAsync(0.94, 80, Easing.CubicIn) ?? Task.CompletedTask;
-    }
-
-    public static Task PressUpAsync(this VisualElement? view) =>
-        view?.ScaleToAsync(1.0, DurNormal, Easing.SpringOut) ?? Task.CompletedTask;
-
-    public static async Task ShakeErrorAsync(this VisualElement? element)
-    {
-        if (element is null)
+        public Task PressDownAsync()
         {
-            return;
+            element?.CancelAnimations();
+            return element?.ScaleToAsync(0.94, 80, Easing.CubicIn) ?? Task.CompletedTask;
         }
 
-        element.CancelAnimations();
-        _ = await element.TranslateToAsync(9, 0, 45, Easing.CubicOut);
-        _ = await element.TranslateToAsync(-9, 0, 45, Easing.CubicInOut);
-        _ = await element.TranslateToAsync(5, 0, 40, Easing.CubicInOut);
-        _ = await element.TranslateToAsync(-5, 0, 40, Easing.CubicInOut);
-        _ = await element.TranslateToAsync(2, 0, 35, Easing.CubicInOut);
-        _ = await element.TranslateToAsync(0, 0, 35, Easing.CubicOut);
-    }
+        public Task PressUpAsync() =>
+            element?.ScaleToAsync(1.0, DurNormal, Easing.SpringOut) ?? Task.CompletedTask;
 
-    public static async Task FlashErrorAsync(this VisualElement? element)
-    {
-        if (element is null)
+        public async Task ShakeErrorAsync()
         {
-            return;
+            if (element is null)
+            {
+                return;
+            }
+
+            element.CancelAnimations();
+            _ = await element.TranslateToAsync(9, 0, 45, Easing.CubicOut);
+            _ = await element.TranslateToAsync(-9, 0, 45, Easing.CubicInOut);
+            _ = await element.TranslateToAsync(5, 0, 40, Easing.CubicInOut);
+            _ = await element.TranslateToAsync(-5, 0, 40, Easing.CubicInOut);
+            _ = await element.TranslateToAsync(2, 0, 35, Easing.CubicInOut);
+            _ = await element.TranslateToAsync(0, 0, 35, Easing.CubicOut);
         }
 
-        element.CancelAnimations();
-        for (var i = 0; i < 2; i++)
+        public async Task FlashErrorAsync()
         {
-            _ = await element.FadeToAsync(0.25, 120, Easing.CubicIn);
-            _ = await element.FadeToAsync(1.0, 120, Easing.CubicOut);
+            if (element is null)
+            {
+                return;
+            }
+
+            element.CancelAnimations();
+            for (var i = 0; i < 2; i++)
+            {
+                _ = await element.FadeToAsync(0.25, 120, Easing.CubicIn);
+                _ = await element.FadeToAsync(1.0, 120, Easing.CubicOut);
+            }
         }
     }
 
@@ -200,7 +203,8 @@ public static partial class UIAnimations
         pill.IsVisible = false;
     }
 
-    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "MAUI Animation is managed and committed to visual element lifecycle")]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+        Justification = "MAUI Animation is managed and committed to visual element lifecycle")]
     public static void StartAuraPulse(VisualElement? aura)
     {
         if (aura is null)
@@ -244,8 +248,14 @@ public static partial class UIAnimations
         catch (Exception)
         {
             try
-            { aura.Opacity = 0; aura.Scale = 1.0; }
-            catch { }
+            {
+                aura.Opacity = 0;
+                aura.Scale = 1.0;
+            }
+            catch
+            {
+                // ignored
+            }
         }
     }
 
@@ -257,8 +267,8 @@ public static partial class UIAnimations
         try
         {
             var accent = GetThemeColor("Accent", s_cyanColor);
-            _ = (icon?.IconColor = accent);
-            _ = (label?.TextColor = accent);
+            _ = icon?.IconColor = accent;
+            _ = label?.TextColor = accent;
 
             if (aura is not null)
             {
@@ -272,6 +282,7 @@ public static partial class UIAnimations
         }
         catch (Exception)
         {
+            // ignored
         }
     }
 
@@ -285,8 +296,8 @@ public static partial class UIAnimations
             var primary = GetThemeColor("Primary", s_primaryColor);
             var primaryBright = GetThemeColor("PrimaryBright", s_disconnectedLabelColor);
 
-            _ = (icon?.IconColor = primary);
-            _ = (label?.TextColor = primaryBright);
+            _ = icon?.IconColor = primary;
+            _ = label?.TextColor = primaryBright;
 
             if (aura is not null)
             {
@@ -295,6 +306,7 @@ public static partial class UIAnimations
         }
         catch (Exception)
         {
+            // ignored
         }
     }
 
@@ -354,6 +366,7 @@ public static partial class UIAnimations
         }
         catch (Exception)
         {
+            // ignored
         }
     }
 }

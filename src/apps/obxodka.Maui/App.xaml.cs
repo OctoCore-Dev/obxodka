@@ -1,15 +1,59 @@
+#if WINDOWS
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using WinRT.Interop;
+using Colors = Microsoft.UI.Colors;
+using Grid = Microsoft.UI.Xaml.Controls.Grid;
+using Window = Microsoft.Maui.Controls.Window;
+#endif
+
 namespace obxodka;
 
-internal sealed partial class App : Application
+internal sealed partial class App
 {
+    private static int s_shutdownInitiated;
+
+    public App()
+    {
+        InitializeComponent();
+        DnsAdBlocker.IsAdBlockEnabled = Preferences.Default.Get(AppPreferenceKeys.UseAdblockDns, true);
+        _ = Task.Run(async () => await TelemetryService.Instance.FlushPreviousSessionCrashLogAsync().ConfigureAwait(false));
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var cacheFile = Path.Combine(FileSystem.AppDataDirectory, "adblock_rules.txt");
+                _ = await DnsAdBlockRuleManager.LoadFromCacheAsync(cacheFile);
+
+                var lastSyncTicks = Preferences.Default.Get(AppPreferenceKeys.AdblockLastSyncTicks, 0L);
+                var lastSync = new DateTime(lastSyncTicks, DateTimeKind.Utc);
+                if (DateTime.UtcNow - lastSync > TimeSpan.FromHours(24))
+                {
+                    if (await DnsAdBlockRuleManager.SyncFromRemoteAsync(cacheFilePath: cacheFile))
+                    {
+                        Preferences.Default.Set(AppPreferenceKeys.AdblockLastSyncTicks, DateTime.UtcNow.Ticks);
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        });
+    }
+
+    public static (string Email, string Code)? PendingDeepLinkLogin { get; set; }
+    public static bool PendingTileAction { get; set; }
+    public static bool IsShutdownCompleted { get; private set; }
+
+#if WINDOWS
+    public static IntPtr MainWindowHandle { get; set; } = IntPtr.Zero;
+#endif
     public static event Action? AppResumed;
     public static event Action? WindowActivated;
     public static event Action? WindowDeactivated;
     public static event Action<string, string>? DeepLinkLoginReceived;
-    public static (string Email, string Code)? PendingDeepLinkLogin { get; set; }
-    public static bool PendingTileAction { get; set; }
-    private static int s_shutdownInitiated;
-    public static bool IsShutdownCompleted { get; private set; }
 
     public static bool TryParseDeepLinkLogin(string? rawUri, out string email, out string code)
     {
@@ -41,10 +85,9 @@ internal sealed partial class App : Application
         }
 
         var isCustomScheme = string.Equals(uri.Scheme, "obxodka", StringComparison.OrdinalIgnoreCase);
-        var isWebQrLink = (string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ||
-                           string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase)) &&
-                          (uri.Host.EndsWith(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                           uri.Host.EndsWith(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase)) &&
+        var isWebQrLink = string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase) &&
+                          (IsTrustedDeepLinkHost(uri.Host, AppConfig.PrimaryDomain) ||
+                           IsTrustedDeepLinkHost(uri.Host, AppConfig.MirrorDomain)) &&
                           uri.AbsolutePath.StartsWith("/qr", StringComparison.OrdinalIgnoreCase);
 
         if (!isCustomScheme && !isWebQrLink)
@@ -85,6 +128,13 @@ internal sealed partial class App : Application
                code.All(char.IsAsciiDigit);
     }
 
+    //проверка принадлежности хоста доверенному домену или его поддомену
+    private static bool IsTrustedDeepLinkHost(string? host, string? trustedDomain) =>
+        !string.IsNullOrWhiteSpace(host) &&
+        !string.IsNullOrWhiteSpace(trustedDomain) &&
+        (string.Equals(host, trustedDomain, StringComparison.OrdinalIgnoreCase) ||
+         host.EndsWith($".{trustedDomain}", StringComparison.OrdinalIgnoreCase));
+
     public static void HandleDeepLink(string? rawUri)
     {
         if (!TryParseDeepLinkLogin(rawUri, out var email, out var code))
@@ -107,11 +157,14 @@ internal sealed partial class App : Application
         {
             try
             {
-                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                var vpnService = IPlatformApplication.Current?.Services.GetService<IVpnService>();
                 var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
                 await stopTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
             finally
             {
                 IsShutdownCompleted = true;
@@ -120,52 +173,27 @@ internal sealed partial class App : Application
         });
     }
 
-#if WINDOWS
-    public static IntPtr MainWindowHandle { get; set; } = IntPtr.Zero;
-#endif
-
-    public App()
+    public static void HandleTileClick()
     {
-        InitializeComponent();
-        DnsAdBlocker.IsAdBlockEnabled = Preferences.Default.Get("use_adblock_dns", true);
-        _ = Task.Run(async () => await TelemetryService.Instance.FlushPreviousSessionCrashLogAsync().ConfigureAwait(false));
-        _ = Task.Run(async () =>
+        PendingTileAction = true;
+        MainThread.BeginInvokeOnMainThread(async void () =>
         {
             try
             {
-                var cacheFile = Path.Combine(FileSystem.AppDataDirectory, "adblock_rules.txt");
-                _ = await DnsAdBlockRuleManager.LoadFromCacheAsync(cacheFile);
-
-                var lastSyncTicks = Preferences.Default.Get("adblock_last_sync_ticks", 0L);
-                var lastSync = new DateTime(lastSyncTicks, DateTimeKind.Utc);
-                if (DateTime.UtcNow - lastSync > TimeSpan.FromHours(24))
+                if (Shell.Current is null)
                 {
-                    if (await DnsAdBlockRuleManager.SyncFromRemoteAsync(cacheFilePath: cacheFile))
-                    {
-                        Preferences.Default.Set("adblock_last_sync_ticks", DateTime.UtcNow.Ticks);
-                    }
+                    return;
+                }
+
+                await Shell.Current.GoToAsync("//main");
+                if (Shell.Current.CurrentPage is MainPage mp)
+                {
+                    mp.HandlePendingTileAction();
                 }
             }
             catch
             {
-            }
-        });
-    }
-
-    public static void HandleTileClick()
-    {
-        PendingTileAction = true;
-        MainThread.BeginInvokeOnMainThread(async () =>
-        {
-            if (Shell.Current is null)
-            {
-                return;
-            }
-
-            await Shell.Current.GoToAsync("//main");
-            if (Shell.Current.CurrentPage is MainPage mp)
-            {
-                mp.HandlePendingTileAction();
+                // ignored
             }
         });
     }
@@ -184,77 +212,84 @@ internal sealed partial class App : Application
 #if WINDOWS
         window.HandlerChanged += (_, _) =>
         {
-            if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window winUIWindow)
+            if (window.Handler?.PlatformView is not Microsoft.UI.Xaml.Window winUiWindow)
             {
-                winUIWindow.Activated += (s, args) =>
+                return;
+            }
+
+            winUiWindow.Activated += (_, args) =>
+            {
+                if (args.WindowActivationState == WindowActivationState.Deactivated)
                 {
-                    if (args.WindowActivationState == Microsoft.UI.Xaml.WindowActivationState.Deactivated)
-                    {
-                        WindowDeactivated?.Invoke();
-                    }
-                    else
-                    {
-                        WindowActivated?.Invoke();
-                    }
-                };
-                winUIWindow.VisibilityChanged += (s, args) =>
+                    WindowDeactivated?.Invoke();
+                }
+                else
                 {
-                    if (!args.Visible)
-                    {
-                        WindowDeactivated?.Invoke();
-                    }
-                    else
-                    {
-                        WindowActivated?.Invoke();
-                    }
-                };
-
-                winUIWindow.ExtendsContentIntoTitleBar = true;
-                winUIWindow.SetTitleBar(new Microsoft.UI.Xaml.Controls.Grid { Height = 0, MaxHeight = 0 });
-
-                var handle = WinRT.Interop.WindowNative.GetWindowHandle(winUIWindow);
-                MainWindowHandle = handle;
-                var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
-                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
-                if (appWindow is not null && Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                    WindowActivated?.Invoke();
+                }
+            };
+            winUiWindow.VisibilityChanged += (_, args) =>
+            {
+                if (!args.Visible)
                 {
-                    var titleBar = appWindow.TitleBar;
-                    titleBar.ExtendsContentIntoTitleBar = true;
-                    titleBar.BackgroundColor = Microsoft.UI.Colors.Transparent;
-                    titleBar.InactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-                    titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-                    titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+                    WindowDeactivated?.Invoke();
+                }
+                else
+                {
+                    WindowActivated?.Invoke();
+                }
+            };
 
-                    void SyncTitleBarColors()
-                    {
-                        var bgBase = Current?.Resources != null && Current.Resources.TryGetValue("BgBase", out var bObj) && bObj is Color c
-                            ? c
-                            : Color.FromArgb("#0E0E14");
+            winUiWindow.ExtendsContentIntoTitleBar = true;
+            winUiWindow.SetTitleBar(new Grid
+            {
+                Height = 0,
+                MaxHeight = 0
+            });
 
-                        var luminance = (0.2126 * bgBase.Red) + (0.7152 * bgBase.Green) + (0.0722 * bgBase.Blue);
-                        var isLight = luminance > 0.55;
+            var handle = WindowNative.GetWindowHandle(winUiWindow);
+            MainWindowHandle = handle;
+            var id = Win32Interop.GetWindowIdFromWindow(handle);
+            var appWindow = AppWindow.GetFromWindowId(id);
+            if (appWindow is not null && AppWindowTitleBar.IsCustomizationSupported())
+            {
+                var titleBar = appWindow.TitleBar;
+                titleBar.ExtendsContentIntoTitleBar = true;
+                titleBar.BackgroundColor = Colors.Transparent;
+                titleBar.InactiveBackgroundColor = Colors.Transparent;
+                titleBar.ButtonBackgroundColor = Colors.Transparent;
+                titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
 
-                        titleBar.ButtonForegroundColor = isLight ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
-                        titleBar.ButtonHoverForegroundColor = isLight ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
-                        titleBar.ButtonInactiveForegroundColor = isLight
-                            ? global::Windows.UI.Color.FromArgb(120, 0, 0, 0)
-                            : global::Windows.UI.Color.FromArgb(120, 255, 255, 255);
-                        titleBar.ButtonHoverBackgroundColor = isLight
-                            ? global::Windows.UI.Color.FromArgb(25, 0, 0, 0)
-                            : global::Windows.UI.Color.FromArgb(30, 255, 255, 255);
-                        titleBar.ButtonPressedBackgroundColor = isLight
-                            ? global::Windows.UI.Color.FromArgb(50, 0, 0, 0)
-                            : global::Windows.UI.Color.FromArgb(60, 255, 255, 255);
-                    }
+                void SyncTitleBarColors()
+                {
+                    var bgBase = Current?.Resources != null && Current.Resources.TryGetValue("BgBase", out var bObj) && bObj is Color c
+                        ? c
+                        : Color.FromArgb("#0E0E14");
 
-                    SyncTitleBarColors();
+                    var luminance = 0.2126 * bgBase.Red + 0.7152 * bgBase.Green + 0.0722 * bgBase.Blue;
+                    var isLight = luminance > 0.55;
 
-                    Current?.RequestedThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
-                    if (IPlatformApplication.Current?.Services?.GetService<ThemeManager>() is { } tm)
-                    {
-                        tm.OnThemeApplied += _ => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
-                        tm.OnThemeReset += () => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
-                    }
+                    titleBar.ButtonForegroundColor = isLight ? Colors.Black : Colors.White;
+                    titleBar.ButtonHoverForegroundColor = isLight ? Colors.Black : Colors.White;
+                    titleBar.ButtonInactiveForegroundColor = isLight
+                        ? global::Windows.UI.Color.FromArgb(120, 0, 0, 0)
+                        : global::Windows.UI.Color.FromArgb(120, 255, 255, 255);
+                    titleBar.ButtonHoverBackgroundColor = isLight
+                        ? global::Windows.UI.Color.FromArgb(25, 0, 0, 0)
+                        : global::Windows.UI.Color.FromArgb(30, 255, 255, 255);
+                    titleBar.ButtonPressedBackgroundColor = isLight
+                        ? global::Windows.UI.Color.FromArgb(50, 0, 0, 0)
+                        : global::Windows.UI.Color.FromArgb(60, 255, 255, 255);
+                }
+
+                SyncTitleBarColors();
+
+                Current?.RequestedThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                if (IPlatformApplication.Current?.Services.GetService<ThemeManager>() is { } tm)
+                {
+                    tm.OnThemeApplied += _ => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                    tm.OnThemeReset += () => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
+                    tm.OnSystemThemeSynced += () => MainThread.BeginInvokeOnMainThread(SyncTitleBarColors);
                 }
             }
         };
@@ -270,11 +305,14 @@ internal sealed partial class App : Application
 
             try
             {
-                var vpnService = IPlatformApplication.Current?.Services?.GetService<IVpnService>();
+                var vpnService = IPlatformApplication.Current?.Services.GetService<IVpnService>();
                 var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
                 _ = stopTask.Wait(TimeSpan.FromSeconds(2));
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         };
 #endif
 

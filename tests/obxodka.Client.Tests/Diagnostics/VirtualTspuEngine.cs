@@ -44,8 +44,8 @@ public sealed class VirtualTspuReport
 //эмулятор алгоритмов анализа трафика и блокировок тспу для стресс-тестов
 public sealed class VirtualTspuEngine
 {
-    private uint _lastObservedSessionId;
     private int _consecutiveSessionIdMatches;
+    private uint _lastObservedSessionId;
 
     //вычисление информационной энтропии шеннона для обнаружения шифрованного шума
     public static double CalculateShannonEntropy(ReadOnlySpan<byte> data)
@@ -208,6 +208,7 @@ public sealed class VirtualTspuEngine
         {
             return false;
         }
+
         var sessIdLen = record[pos];
         pos += 1 + sessIdLen;
 
@@ -215,6 +216,7 @@ public sealed class VirtualTspuEngine
         {
             return false;
         }
+
         var cipherLen = BinaryPrimitives.ReadUInt16BigEndian(record.Slice(pos, 2));
         pos += 2 + cipherLen;
 
@@ -222,6 +224,7 @@ public sealed class VirtualTspuEngine
         {
             return false;
         }
+
         var compLen = record[pos];
         pos += 1 + compLen;
 
@@ -229,6 +232,7 @@ public sealed class VirtualTspuEngine
         {
             return false;
         }
+
         var extTotalLen = BinaryPrimitives.ReadUInt16BigEndian(record.Slice(pos, 2));
         pos += 2;
 

@@ -21,9 +21,9 @@ public class AndroidFeaturesTests
     public void GooglePurchasePayloadConstruction()
     {
         var req = new GooglePurchaseVerifyRequest(
-            ProductId: "sub_premium_1month",
-            PurchaseToken: "inapp_billing_google_token_sample_12345",
-            OrderId: "GPA.1234-5678-9012-34567"
+            "sub_premium_1month",
+            "inapp_billing_google_token_sample_12345",
+            "GPA.1234-5678-9012-34567"
         );
 
         Assert.Equal("sub_premium_1month", req.ProductId);
@@ -35,10 +35,10 @@ public class AndroidFeaturesTests
     public void GooglePurchaseResponseBalanceCalculation()
     {
         var resp = new GooglePurchaseVerifyResponse(
-            Success: true,
-            SecondsAdded: 2592000,
-            NewBalance: 100,
-            Message: "Подписка активирована"
+            true,
+            2592000,
+            100,
+            "Подписка активирована"
         );
 
         Assert.True(resp.Success);

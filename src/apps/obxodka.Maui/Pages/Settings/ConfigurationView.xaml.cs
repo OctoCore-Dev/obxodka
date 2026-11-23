@@ -1,33 +1,21 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Settings;
 
 //экран системных настроек, автозапуска, kill switch и замера скорости
-public sealed partial class ConfigurationView : ContentView, IDisposable
+public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 {
-    private static Color CyanColor => (Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac)
-        ? ac
-        : Color.FromArgb("#00E5FF");
-    private static Color EmeraldColor => (Application.Current?.Resources.TryGetValue("Success", out var s) == true && s is Color sc)
-        ? sc
-        : Color.FromArgb("#10B981");
-    private static Color ErrorRedColor => (Application.Current?.Resources.TryGetValue("Error", out var er) == true && er is Color erc)
-        ? erc
-        : Color.FromArgb("#EF4444");
-
-    private bool _isTestingSpeed;
-    private CancellationTokenSource? _speedTestCts;
 #if WINDOWS
-    private bool _isUpdating;
     private readonly Action? _windowActivatedHandler;
 #endif
+
+    private bool? _isWideSettingsGrid;
+    private bool _isUpdating;
 
     public ConfigurationView()
     {
         InitializeComponent();
 
-        AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
-        KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
+        SyncSwitchesFromPreferences();
 #if WINDOWS
-        RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
         _windowActivatedHandler = () =>
         {
             if (IsVisible)
@@ -39,270 +27,244 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         _ = SyncWindowsStartupStateAsync();
 #else
         RunOnStartupCard.IsVisible = false;
+        RuAutoBypassCard.IsVisible = false;
 #endif
 
-        UpdateSelectionUI();
-
-        ConfigScrollView.SizeChanged += (s, e) =>
-        {
-            if (ConfigScrollView.Width > 0)
-            {
-                ApplyCardWidth(ConfigScrollView.Width);
-            }
-        };
+        UpdateSelectionUi();
     }
 
-    //расчет ширины для перестроения интерфейса
-    public void ForceLayoutWidth()
+    private static Color CyanColor => Application.Current?.Resources.TryGetValue("Accent", out var a) == true && a is Color ac
+        ? ac
+        : Color.FromArgb("#00E5FF");
+
+    private static Color EmeraldColor => Application.Current?.Resources.TryGetValue("Success", out var s) == true && s is Color sc
+        ? sc
+        : Color.FromArgb("#10B981");
+
+    private static Color ErrorRedColor => Application.Current?.Resources.TryGetValue("Error", out var er) == true && er is Color erc
+        ? erc
+        : Color.FromArgb("#EF4444");
+
+    //освобождение ресурсов
+    public void Dispose()
     {
-        if (ConfigScrollView.Width > 0)
+#if WINDOWS
+        if (_windowActivatedHandler is not null)
         {
-            ApplyCardWidth(ConfigScrollView.Width);
+            App.WindowActivated -= _windowActivatedHandler;
         }
-        else if (Width > 0 && RootLayoutGrid is not null)
-        {
-            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
+#endif
+        DisposeSpeedTest();
+        GC.SuppressFinalize(this);
     }
 
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width > 0 && RootLayoutGrid is not null)
-        {
-            var availableWidth = width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
-    }
+    public event EventHandler? ThemesRequested;
 
-    //подгонка ширины карточек с ограничением максимума
-    private void ApplyCardWidth(double targetWidth)
+    //единая адаптация экрана конфигурации по ssot-снимку геометрии окна без ручного widthrequest
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (targetWidth <= 0 || MainContentGrid is null)
+        if (RootLayoutGrid is null || MainContentGrid is null)
         {
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
+        var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
+            : isCompact ? 14.0 : 20.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
+
+        RootLayoutGrid.Padding = new Thickness(sidePad, 0, sidePad, 0);
+        MainContentGrid.HorizontalOptions = LayoutOptions.Fill;
+        MainContentGrid.Padding = new Thickness(0, topPad, 0, bottomPad);
+
+        ApplySettingsGridColumns(viewport.UseMultiColumnContent);
+    }
+
+    //динамическая раскладка сетки настроек в 1 или 2 колонки по реальной ширине экрана
+    private void ApplySettingsGridColumns(bool isWide)
+    {
+        if (SecuritySettingsGrid is null || _isWideSettingsGrid == isWide)
         {
             return;
         }
 
-        MainContentGrid.WidthRequest = safeWidth;
-        MainContentGrid.MaximumWidthRequest = safeWidth;
+        _isWideSettingsGrid = isWide;
+        SecuritySettingsGrid.ColumnDefinitions.Clear();
+        if (isWide)
+        {
+            SecuritySettingsGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            SecuritySettingsGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            SecuritySettingsGrid.ColumnSpacing = 12;
+            SecuritySettingsGrid.RowSpacing = 10;
+
+            Grid.SetRow(AutoReconnectCard, 0);
+            Grid.SetColumn(AutoReconnectCard, 0);
+            Grid.SetColumnSpan(AutoReconnectCard, 1);
+
+            Grid.SetRow(KillSwitchCard, 0);
+            Grid.SetColumn(KillSwitchCard, 1);
+            Grid.SetColumnSpan(KillSwitchCard, 1);
+
+            Grid.SetRow(ForceCloudflareCard, 1);
+            Grid.SetColumn(ForceCloudflareCard, 0);
+            Grid.SetColumnSpan(ForceCloudflareCard, 1);
+
+            Grid.SetRow(BlockIpv6Card, 1);
+            Grid.SetColumn(BlockIpv6Card, 1);
+            Grid.SetColumnSpan(BlockIpv6Card, 1);
+
+            Grid.SetRow(RuAutoBypassCard, 2);
+            Grid.SetColumn(RuAutoBypassCard, 0);
+            Grid.SetColumnSpan(RuAutoBypassCard, 2);
+
+            Grid.SetRow(RunOnStartupCard, 3);
+            Grid.SetColumn(RunOnStartupCard, 0);
+            Grid.SetColumnSpan(RunOnStartupCard, 2);
+
+            Grid.SetRow(SpeedTestCard, 4);
+            Grid.SetColumn(SpeedTestCard, 0);
+            Grid.SetColumnSpan(SpeedTestCard, 2);
+
+            Grid.SetRow(ThemesSettingsCard, 5);
+            Grid.SetColumn(ThemesSettingsCard, 0);
+            Grid.SetColumnSpan(ThemesSettingsCard, 2);
+        }
+        else
+        {
+            SecuritySettingsGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            SecuritySettingsGrid.ColumnSpacing = 0;
+            SecuritySettingsGrid.RowSpacing = 10;
+
+            Border[] stacked =
+            [
+                AutoReconnectCard,
+                KillSwitchCard,
+                ForceCloudflareCard,
+                BlockIpv6Card,
+                RuAutoBypassCard,
+                RunOnStartupCard,
+                SpeedTestCard,
+                ThemesSettingsCard
+            ];
+
+            for (var i = 0; i < stacked.Length; i++)
+            {
+                Grid.SetRow(stacked[i], i);
+                Grid.SetColumn(stacked[i], 0);
+                Grid.SetColumnSpan(stacked[i], 1);
+            }
+        }
     }
 
-    //сохранение настройки автоподключения
-    private void OnAutoReconnectToggled(object? sender, ToggledEventArgs e) =>
-        Preferences.Set(AppPreferenceKeys.AutoReconnect, e.Value);
+    //синхронизация состояния тумблеров с хранилищем настроек
+    private void SyncSwitchesFromPreferences()
+    {
+        _isUpdating = true;
+        try
+        {
+            AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
+            KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
+            ForceCloudflareToggle.IsToggled = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+            var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+            BlockIpv6Toggle.IsToggled = blockIpv6;
+            OctopusEngine.Current.Pipeline.BlockIpv6Traffic = blockIpv6;
+#if WINDOWS
+            RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
+            RuAutoBypassToggle.IsToggled = Preferences.Get(AppPreferenceKeys.BypassRuSites, true);
+#endif
+        }
+        finally
+        {
+            _isUpdating = false;
+        }
+    }
+
+    //сохранение настройки авто подключения
+    private void OnAutoReconnectToggled(object? sender, ToggledEventArgs e)
+    {
+        if (!_isUpdating)
+        {
+            Preferences.Set(AppPreferenceKeys.AutoReconnect, e.Value);
+        }
+    }
 
     //сохранение настройки аварийного отключения сети
-    private void OnKillSwitchToggled(object? sender, ToggledEventArgs e) =>
-        Preferences.Set(AppPreferenceKeys.KillSwitch, e.Value);
+    private void OnKillSwitchToggled(object? sender, ToggledEventArgs e)
+    {
+        if (!_isUpdating)
+        {
+            Preferences.Set(AppPreferenceKeys.KillSwitch, e.Value);
+        }
+    }
+
+    //принудительное включение или отключение режима Cloudflare WebSocket
+    private void OnForceCloudflareToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.ForceWebSocket, e.Value);
+        UpdateSelectionUi();
+    }
+
+    //включение или отключение блокировки ipv6 трафика в конвейере и при следующем подключении
+    private void OnBlockIpv6Toggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.BlockIpv6, e.Value);
+        OctopusEngine.Current.Pipeline.BlockIpv6Traffic = e.Value;
+        UpdateSelectionUi();
+    }
+
+    //включение или отключение авто-обхода российских доменов и подсетей на windows
+    private void OnRuAutoBypassToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+#if WINDOWS
+        Preferences.Set(AppPreferenceKeys.BypassRuSites, e.Value);
+        AppManager.SyncPolicyFromPreferences();
+#else
+        Preferences.Set(AppPreferenceKeys.BypassRuSites, e.Value);
+#endif
+    }
 
     //переключение автозагрузки приложения с операционной системой
     private void OnRunOnStartupToggled(object? sender, ToggledEventArgs e)
     {
-#if WINDOWS
         if (_isUpdating)
         {
             return;
         }
 
         Preferences.Set(AppPreferenceKeys.RunOnStartup, e.Value);
-        if (OperatingSystem.IsWindows())
-        {
-            _ = SetWindowsStartupTaskAsync(e.Value);
-        }
-#else
-        Preferences.Set(AppPreferenceKeys.RunOnStartup, e.Value);
-#endif
-    }
-
 #if WINDOWS
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, IntPtr packageFullName);
-
-    //проверка наличия msix пакета приложения
-    private static bool HasPackageIdentity()
-    {
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
-        {
-            return false;
-        }
-
-        var length = 0;
-        return GetCurrentPackageFullName(ref length, IntPtr.Zero) != 15700;
-    }
-
-    //проверка фактического статуса автозагрузки в windows
-    private static async Task<bool> CheckWindowsStartupStateAsync()
-    {
-        try
-        {
-            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763) && HasPackageIdentity())
-            {
-                var startupTask = await Windows.ApplicationModel.StartupTask.GetAsync("ObxodkaStartup");
-                return startupTask.State is Windows.ApplicationModel.StartupTaskState.Enabled
-                                        or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
-            }
-            else if (OperatingSystem.IsWindows())
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false);
-                return key?.GetValue("Obxodka") is not null;
-            }
-
-            return Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[STARTUP CHECK ERROR] {ex.Message}", ex);
-            return Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
-        }
-    }
-
-    //синхронизация состояния тумблера автозапуска
-    private async Task SyncWindowsStartupStateAsync()
-    {
-        try
-        {
-            var isEnabled = await CheckWindowsStartupStateAsync();
-            Preferences.Set(AppPreferenceKeys.RunOnStartup, isEnabled);
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                _isUpdating = true;
-                RunOnStartupToggle.IsToggled = isEnabled;
-                _isUpdating = false;
-            });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[STARTUP SYNC ERROR] {ex.Message}", ex);
-        }
-    }
-
-    //установка или удаление задачи автозагрузки в windows
-    private async Task SetWindowsStartupTaskAsync(bool enable)
-    {
-        try
-        {
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    if (OperatingSystem.IsWindows())
-                    {
-                        using var proc = Process.Start(new ProcessStartInfo("schtasks", "/delete /tn \"ObxodkaVpnStartup\" /f")
-                        {
-                            UseShellExecute = true,
-                            WindowStyle = ProcessWindowStyle.Hidden
-                        });
-                        proc?.WaitForExit();
-                    }
-                }
-                catch
-                {
-                    //игнорируем если задача не была ранее зарегистрирована в планировщике
-                }
-            });
-
-            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763) && HasPackageIdentity())
-            {
-                var startupTask = await Windows.ApplicationModel.StartupTask.GetAsync("ObxodkaStartup");
-                if (enable)
-                {
-                    if (startupTask.State == Windows.ApplicationModel.StartupTaskState.DisabledByUser)
-                    {
-                        _ = await Launcher.OpenAsync(new Uri("ms-settings:startupapps"));
-
-                        await Task.Delay(1000);
-                        var recheck = await Windows.ApplicationModel.StartupTask.GetAsync("ObxodkaStartup");
-                        var isEnabled = recheck.State is Windows.ApplicationModel.StartupTaskState.Enabled
-                                                        or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
-                        Preferences.Set(AppPreferenceKeys.RunOnStartup, isEnabled);
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            _isUpdating = true;
-                            RunOnStartupToggle.IsToggled = isEnabled;
-                            _isUpdating = false;
-                        });
-                        return;
-                    }
-
-                    var state = await startupTask.RequestEnableAsync();
-                    var success = state is Windows.ApplicationModel.StartupTaskState.Enabled
-                                        or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
-                    Preferences.Set(AppPreferenceKeys.RunOnStartup, success);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        _isUpdating = true;
-                        RunOnStartupToggle.IsToggled = success;
-                        _isUpdating = false;
-                    });
-                }
-                else
-                {
-                    if (startupTask.State is Windows.ApplicationModel.StartupTaskState.Enabled
-                                            or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy)
-                    {
-                        startupTask.Disable();
-                    }
-                    Preferences.Set(AppPreferenceKeys.RunOnStartup, false);
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        _isUpdating = true;
-                        RunOnStartupToggle.IsToggled = false;
-                        _isUpdating = false;
-                    });
-                }
-            }
-            else
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-                if (key is not null)
-                {
-                    if (enable)
-                    {
-                        var exePath = Environment.ProcessPath;
-                        if (!string.IsNullOrEmpty(exePath))
-                        {
-                            key.SetValue("Obxodka", $"\"{exePath}\"");
-                            Preferences.Set(AppPreferenceKeys.RunOnStartup, true);
-                        }
-                    }
-                    else
-                    {
-                        key.DeleteValue("Obxodka", false);
-                        Preferences.Set(AppPreferenceKeys.RunOnStartup, false);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[STARTUP ERROR] {ex.Message}", ex);
-        }
-    }
+        _ = ApplyWindowsStartupAsync(e.Value);
 #endif
+    }
 
     //актуализация настроек при показе страницы
     public void OnAppearing()
     {
-        AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
-        KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
+        SyncSwitchesFromPreferences();
 #if WINDOWS
         _ = SyncWindowsStartupStateAsync();
 #endif
-        UpdateSelectionUI();
+        UpdateSelectionUi();
     }
 
     //каскадная анимация появления карточек
@@ -314,24 +276,41 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         await this.PlayCardsEntranceAsync(30, 240);
     }
 
-    //отображение активного сетевого протокола
-    private void UpdateSelectionUI() =>
-        CurrentSelectionLabel.Text = "[ obxodka Stream • HTTP/2 ]";
+    //отображение активного сетевого протокола и режима стека ip
+    private void UpdateSelectionUi()
+    {
+        var forceWs = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+        var blockV6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+        var proto = forceWs
+            ? "Cloudflare WebSocket • 443"
+            : OctopusEngine.Current.IsConnected
+                ? OctopusEngine.Current.ActiveProtocolDisplayName
+                : "obxodka Stream • HTTP/2";
+        CurrentSelectionLabel.Text = blockV6 ? $"{proto} • IPv4 Only" : proto;
+    }
 
     //применение цветов фона и границ карточек настроек
     public void UpdateCardOpacity()
     {
-        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+        var bgSurface = Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor
             ? bgColor
             : Color.FromArgb("#161622");
-        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+        var borderSubtle = Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc
             ? bsc
             : Color.FromArgb("#282838");
 
+        ProtocolInfoCard.BackgroundColor = bgSurface;
+        ProtocolInfoCard.Stroke = borderSubtle;
         AutoReconnectCard.BackgroundColor = bgSurface;
         AutoReconnectCard.Stroke = borderSubtle;
         KillSwitchCard.BackgroundColor = bgSurface;
         KillSwitchCard.Stroke = borderSubtle;
+        ForceCloudflareCard.BackgroundColor = bgSurface;
+        ForceCloudflareCard.Stroke = borderSubtle;
+        BlockIpv6Card.BackgroundColor = bgSurface;
+        BlockIpv6Card.Stroke = borderSubtle;
+        RuAutoBypassCard.BackgroundColor = bgSurface;
+        RuAutoBypassCard.Stroke = borderSubtle;
         RunOnStartupCard.BackgroundColor = bgSurface;
         RunOnStartupCard.Stroke = borderSubtle;
         SpeedTestCard.BackgroundColor = bgSurface;
@@ -340,275 +319,13 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         ThemesSettingsCard.Stroke = borderSubtle;
     }
 
-    //отступ под системный статусбар для мобильных устройств
-    public void SetHeaderTopInset(double top)
-    {
-        if (DeviceInfo.Idiom != DeviceIdiom.Phone || RootLayoutGrid is null)
-        {
-            return;
-        }
-
-        if (DeviceInfo.Platform == DevicePlatform.Android)
-        {
-            RootLayoutGrid.Padding = new Thickness(16, 0, 16, 0);
-            if (MainContentGrid is not null)
-            {
-                var topAir = Math.Max(top + 16, 50);
-                MainContentGrid.Padding = new Thickness(0, topAir, 0, 140);
-            }
-        }
-        else
-        {
-            RootLayoutGrid.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
-        }
-    }
-
     //реакция на смену темы оформления
     public void OnThemeChanged() =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
             UpdateCardOpacity();
-            UpdateSelectionUI();
+            UpdateSelectionUi();
         });
-
-    //запуск или остановка замера скорости сети
-    private async void OnRunSpeedTestClickedAsync(object? sender, EventArgs e)
-    {
-        if (sender is VisualElement btn)
-        {
-            _ = btn.BounceClickAsync();
-        }
-
-        if (_isTestingSpeed)
-        {
-            _speedTestCts?.Cancel();
-            return;
-        }
-
-        _isTestingSpeed = true;
-        _speedTestCts = new CancellationTokenSource();
-        var token = _speedTestCts.Token;
-
-        SpeedTestBtnText.Text = SettingsMessages.SpeedTestBtnStop;
-        SpeedTestResultLabel.Text = SettingsMessages.SpeedTestConnecting;
-        SpeedTestResultLabel.TextColor = CyanColor;
-
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (SpeedGaugeIcon is null)
-            {
-                return;
-            }
-
-            _ = SpeedGaugeIcon.AbortAnimation("SpeedGaugeSpin");
-            var spinAnim = new Animation(v => SpeedGaugeIcon.Rotation = v, 0, 360);
-            spinAnim.Commit(SpeedGaugeIcon, "SpeedGaugeSpin", 16, 900, Easing.Linear, repeat: () => _isTestingSpeed);
-        });
-
-        try
-        {
-            await Task.Run(async () =>
-            {
-                using HttpMessageHandler handler = OperatingSystem.IsAndroid()
-                    ? new HttpClientHandler { UseProxy = false }
-                    : new SocketsHttpHandler
-                    {
-                        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-                        EnableMultipleHttp2Connections = true
-                    };
-                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(25) };
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
-
-                long pingMs = 0;
-                foreach (var endpoint in DiagnosticEndpoints.PingEndpoints)
-                {
-                    if (token.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    try
-                    {
-                        var pingSw = Stopwatch.StartNew();
-                        using var req = new HttpRequestMessage(HttpMethod.Head, endpoint);
-                        using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
-                        pingSw.Stop();
-                        if (resp.IsSuccessStatusCode || (int)resp.StatusCode < 500)
-                        {
-                            pingMs = pingMs == 0 ? pingSw.ElapsedMilliseconds : Math.Min(pingMs, pingSw.ElapsedMilliseconds);
-                        }
-                    }
-                    catch when (!token.IsCancellationRequested) { }
-                }
-
-                if (token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    var pingText = pingMs > 0 ? $"{pingMs} ms • " : "";
-                    SpeedTestResultLabel.Text = $"{pingText}{SettingsMessages.SpeedTestStarting}";
-                });
-
-                string? activeUrl = null;
-                foreach (var candidate in DiagnosticEndpoints.SpeedTestDownloadCandidates)
-                {
-                    if (token.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    try
-                    {
-                        using var probeReq = new HttpRequestMessage(HttpMethod.Head, candidate);
-                        using var probeResp = await client.SendAsync(probeReq, HttpCompletionOption.ResponseHeadersRead, token);
-                        if (probeResp.IsSuccessStatusCode)
-                        {
-                            activeUrl = candidate;
-                            break;
-                        }
-                    }
-                    catch when (!token.IsCancellationRequested) { }
-                }
-
-                activeUrl ??= "https://speedtest.selectel.ru/100MB";
-
-                const double targetDurationSeconds = 10.0;
-                var overallSw = Stopwatch.StartNew();
-                var windowSw = Stopwatch.StartNew();
-
-                long totalBytes = 0;
-                long windowBytes = 0;
-                double peakSpeedMBs = 0;
-                double avgSpeedMBs = 0;
-
-                const int workerCount = 2;
-                List<Task> workerTasks = [];
-
-                for (var i = 0; i < workerCount; i++)
-                {
-                    workerTasks.Add(Task.Run(async () =>
-                    {
-                        var buffer = ArrayPool<byte>.Shared.Rent(131072);
-                        try
-                        {
-                            while (!token.IsCancellationRequested && overallSw.Elapsed.TotalSeconds < targetDurationSeconds)
-                            {
-                                try
-                                {
-                                    using var streamReq = new HttpRequestMessage(HttpMethod.Get, activeUrl);
-                                    using var resp = await client.SendAsync(streamReq, HttpCompletionOption.ResponseHeadersRead, token);
-                                    if (!resp.IsSuccessStatusCode)
-                                    {
-                                        break;
-                                    }
-
-                                    using var stream = await resp.Content.ReadAsStreamAsync(token);
-                                    while (!token.IsCancellationRequested && overallSw.Elapsed.TotalSeconds < targetDurationSeconds)
-                                    {
-                                        var read = await stream.ReadAsync(buffer.AsMemory(0, 131072), token);
-                                        if (read <= 0)
-                                        {
-                                            break;
-                                        }
-
-                                        _ = Interlocked.Add(ref totalBytes, read);
-                                        _ = Interlocked.Add(ref windowBytes, read);
-                                    }
-                                }
-                                catch when (!token.IsCancellationRequested)
-                                {
-                                    break;
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(buffer);
-                        }
-                    }, token));
-                }
-
-                while (!token.IsCancellationRequested && overallSw.Elapsed.TotalSeconds < targetDurationSeconds)
-                {
-                    await Task.Delay(200, token);
-
-                    if (windowSw.ElapsedMilliseconds >= 300)
-                    {
-                        var windowSec = Math.Max(windowSw.Elapsed.TotalSeconds, 0.01);
-                        var currentWBytes = Interlocked.Exchange(ref windowBytes, 0);
-                        var currentInstantMBs = currentWBytes / (1024.0 * 1024.0) / windowSec;
-                        var currentMbps = currentInstantMBs * 8.0;
-
-                        peakSpeedMBs = Math.Max(peakSpeedMBs, currentInstantMBs);
-                        var elapsedSec = Math.Max(overallSw.Elapsed.TotalSeconds, 0.05);
-                        avgSpeedMBs = Interlocked.Read(ref totalBytes) / (1024.0 * 1024.0) / elapsedSec;
-
-                        var remaining = (int)Math.Max(targetDurationSeconds - overallSw.Elapsed.TotalSeconds, 0);
-                        windowSw.Restart();
-
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            SpeedTestResultLabel.Text = $"{currentMbps:F1} Мбит/с ({currentInstantMBs:F1} МБ/с) [{remaining}с]";
-                            SpeedTestResultLabel.TextColor = CyanColor;
-                        });
-                    }
-                }
-
-                await Task.WhenAll(workerTasks);
-
-                overallSw.Stop();
-                var totalSec = Math.Max(overallSw.Elapsed.TotalSeconds, 0.1);
-                avgSpeedMBs = Interlocked.Read(ref totalBytes) / (1024.0 * 1024.0) / totalSec;
-                if (peakSpeedMBs < avgSpeedMBs)
-                {
-                    peakSpeedMBs = avgSpeedMBs;
-                }
-
-                var avgMbps = avgSpeedMBs * 8.0;
-                var peakMbps = peakSpeedMBs * 8.0;
-
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    var pingText = pingMs > 0 ? $" • {pingMs} ms" : "";
-                    SpeedTestResultLabel.Text = $"{avgMbps:F1} Мбит/с ({avgSpeedMBs:F1} МБ/с){pingText} (Пик: {peakMbps:F1} Мбит/с)";
-                    SpeedTestResultLabel.TextColor = EmeraldColor;
-                });
-            }, token);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[SPEED TEST ERROR] {ex.Message}", ex);
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                SpeedTestResultLabel.Text = SettingsMessages.SpeedTestFailed;
-                SpeedTestResultLabel.TextColor = ErrorRedColor;
-            });
-        }
-        finally
-        {
-            _isTestingSpeed = false;
-            _speedTestCts?.Dispose();
-            _speedTestCts = null;
-
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                SpeedTestBtnText.Text = SettingsMessages.SpeedTestBtnStart;
-                if (SpeedGaugeIcon is not null)
-                {
-                    _ = SpeedGaugeIcon.AbortAnimation("SpeedGaugeSpin");
-                    _ = SpeedGaugeIcon.RotateToAsync(0, 300, Easing.CubicOut);
-                }
-            });
-        }
-    }
-
-    public event EventHandler? ThemesRequested;
 
     //переход в магазин тем оформления
     private void OnThemesSettingsTapped(object? sender, EventArgs e)
@@ -617,17 +334,34 @@ public sealed partial class ConfigurationView : ContentView, IDisposable
         ThemesRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    //освобождение ресурсов
-    public void Dispose()
-    {
 #if WINDOWS
-        if (_windowActivatedHandler is not null)
-        {
-            App.WindowActivated -= _windowActivatedHandler;
-        }
-#endif
-        _speedTestCts?.Cancel();
-        _speedTestCts?.Dispose();
-        GC.SuppressFinalize(this);
+    //синхронизация состояния тумблера автозапуска
+    private async Task SyncWindowsStartupStateAsync()
+    {
+        var isEnabled = await WindowsStartupManager.CheckEnabledAsync();
+        ApplyStartupToggleState(isEnabled);
     }
+
+    //применение и отображение фактического состояния автозапуска
+    private async Task ApplyWindowsStartupAsync(bool enable)
+    {
+        var actualState = await WindowsStartupManager.SetEnabledAsync(enable);
+        ApplyStartupToggleState(actualState);
+    }
+
+    //обновление состояния тумблера автозапуска в ui-потоке
+    private void ApplyStartupToggleState(bool isEnabled) =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _isUpdating = true;
+            try
+            {
+                RunOnStartupToggle.IsToggled = isEnabled;
+            }
+            finally
+            {
+                _isUpdating = false;
+            }
+        });
+#endif
 }

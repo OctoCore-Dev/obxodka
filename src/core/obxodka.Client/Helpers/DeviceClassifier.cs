@@ -8,11 +8,19 @@ public enum DeviceKind
     Phone = 2
 }
 
-//определение типа устройства по названию для выбора иконки в интерфейсе
+//определение типа устройства по названию с simd поиском searchvalues
 public static class DeviceClassifier
 {
-    private static readonly string[] s_desktopKeywords = ["windows", "desktop", "laptop", "pc", "mac", "imac", "macbook", "linux", "ubuntu", "debian", "fedora"];
-    private static readonly string[] s_phoneKeywords = ["iphone", "ipad", "ios", "android", "samsung", "pixel", "phone", "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "vivo", "oneplus", "realme"];
+    private static readonly SearchValues<string> s_desktopKeywords = SearchValues.Create(
+        ["windows", "desktop", "laptop", "pc", "mac", "imac", "macbook", "linux", "ubuntu", "debian", "fedora"],
+        StringComparison.OrdinalIgnoreCase);
+
+    private static readonly SearchValues<string> s_phoneKeywords = SearchValues.Create(
+        [
+            "iphone", "ipad", "ios", "android", "samsung", "pixel", "phone", "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "vivo",
+            "oneplus", "realme"
+        ],
+        StringComparison.OrdinalIgnoreCase);
 
     //категория устройства пк телефон или неизвестно
     public static DeviceKind Classify(string? deviceName)
@@ -24,24 +32,10 @@ public static class DeviceClassifier
 
         var span = deviceName.AsSpan();
 
-        return ContainsAny(span, s_desktopKeywords)
+        return span.ContainsAny(s_desktopKeywords)
             ? DeviceKind.Desktop
-            : ContainsAny(span, s_phoneKeywords)
-            ? DeviceKind.Phone
-            : DeviceKind.Unknown;
-    }
-
-    //проверка наличия ключевых слов в строке
-    private static bool ContainsAny(ReadOnlySpan<char> source, ReadOnlySpan<string> keywords)
-    {
-        foreach (var keyword in keywords)
-        {
-            if (source.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+            : span.ContainsAny(s_phoneKeywords)
+                ? DeviceKind.Phone
+                : DeviceKind.Unknown;
     }
 }

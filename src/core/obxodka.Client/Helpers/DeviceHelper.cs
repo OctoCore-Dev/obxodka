@@ -45,10 +45,20 @@ public static class DeviceHelper
         var first = clean[0];
         var allSame = clean.All(c => c == first);
 
-        return !allSame || (first != '0' && first != 'f' && first != 'F');
+        return !allSame || first != '0' && first != 'f' && first != 'F';
     }
 
     //получение идентификатора платформы из служб устройства
-    private static string? GetPlatformId() =>
-        string.IsNullOrWhiteSpace(PlatformServices.DeviceInfo.DeviceId) ? null : PlatformServices.DeviceInfo.DeviceId;
+    private static string? GetPlatformId()
+    {
+        try
+        {
+            var id = PlatformServices.DeviceInfo?.DeviceId;
+            return string.IsNullOrWhiteSpace(id) ? null : id;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
 }

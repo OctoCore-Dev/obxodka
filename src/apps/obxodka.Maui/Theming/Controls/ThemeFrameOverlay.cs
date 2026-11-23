@@ -6,22 +6,46 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
     //параметры линейной фильтрации текстуры рамки
     private static readonly SKSamplingOptions s_samplingOptions = new(SKFilterMode.Linear);
     private readonly Lock _lock = new();
-    private readonly SKPaint _paint = new() { IsAntialias = true };
 
-    private string? _imagePath;
-    private SKImage? _skImage;
-    private FrameSlice? _slice;
-    private bool _isDisposed;
+    private readonly SKPaint _paint = new()
+    {
+        IsAntialias = true
+    };
 
-    private bool _useNinePatch;
     private SKRectI _cachedCenter;
     private bool _hasImage;
+
+    private string? _imagePath;
+    private bool _isDisposed;
+    private SKImage? _skImage;
+    private FrameSlice? _slice;
+
+    private bool _useNinePatch;
 
     public ThemeFrameOverlay()
     {
         InputTransparent = true;
         IsVisible = false;
         ZIndex = 20;
+    }
+
+    //освобождение ресурсов
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        lock (_lock)
+        {
+            _skImage?.Dispose();
+            _skImage = null;
+        }
+
+        _paint.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     //установка текстуры рамки и параметров нарезки
@@ -62,7 +86,8 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
                     var right = Math.Clamp(slice.Right, 0, _skImage.Width / 2);
                     var bottom = Math.Clamp(slice.Bottom, 0, _skImage.Height / 2);
 
-                    _cachedCenter = new SKRectI(left, top, Math.Max(left + 1, _skImage.Width - right), Math.Max(top + 1, _skImage.Height - bottom));
+                    _cachedCenter = new SKRectI(left, top, Math.Max(left + 1, _skImage.Width - right),
+                        Math.Max(top + 1, _skImage.Height - bottom));
                     _useNinePatch = true;
                 }
                 else if (DeviceInfo.Idiom == DeviceIdiom.Phone && _skImage.Width > _skImage.Height * 1.15f)
@@ -113,50 +138,23 @@ public sealed partial class ThemeFrameOverlay : SKCanvasView, IDisposable
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
-        SKImage? img;
-        bool useNine;
-        SKRectI center;
-
-        lock (_lock)
-        {
-            img = _skImage;
-            useNine = _useNinePatch;
-            center = _cachedCenter;
-        }
-
-        if (img is null)
-        {
-            return;
-        }
-
         var info = e.Info;
         var dst = new SKRect(0, 0, info.Width, info.Height);
 
-        if (useNine)
-        {
-            canvas.DrawImageNinePatch(img, center, dst, _paint);
-            return;
-        }
-
-        canvas.DrawImage(img, dst, s_samplingOptions, _paint);
-    }
-
-    //освобождение ресурсов
-    public void Dispose()
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _isDisposed = true;
         lock (_lock)
         {
-            _skImage?.Dispose();
-            _skImage = null;
-        }
+            if (_skImage is null)
+            {
+                return;
+            }
 
-        _paint.Dispose();
-        GC.SuppressFinalize(this);
+            if (_useNinePatch)
+            {
+                canvas.DrawImageNinePatch(_skImage, _cachedCenter, dst, _paint);
+                return;
+            }
+
+            canvas.DrawImage(_skImage, dst, s_samplingOptions, _paint);
+        }
     }
 }

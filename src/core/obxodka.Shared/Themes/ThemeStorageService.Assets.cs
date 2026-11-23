@@ -3,7 +3,8 @@ namespace obxodka.Shared.Themes;
 public sealed partial class ThemeStorageService
 {
     //разрешенные видео-расширения для фонов и кнопок
-    private static readonly HashSet<string> s_videoExtensions = new([".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> s_videoExtensions =
+        new([".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"], StringComparer.OrdinalIgnoreCase);
 
     //проверка является ли файл видеоформатом
     public static bool IsVideoFile(string? path) =>
@@ -17,7 +18,10 @@ public sealed partial class ThemeStorageService
             return null;
         }
 
-        var cleanRel = relativePath.Replace('/', Path.DirectorySeparatorChar).TrimStart('/', '\\');
+        var cleanRel = relativePath
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .TrimStart('/', '\\');
         var baseDir = Path.GetFullPath(folderPath);
         if (!baseDir.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
         {
@@ -39,14 +43,18 @@ public sealed partial class ThemeStorageService
     //сбор всех относительных путей файлов ресурсов темы из манифеста
     public static IEnumerable<string> EnumerateAssetPaths(ThemeManifest manifest)
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "icon.png" };
+        HashSet<string> set = [with(StringComparer.OrdinalIgnoreCase), "icon.png"];
 
         void Add(string? path)
         {
             if (!string.IsNullOrWhiteSpace(path))
             {
-                var clean = path.Replace('/', Path.DirectorySeparatorChar).TrimStart('/', '\\');
-                if (clean.Length > 0 && !clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                var clean = path
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar)
+                    .TrimStart('/', '\\');
+                if (clean.Length > 0 && !clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
                     _ = set.Add(clean);
                 }
@@ -117,7 +125,8 @@ public sealed partial class ThemeStorageService
             obxodkaEl.ValueKind == JsonValueKind.Object)
         {
             AddSectionStrings(obxodkaEl, "sounds", ["connect", "disconnect", "click", "hover", "notification", "ambient"], Add);
-            AddSectionStrings(obxodkaEl, "vpnButton", ["idle", "connecting", "active", "error", "idleWebp", "connectingWebp", "activeWebp", "errorWebp"], Add);
+            AddSectionStrings(obxodkaEl, "vpnButton",
+                ["idle", "connecting", "active", "error", "idleWebp", "connectingWebp", "activeWebp", "errorWebp"], Add);
         }
 
         return set;
@@ -132,8 +141,9 @@ public sealed partial class ThemeStorageService
         }
 
         foreach (var val in keys
-            .Select(key => section.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() : null)
-            .Where(val => val is not null))
+                     .Select(key =>
+                         section.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() : null)
+                     .Where(val => val is not null))
         {
             add(val);
         }

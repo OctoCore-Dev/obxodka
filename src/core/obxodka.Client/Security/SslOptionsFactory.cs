@@ -16,20 +16,22 @@ public static class SslOptionsFactory
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = applicationProtocols,
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
+            RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
                 CertificateValidator.ValidateServerCertificate(cert, chain, errors, dynamicPinningHash)
         };
 
-        if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
+        if (!OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
         {
-            try
-            {
-                options.CipherSuitesPolicy = new CipherSuitesPolicy(RoutingHello.GetCipherSuites(browserProfile));
-            }
-            catch (PlatformNotSupportedException)
-            {
-                //политика шифров не поддерживается текущей платформой
-            }
+            return options;
+        }
+
+        try
+        {
+            options.CipherSuitesPolicy = new CipherSuitesPolicy(RoutingHello.GetCipherSuites(browserProfile));
+        }
+        catch (PlatformNotSupportedException)
+        {
+            //политика шифров не поддерживается текущей платформой
         }
 
         return options;

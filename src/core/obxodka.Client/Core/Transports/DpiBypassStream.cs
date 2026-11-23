@@ -16,42 +16,23 @@ public enum DpiBypassMode
 //поток обхода блокировок: перехватывает первый пакет clienthello и разрезает домен sni пополам
 internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0, int delayMs = 0, bool bypassEnabled = true) : Stream
 {
+    //флаг включения механизма обхода dpi
+    private readonly bool _bypassEnabled = bypassEnabled;
+
+    //пауза между отправкой фрагментов в миллисекундах
+    private readonly int _delayMs = delayMs;
+
     //подлежащий сетевой поток сокета
     private readonly Stream _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
 
     //принудительная позиция разделения первого пакета
     private readonly int _splitPosition = splitPosition;
 
-    //пауза между отправкой фрагментов в миллисекундах
-    private readonly int _delayMs = delayMs;
-
-    //флаг включения механизма обхода dpi
-    private readonly bool _bypassEnabled = bypassEnabled;
-
     //признак первого пакета рукопожатия
     private bool _firstWrite = true;
 
     //активный режим фрагментации
-    public DpiBypassMode Mode { get; set; } = DpiBypassMode.PureL4Midsld;
-
-    //создание потока обхода dpi с автоматическим подбором режима нарезки под профиль браузера
-    public static DpiBypassStream CreateForProfile(Stream innerStream, TlsBrowserProfile profile, bool bypassEnabled = true, bool forcePureL4 = false)
-    {
-        RoutingHello.GetDpiDesyncParams(profile, out var modeInt, out var delayMs);
-        var mode = forcePureL4
-            ? DpiBypassMode.PureL4Midsld
-            : modeInt switch
-            {
-                1 => DpiBypassMode.TlsRecordMidsld,
-                2 => DpiBypassMode.MultiRecordMidsld,
-                _ => DpiBypassMode.PureL4Midsld
-            };
-
-        return new DpiBypassStream(innerStream, delayMs: delayMs, bypassEnabled: bypassEnabled)
-        {
-            Mode = mode
-        };
-    }
+    public DpiBypassMode Mode { get; init; } = DpiBypassMode.PureL4Midsld;
 
     //проверка возможности чтения
     public override bool CanRead => _innerStream.CanRead;
@@ -70,6 +51,26 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     {
         get => _innerStream.Position;
         set => _innerStream.Position = value;
+    }
+
+    //создание потока обхода dpi с автоматическим подбором режима нарезки под профиль браузера
+    public static DpiBypassStream CreateForProfile(Stream innerStream, TlsBrowserProfile profile, bool bypassEnabled = true,
+        bool forcePureL4 = false)
+    {
+        RoutingHello.GetDpiDesyncParams(profile, out var modeInt, out var delayMs);
+        var mode = forcePureL4
+            ? DpiBypassMode.PureL4Midsld
+            : modeInt switch
+            {
+                1 => DpiBypassMode.TlsRecordMidsld,
+                2 => DpiBypassMode.MultiRecordMidsld,
+                _ => DpiBypassMode.PureL4Midsld
+            };
+
+        return new DpiBypassStream(innerStream, delayMs: delayMs, bypassEnabled: bypassEnabled)
+        {
+            Mode = mode
+        };
     }
 
     //сброс буфера в сетевой стек
@@ -143,12 +144,13 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             {
                 if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer))
                 {
-                    WriteTlsRecordFragmentsSync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld);
+                    WriteTlsRecordFragmentsSync(buffer, split1, delay1, Mode == DpiBypassMode.MultiRecordMidsld);
                     return;
                 }
 
                 //сегментация l4 tcp: пакет 1 до середины sni, затем пакет 2 со второй половиной
-                AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Sync, Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
+                AppLogger.Log(
+                    $"[DPI-BYPASS] Pure L4 TCP segmentation activated (Sync, Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
                 _innerStream.Write(buffer[..split1]);
                 _innerStream.Flush();
                 if (delay1 > 0)
@@ -169,38 +171,42 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
-    //асинхронная запись с разделением sni при первом вызове
-    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    //асинхронная запись с разделением sni при первом вызове без аллокации автомата на последующих записях
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+        !_bypassEnabled || !_firstWrite || buffer.Length <= 32
+            ? _innerStream.WriteAsync(buffer, cancellationToken)
+            : WriteFirstWithBypassAsync(buffer, cancellationToken);
+
+    //асинхронная нарезка первого clienthello для обхода dpi
+    private async ValueTask WriteFirstWithBypassAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
     {
-        if (_bypassEnabled && _firstWrite && buffer.Length > 32)
+        _firstWrite = false;
+        if (TryDetermineSplitPoints(buffer.Span, out var split1, out var delay1))
         {
-            _firstWrite = false;
-            if (TryDetermineSplitPoints(buffer.Span, out var split1, out var delay1))
+            if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer.Span))
             {
-                if (Mode is DpiBypassMode.TlsRecordMidsld or DpiBypassMode.MultiRecordMidsld && IsSingleTlsHandshakeRecord(buffer.Span))
-                {
-                    await WriteTlsRecordFragmentsAsync(buffer, split1, delay1, multiRecord: Mode == DpiBypassMode.MultiRecordMidsld, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                //сегментация l4 tcp: отправка первой части clienthello, пауза и отправка остатка
-                AppLogger.Log($"[DPI-BYPASS] Pure L4 TCP segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
-                await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-                if (delay1 > 0)
-                {
-                    await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
-                }
-
-                await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
-                await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await WriteTlsRecordFragmentsAsync(buffer, split1, delay1, Mode == DpiBypassMode.MultiRecordMidsld, cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
-            AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
+            //сегментация l4 tcp: отправка первой части clienthello, пауза и отправка остатка
+            AppLogger.Log(
+                $"[DPI-BYPASS] Pure L4 TCP segmentation activated (Total={buffer.Length}B, Slice1={split1}B, Slice2={buffer.Length - split1}B, Jitter={delay1}ms)");
+            await _innerStream.WriteAsync(buffer[..split1], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+            if (delay1 > 0)
+            {
+                await Task.Delay(delay1, cancellationToken).ConfigureAwait(false);
+            }
+
+            await _innerStream.WriteAsync(buffer[split1..], cancellationToken).ConfigureAwait(false);
+            await _innerStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return;
         }
 
+        AppLogger.Log($"[DPI-BYPASS] First write ({buffer.Length}B) does not match TLS ClientHello pattern. Sending unsplit.");
         await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 
@@ -227,7 +233,8 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         if (multiRecord && p1 > 32)
         {
             var r1 = Math.Clamp(p1 / 2, 16, p1 - 16);
-            AppLogger.Log($"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Sync, Payload={payload.Length}B -> Rec1={r1}B, Rec2={p1 - r1}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
+            AppLogger.Log(
+                $"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Sync, Payload={payload.Length}B -> Rec1={r1}B, Rec2={p1 - r1}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
             WriteSingleTlsRecordSync(verMajor, verMinor, payload[..r1]);
             WriteSingleTlsRecordSync(verMajor, verMinor, payload[r1..p1]);
             if (d1 > 0)
@@ -239,7 +246,8 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             return;
         }
 
-        AppLogger.Log($"[DPI-BYPASS] 2-stage TLS Record-Layer fragmentation activated (Sync, Payload={payload.Length}B -> Rec1={p1}B, Rec2={payload.Length - p1}B, Delay={d1}ms)");
+        AppLogger.Log(
+            $"[DPI-BYPASS] 2-stage TLS Record-Layer fragmentation activated (Sync, Payload={payload.Length}B -> Rec1={p1}B, Rec2={payload.Length - p1}B, Delay={d1}ms)");
         WriteSingleTlsRecordSync(verMajor, verMinor, payload[..p1]);
         if (d1 > 0)
         {
@@ -271,7 +279,8 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     }
 
     //асинхронная отправка фрагментов tls record (2 или 3 записи)
-    private async ValueTask WriteTlsRecordFragmentsAsync(ReadOnlyMemory<byte> buffer, int split1, int d1, bool multiRecord, CancellationToken ct)
+    private async ValueTask WriteTlsRecordFragmentsAsync(ReadOnlyMemory<byte> buffer, int split1, int d1, bool multiRecord,
+        CancellationToken ct)
     {
         var span = buffer.Span;
         var verMajor = span[1];
@@ -282,7 +291,8 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         if (multiRecord && p1 > 32)
         {
             var r1 = Math.Clamp(p1 / 2, 16, p1 - 16);
-            AppLogger.Log($"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Async, Payload={payload.Length}B -> Rec1={r1}B, Rec2={p1 - r1}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
+            AppLogger.Log(
+                $"[DPI-BYPASS] 3-stage Multi-Record TLS fragmentation activated (Async, Payload={payload.Length}B -> Rec1={r1}B, Rec2={p1 - r1}B, Rec3={payload.Length - p1}B, Delay={d1}ms)");
             await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[..r1], ct).ConfigureAwait(false);
             await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[r1..p1], ct).ConfigureAwait(false);
             if (d1 > 0)
@@ -294,7 +304,8 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             return;
         }
 
-        AppLogger.Log($"[DPI-BYPASS] 2-stage TLS Record-Layer fragmentation activated (Async, Payload={payload.Length}B -> Rec1={p1}B, Rec2={payload.Length - p1}B, Delay={d1}ms)");
+        AppLogger.Log(
+            $"[DPI-BYPASS] 2-stage TLS Record-Layer fragmentation activated (Async, Payload={payload.Length}B -> Rec1={p1}B, Rec2={payload.Length - p1}B, Delay={d1}ms)");
         await WriteSingleTlsRecordAsync(verMajor, verMinor, payload[..p1], ct).ConfigureAwait(false);
         if (d1 > 0)
         {
@@ -305,7 +316,8 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
     }
 
     //асинхронная отправка одиночной tls записи
-    private async ValueTask WriteSingleTlsRecordAsync(byte verMajor, byte verMinor, ReadOnlyMemory<byte> fragmentPayload, CancellationToken ct)
+    private async ValueTask WriteSingleTlsRecordAsync(byte verMajor, byte verMinor, ReadOnlyMemory<byte> fragmentPayload,
+        CancellationToken ct)
     {
         var total = 5 + fragmentPayload.Length;
         var rented = ArrayPool<byte>.Shared.Rent(total);
@@ -352,13 +364,13 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             }
         }
 
-        if (span.Length > 32)
+        if (span.Length <= 32)
         {
-            split1 = 16;
-            return true;
+            return false;
         }
 
-        return false;
+        split1 = 16;
+        return true;
     }
 
     //вычисляет смещение середины доменного имени sld внутри расширения sni
@@ -427,12 +439,13 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
                             var prevDot = hostname[..dotIndex].LastIndexOf((byte)'.');
                             var sldStart = prevDot >= 0 ? prevDot + 1 : 0;
                             var sldLen = dotIndex - sldStart;
-                            splitOffset = start + sldStart + (sldLen / 2);
+                            splitOffset = start + sldStart + sldLen / 2;
                         }
                         else
                         {
-                            splitOffset = start + (len / 2);
+                            splitOffset = start + len / 2;
                         }
+
                         return true;
                     }
                 }

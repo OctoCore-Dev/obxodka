@@ -1,7 +1,13 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Store;
 
 public sealed partial class ThemeStoreView
 {
+    private void OnFilterAllClicked(object? sender, EventArgs e) => SetActiveFilter("all");
+    private void OnFilterVideoClicked(object? sender, EventArgs e) => SetActiveFilter("video");
+    private void OnFilterAnimClicked(object? sender, EventArgs e) => SetActiveFilter("anim");
+    private void OnFilterSoundClicked(object? sender, EventArgs e) => SetActiveFilter("sound");
+    private void OnFilterShadersClicked(object? sender, EventArgs e) => SetActiveFilter("shaders");
+
     private void UpdateTabButtons()
     {
         var primaryColor = GetAppColor("Primary", Color.FromArgb("#7C3AED"));
@@ -43,12 +49,19 @@ public sealed partial class ThemeStoreView
         }
     }
 
-    private void UpdateFilterChipsUI()
+    private void UpdateFilterChipsUi()
     {
         var primaryColor = GetAppColor("Primary", Color.FromArgb("#7C3AED"));
         var cardBgColor = GetAppColor("BgSurface", Color.FromArgb("#161622"));
         var textMutedColor = GetAppColor("TextMuted", Color.FromArgb("#A0A0B0"));
         var borderSubtleColor = GetAppColor("BorderSubtle", Color.FromArgb("#282838"));
+
+        StyleChip(ChipFilterAll, LabelFilterAll, _activeFilter == "all");
+        StyleChip(ChipFilterVideo, LabelFilterVideo, _activeFilter == "video");
+        StyleChip(ChipFilterAnim, LabelFilterAnim, _activeFilter == "anim");
+        StyleChip(ChipFilterSound, LabelFilterSound, _activeFilter == "sound");
+        StyleChip(ChipFilterShaders, LabelFilterShaders, _activeFilter == "shaders");
+        return;
 
         void StyleChip(Border chip, Label label, bool isActive)
         {
@@ -57,20 +70,8 @@ public sealed partial class ThemeStoreView
             label.TextColor = isActive ? Colors.White : textMutedColor;
             label.SetDynamicResource(Label.FontFamilyProperty, isActive ? "AppFontBold" : "AppFontMedium");
         }
-
-        StyleChip(ChipFilterAll, LabelFilterAll, _activeFilter == "all");
-        StyleChip(ChipFilterVideo, LabelFilterVideo, _activeFilter == "video");
-        StyleChip(ChipFilterAnim, LabelFilterAnim, _activeFilter == "anim");
-        StyleChip(ChipFilterSound, LabelFilterSound, _activeFilter == "sound");
-        StyleChip(ChipFilterShaders, LabelFilterShaders, _activeFilter == "shaders");
     }
 
-
-    private void OnFilterAllClicked(object? sender, EventArgs e) => SetActiveFilter("all");
-    private void OnFilterVideoClicked(object? sender, EventArgs e) => SetActiveFilter("video");
-    private void OnFilterAnimClicked(object? sender, EventArgs e) => SetActiveFilter("anim");
-    private void OnFilterSoundClicked(object? sender, EventArgs e) => SetActiveFilter("sound");
-    private void OnFilterShadersClicked(object? sender, EventArgs e) => SetActiveFilter("shaders");
 
     private void SetActiveFilter(string filter)
     {
@@ -81,8 +82,8 @@ public sealed partial class ThemeStoreView
 
         ThemeAudioService.PlayClick();
         _activeFilter = filter;
-        UpdateFilterChipsUI();
-        RenderThemes(animate: false);
+        UpdateFilterChipsUi();
+        RenderThemes(false);
     }
 
     private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
@@ -124,9 +125,10 @@ public sealed partial class ThemeStoreView
         }
         catch
         {
+            // ignored
         }
 
-        RenderThemes(animate: false);
+        RenderThemes(false);
         ThemesContainer.TranslationX = slideInX;
 
         try
@@ -169,9 +171,16 @@ public sealed partial class ThemeStoreView
 
     private async void OnSyncClickedAsync(object? sender, EventArgs e)
     {
-        ThemeAudioService.PlayClick();
-        await BtnSync.BounceClickAsync();
-        await LoadCatalogAsync(forceRefresh: true);
+        try
+        {
+            ThemeAudioService.PlayClick();
+            await BtnSync.BounceClickAsync();
+            await LoadCatalogAsync(true);
+        }
+        catch (Exception exception)
+        {
+            AppLogger.LogError($"[THEME SYNC ERROR] {exception.Message}", exception);
+        }
     }
 
     private void OnSoundsToggled(object? sender, ToggledEventArgs e)
@@ -272,17 +281,19 @@ public sealed partial class ThemeStoreView
         var rounded = Math.Round(e.NewValue, 2);
         LabelCardOpacityValue.Text = $"{(int)Math.Round(rounded * 100)}%";
 
-        if (_themeManager != null && Math.Abs(_themeManager.CardOpacity - rounded) >= 0.01)
+        if (_themeManager == null || !(Math.Abs(_themeManager.CardOpacity - rounded) >= 0.01))
         {
-            _isUpdatingSliderInternally = true;
-            try
-            {
-                _themeManager.CardOpacity = rounded;
-            }
-            finally
-            {
-                _isUpdatingSliderInternally = false;
-            }
+            return;
+        }
+
+        _isUpdatingSliderInternally = true;
+        try
+        {
+            _themeManager.CardOpacity = rounded;
+        }
+        finally
+        {
+            _isUpdatingSliderInternally = false;
         }
     }
 
@@ -296,17 +307,19 @@ public sealed partial class ThemeStoreView
         var rounded = Math.Round(e.NewValue, 2);
         LabelGlowIntensityValue.Text = $"{(int)Math.Round(rounded * 100)}%";
 
-        if (_themeManager != null && Math.Abs(_themeManager.GlowIntensity - rounded) >= 0.01)
+        if (_themeManager == null || !(Math.Abs(_themeManager.GlowIntensity - rounded) >= 0.01))
         {
-            _isUpdatingSliderInternally = true;
-            try
-            {
-                _themeManager.GlowIntensity = rounded;
-            }
-            finally
-            {
-                _isUpdatingSliderInternally = false;
-            }
+            return;
+        }
+
+        _isUpdatingSliderInternally = true;
+        try
+        {
+            _themeManager.GlowIntensity = rounded;
+        }
+        finally
+        {
+            _isUpdatingSliderInternally = false;
         }
     }
 
@@ -333,8 +346,8 @@ public sealed partial class ThemeStoreView
         {
             RefreshStaticThemeColors();
             UpdateTabButtons();
-            UpdateFilterChipsUI();
-            RenderThemes(animate: false);
+            UpdateFilterChipsUi();
+            RenderThemes(false);
         });
     }
 
@@ -347,7 +360,7 @@ public sealed partial class ThemeStoreView
         CardSearch.BackgroundColor = cardBgColor;
         BtnSync.BackgroundColor = cardBgColor;
         CardVfxSettings.BackgroundColor = cardBgColor;
-        UpdateFilterChipsUI();
+        UpdateFilterChipsUi();
 
         foreach (var child in ThemesContainer.Children)
         {
@@ -361,7 +374,7 @@ public sealed partial class ThemeStoreView
     private void RefreshStaticThemeColors()
     {
         var primaryColor = GetAppColor("Primary", Color.FromArgb("#7C3AED"));
-        var primaryDim = GetAppColor("PrimaryDim", primaryColor.WithAlpha(0.22f));
+        var badgeTint = primaryColor.WithAlpha(0.16f);
         var accentColor = GetAppColor("Accent", Color.FromArgb("#00E5FF"));
         var textPrimaryColor = GetAppColor("TextPrimary", Colors.White);
         var textMutedColor = GetAppColor("TextMuted", Color.FromArgb("#A0A0B0"));
@@ -372,7 +385,7 @@ public sealed partial class ThemeStoreView
         BtnBack.Stroke = borderSubtleColor;
         BtnResetTheme.Stroke = borderSubtleColor;
 
-        HeaderIconBadge.BackgroundColor = primaryDim;
+        HeaderIconBadge.BackgroundColor = badgeTint;
         HeaderIcon.IconColor = primaryColor;
 
         CardSearch.Stroke = borderSubtleColor;
@@ -384,19 +397,19 @@ public sealed partial class ThemeStoreView
 
         CardVfxSettings.Stroke = borderSubtleColor;
 
-        BadgeSounds.BackgroundColor = primaryDim;
+        BadgeSounds.BackgroundColor = badgeTint;
         IconSounds.IconColor = primaryColor;
-        BadgeParticles.BackgroundColor = primaryDim;
+        BadgeParticles.BackgroundColor = badgeTint;
         IconParticles.IconColor = accentColor;
-        BadgeFrames.BackgroundColor = primaryDim;
+        BadgeFrames.BackgroundColor = badgeTint;
         IconFrames.IconColor = primaryColor;
-        BadgeVideo.BackgroundColor = primaryDim;
+        BadgeVideo.BackgroundColor = badgeTint;
         IconVideo.IconColor = primaryColor;
-        BadgeAlwaysPlay.BackgroundColor = primaryDim;
+        BadgeAlwaysPlay.BackgroundColor = badgeTint;
         IconAlwaysPlay.IconColor = accentColor;
-        BadgeOpacity.BackgroundColor = primaryDim;
+        BadgeOpacity.BackgroundColor = badgeTint;
         IconOpacity.IconColor = primaryColor;
-        BadgeGlow.BackgroundColor = primaryDim;
+        BadgeGlow.BackgroundColor = badgeTint;
         IconGlow.IconColor = accentColor;
 
         SepVfx1.Color = borderSubtleColor;
@@ -443,7 +456,9 @@ public sealed partial class ThemeStoreView
         }
         catch
         {
+            // ignored
         }
+
         return fallback;
     }
 
@@ -451,7 +466,7 @@ public sealed partial class ThemeStoreView
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            return (ImageSource)fallback;
+            return fallback;
         }
 
         try
@@ -461,7 +476,7 @@ public sealed partial class ThemeStoreView
         }
         catch
         {
-            return (ImageSource)fallback;
+            return fallback;
         }
     }
 }

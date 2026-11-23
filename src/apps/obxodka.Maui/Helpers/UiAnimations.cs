@@ -1,6 +1,6 @@
 namespace obxodka.Helpers;
 
-public static partial class UIAnimations
+public static partial class UiAnimations
 {
     private const uint DurFast = 150;
     private const uint DurNormal = 280;
@@ -14,31 +14,36 @@ public static partial class UIAnimations
 
     private static Color GetThemeColor(string key, Color fallback)
     {
-        if (Application.Current?.Resources is { } res)
+        if (Application.Current?.Resources is not { } res)
         {
-            if (res.TryGetValue(key, out var val) && val is Color c)
-            {
-                return c;
-            }
+            return fallback;
+        }
 
-            if (res.MergedDictionaries != null)
+        if (res.TryGetValue(key, out var val) && val is Color c)
+        {
+            return c;
+        }
+
+        if (res.MergedDictionaries == null)
+        {
+            return fallback;
+        }
+
+        foreach (var md in res.MergedDictionaries)
+        {
+            if (md.TryGetValue(key, out var mVal) && mVal is Color mc)
             {
-                foreach (var md in res.MergedDictionaries)
-                {
-                    if (md.TryGetValue(key, out var mVal) && mVal is Color mc)
-                    {
-                        return mc;
-                    }
-                }
+                return mc;
             }
         }
+
         return fallback;
     }
 
     public static async Task PlayEntranceCascadeAsync(
         int delayBetweenMs = 80,
         uint duration = DurSlow,
-        params VisualElement[] elements)
+        params VisualElement?[] elements)
     {
         foreach (var el in elements)
         {
@@ -170,18 +175,21 @@ public static partial class UIAnimations
         element.TranslationY = 0;
     }
 
-    public static async Task SwitchViewAsync(VisualElement? outgoing, VisualElement? incoming)
+    public static async Task SwitchViewAsync(VisualElement? outgoing, VisualElement? incoming, bool animate = true)
     {
         if (outgoing == incoming)
         {
-            if (incoming is not null)
+            if (incoming is null)
             {
-                incoming.IsVisible = true;
-                incoming.Opacity = 1.0;
-                incoming.Scale = 1.0;
-                incoming.TranslationY = 0;
-                incoming.TranslationX = 0;
+                return;
             }
+
+            incoming.IsVisible = true;
+            incoming.Opacity = 1.0;
+            incoming.Scale = 1.0;
+            incoming.TranslationY = 0;
+            incoming.TranslationX = 0;
+
             return;
         }
 
@@ -202,6 +210,13 @@ public static partial class UIAnimations
         incoming.Scale = 1.0;
         incoming.TranslationY = 0;
         incoming.TranslationX = 0;
+        if (!animate)
+        {
+            incoming.Opacity = 1.0;
+            incoming.IsVisible = true;
+            return;
+        }
+
         incoming.Opacity = 0;
         incoming.IsVisible = true;
         _ = incoming.FadeToAsync(1.0, 160, Easing.CubicOut);
@@ -239,8 +254,8 @@ public static partial class UIAnimations
     }
 
     public static async Task PlaySidebarEntranceAsync(
-            Border? sidebar,
-            params VisualElement[] navItems)
+        Border? sidebar,
+        params VisualElement[] navItems)
     {
         if (sidebar is null)
         {
@@ -279,5 +294,4 @@ public static partial class UIAnimations
             bar.TranslateToAsync(0, 0, 240, Easing.SpringOut)
         );
     }
-
 }

@@ -131,6 +131,7 @@ public sealed class DefaultPreferencesService : IPreferencesService
                 return defaultValue;
             }
         }
+
         return defaultValue;
     }
 

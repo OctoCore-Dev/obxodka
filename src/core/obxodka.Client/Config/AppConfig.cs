@@ -3,6 +3,9 @@ namespace obxodka.Config;
 //основная конфигурация клиента базовые адреса домены и пути api
 public static class AppConfig
 {
+    //секретный токен авторизации телеметрии для защиты шлюза
+    public const string TelemetryAuthToken = "obx_telemetry_secure_gate_2026";
+
     //список встроенных серверов
     public static List<VpnServerDto> BootstrapServers => BootstrapConfig.Servers;
 
@@ -23,37 +26,21 @@ public static class AppConfig
     //прямые адреса серверов для обхода блокировок
     public static string[] DirectRelayIps => [DirectServerIp];
 
-    /*
-     * на будущее воркер серваки 
-
-    public static string WorkerServerIp =>
-        BootstrapServers.FirstOrDefault(s => string.Equals(s.Role, "worker", StringComparison.OrdinalIgnoreCase))?.Ip ?? DirectServerIp;
-
-    public static string WorkerApiBaseUrl => $"https://{WorkerServerIp}/";
-
-    public static string[] DirectRelayIpsWithWorker => WorkerServerIp != DirectServerIp
-        ? [DirectServerIp, WorkerServerIp]
-        : [DirectServerIp];
-    */
-
     //зеркала и ссылки поиска серверов
     public static string MirrorDomain => MirrorConfig.MirrorDomain;
     public static string[] MirrorDomains => MirrorConfig.MirrorDomains;
     public static string MirrorApiBaseUrl => MirrorConfig.MirrorApiBaseUrl;
     public static string[] RemoteServersDiscoveryUrls => MirrorConfig.RemoteServersDiscoveryUrls;
-    public const string RemoteServersDiscoveryUrl = MirrorConfig.RemoteServersDiscoveryUrl;
-    public const string RemoteServersDiscoveryFallbackUrl = MirrorConfig.RemoteServersDiscoveryFallbackUrl;
     public static string[] KnownDomainBases => MirrorConfig.KnownDomainBases;
 
     //текущий рабочий адрес api с возможностью смены на лету
+    [field: AllowNull]
+    [field: MaybeNull]
     public static string ApiBaseUrl
     {
         get => field ?? DefaultApiBaseUrl;
         set => field = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
-
-    //секретный токен авторизации телеметрии для защиты шлюза
-    public const string TelemetryAuthToken = "obx_telemetry_secure_gate_2026";
 
     //окружение клиента для телеметрии и мониторинга ошибок (testing, production, development)
     public static string EnvironmentName
@@ -63,7 +50,7 @@ public static class AppConfig
             var env = Environment.GetEnvironmentVariable("OBXODKA_ENVIRONMENT");
             if (!string.IsNullOrWhiteSpace(env))
             {
-                return env.ToLowerInvariant();
+                return env.Trim().ToLowerInvariant();
             }
 
 #if DEBUG
@@ -81,13 +68,5 @@ public static class AppConfig
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
         return $"{ApiBaseUrl.AsSpan().TrimEnd('/')}/{endpoint.AsSpan().TrimStart('/')}";
-    }
-
-    //собирает полный url для api запроса из спана без лишней памяти
-    public static string ApiUrl(ReadOnlySpan<char> endpoint)
-    {
-        return endpoint.IsWhiteSpace()
-            ? throw new ArgumentException("Endpoint cannot be empty.", nameof(endpoint))
-            : $"{ApiBaseUrl.AsSpan().TrimEnd('/')}/{endpoint.TrimStart('/')}";
     }
 }

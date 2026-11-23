@@ -1,7 +1,7 @@
 name: 🐛 Отчёт об ошибке (Bug Report)
 description: Создать отчёт о проблеме или сбое в работе Obxodka
 title: "[BUG]: "
-labels: ["bug", "triage"]
+labels: [ "bug", "triage" ]
 body:
   - type: markdown
     attributes:

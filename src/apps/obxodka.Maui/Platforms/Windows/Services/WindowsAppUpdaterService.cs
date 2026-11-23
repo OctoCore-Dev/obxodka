@@ -1,5 +1,8 @@
 #if WINDOWS
 using System.Security.Cryptography;
+using Windows.ApplicationModel;
+using AppInfo = Microsoft.Maui.ApplicationModel.AppInfo;
+using Path = System.IO.Path;
 
 namespace obxodka.Platforms.Windows;
 
@@ -7,58 +10,18 @@ namespace obxodka.Platforms.Windows;
 [SupportedOSPlatform("windows10.0.19041.0")]
 public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
 {
-    public const string StoreProductId = "9NZXP5WR803J";
-    public const string GitHubRepo = "OctoCore-Dev/obxodka";
+    private const string StoreProductId = "9NZXP5WR803J";
+    private const string GitHubRepo = "OctoCore-Dev/obxodka";
 
     private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, nint packageFullName);
-
-    //проверка запущено ли приложение из microsoft store
-    public static bool IsInstalledFromStore()
+    private static readonly HttpClient s_downloadClient = new()
     {
-        var len = 0;
-        var rc = GetCurrentPackageFullName(ref len, 0);
-        //15700 = APPMODEL_ERROR_NO_PACKAGE (непакетированное приложение, исключает InvalidOperationException в WinRT)
-        if (rc == 15700)
-        {
-            return false;
-        }
-
-        try
-        {
-            var package = global::Windows.ApplicationModel.Package.Current;
-            return package.SignatureKind == global::Windows.ApplicationModel.PackageSignatureKind.Store;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    //получение текущей версии приложения
-    public static string GetCurrentAppVersion()
-    {
-        try
-        {
-            var v = AppInfo.Current.VersionString;
-            if (!string.IsNullOrWhiteSpace(v) && v != "0.0.0.0" && v != "0.0.0" && v != "0.0")
-            {
-                return v;
-            }
-        }
-        catch { }
-
-        var asmVer = typeof(WindowsAppUpdaterService).Assembly.GetName().Version;
-        return asmVer is not null && asmVer.Major > 0
-            ? $"{asmVer.Major}.{asmVer.Minor}.{asmVer.Build}"
-            : "1.0.0";
-    }
+        Timeout = TimeSpan.FromMinutes(5)
+    };
 
     //проверка наличия новой версии в microsoft store или github releases
     public async Task<StoreUpdateInfo> CheckVersionAsync()
@@ -67,10 +30,10 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
 
         if (IsInstalledFromStore())
         {
-            var storeUrl = $"ms-windows-store://pdp/?productid={StoreProductId}";
+            const string storeUrl = $"ms-windows-store://pdp/?productid={StoreProductId}";
             try
             {
-                var catalogUrl = $"https://displaycatalog.mp.microsoft.com/v7/products/{StoreProductId}?market=RU&languages=ru-RU";
+                const string catalogUrl = $"https://displaycatalog.mp.microsoft.com/v7/products/{StoreProductId}?market=RU&languages=ru-RU";
                 using var req = new HttpRequestMessage(HttpMethod.Get, catalogUrl);
                 req.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
 
@@ -90,12 +53,12 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                         }
 
                         return new StoreUpdateInfo(
-                            HasUpdate: hasUpdate,
-                            CurrentVersion: currentVersion,
-                            LatestVersion: storeVersion,
-                            StoreName: "Microsoft Store",
-                            StoreUrl: storeUrl,
-                            ReleaseNotes: whatsNew);
+                            hasUpdate,
+                            currentVersion,
+                            storeVersion,
+                            "Microsoft Store",
+                            storeUrl,
+                            whatsNew);
                     }
                 }
             }
@@ -105,56 +68,55 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             }
 
             return new StoreUpdateInfo(
-                HasUpdate: false,
-                CurrentVersion: currentVersion,
-                LatestVersion: currentVersion,
-                StoreName: "Microsoft Store",
-                StoreUrl: storeUrl);
+                false,
+                currentVersion,
+                currentVersion,
+                "Microsoft Store",
+                storeUrl);
         }
-        else
+
+        const string fallbackUrl = $"https://github.com/{GitHubRepo}/releases/latest";
+        try
         {
-            var fallbackUrl = $"https://github.com/{GitHubRepo}/releases/latest";
-            try
+            const string apiUrl = $"https://api.github.com/repos/{GitHubRepo}/releases/latest";
+            using var req = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+            req.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
+
+            using var resp = await s_httpClient.SendAsync(req).ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
             {
-                var apiUrl = $"https://api.github.com/repos/{GitHubRepo}/releases/latest";
-                using var req = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-                req.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
+                var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var (ghVersion, whatsNew, downloadUrl, expectedSha256) = StoreVersionParser.ParseGitHubReleaseJson(json);
 
-                using var resp = await s_httpClient.SendAsync(req).ConfigureAwait(false);
-                if (resp.IsSuccessStatusCode)
+                if (!string.IsNullOrWhiteSpace(ghVersion))
                 {
-                    var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var (ghVersion, whatsNew, downloadUrl, expectedSha256) = StoreVersionParser.ParseGitHubReleaseJson(json);
-
-                    if (!string.IsNullOrWhiteSpace(ghVersion))
-                    {
-                        var hasUpdate = StoreVersionParser.IsNewerVersion(currentVersion, ghVersion);
-                        return new StoreUpdateInfo(
-                            HasUpdate: hasUpdate,
-                            CurrentVersion: currentVersion,
-                            LatestVersion: ghVersion,
-                            StoreName: "GitHub Releases",
-                            StoreUrl: downloadUrl ?? fallbackUrl,
-                            ReleaseNotes: whatsNew,
-                            ExpectedSha256: expectedSha256);
-                    }
+                    var hasUpdate = StoreVersionParser.IsNewerVersion(currentVersion, ghVersion);
+                    return new StoreUpdateInfo(
+                        hasUpdate,
+                        currentVersion,
+                        ghVersion,
+                        "GitHub Releases",
+                        downloadUrl ?? fallbackUrl,
+                        whatsNew,
+                        expectedSha256);
                 }
             }
-            catch (Exception ex)
-            {
-                AppLogger.LogWarning($"[GITHUB RELEASE CHECK] {ex.Message}");
-            }
-
-            return new StoreUpdateInfo(
-                HasUpdate: false,
-                CurrentVersion: currentVersion,
-                LatestVersion: currentVersion,
-                StoreName: "GitHub Releases",
-                StoreUrl: fallbackUrl);
         }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[GITHUB RELEASE CHECK] {ex.Message}");
+        }
+
+        return new StoreUpdateInfo(
+            false,
+            currentVersion,
+            currentVersion,
+            "GitHub Releases",
+            fallbackUrl);
     }
 
     //запуск проверки обновлений и отображение диалога пользователю
+    [Obsolete("Obsolete")]
     public async Task CheckForUpdatesAsync(bool manualCheck = false)
     {
         try
@@ -167,45 +129,71 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             var updateInfo = await CheckVersionAsync().ConfigureAwait(false);
             if (updateInfo.HasUpdate)
             {
-                MainThread.BeginInvokeOnMainThread(async () =>
+                MainThread.BeginInvokeOnMainThread(async void () =>
                 {
-                    if (IsInstalledFromStore())
+                    try
                     {
-                        var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes) ? string.Empty : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
-                        if (notes.Length > 450)
+                        if (IsInstalledFromStore())
                         {
-                            notes = notes[..450] + "...";
+                            var notes =
+                                string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes)
+                                    ? string.Empty
+                                    : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
+                            if (notes.Length > 450)
+                            {
+                                notes = notes[..450] + "...";
+                            }
+
+                            var msg =
+                                $"В Microsoft Store доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете открыть страницу в Microsoft Store?";
+                            var update = await NeoAlert.ShowConfirmAsync("Доступно обновление", msg, "Обновить", "Позже");
+                            if (update)
+                            {
+                                await OpenStorePageAsync();
+                            }
                         }
-                        var msg = $"В Microsoft Store доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете открыть страницу в Microsoft Store?";
-                        var update = await NeoAlert.ShowConfirmAsync("Доступно обновление", msg, "Обновить", "Позже");
-                        if (update)
+                        else
                         {
-                            await OpenStorePageAsync();
+                            var notes =
+                                string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes)
+                                    ? string.Empty
+                                    : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
+                            if (notes.Length > 450)
+                            {
+                                notes = notes[..450] + "...";
+                            }
+
+                            var msg =
+                                $"Доступна новая версия Obxodka v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете скачать и установить обновление сейчас?";
+                            var update = await NeoAlert.ShowConfirmAsync("Обновление Obxodka", msg, "Обновить", "Позже");
+                            if (update)
+                            {
+                                _ =
+                                    Task.Run(() => DownloadAndInstallGitHubUpdateAsync(updateInfo.StoreUrl, updateInfo.LatestVersion,
+                                        updateInfo.ExpectedSha256));
+                            }
                         }
                     }
-                    else
+                    catch
                     {
-                        var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes) ? string.Empty : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
-                        if (notes.Length > 450)
-                        {
-                            notes = notes[..450] + "...";
-                        }
-                        var msg = $"Доступна новая версия Obxodka v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете скачать и установить обновление сейчас?";
-                        var update = await NeoAlert.ShowConfirmAsync("Обновление Obxodka", msg, "Обновить", "Позже");
-                        if (update)
-                        {
-                            _ = Task.Run(() => DownloadAndInstallGitHubUpdateAsync(updateInfo.StoreUrl, updateInfo.LatestVersion, updateInfo.ExpectedSha256));
-                        }
+                        // ignored
                     }
                 });
             }
             else if (manualCheck)
             {
-                MainThread.BeginInvokeOnMainThread(async () =>
+                MainThread.BeginInvokeOnMainThread(async void () =>
                 {
-                    var source = IsInstalledFromStore() ? "Microsoft Store" : "GitHub";
-                    var msg = $"У вас установлена самая свежая версия v{updateInfo.CurrentVersion} ({source}).";
-                    await NeoAlert.ShowAsync("Обновления", msg, "OK");
+                    try
+                    {
+                        var source = IsInstalledFromStore() ? "Microsoft Store" : "GitHub";
+                        var msg = $"У вас установлена самая свежая версия v{updateInfo.CurrentVersion} ({source}).";
+                        await NeoAlert.ShowAsync("Обновления", msg);
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
                 });
             }
         }
@@ -224,6 +212,54 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 }
             }
         }
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int GetCurrentPackageFullName(ref int packageFullNameLength, nint packageFullName);
+
+    //проверка запущено ли приложение из microsoft store
+    private static bool IsInstalledFromStore()
+    {
+        var len = 0;
+        var rc = GetCurrentPackageFullName(ref len, 0);
+        //15700 = APP_MODEL_ERROR_NO_PACKAGE (не пакетированное приложение, исключает InvalidOperationException в WinRT)
+        if (rc == 15700)
+        {
+            return false;
+        }
+
+        try
+        {
+            var package = Package.Current;
+            return package.SignatureKind == PackageSignatureKind.Store;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    //получение текущей версии приложения
+    private static string GetCurrentAppVersion()
+    {
+        try
+        {
+            var v = AppInfo.Current.VersionString;
+            if (!string.IsNullOrWhiteSpace(v) && v != "0.0.0.0" && v != "0.0.0" && v != "0.0")
+            {
+                return v;
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+
+        var asmVer = typeof(WindowsAppUpdaterService).Assembly.GetName().Version;
+        return asmVer is not null && asmVer.Major > 0
+            ? $"{asmVer.Major}.{asmVer.Minor}.{asmVer.Build}"
+            : "1.0.0";
     }
 
     //получение описания изменений версии из github releases
@@ -245,7 +281,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 }
             }
 
-            var latestUrl = $"https://api.github.com/repos/{GitHubRepo}/releases/latest";
+            const string latestUrl = $"https://api.github.com/repos/{GitHubRepo}/releases/latest";
             using var latestReq = new HttpRequestMessage(HttpMethod.Get, latestUrl);
             latestReq.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
             using var latestResp = await s_httpClient.SendAsync(latestReq).ConfigureAwait(false);
@@ -270,36 +306,127 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
     //вычисление sha256 хеша файла
     private static async Task<string> ComputeFileSha256Async(string filePath, CancellationToken ct = default)
     {
-        await using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        await using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
         var hashBytes = await SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
         return Convert.ToHexStringLower(hashBytes);
     }
 
-    private enum AuthenticodeCheckStatus
+    //проверка наличия и валидности сертификата authenticode у исполняемого файла
+    private static readonly Guid s_wintrustActionGenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinTrustFileInfo
     {
-        Unsigned,
-        TrustedChain,
-        SelfSignedUntrustedRoot,
-        InvalidSignature
+        public uint CbStruct;
+        public IntPtr PcwszFilePath;
+        public IntPtr HFile;
+        public IntPtr PgKnownSubject;
     }
 
-    //проверка наличия и валидности сертификата authenticode у исполняемого файла
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinTrustData
+    {
+        public uint CbStruct;
+        public IntPtr PPolicyCallbackData;
+        public IntPtr PSipClientData;
+        public uint DwUiChoice;
+        public uint FdwRevocationChecks;
+        public uint DwUnionChoice;
+        public IntPtr PFile;
+        public uint DwStateAction;
+        public IntPtr HWvtStateData;
+        public IntPtr PwszUrlReference;
+        public uint DwProvFlags;
+        public uint DwUiContext;
+        public IntPtr PSignatureSettings;
+    }
+
+    [LibraryImport("wintrust.dll", EntryPoint = "WinVerifyTrust")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int WinVerifyTrust(IntPtr hwnd, ref Guid pgActionID, ref WinTrustData pWVTData);
+
+    private static int VerifyPeTrust(string filePath)
+    {
+        var filePathPtr = Marshal.StringToCoTaskMemUni(filePath);
+        var fileInfoPtr = IntPtr.Zero;
+        try
+        {
+            var fileInfoSize = Marshal.SizeOf<WinTrustFileInfo>();
+            var fileInfo = new WinTrustFileInfo
+            {
+                CbStruct = (uint)fileInfoSize,
+                PcwszFilePath = filePathPtr
+            };
+            fileInfoPtr = Marshal.AllocCoTaskMem(fileInfoSize);
+            Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
+
+            var trustData = new WinTrustData
+            {
+                CbStruct = (uint)Marshal.SizeOf<WinTrustData>(),
+                DwUiChoice = 2, //WTD_UI_NONE
+                FdwRevocationChecks = 0, //WTD_REVOKE_NONE
+                DwUnionChoice = 1, //WTD_CHOICE_FILE
+                PFile = fileInfoPtr,
+                DwStateAction = 1, //WTD_STATEACTION_VERIFY
+                DwProvFlags = 0x00000010 | 0x00000080 //WTD_SAFER_FLAG | WTD_CACHE_ONLY_URL_RETRIEVAL
+            };
+
+            var actionId = s_wintrustActionGenericVerifyV2;
+            var hr = WinVerifyTrust(new IntPtr(-1), ref actionId, ref trustData);
+
+            trustData.DwStateAction = 2; //WTD_STATEACTION_CLOSE
+            _ = WinVerifyTrust(new IntPtr(-1), ref actionId, ref trustData);
+            return hr;
+        }
+        finally
+        {
+            if (fileInfoPtr != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(fileInfoPtr);
+            }
+
+            if (filePathPtr != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(filePathPtr);
+            }
+        }
+    }
+
+    [Obsolete("Obsolete")]
     private static AuthenticodeCheckStatus CheckAuthenticodeSignature(string filePath)
     {
         try
         {
-#pragma warning disable SYSLIB0057
+            var wvtHr = VerifyPeTrust(filePath);
+            if (wvtHr == 0)
+            {
+                return AuthenticodeCheckStatus.TrustedChain;
+            }
+
+            //TRUST_E_NOSIGNATURE (0x800B0100) — подпись отсутствует
+            if (wvtHr == unchecked((int)0x800B0100))
+            {
+                return AuthenticodeCheckStatus.Unsigned;
+            }
+
+            //TRUST_E_BAD_DIGEST (0x80096010) или TRUST_E_SUBJECT_NOT_TRUSTED — целостность PE нарушена
+            if (wvtHr is unchecked((int)0x80096010) or unchecked((int)0x800B0004))
+            {
+                return AuthenticodeCheckStatus.InvalidSignature;
+            }
+
             using var rawCert = X509Certificate.CreateFromSignedFile(filePath);
             using var cert = new X509Certificate2(rawCert);
-#pragma warning restore SYSLIB0057
-            AppLogger.Log($"[AUTHENTICODE] Installer is signed by '{cert.Subject}', Thumbprint: {cert.Thumbprint}, Valid: {cert.NotBefore:d} - {cert.NotAfter:d}");
+
+            AppLogger.Log(
+                $"[AUTHENTICODE] Installer is signed by '{cert.Subject}', Thumbprint: {cert.Thumbprint}, Valid: {cert.NotBefore:d} - {cert.NotAfter:d}");
 
             if (cert.Verify())
             {
                 return AuthenticodeCheckStatus.TrustedChain;
             }
 
-            //самоподписанный сертификат github actions допустим только при проверке sha256 без повреждений подписи
+            //само подписанный сертификат GitHub Actions допустим только при проверке sha256 без повреждений подписи
             using var chain = new X509Chain();
             chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
             _ = chain.Build(cert);
@@ -320,79 +447,161 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
         }
     }
 
+    //проверка доверенного https-источника для загрузки и открытия релиза
+    private static bool IsTrustedUpdateUri(string? url, [NotNullWhen(true)] out Uri? uri)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            uri = null;
+            return false;
+        }
+
+        var host = uri.Host;
+        var trustedHost =
+            host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            host.Equals("obxodka.one", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".obxodka.one", StringComparison.OrdinalIgnoreCase);
+
+        if (trustedHost)
+        {
+            return true;
+        }
+
+        uri = null;
+        return false;
+    }
+
     //загрузка верификация sha256 и запуск установщика обновления с github
+    [Obsolete("Obsolete")]
     private static async Task DownloadAndInstallGitHubUpdateAsync(string? url, string version, string? expectedSha256)
     {
-        if (string.IsNullOrWhiteSpace(url))
+        if (!IsTrustedUpdateUri(url, out var updateUri))
         {
-            _ = await Launcher.OpenAsync(new Uri($"https://github.com/{GitHubRepo}/releases/latest"));
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                AppLogger.LogError($"[UPDATE-SECURITY ALERT] Untrusted update URL blocked: {url}");
+            }
+
+            _ = await MainThread.InvokeOnMainThreadAsync(() =>
+                Launcher.OpenAsync(new Uri($"https://github.com/{GitHubRepo}/releases/latest"))).ConfigureAwait(false);
             return;
         }
 
-        if (url.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        if (updateUri.AbsolutePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            var tempPath = Path.Combine(Path.GetTempPath(), $"Obxodka-Setup-v{version}.exe");
+            var updateDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "obxodka", "updates");
+            _ = Directory.CreateDirectory(updateDir);
+            var safeVersion = string.Concat(version.Where(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_'));
+            if (string.IsNullOrEmpty(safeVersion))
+            {
+                safeVersion = "latest";
+            }
+
+            var installerPath = Path.Combine(updateDir, $"Obxodka-Setup-v{safeVersion}.exe");
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                using var req = new HttpRequestMessage(HttpMethod.Get, updateUri);
                 req.Headers.Add("User-Agent", "Obxodka-Desktop-Updater");
 
-                using var resp = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                using var resp = await s_downloadClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
                 {
-                    await using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    await using (var fs = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None))
                     {
                         await resp.Content.CopyToAsync(fs).ConfigureAwait(false);
                     }
 
                     //строгая проверка контрольной суммы sha256 перед запуском инсталлятора
-                    var computedHash = await ComputeFileSha256Async(tempPath).ConfigureAwait(false);
+                    var computedHash = await ComputeFileSha256Async(installerPath).ConfigureAwait(false);
                     AppLogger.Log($"[UPDATE-SECURITY] Downloaded installer SHA256: {computedHash}");
 
                     if (string.IsNullOrWhiteSpace(expectedSha256))
                     {
-                        AppLogger.LogError("[UPDATE-SECURITY ALERT] Missing SHA256 checksum in GitHub release metadata. Aborting installer launch and deleting file.");
-                        TryDeleteFile(tempPath);
+                        AppLogger.LogError(
+                            "[UPDATE-SECURITY ALERT] Missing SHA256 checksum in GitHub release metadata. Aborting installer launch and deleting file.");
+                        TryDeleteFile(installerPath);
 
-                        MainThread.BeginInvokeOnMainThread(async () =>
-                            await NeoAlert.ShowAsync(
-                                "Ошибка безопасности",
-                                "В описании релиза отсутствует обязательная контрольная сумма SHA-256. Запуск обновления заблокирован.",
-                                "OK"));
+                        MainThread.BeginInvokeOnMainThread(async void () =>
+                        {
+                            try
+                            {
+                                await NeoAlert.ShowAsync(
+                                    "Ошибка безопасности",
+                                    "В описании релиза отсутствует обязательная контрольная сумма SHA-256. Запуск обновления заблокирован.");
+                            }
+                            catch
+                            {
+                                // ignored
+                            }
+                        });
                         return;
                     }
 
                     if (!string.Equals(computedHash, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
                     {
-                        AppLogger.LogError($"[UPDATE-SECURITY ALERT] Checksum mismatch! Expected: {expectedSha256}, Actual: {computedHash}. Deleting file.");
-                        TryDeleteFile(tempPath);
+                        AppLogger.LogError(
+                            $"[UPDATE-SECURITY ALERT] Checksum mismatch! Expected: {expectedSha256}, Actual: {computedHash}. Deleting file.");
+                        TryDeleteFile(installerPath);
 
-                        MainThread.BeginInvokeOnMainThread(async () =>
-                            await NeoAlert.ShowAsync(
-                                "Ошибка безопасности",
-                                "Контрольная сумма загруженного обновления не совпадает с официальным релизом. Запуск заблокирован для безопасности системы.",
-                                "OK"));
+                        MainThread.BeginInvokeOnMainThread(async void () =>
+                        {
+                            try
+                            {
+                                await NeoAlert.ShowAsync(
+                                    "Ошибка безопасности",
+                                    "Контрольная сумма загруженного обновления не совпадает с официальным релизом. Запуск заблокирован для безопасности системы.");
+                            }
+                            catch
+                            {
+                                // ignored
+                            }
+                        });
                         return;
                     }
 
                     AppLogger.Log("[UPDATE-SECURITY] SHA256 checksum verified successfully.");
 
-                    //проверка встроенной подписи authenticode при ее наличии у установщика
-                    var sigStatus = CheckAuthenticodeSignature(tempPath);
-                    if (sigStatus == AuthenticodeCheckStatus.InvalidSignature)
+                    //проверка встроенной подписи authenticode перед запуском инсталлятора
+                    var sigStatus = CheckAuthenticodeSignature(installerPath);
+                    if (sigStatus is not AuthenticodeCheckStatus.TrustedChain)
                     {
-                        AppLogger.LogError("[UPDATE-SECURITY ALERT] Installer Authenticode signature is corrupted or invalid. Blocking launch.");
-                        TryDeleteFile(tempPath);
+                        AppLogger.LogError(
+                            $"[UPDATE-SECURITY ALERT] Installer Authenticode signature invalid or missing ({sigStatus}). Blocking launch.");
+                        TryDeleteFile(installerPath);
 
-                        MainThread.BeginInvokeOnMainThread(async () =>
-                            await NeoAlert.ShowAsync(
-                                "Ошибка безопасности",
-                                "Цифровая подпись установщика повреждена. Запуск обновления заблокирован.",
-                                "OK"));
+                        MainThread.BeginInvokeOnMainThread(async void () =>
+                        {
+                            try
+                            {
+                                await NeoAlert.ShowAsync(
+                                    "Ошибка безопасности",
+                                    "Цифровая подпись установщика отсутствует или повреждена. Запуск обновления заблокирован."
+                                );
+                            }
+                            catch
+                            {
+                                // ignored
+                            }
+                        });
                         return;
                     }
 
-                    _ = Process.Start(new ProcessStartInfo(tempPath)
+                    //корректная остановка активного vpn перед перезапуском в установщик
+                    try
+                    {
+                        var vpnService = IPlatformApplication.Current?.Services.GetService<IVpnService>();
+                        if (vpnService is not null && vpnService.CurrentState != AppVpnState.Disconnected)
+                        {
+                            await vpnService.StopVpnAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception stopEx)
+                    {
+                        AppLogger.LogWarning($"[UPDATE CLEANUP WARN] Failed to stop VPN before restart: {stopEx.Message}");
+                    }
+
+                    _ = Process.Start(new ProcessStartInfo(installerPath)
                     {
                         UseShellExecute = true
                     });
@@ -404,11 +613,11 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
             catch (Exception ex)
             {
                 AppLogger.LogError($"[DOWNLOAD INSTALLER ERROR] {ex.Message}", ex);
-                TryDeleteFile(tempPath);
+                TryDeleteFile(installerPath);
             }
         }
 
-        _ = await Launcher.OpenAsync(new Uri(url));
+        _ = await MainThread.InvokeOnMainThreadAsync(() => Launcher.OpenAsync(updateUri)).ConfigureAwait(false);
     }
 
     //безопасное удаление временного файла установщика
@@ -421,7 +630,10 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 File.Delete(path);
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     //открытие страницы приложения в магазине microsoft store
@@ -442,6 +654,14 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 AppLogger.LogError($"[STORE LAUNCH ERROR] {ex.Message}", ex);
             }
         }
+    }
+
+    private enum AuthenticodeCheckStatus
+    {
+        Unsigned,
+        TrustedChain,
+        SelfSignedUntrustedRoot,
+        InvalidSignature
     }
 }
 #endif

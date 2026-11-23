@@ -11,40 +11,47 @@ public class TrafficGraphControl : Control
         set => SetValue(IsActiveProperty, value);
     }
 
-    private static readonly IPen t_gridPen = new Pen(new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)), 1, DashStyle.Dash);
-    private static readonly IPen t_upPen = new Pen(new SolidColorBrush(Color.Parse("#9F6FF0")), 2);
-    private static readonly IPen t_downPen = new Pen(new SolidColorBrush(Color.Parse("#00E5FF")), 2);
+    private static readonly IPen s_gridPen = new Pen(new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)), 1, DashStyle.Dash);
+    private static readonly IPen s_upPen = new Pen(new SolidColorBrush(Color.Parse("#9F6FF0")), 2);
+    private static readonly IPen s_downPen = new Pen(new SolidColorBrush(Color.Parse("#00E5FF")), 2);
 
-    private static readonly IBrush t_upSolidBrush = new SolidColorBrush(Color.Parse("#9F6FF0"));
-    private static readonly IBrush t_downSolidBrush = new SolidColorBrush(Color.Parse("#00E5FF"));
+    private static readonly IBrush s_upSolidBrush = new SolidColorBrush(Color.Parse("#9F6FF0"));
+    private static readonly IBrush s_downSolidBrush = new SolidColorBrush(Color.Parse("#00E5FF"));
 
-    private readonly DispatcherTimer _animationTimer;
+    private bool _isAttached;
     private double _timePhase;
     private double _pulsePhase;
-
-    public TrafficGraphControl()
-    {
-        _animationTimer = new DispatcherTimer(DispatcherPriority.Render)
-        {
-            Interval = TimeSpan.FromMilliseconds(20) // ~50 FPS silky smooth packet flow
-        };
-        _animationTimer.Tick += OnAnimationTick;
-    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _animationTimer.Start();
+        _isAttached = true;
+        RequestNextFrame();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _animationTimer.Stop();
+        _isAttached = false;
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnAnimationTick(object? sender, EventArgs e)
+    private void RequestNextFrame()
     {
+        if (!_isAttached)
+        {
+            return;
+        }
+
+        TopLevel.GetTopLevel(this)?.RequestAnimationFrame(OnRenderFrame);
+    }
+
+    private void OnRenderFrame(TimeSpan frameTime)
+    {
+        if (!_isAttached)
+        {
+            return;
+        }
+
         _timePhase += 0.09;
         if (_timePhase > 2000.0)
         {
@@ -58,6 +65,7 @@ public class TrafficGraphControl : Control
         }
 
         InvalidateVisual();
+        RequestNextFrame();
     }
 
     public override void Render(DrawingContext context)
@@ -75,16 +83,16 @@ public class TrafficGraphControl : Control
         for (int i = 1; i <= 3; i++)
         {
             double y = height * (i / 4.0);
-            context.DrawLine(t_gridPen, new Point(0, y), new Point(width, y));
+            context.DrawLine(s_gridPen, new Point(0, y), new Point(width, y));
         }
 
         // Draw streaming upload packets (purple, bottom curve)
         DrawStreamingWave(
             context,
-            strokePen: t_upPen,
+            strokePen: s_upPen,
             fillStartColor: Color.FromArgb(55, 159, 111, 240),
             glowColor: Color.FromArgb(90, 159, 111, 240),
-            solidBrush: t_upSolidBrush,
+            solidBrush: s_upSolidBrush,
             isUpload: true,
             width: width,
             height: height,
@@ -95,10 +103,10 @@ public class TrafficGraphControl : Control
         // Draw streaming download packets (cyan, top curve)
         DrawStreamingWave(
             context,
-            strokePen: t_downPen,
+            strokePen: s_downPen,
             fillStartColor: Color.FromArgb(75, 0, 229, 255),
             glowColor: Color.FromArgb(120, 0, 229, 255),
-            solidBrush: t_downSolidBrush,
+            solidBrush: s_downSolidBrush,
             isUpload: false,
             width: width,
             height: height,
@@ -137,7 +145,7 @@ public class TrafficGraphControl : Control
             for (int i = 0; i < pointsCount; i++)
             {
                 double x = i * stepX;
-                double waveT = (i * 0.44) - phase;
+                double waveT = i * 0.44 - phase;
 
                 double norm;
                 if (!isActive)
@@ -147,19 +155,19 @@ public class TrafficGraphControl : Control
                 else if (isUpload)
                 {
                     // Upload stream: bursts of purple packets in lower half (~0.16 - 0.42)
-                    double baseWave = 0.24 + (0.07 * Math.Sin(waveT * 1.6)) + (0.04 * Math.Cos(waveT * 3.3));
-                    double packetPulse = Math.Pow(Math.Max(0, Math.Sin((waveT * 0.95) + 1.2)), 6) * 0.14;
+                    double baseWave = 0.24 + 0.07 * Math.Sin(waveT * 1.6) + 0.04 * Math.Cos(waveT * 3.3);
+                    double packetPulse = Math.Pow(Math.Max(0, Math.Sin(waveT * 0.95 + 1.2)), 6) * 0.14;
                     norm = Math.Clamp(baseWave + packetPulse, 0.10, 0.48);
                 }
                 else
                 {
                     // Download stream: intense bursts of cyan packets in upper half (~0.30 - 0.94)
-                    double baseWave = 0.54 + (0.24 * Math.Sin(waveT * 1.3)) + (0.16 * Math.Cos(waveT * 2.9));
+                    double baseWave = 0.54 + 0.24 * Math.Sin(waveT * 1.3) + 0.16 * Math.Cos(waveT * 2.9);
                     double packetPulse = Math.Pow(Math.Max(0, Math.Sin(waveT * 0.72)), 5) * 0.26;
                     norm = Math.Clamp(baseWave + packetPulse, 0.20, 0.96);
                 }
 
-                double y = height - (norm * (height - 14)) - 7;
+                double y = height - norm * (height - 14) - 7;
                 var currentPoint = new Point(x, y);
 
                 if (!started)
@@ -206,7 +214,7 @@ public class TrafficGraphControl : Control
         if (isActive)
         {
             // Draw glowing pulsating head dot at the front edge of the packet stream
-            double pulseRadius = 4.5 + (1.8 * Math.Sin(pulsePhase));
+            double pulseRadius = 4.5 + 1.8 * Math.Sin(pulsePhase);
             var glowBrush = new SolidColorBrush(glowColor);
 
             context.DrawEllipse(glowBrush, null, lastPoint, pulseRadius, pulseRadius);

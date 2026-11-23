@@ -39,7 +39,7 @@ public class VpnStatusMessagesTests
     [Fact]
     public void DynamicMtuFormattersIncludeRealNumbers()
     {
-        var scanMsg = VpnStatusMessages.ScanningMtuHole(1420, 1280, 8);
+        var scanMsg = VpnStatusMessages.ScanningMtuHole(1420, 1280);
         Assert.Contains("1420", scanMsg);
         Assert.Contains("1280", scanMsg);
         Assert.Contains("8", scanMsg);
@@ -115,7 +115,7 @@ public class VpnStatusMessagesTests
         var startAdapterMsg = VpnStatusMessages.StartingAdapter("Obxodka");
         Assert.Contains("Obxodka", startAdapterMsg);
 
-        var retryMsg = VpnStatusMessages.ReconnectingAttempt(2, 2);
+        var retryMsg = VpnStatusMessages.ReconnectingAttempt(2);
         Assert.Contains("2/2", retryMsg);
 
         var backupNodeMsg = VpnStatusMessages.SwitchingToBackupNode("9.9.9.9");
@@ -130,7 +130,7 @@ public class VpnStatusMessagesTests
         var serverUnavailMsg = VpnStatusMessages.ServerUnavailableTryingBackup("2.2.2.2");
         Assert.Contains("2.2.2.2", serverUnavailMsg);
 
-        var noTrafficMsg = VpnStatusMessages.NoIncomingTraffic(1, 2);
+        var noTrafficMsg = VpnStatusMessages.NoIncomingTraffic(1);
         Assert.Contains("1/2", noTrafficMsg);
 
         var vpnWarnMsg = VpnStatusMessages.ThirdPartyVpnWarning("OtherVPN");

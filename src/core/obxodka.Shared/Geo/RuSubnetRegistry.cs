@@ -1,7 +1,4 @@
-using System.IO.Compression;
-using System.Net;
-using System.Reflection;
-using System.Runtime.CompilerServices;
+using System.Numerics;
 
 namespace obxodka.Shared.Geo;
 
@@ -135,9 +132,9 @@ public static class RuSubnetRegistry
                 var endEx = (ulong)end + 1;
                 while (cur < endEx)
                 {
-                    var tz = cur == 0 ? 32 : System.Numerics.BitOperations.TrailingZeroCount(cur);
+                    var tz = cur == 0 ? 32 : BitOperations.TrailingZeroCount(cur);
                     var rem = endEx - cur;
-                    var maxFit = 63 - System.Numerics.BitOperations.LeadingZeroCount(rem);
+                    var maxFit = 63 - BitOperations.LeadingZeroCount(rem);
                     var stepBits = Math.Min(32, Math.Min(tz, maxFit));
                     var prefixLen = 32 - stepBits;
 

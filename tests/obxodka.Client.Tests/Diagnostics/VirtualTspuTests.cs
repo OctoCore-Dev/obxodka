@@ -11,7 +11,7 @@ public class VirtualTspuTests
         wgPacket[0] = 0x01;
         Random.Shared.NextBytes(wgPacket.AsSpan(1));
 
-        var audit = tspu.InspectPacket(0, wgPacket, isUdp: true);
+        var audit = tspu.InspectPacket(0, wgPacket, true);
 
         Assert.True(audit.DetectedThreats.HasFlag(TspuThreat.WireGuardHandshake));
     }
@@ -25,7 +25,7 @@ public class VirtualTspuTests
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), 256);
         Random.Shared.NextBytes(packet.AsSpan(8));
 
-        var audit = tspu.InspectPacket(0, packet, isUdp: false);
+        var audit = tspu.InspectPacket(0, packet, false);
 
         Assert.True(audit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
     }
@@ -37,7 +37,7 @@ public class VirtualTspuTests
         var rawData = new byte[256];
         Random.Shared.NextBytes(rawData);
         var frame = ObxodkaFraming.Pack(ObxodkaFraming.CmdData, rawData, out var frameLen);
-        var audit = tspu.InspectPacket(0, frame.AsSpan(0, frameLen), isUdp: false);
+        var audit = tspu.InspectPacket(0, frame.AsSpan(0, frameLen), false);
         Assert.False(audit.DetectedThreats.HasFlag(TspuThreat.ObfuscatorStaticLengthHeader));
         ArrayPool<byte>.Shared.Return(frame);
     }
@@ -54,12 +54,13 @@ public class VirtualTspuTests
             var offset = i * 7 % 16;
             for (var j = 0; j < packet.Length; j++)
             {
-                packet[j] = (byte)((j % 32) + offset);
+                packet[j] = (byte)(j % 32 + offset);
             }
+
             naturalPackets.Add(packet);
         }
 
-        var report = tspu.AnalyzeStream(naturalPackets, isUdp: true);
+        var report = tspu.AnalyzeStream(naturalPackets, true);
 
         Assert.True(report.IsStealthPassed);
         Assert.Equal(0, report.BlockedCount);

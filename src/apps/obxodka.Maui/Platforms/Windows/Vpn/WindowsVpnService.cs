@@ -1,182 +1,97 @@
-using obxodka.Core.Models;
-
 namespace obxodka.Platforms.Windows;
 
-//управление жизненным циклом и состоянием vpn сервиса windows
+//платформенный драйвер windows (wintun, маршруты и защита от утечек) для единого оркестратора vpn
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService : IVpnService, IDisposable
+internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDisposable
 {
-    private CancellationTokenSource? _cts;
+    private static int s_suppressNetworkChangeDepth;
+    private static long s_suppressNetworkChangeUntilTicks;
     private WintunAdapter? _adapter;
+    private long _lastNetChangeTicks;
+    private Action? _platformNetworkChanged;
     private Task? _trafficTask;
-
-    public AppVpnState CurrentState { get; private set; } = AppVpnState.Disconnected;
-    public bool IsRunning => CurrentState == AppVpnState.Connected;
-
-    public event Action<AppVpnState>? OnStateChanged;
-    public event Action<string>? OnLogUpdated;
-    public event Action<string>? OnErrorOccurred;
-    public event Action<AppTrafficStats>? OnTrafficUpdated = delegate { };
-    public event Action<string>? OnForceLogoutRequested;
-
-    private string _currentServerIp = "";
-    private readonly List<string> _currentServerIpsToRoute = [];
-    private bool _isExplicitlyStopped;
-    private List<VpnServerDto> _fallbackServers = [];
-    private int _currentServerIndex;
-    private int _isHandlingDeadConnection;
-    private int _isHandlingDrop;
-    private string _currentAssignedIp = "";
-    private readonly SemaphoreSlim _vpnGate = new(1, 1);
-    private readonly Action<string> _statusMessageHandler;
-    private readonly Action<string> _certRevokedHandler;
-    private readonly Action<long, long> _trafficUpdatedHandler;
-    private readonly EventHandler _processExitHandler;
-    private long _lastTrafficSent;
-    private long _lastTrafficReceived;
-    private long _lastTrafficTicks;
-    public static SplitTunnelPolicy SplitTunnelPolicy => WindowsSplitTunnelEngine.Policy;
 
     public WindowsVpnService()
     {
         AppManager.SyncPolicyFromPreferences();
-        OctopusEngine.Current.ProtectTransportSockets(BindSocketToPhysicalAdapter);
-        ObxodkaStreamTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
-        ObxodkaWebSocketTransport.OnSocketCreated = BindSocketToPhysicalAdapter;
-
-        _statusMessageHandler = msg => OnLogUpdated?.Invoke(msg);
-        _certRevokedHandler = msg => OnForceLogoutRequested?.Invoke(msg);
-        _trafficUpdatedHandler = HandleEngineTrafficUpdated;
-        _processExitHandler = (_, _) =>
-        {
-            try
-            {
-                _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
-            }
-            catch { }
-        };
-
-        OctopusEngine.Current.OnStatusMessage += _statusMessageHandler;
+        NetworkChange.NetworkAddressChanged += OnSystemNetworkAddressChanged;
         _ = Task.Run(CleanupStaleRoutesAsync);
-        AppDomain.CurrentDomain.ProcessExit += _processExitHandler;
-        OctopusEngine.OnCertificateRevoked += _certRevokedHandler;
-        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
-        OctopusEngine.Current.OnTrafficUpdated += _trafficUpdatedHandler;
-        OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
-        OctopusEngine.Current.OnMtuUpdated += HandleMtuUpdated;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
-        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
-        OctopusEngine.Current.OnDeadConnectionDetected += HandleDeadConnection;
-        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
-        OctopusEngine.Current.OnUplinkLost += HandleUplinkLost;
-        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
-        OctopusEngine.Current.OnUplinkRestored += HandleUplinkRestored;
     }
 
-    //трансляция счетчиков трафика ядра в событие интерфейса vpn сервиса
-    private void HandleEngineTrafficUpdated(long sentBytes, long receivedBytes)
-    {
-        var nowTicks = Environment.TickCount64;
-        var prevTicks = Interlocked.Exchange(ref _lastTrafficTicks, nowTicks);
-        var prevSent = Interlocked.Exchange(ref _lastTrafficSent, sentBytes);
-        var prevReceived = Interlocked.Exchange(ref _lastTrafficReceived, receivedBytes);
+    public static SplitTunnelPolicy SplitTunnelPolicy => WindowsSplitTunnelEngine.Policy;
 
-        if (prevTicks <= 0 || nowTicks <= prevTicks)
+    //освобождение ресурсов windows-драйвера
+    public void Dispose()
+    {
+        NetworkChange.NetworkAddressChanged -= OnSystemNetworkAddressChanged;
+        _adapter?.Dispose();
+        _adapter = null;
+    }
+
+    public bool SupportsKillSwitch => true;
+
+    public event Action? OnPlatformNetworkChanged
+    {
+        add => _platformNetworkChanged += value;
+        remove => _platformNetworkChanged -= value;
+    }
+
+    //временное подавление событий смены сети на время собственной настройки wintun и DNS
+    private static NetworkChangeSuppressionScope SuppressNetworkChanges(int graceMs = 2500) =>
+        new(graceMs);
+
+    private static bool IsNetworkChangeSuppressed() =>
+        Volatile.Read(ref s_suppressNetworkChangeDepth) > 0 ||
+        Environment.TickCount64 < Volatile.Read(ref s_suppressNetworkChangeUntilTicks);
+
+    //уведомление оркестратора о смене системного сетевого адреса с защитой от дребезга и ложных срабатываний
+    private void OnSystemNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        if (IsNetworkChangeSuppressed() || _platformNetworkChanged is null)
         {
             return;
         }
 
-        var elapsedSec = (nowTicks - prevTicks) / 1000.0;
-        var upBps = sentBytes >= prevSent ? (long)((sentBytes - prevSent) / elapsedSec) : 0;
-        var downBps = receivedBytes >= prevReceived ? (long)((receivedBytes - prevReceived) / elapsedSec) : 0;
-        OnTrafficUpdated?.Invoke(new AppTrafficStats
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref _lastNetChangeTicks) < 500)
         {
-            UploadSpeedBps = upBps,
-            DownloadSpeedBps = downBps
+            return;
+        }
+
+        _ = Interlocked.Exchange(ref _lastNetChangeTicks, now);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(150).ConfigureAwait(false);
+            if (IsNetworkChangeSuppressed() || !HasPhysicalNetworkSnapshotChanged())
+            {
+                return;
+            }
+
+            ResetSavedPhysicalGateway();
+            _platformNetworkChanged?.Invoke();
         });
     }
 
-    //обновление внутреннего состояния vpn сервиса
-    private void UpdateState(AppVpnState state)
+    private sealed partial class NetworkChangeSuppressionScope : IDisposable
     {
-        CurrentState = state;
-        OnStateChanged?.Invoke(state);
-    }
+        private readonly int _graceMs;
+        private int _disposed;
 
-    //запуск системной утилиты с таймаутом
-    private static async Task<(int exitCode, string output)> RunCmdAsync(
-        string fileName,
-        string args,
-        int timeoutMs = 4000,
-        CancellationToken ct = default)
-    {
-        try
+        public NetworkChangeSuppressionScope(int graceMs)
         {
-            using var proc = new Process
-            {
-                StartInfo = new ProcessStartInfo(fileName, args)
-                {
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    RedirectStandardError = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false
-                }
-            };
-
-            if (!proc.Start())
-            {
-                return (-1, "Failed to start process");
-            }
-
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(timeoutMs);
-
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync(linkedCts.Token);
-            var stderrTask = proc.StandardError.ReadToEndAsync(linkedCts.Token);
-
-            try
-            {
-                await proc.WaitForExitAsync(linkedCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                try
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-                catch { }
-
-                return (-1, "Command timed out or cancelled");
-            }
-
-            var stdout = await stdoutTask.ConfigureAwait(false);
-            var stderr = await stderrTask.ConfigureAwait(false);
-            return (proc.ExitCode, string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+            _graceMs = graceMs;
+            _ = Interlocked.Increment(ref s_suppressNetworkChangeDepth);
         }
-        catch (Exception ex)
+
+        public void Dispose()
         {
-            return (-1, ex.Message);
-        }
-    }
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
 
-    //освобождение ресурсов vpn сервиса
-    public void Dispose()
-    {
-        AppDomain.CurrentDomain.ProcessExit -= _processExitHandler;
-        OctopusEngine.Current.OnStatusMessage -= _statusMessageHandler;
-        OctopusEngine.OnCertificateRevoked -= _certRevokedHandler;
-        OctopusEngine.Current.OnTrafficUpdated -= _trafficUpdatedHandler;
-        OctopusEngine.Current.OnMtuUpdated -= HandleMtuUpdated;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        OctopusEngine.Current.OnDeadConnectionDetected -= HandleDeadConnection;
-        OctopusEngine.Current.OnUplinkLost -= HandleUplinkLost;
-        OctopusEngine.Current.OnUplinkRestored -= HandleUplinkRestored;
-        _ = StopVpnAsync();
-        _cts?.Dispose();
-        _vpnGate.Dispose();
-        _adapter?.Dispose();
-        _adapter = null;
+            _ = Interlocked.Exchange(ref s_suppressNetworkChangeUntilTicks, Environment.TickCount64 + _graceMs);
+            _ = Interlocked.Decrement(ref s_suppressNetworkChangeDepth);
+        }
     }
 }

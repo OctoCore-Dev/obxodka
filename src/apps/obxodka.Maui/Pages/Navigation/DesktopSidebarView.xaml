@@ -1,28 +1,33 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.DesktopSidebarView"
+    x:Class="obxodka.Pages.Navigation.DesktopSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:helpers="clr-namespace:obxodka.Helpers"
-    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
-    xmlns:views="clr-namespace:obxodka.Pages">
+    xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
     <Border
         x:Name="DesktopSidebar"
-        Margin="16,16,0,16"
-        Padding="16,24"
-        helpers:UIAnimations.AnimateEntrance="False"
+        Margin="12,12,0,12"
+        Padding="10,16"
         Opacity="0"
-        Style="{StaticResource NeoCard}"
-        TranslationX="-36"
-        WidthRequest="84">
+        Stroke="{DynamicResource BorderSubtle}"
+        StrokeShape="{OnPlatform Android='RoundRectangle 20',
+                                 iOS='RoundRectangle 20',
+                                 Default='RoundRectangle 12'}"
+        StrokeThickness="{DynamicResource CardBorderThickness}"
+        BackgroundColor="{DynamicResource BgSurface}"
+        TranslationX="-24"
+        WidthRequest="76">
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnSidebarTapped" />
         </Border.GestureRecognizers>
         <Grid RowDefinitions="Auto, *, Auto" RowSpacing="0">
             <Grid
+                x:Name="LogoRowGrid"
                 Grid.Row="0"
-                Margin="0,0,0,32"
-                ColumnDefinitions="50, *"
+                Margin="0,0,0,20"
+                ColumnDefinitions="56, *, Auto"
+                HeightRequest="42"
                 VerticalOptions="Center">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnLogoTapped" />
@@ -32,46 +37,76 @@
                     x:Name="AppLogoImage"
                     Grid.Column="0"
                     Aspect="AspectFit"
-                    HeightRequest="32"
+                    HeightRequest="30"
                     HorizontalOptions="Center"
                     Source="app_logo.png"
                     VerticalOptions="Center"
-                    WidthRequest="32" />
+                    WidthRequest="30" />
+
                 <Label
                     x:Name="AppLogoText"
                     Grid.Column="1"
-                    Margin="4,0,0,0"
-                    FontFamily="{DynamicResource AppFontBold}"
-                    FontSize="24"
+                    Margin="2,0,0,0"
+                    CharacterSpacing="1.4"
+                    FontFamily="{DynamicResource AppFontTitle}"
+                    FontSize="17"
+                    IsVisible="False"
                     LineBreakMode="NoWrap"
                     Opacity="0"
                     Text="OBXODKA"
                     TextColor="{DynamicResource TextPrimary}"
                     VerticalOptions="Center" />
+
+                <mi:MauiIcon
+                    x:Name="CollapseChevronIcon"
+                    Grid.Column="2"
+                    Margin="0,0,6,0"
+                    HorizontalOptions="Center"
+                    Icon="{mi:Fluent Icon=ChevronLeft20}"
+                    IconColor="{DynamicResource TextMuted}"
+                    IconSize="18"
+                    IsVisible="False"
+                    Opacity="0"
+                    VerticalOptions="Center" />
             </Grid>
 
-            <VerticalStackLayout Grid.Row="1" Spacing="8">
+            <ScrollView
+                Grid.Row="1"
+                HorizontalScrollBarVisibility="Never"
+                VerticalScrollBarVisibility="Never">
+                <VerticalStackLayout x:Name="NavItemsStack" Spacing="4">
 
                 <Border x:Name="SideNavVpn" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavVpnTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
+                        <BoxView
+                            x:Name="IndicatorVpn"
+                            Grid.Column="0"
+                            CornerRadius="1.5"
+                            HeightRequest="18"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
+                            VerticalOptions="Center"
+                            WidthRequest="3"
+                            Color="{DynamicResource Primary}" />
                         <mi:MauiIcon
                             x:Name="NavVpnIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Shield24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="22"
+                            IconSize="20"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelVpn"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
+                            Margin="2,0,8,0"
                             FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            FontSize="13.5"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="VPN"
@@ -82,23 +117,34 @@
                 <Border x:Name="SideNavProfile" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavProfileTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
+                        <BoxView
+                            x:Name="IndicatorProfile"
+                            Grid.Column="0"
+                            CornerRadius="1.5"
+                            HeightRequest="18"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
+                            VerticalOptions="Center"
+                            WidthRequest="3"
+                            Color="{DynamicResource Primary}" />
                         <mi:MauiIcon
                             x:Name="NavProfileIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Person24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="22"
+                            IconSize="20"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelProfile"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
+                            Margin="2,0,8,0"
                             FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            FontSize="13.5"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="Профиль"
@@ -109,23 +155,34 @@
                 <Border x:Name="SideNavConfiguration" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
+                        <BoxView
+                            x:Name="IndicatorConfiguration"
+                            Grid.Column="0"
+                            CornerRadius="1.5"
+                            HeightRequest="18"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
+                            VerticalOptions="Center"
+                            WidthRequest="3"
+                            Color="{DynamicResource Primary}" />
                         <mi:MauiIcon
                             x:Name="NavConfigurationIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Settings24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="22"
+                            IconSize="20"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelConfiguration"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
+                            Margin="2,0,8,0"
                             FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            FontSize="13.5"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="Конфигурация"
@@ -136,23 +193,34 @@
                 <Border x:Name="SideNavDevices" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavDevicesTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
+                        <BoxView
+                            x:Name="IndicatorDevices"
+                            Grid.Column="0"
+                            CornerRadius="1.5"
+                            HeightRequest="18"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
+                            VerticalOptions="Center"
+                            WidthRequest="3"
+                            Color="{DynamicResource Primary}" />
                         <mi:MauiIcon
                             x:Name="NavDevicesIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=PhoneDesktop24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="22"
+                            IconSize="20"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelDevices"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
+                            Margin="2,0,8,0"
                             FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            FontSize="13.5"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="Устройства"
@@ -163,167 +231,200 @@
                 <Border x:Name="SideNavSplit" Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavSplitTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
+                        <BoxView
+                            x:Name="IndicatorSplit"
+                            Grid.Column="0"
+                            CornerRadius="1.5"
+                            HeightRequest="18"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
+                            VerticalOptions="Center"
+                            WidthRequest="3"
+                            Color="{DynamicResource Primary}" />
                         <mi:MauiIcon
                             x:Name="NavSplitIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=AppsList24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="22"
+                            IconSize="20"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelSplit"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
+                            Margin="2,0,8,0"
                             FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            FontSize="13.5"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Text="Разделение трафика"
+                            Text="Разделение"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
 
                 <BoxView
-                    Margin="12,8,12,8"
-                    HeightRequest="1"
-                    Color="{DynamicResource BorderSubtle}" />
+                    x:Name="NavDivider"
+                    Margin="10,8"
+                    Style="{StaticResource DividerLine}" />
 
-                <Border x:Name="NavBug" Style="{StaticResource SideNavItem}">
+                <Border
+                    x:Name="NavBug"
+                    HeightRequest="38"
+                    Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavBugTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
                         <mi:MauiIcon
                             x:Name="NavBugIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Bug24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="20"
+                            IconSize="18"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelBug"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
-                            FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            Margin="2,0,8,0"
+                            FontFamily="{DynamicResource AppFontRegular}"
+                            FontSize="13"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Text="Отправка бага"
+                            Text="Сообщить о баге"
+                            TextColor="{DynamicResource TextSecondary}"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
 
-                <Border x:Name="NavReviews" Style="{StaticResource SideNavItem}">
+                <Border
+                    x:Name="NavReviews"
+                    HeightRequest="38"
+                    Style="{StaticResource SideNavItem}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNavReviewsTapped" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,8" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
                         <mi:MauiIcon
                             x:Name="NavReviewsIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=Star24}"
                             IconColor="{DynamicResource TextMuted}"
-                            IconSize="20"
+                            IconSize="18"
                             VerticalOptions="Center" />
                         <Label
                             x:Name="LabelReviews"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
-                            FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="14"
+                            Margin="2,0,8,0"
+                            FontFamily="{DynamicResource AppFontRegular}"
+                            FontSize="13"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
                             Text="Отзывы"
+                            TextColor="{DynamicResource TextSecondary}"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
 
-            </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
 
             <VerticalStackLayout
+                x:Name="FooterStack"
                 Grid.Row="2"
-                Margin="0,16,0,0"
-                Spacing="16">
+                Margin="0,12,0,0"
+                Spacing="8">
 
                 <Border
-                    x:Name="VpnStatusCard"
-                    Padding="0,8"
-                    helpers:UIAnimations.AnimateEntrance="False"
+                    x:Name="VpnStatusPill"
                     BackgroundColor="Transparent"
+                    HeightRequest="36"
                     Stroke="Transparent"
-                    Style="{StaticResource NeoCard}">
-                    <Grid ColumnDefinitions="50, *">
+                    StrokeShape="{OnPlatform Android='RoundRectangle 12',
+                                             iOS='RoundRectangle 12',
+                                             Default='RoundRectangle 6'}"
+                    StrokeThickness="1">
+                    <Grid ColumnDefinitions="56, *">
                         <BoxView
                             x:Name="VpnStatusDot"
                             Grid.Column="0"
-                            CornerRadius="5"
-                            HeightRequest="10"
+                            CornerRadius="4"
+                            HeightRequest="8"
                             HorizontalOptions="Center"
                             VerticalOptions="Center"
-                            WidthRequest="10"
+                            WidthRequest="8"
                             Color="{DynamicResource TextMuted}" />
                         <Label
                             x:Name="VpnStatusLabel"
                             Grid.Column="1"
-                            Margin="4,0,0,0"
-                            FontSize="13"
+                            Margin="2,0,8,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
+                            FontSize="12.5"
                             HorizontalOptions="Start"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Style="{StaticResource LabelMuted}"
                             Text="Отключен"
+                            TextColor="{DynamicResource TextMuted}"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
 
                 <Border
                     x:Name="LogoutButtonBorder"
-                    HeightRequest="44"
-                    Style="{StaticResource NeoBtnDanger}">
+                    BackgroundColor="Transparent"
+                    HeightRequest="40"
+                    Stroke="Transparent"
+                    StrokeShape="{OnPlatform Android='RoundRectangle 12',
+                                             iOS='RoundRectangle 12',
+                                             Default='RoundRectangle 6'}"
+                    StrokeThickness="0">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnLogoutClicked" />
-                        <PointerGestureRecognizer PointerEntered="OnPointerEnteredAsync" PointerExited="OnPointerExitedAsync" />
+                        <PointerGestureRecognizer PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" />
                     </Border.GestureRecognizers>
-                    <Grid Padding="0,10" ColumnDefinitions="50, *">
+                    <Grid ColumnDefinitions="56, *">
                         <mi:MauiIcon
                             x:Name="LogoutIcon"
                             Grid.Column="0"
                             HorizontalOptions="Center"
                             Icon="{mi:Fluent Icon=ArrowExit20}"
                             IconColor="{DynamicResource Error}"
-                            IconSize="20"
-                            Opacity="1"
+                            IconSize="19"
                             VerticalOptions="Center" />
 
                         <Label
                             x:Name="LogoutText"
-                            Grid.Column="0"
-                            Grid.ColumnSpan="2"
-                            FontFamily="{DynamicResource AppFontBold}"
-                            FontSize="13"
-                            HorizontalOptions="Center"
-                            HorizontalTextAlignment="Center"
+                            Grid.Column="1"
+                            Margin="2,0,8,0"
+                            FontFamily="{DynamicResource AppFontMedium}"
+                            FontSize="13.5"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
                             LineBreakMode="NoWrap"
                             Opacity="0"
-                            Text="ВЫХОД"
+                            Text="Выйти"
                             TextColor="{DynamicResource Error}"
                             VerticalOptions="Center" />
                     </Grid>
                 </Border>
 
                 <Border
-                    x:Name="VersionBadgeBorder"
+                    x:Name="VersionBadge"
                     Padding="6,3"
                     BackgroundColor="Transparent"
-                    Stroke="Transparent">
+                    IsVisible="False"
+                    Stroke="Transparent"
+                    StrokeThickness="0">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnVersionBadgeTappedAsync" />
                     </Border.GestureRecognizers>

@@ -4,10 +4,10 @@ namespace obxodka.Config;
 public static class MirrorConfig
 {
     //основная ссылка на список серверов в гитхабе
-    public const string RemoteServersDiscoveryUrl = "https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/servers.json";
+    private const string RemoteServersDiscoveryUrl = "https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/servers.json";
 
     //резервная ссылка через cdn на случай блокировки
-    public const string RemoteServersDiscoveryFallbackUrl = "https://cdn.jsdelivr.net/gh/OctoCore-Dev/obxodka@main/servers.json";
+    private const string RemoteServersDiscoveryFallbackUrl = "https://cdn.jsdelivr.net/gh/OctoCore-Dev/obxodka@main/servers.json";
 
     //пул зеркал для поиска серверов
     public static readonly string[] RemoteServersDiscoveryUrls =
@@ -17,6 +17,9 @@ public static class MirrorConfig
         "https://fastly.jsdelivr.net/gh/OctoCore-Dev/obxodka@main/servers.json",
         "https://gcore.jsdelivr.net/gh/OctoCore-Dev/obxodka@main/servers.json"
     ];
+
+    //белый список доверенных адресов для защиты от ssrf
+    private static readonly Lazy<string[]> s_knownDomainBases = new(BuildKnownDomainBases);
 
     //список доменов зеркал из конфига
     public static string[] MirrorDomains => BootstrapConfig.Mirrors;
@@ -28,9 +31,6 @@ public static class MirrorConfig
     //базовый адрес первого зеркала
     public static string MirrorApiBaseUrl => $"https://{MirrorDomain}/";
 
-    //белый список доверенных адресов для защиты от ssrf
-    private static readonly Lazy<string[]> s_knownDomainBases = new(BuildKnownDomainBases);
-
     public static string[] KnownDomainBases => s_knownDomainBases.Value;
 
     private static string[] BuildKnownDomainBases()
@@ -38,11 +38,11 @@ public static class MirrorConfig
         var mirrors = BootstrapConfig.Mirrors;
         var directUrl = AppConfig.DirectApiBaseUrl;
 
-        List<string> urls = new(mirrors.Length + 2);
-        foreach (var m in mirrors)
-        {
-            urls.Add($"https://{m.TrimEnd('/')}/");
-        }
+        List<string> urls =
+        [
+            with(mirrors.Length + 2),
+            .. mirrors.Select(m => $"https://{m.TrimEnd('/')}/")
+        ];
 
         if (urls.Count == 0)
         {

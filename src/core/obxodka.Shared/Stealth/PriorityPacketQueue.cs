@@ -1,35 +1,57 @@
 namespace obxodka.Shared.Stealth;
 
 //приоритетная очередь сетевых пакетов для устранения bufferbloat и мгновенного пропуска пингов, dns и tcp ack
-[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "Specialized network priority packet queue")]
+[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix",
+    Justification = "Specialized network priority packet queue")]
 public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
 {
+    private readonly int _controlHeadroom = Math.Min(maxCapacity + 64, 49900);
+
     //высокоприоритетная очередь для управляющих кадров, пингов, dns, icmp и пустых tcp ack
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _high = new();
 
     //низкоприоритетная очередь для тяжелых пакетных данных
     private readonly ConcurrentQueue<(byte[] buffer, int length)> _low = new();
 
+    //лимиты обычных и управляющих пакетов
+    private readonly int _maxCount = maxCapacity;
+
     //семафор уведомления о наличии пакетов в очереди
     private readonly SemaphoreSlim _semaphore = new(0, 50000);
 
     //счетчики текущего заполнения и полосы приоритета
     private int _count;
-    private int _highStreak;
     private int _disposed;
+    private int _highStreak;
     private int _inflight;
-
-    //лимиты обычных и управляющих пакетов
-    private readonly int _maxCount = maxCapacity;
-    private readonly int _controlHeadroom = Math.Min(maxCapacity + 64, 49900);
 
     //текущее количество пакетов в очереди
     public int Count => Math.Max(0, Volatile.Read(ref _count));
+
+    //освобождение ресурсов семафора после завершения активных операций добавления
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            var sw = default(SpinWait);
+            while (Volatile.Read(ref _inflight) > 0)
+            {
+                sw.SpinOnce();
+            }
+
+            _semaphore.Dispose();
+        }
+    }
 
     //добавление пакета в очередь с автоматической классификацией приоритета
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryEnqueue(byte[] buffer, int length)
     {
+        if (buffer is null || length <= 0 || buffer.Length < length)
+        {
+            return false;
+        }
+
         _ = Interlocked.Increment(ref _inflight);
         try
         {
@@ -90,8 +112,6 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 {
                     return item;
                 }
-
-                _ = _semaphore.Release();
             }
         }
         catch (ObjectDisposedException)
@@ -113,8 +133,6 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
                 {
                     return true;
                 }
-
-                _ = _semaphore.Release();
             }
         }
         catch (ObjectDisposedException)
@@ -157,19 +175,6 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     //чистка памяти при отключении: сдать все буферы обратно в пул
     public void DrainAndReturn(Action<byte[]>? returnBuffer = null)
     {
-        try
-        {
-            while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
-            {
-                //сброс счетчика семафора до нуля
-                continue;
-            }
-        }
-        catch (ObjectDisposedException)
-        {
-            //семафор уже освобожден при закрытии очереди
-        }
-
         while (_high.TryDequeue(out var highItem))
         {
             _ = Interlocked.Decrement(ref _count);
@@ -189,6 +194,18 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         }
 
         _ = Interlocked.Exchange(ref _count, 0);
+
+        try
+        {
+            while (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
+            {
+                //сброс счетчика семафора до нуля
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            //семафор уже освобожден при закрытии очереди
+        }
     }
 
     //определение управляющих и зондирующих кадров протокола (ping, pong, mtu sync, burst, probes)
@@ -236,7 +253,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             }
 
             var protocol = packet[9];
-            if (protocol == 1 || (protocol == 17 && length <= 320))
+            if (protocol == 1 || protocol == 17 && length <= 320)
             {
                 return true;
             }
@@ -261,7 +278,7 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
             }
 
             var nextHeader = packet[6];
-            if (nextHeader == 58 || (nextHeader == 17 && length <= 320))
+            if (nextHeader == 58 || nextHeader == 17 && length <= 320)
             {
                 return true;
             }
@@ -280,19 +297,5 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
         }
 
         return false;
-    }
-
-    //освобождение ресурсов семафора после завершения активных операций добавления
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-        {
-            var sw = default(SpinWait);
-            while (Volatile.Read(ref _inflight) > 0)
-            {
-                sw.SpinOnce();
-            }
-            _semaphore.Dispose();
-        }
     }
 }

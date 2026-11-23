@@ -1,52 +1,8 @@
-using System.Buffers.Binary;
-using obxodka.Core.Models;
-using obxodka.Shared.Geo;
-
 namespace obxodka.Platforms.Windows;
 
-//управление системной таблицей маршрутизации windows (iphlpapi.dll)
+//управление системной таблицей маршрутизации windows через общий win32networkhelper
 internal static partial class WindowsSplitTunnelEngine
 {
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MIB_IPFORWARDROW
-    {
-        public uint DwForwardDest;
-        public uint DwForwardMask;
-        public uint DwForwardPolicy;
-        public uint DwForwardNextHop;
-        public uint DwForwardIfIndex;
-        public uint DwForwardType;
-        public uint DwForwardProto;
-        public uint DwForwardAge;
-        public uint DwForwardNextHopAS;
-        public uint DwForwardMetric1;
-        public uint DwForwardMetric2;
-        public uint DwForwardMetric3;
-        public uint DwForwardMetric4;
-        public uint DwForwardMetric5;
-    }
-
-    [LibraryImport("iphlpapi.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
-
-    [LibraryImport("iphlpapi.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int CreateIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
-
-    [LibraryImport("iphlpapi.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int SetIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
-
-    [LibraryImport("iphlpapi.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int DeleteIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
-
-    [LibraryImport("dnsapi.dll", EntryPoint = "DnsFlushResolverCache", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DnsFlushResolverCache();
-
     //удаление неактуальных маршрутов при смене политики исключений
     private static void PruneStaleRoutes(SplitTunnelPolicy policy)
     {
@@ -54,42 +10,42 @@ internal static partial class WindowsSplitTunnelEngine
         var removedAny = false;
         Span<byte> ipBytes = stackalloc byte[4];
 
-        foreach (var kvp in s_routeReasons.ToArray())
+        foreach (var (ipUint, reason) in s_routeReasons.ToArray())
         {
-            var ipUint = kvp.Key;
-            var reason = kvp.Value;
-
             MemoryMarshal.Write(ipBytes, in ipUint);
             var ipStr = new IPAddress(ipBytes).ToString();
 
             var stillValid = customIps.Contains(ipStr) ||
-                            customIps.Contains(reason) ||
-                            (policy.BypassAllRuTlds && (reason.StartsWith("Auto-Bypass RU", StringComparison.Ordinal) || reason == "Tier-1 RU Supernet")) ||
-                            (policy.BypassRemoteManagement && reason == "Сессия удалённого доступа") ||
-                            (reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsProcessBypassed(reason, reason)) ||
-                            (!reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsDomainBypassed(reason));
+                             customIps.Contains(reason) ||
+                             policy.BypassAllRuTlds && (reason.StartsWith("Auto-Bypass RU", StringComparison.Ordinal) ||
+                                                        reason == "Tier-1 RU Supernet") ||
+                             policy.BypassRemoteManagement && reason == "Сессия удалённого доступа" ||
+                             reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsProcessBypassed(reason, reason) ||
+                             !reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsDomainBypassed(reason);
 
             if (!stillValid)
             {
                 _ = s_routeReasons.TryRemove(ipUint, out _);
                 if (s_pinnedRoutes.TryRemove(ipUint, out var row))
                 {
-                    _ = DeleteIpForwardEntry(ref row);
+                    _ = Win32NetworkHelper.DeleteIpForwardEntry(ref row);
                 }
+
                 removedAny = true;
             }
         }
 
-        if (removedAny)
+        if (!removedAny)
         {
-            Policy.ClearActiveRoutes();
-            foreach (var kvp in s_routeReasons)
-            {
-                var ipUint = kvp.Key;
-                MemoryMarshal.Write(ipBytes, in ipUint);
-                var ipStr = new IPAddress(ipBytes).ToString();
-                Policy.RecordBypassRoute(ipStr, kvp.Value);
-            }
+            return;
+        }
+
+        Policy.ClearActiveRoutes();
+        foreach (var (ipUint, value) in s_routeReasons)
+        {
+            MemoryMarshal.Write(ipBytes, in ipUint);
+            var ipStr = new IPAddress(ipBytes).ToString();
+            Policy.RecordBypassRoute(ipStr, value);
         }
     }
 
@@ -108,91 +64,27 @@ internal static partial class WindowsSplitTunnelEngine
             return;
         }
 
-        var row = new MIB_IPFORWARDROW
-        {
-            DwForwardDest = destIpNetworkOrder,
-            DwForwardMask = 0xFFFFFFFFu,
-            DwForwardPolicy = 0,
-            DwForwardNextHop = s_physicalGatewayUint,
-            DwForwardIfIndex = (uint)Math.Max(s_physicalIfIndex, 0),
-            DwForwardType = 4,
-            DwForwardProto = 3,
-            DwForwardAge = 0,
-            DwForwardNextHopAS = 0,
-            DwForwardMetric1 = Math.Max(s_baseMetric, 1u),
-            DwForwardMetric2 = uint.MaxValue,
-            DwForwardMetric3 = uint.MaxValue,
-            DwForwardMetric4 = uint.MaxValue,
-            DwForwardMetric5 = uint.MaxValue
-        };
+        ReadOnlySpan<uint> candidateMetrics = [Math.Max(s_baseMetric, 1u), 25u, 35u, 50u, 100u];
+        var status = Win32NetworkHelper.AddIpv4RouteWithMetricFallback(
+            destIpNetworkOrder,
+            0xFFFFFFFFu,
+            s_physicalGatewayUint,
+            (uint)Math.Max(s_physicalIfIndex, 0),
+            candidateMetrics,
+            out var row);
 
-        uint[] candidateMetrics = [Math.Max(s_baseMetric, 1u), 25u, 35u, 50u, 100u];
-        var status = -1;
-        for (var i = 0; i < candidateMetrics.Length; i++)
+        if (status != 0)
         {
-            row.DwForwardMetric1 = candidateMetrics[i];
-            status = CreateIpForwardEntry(ref row);
-            if (status == 5010)
-            {
-                status = SetIpForwardEntry(ref row);
-            }
-            if (status == 0)
-            {
-                break;
-            }
+            _ = s_routeReasons.TryRemove(destIpNetworkOrder, out _);
+            return;
         }
 
-        if (status == 0)
-        {
-            s_pinnedRoutes[destIpNetworkOrder] = row;
-        }
+        s_pinnedRoutes[destIpNetworkOrder] = row;
+        Win32WfpLeakGuard.AllowBypassIpv4Route(destIpNetworkOrder, 0xFFFFFFFFu);
 
         Span<byte> ipBytes = stackalloc byte[4];
         MemoryMarshal.Write(ipBytes, in destIpNetworkOrder);
         var ipStr = new IPAddress(ipBytes).ToString();
-
-        //fallback через команду route add если прямой вызов win32 вернул ошибку
-        if (status != 0)
-        {
-            Span<byte> gwBytes = stackalloc byte[4];
-            var gwUint = s_physicalGatewayUint;
-            MemoryMarshal.Write(gwBytes, in gwUint);
-            var gwStr = new IPAddress(gwBytes).ToString();
-            var ifIdx = s_physicalIfIndex;
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    var ifArg = ifIdx > 0 ? $" if {ifIdx}" : "";
-                    using var p = Process.Start(new ProcessStartInfo("route", $"add {ipStr} mask 255.255.255.255 {gwStr} metric 1{ifArg}")
-                    {
-                        CreateNoWindow = true,
-                        WindowStyle = ProcessWindowStyle.Hidden,
-                        UseShellExecute = false
-                    });
-                    _ = p?.WaitForExit(1500);
-                    if (p?.ExitCode == 0)
-                    {
-                        s_pinnedRoutes[destIpNetworkOrder] = row;
-                        Policy.RecordBypassRoute(ipStr, reason);
-                        if (notify)
-                        {
-                            NotifyRoutesUpdatedAsync();
-                        }
-                    }
-                    else
-                    {
-                        _ = s_routeReasons.TryRemove(destIpNetworkOrder, out _);
-                    }
-                }
-                catch
-                {
-                    _ = s_routeReasons.TryRemove(destIpNetworkOrder, out _);
-                }
-            });
-            return;
-        }
-
         Policy.RecordBypassRoute(ipStr, reason);
         if (notify)
         {
@@ -203,45 +95,27 @@ internal static partial class WindowsSplitTunnelEngine
     //закрепление агрегированного диапазона подсети в физический адаптер
     public static void PinPhysicalSubnetRoute(uint netNetworkOrder, uint maskNetworkOrder, string reason)
     {
-        if (s_physicalGatewayUint == 0)
+        if (s_physicalGatewayUint == 0 || s_pinnedRoutes.ContainsKey(netNetworkOrder))
         {
             return;
         }
 
-        if (s_pinnedRoutes.ContainsKey(netNetworkOrder))
+        var status = Win32NetworkHelper.AddIpv4Route(
+            netNetworkOrder,
+            maskNetworkOrder,
+            s_physicalGatewayUint,
+            (uint)Math.Max(s_physicalIfIndex, 0),
+            Math.Max(s_baseMetric, 1u),
+            out var row);
+
+        if (status != 0)
         {
             return;
         }
 
-        var row = new MIB_IPFORWARDROW
-        {
-            DwForwardDest = netNetworkOrder,
-            DwForwardMask = maskNetworkOrder,
-            DwForwardPolicy = 0,
-            DwForwardNextHop = s_physicalGatewayUint,
-            DwForwardIfIndex = (uint)Math.Max(s_physicalIfIndex, 0),
-            DwForwardType = 4,
-            DwForwardProto = 3,
-            DwForwardAge = 0,
-            DwForwardNextHopAS = 0,
-            DwForwardMetric1 = Math.Max(s_baseMetric, 1u),
-            DwForwardMetric2 = uint.MaxValue,
-            DwForwardMetric3 = uint.MaxValue,
-            DwForwardMetric4 = uint.MaxValue,
-            DwForwardMetric5 = uint.MaxValue
-        };
-
-        var status = CreateIpForwardEntry(ref row);
-        if (status == 5010)
-        {
-            status = SetIpForwardEntry(ref row);
-        }
-
-        if (status == 0)
-        {
-            s_pinnedRoutes[netNetworkOrder] = row;
-            s_routeReasons[netNetworkOrder] = reason;
-        }
+        s_pinnedRoutes[netNetworkOrder] = row;
+        s_routeReasons[netNetworkOrder] = reason;
+        Win32WfpLeakGuard.AllowBypassIpv4Route(netNetworkOrder, maskNetworkOrder);
     }
 
     //очистка всех закрепленных маршрутов раздельного туннеля
@@ -257,7 +131,7 @@ internal static partial class WindowsSplitTunnelEngine
         foreach (var kvp in s_pinnedRoutes)
         {
             var row = kvp.Value;
-            _ = DeleteIpForwardEntry(ref row);
+            _ = Win32NetworkHelper.DeleteIpForwardEntry(ref row);
         }
 
         s_pinnedRoutes.Clear();

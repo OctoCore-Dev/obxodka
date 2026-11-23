@@ -55,6 +55,18 @@ internal static partial class WindowsSplitTunnelEngine
         adapter.SendPacket(resp);
     }
 
+    //мгновенный сброс исходящего ipv6 tcp-соединения в режиме принудительной блокировки ipv6 (только ipv4)
+    internal static bool TryRejectIpv6Packet(byte[]? origPacket, int length, WintunAdapter adapter)
+    {
+        if (origPacket is null || length < 60 || origPacket[0] >> 4 != 6 || origPacket[6] != 6)
+        {
+            return false;
+        }
+
+        SendIpv6TcpReset(origPacket.AsSpan(0, length), adapter);
+        return true;
+    }
+
     //генерация и отправка ipv6 tcp rst для сброса сессии исключенного приложения
     private static void SendIpv6TcpReset(ReadOnlySpan<byte> origPacket, WintunAdapter adapter)
     {
@@ -104,28 +116,32 @@ internal static partial class WindowsSplitTunnelEngine
         {
             sum += (uint)((resp[i] << 8) | resp[i + 1]);
         }
+
         sum += 20u;
         sum += 6u;
         for (var i = 40; i < 60; i += 2)
         {
             sum += (uint)((resp[i] << 8) | resp[i + 1]);
         }
-        while ((sum >> 16) != 0)
+
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
+
         sum = ~sum;
         if (sum == 0)
         {
             sum = 0xFFFF;
         }
+
         resp[56] = (byte)(sum >> 8);
         resp[57] = (byte)(sum & 0xFF);
 
         adapter.SendPacket(resp);
     }
 
-    //пересчет контрольных сумм заголовков ipv4 и tcp
+    //пересчет контрольных сумм заголовков ipv4 и TCP
     private static void ComputeIpv4AndTcpChecksum(byte[] pkt)
     {
         uint ipSum = 0;
@@ -133,10 +149,12 @@ internal static partial class WindowsSplitTunnelEngine
         {
             ipSum += (uint)((pkt[i] << 8) | pkt[i + 1]);
         }
-        while ((ipSum >> 16) != 0)
+
+        while (ipSum >> 16 != 0)
         {
             ipSum = (ipSum & 0xFFFF) + (ipSum >> 16);
         }
+
         ipSum = ~ipSum;
         pkt[10] = (byte)(ipSum >> 8);
         pkt[11] = (byte)(ipSum & 0xFF);
@@ -153,10 +171,12 @@ internal static partial class WindowsSplitTunnelEngine
         {
             tcpSum += (uint)((pkt[i] << 8) | pkt[i + 1]);
         }
-        while ((tcpSum >> 16) != 0)
+
+        while (tcpSum >> 16 != 0)
         {
             tcpSum = (tcpSum & 0xFFFF) + (tcpSum >> 16);
         }
+
         tcpSum = ~tcpSum;
         pkt[36] = (byte)(tcpSum >> 8);
         pkt[37] = (byte)(tcpSum & 0xFF);
@@ -188,10 +208,12 @@ internal static partial class WindowsSplitTunnelEngine
         {
             sum += (uint)((resp[i] << 8) | resp[i + 1]);
         }
-        while ((sum >> 16) != 0)
+
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
+
         sum = ~sum;
         resp[10] = (byte)(sum >> 8);
         resp[11] = (byte)(sum & 0xFF);
@@ -226,6 +248,7 @@ internal static partial class WindowsSplitTunnelEngine
         {
             sum += (uint)((resp[i] << 8) | resp[i + 1]);
         }
+
         sum += (uint)udpLen;
         sum += 17u;
         for (var i = 0; i < udpLen; i += 2)
@@ -239,15 +262,18 @@ internal static partial class WindowsSplitTunnelEngine
                 sum += (uint)(resp[40 + i] << 8);
             }
         }
-        while ((sum >> 16) != 0)
+
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
+
         sum = ~sum;
         if (sum == 0)
         {
             sum = 0xFFFF;
         }
+
         resp[46] = (byte)(sum >> 8);
         resp[47] = (byte)(sum & 0xFF);
 
@@ -296,10 +322,12 @@ internal static partial class WindowsSplitTunnelEngine
             {
                 sum += (uint)((resp[i] << 8) | resp[i + 1]);
             }
-            while ((sum >> 16) != 0)
+
+            while (sum >> 16 != 0)
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
+
             sum = ~sum;
             resp[10] = (byte)(sum >> 8);
             resp[11] = (byte)(sum & 0xFF);
@@ -311,6 +339,7 @@ internal static partial class WindowsSplitTunnelEngine
             {
                 sum += (uint)((resp[i] << 8) | resp[i + 1]);
             }
+
             var udpLen = totalLen - udpOffset;
             sum += (uint)udpLen;
             sum += 17;
@@ -325,15 +354,18 @@ internal static partial class WindowsSplitTunnelEngine
                     sum += (uint)(resp[udpOffset + i] << 8);
                 }
             }
-            while ((sum >> 16) != 0)
+
+            while (sum >> 16 != 0)
             {
                 sum = (sum & 0xFFFF) + (sum >> 16);
             }
+
             sum = ~sum;
             if (sum == 0)
             {
                 sum = 0xFFFF;
             }
+
             resp[udpOffset + 6] = (byte)(sum >> 8);
             resp[udpOffset + 7] = (byte)(sum & 0xFF);
         }

@@ -11,16 +11,8 @@ public class DnsAdBlockRuleManagerTests
     {
         var sampleLines = new[]
         {
-            "# Standard comment",
-            "! Adblock comment",
-            "   ",
-            "doubleclick.net",
-            "0.0.0.0 bad-tracker.com",
-            "127.0.0.1 malicious-ad.ru",
-            "||adservice.google.com^",
-            "invalid_domain_without_dot",
-            "trailing.dot.com.",
-            "UPPERCASE.TRACKER.IO"
+            "# Standard comment", "! Adblock comment", "   ", "doubleclick.net", "0.0.0.0 bad-tracker.com", "127.0.0.1 malicious-ad.ru",
+            "||adservice.google.com^", "invalid_domain_without_dot", "trailing.dot.com.", "UPPERCASE.TRACKER.IO"
         };
 
         var parsed = DnsAdBlockRuleManager.ParseRuleLines(sampleLines);
@@ -58,25 +50,8 @@ public class DnsAdBlockRuleManagerTests
             {
                 File.Delete(tempFile);
             }
-            DnsAdBlocker.ResetToDefaults();
-        }
-    }
 
-    private sealed class MockHttpMessageHandler(string responseContent) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var response = new HttpResponseMessage(HttpStatusCode.OK);
-            try
-            {
-                response.Content = new StringContent(responseContent);
-                return Task.FromResult(response);
-            }
-            catch
-            {
-                response.Dispose();
-                throw;
-            }
+            DnsAdBlocker.ResetToDefaults();
         }
     }
 
@@ -84,18 +59,18 @@ public class DnsAdBlockRuleManagerTests
     public async Task SyncFromRemoteAsyncDownloadsAndAppliesNewRulesAsync()
     {
         var mockContent = """
-            # AdGuard Filter Sample
-            ||remote-ad-network.com^
-            ||remote-tracker.net^
-            0.0.0.0 telemetry-server.xyz
-            127.0.0.1 analytics-node.ru
-            remote-rule-5.com
-            remote-rule-6.com
-            remote-rule-7.com
-            remote-rule-8.com
-            remote-rule-9.com
-            remote-rule-10.com
-            """;
+                          # AdGuard Filter Sample
+                          ||remote-ad-network.com^
+                          ||remote-tracker.net^
+                          0.0.0.0 telemetry-server.xyz
+                          127.0.0.1 analytics-node.ru
+                          remote-rule-5.com
+                          remote-rule-6.com
+                          remote-rule-7.com
+                          remote-rule-8.com
+                          remote-rule-9.com
+                          remote-rule-10.com
+                          """;
 
         using var handler = new MockHttpMessageHandler(mockContent);
         using var client = new HttpClient(handler);
@@ -116,7 +91,26 @@ public class DnsAdBlockRuleManagerTests
             {
                 File.Delete(tempCache);
             }
+
             DnsAdBlocker.ResetToDefaults();
+        }
+    }
+
+    private sealed class MockHttpMessageHandler(string responseContent) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            try
+            {
+                response.Content = new StringContent(responseContent);
+                return Task.FromResult(response);
+            }
+            catch
+            {
+                response.Dispose();
+                throw;
+            }
         }
     }
 }

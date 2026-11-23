@@ -13,7 +13,7 @@ public static class ChromiumHello
         0xc02c, // ECDHE-ECDSA-AES256-GCM-SHA384
         0xc030, // ECDHE-RSA-AES256-GCM-SHA384
         0xcca9, // ECDHE-ECDSA-CHACHA20-POLY1305
-        0xcca8  // ECDHE-RSA-CHACHA20-POLY1305
+        0xcca8 // ECDHE-RSA-CHACHA20-POLY1305
     ];
 
     private static readonly ushort[] s_signatureAlgorithms =
@@ -25,7 +25,7 @@ public static class ChromiumHello
         0x0805, // rsa_pss_rsae_sha384
         0x0501, // rsa_pkcs1_sha384
         0x0806, // rsa_pss_rsae_sha512
-        0x0601  // rsa_pkcs1_sha512
+        0x0601 // rsa_pkcs1_sha512
     ];
 
     public static byte[] Build(
@@ -131,7 +131,7 @@ public static class ChromiumHello
         WriteExtension(buffer, ref offset, 0x002d, [0x01, 0x01]); //psk modes
         WriteSupportedVersions(buffer, ref offset); //supported versions
         WriteExtension(buffer, ref offset, 0x001b, [0x02, 0x00, 0x02]); //brotli cert
-        WriteExtension(buffer, ref offset, 0x002c, [0x02, 0x68, 0x32]); //application settings
+        WriteExtension(buffer, ref offset, 0x4469, [0x00, 0x03, 0x02, 0x68, 0x32]); //application settings
 
         //паддинг для маскировки длины sni
         var targetSize = isPostQuantum ? 1400 : 512;

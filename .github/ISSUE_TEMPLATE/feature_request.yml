@@ -1,7 +1,7 @@
 name: 💡 Предложение функции (Feature Request)
 description: Предложить новую идею, протокол или улучшение для Obxodka
 title: "[FEATURE]: "
-labels: ["enhancement"]
+labels: [ "enhancement" ]
 body:
   - type: markdown
     attributes:

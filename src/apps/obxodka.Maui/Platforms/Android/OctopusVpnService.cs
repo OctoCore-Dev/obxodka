@@ -1,30 +1,60 @@
+using _Microsoft.Android.Resource.Designer;
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.Net;
 using Android.OS;
+using Android.Runtime;
 using AndroidX.Core.App;
+using Application = Android.App.Application;
+using Environment = System.Environment;
+using OperationCanceledException = System.OperationCanceledException;
+using ThreadPriority = System.Threading.ThreadPriority;
 
-namespace obxodka.Platforms.Android;
+namespace obxodka;
 
 //системная служба android vpn service для управления туннелем tun0 и защиты сокетов
 [Service(
     Name = "obxodka.OctopusVpnService",
     Permission = "android.permission.BIND_VPN_SERVICE",
     Exported = false,
-    ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeSpecialUse)]
+    ForegroundServiceType = ForegroundService.TypeSpecialUse)]
 [IntentFilter(["android.net.VpnService"])]
-[SupportedOSPlatform("android29.0")]
+[SupportedOSPlatform("android30.0")]
 public sealed partial class OctopusVpnService : VpnService
 {
-    private static readonly int s_notificationId = DateTime.UtcNow.Year;
     private const string ChannelId = "obxodka_vpn_channel";
+    private static readonly int s_notificationId = DateTime.UtcNow.Year;
+
+    private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
+        Channel.CreateBounded<(byte[] buffer, int length)>(
+            new BoundedChannelOptions(2048)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.Wait
+            });
+
+    private readonly Lock _tunLock = new();
+    private string? _currentTunIp;
+    private int _currentTunMtu;
+    private volatile bool _isTunRunning;
+
+    private VpnNetworkCallback? _networkCallback;
+    private int _tunGeneration;
+    private PowerManager.WakeLock? _wakeLock;
+    private long _wakeLockRenewTicks;
+
+    static OctopusVpnService() => HookProtection();
 
     public static OctopusVpnService? Instance { get; private set; }
     public bool IsActive { get; private set; }
     public static TaskCompletionSource<OctopusVpnService>? ServiceReadyTcs { get; set; }
     public static string? LastEstablishError { get; private set; }
 
-    static OctopusVpnService() => HookProtection();
+    //привязка платформенной защиты сокетов к ядру
+    public static void HookProtection() =>
+        OctopusEngine.Current.ProtectTransportSockets(sock => ProtectSocket(sock));
 
     //ожидание готовности службы vpn для избежания гонок при старте
     public static async Task<OctopusVpnService?> WaitForServiceReadyAsync(int timeoutMs = 4000)
@@ -42,30 +72,23 @@ public sealed partial class OctopusVpnService : VpnService
             return doubleCheck;
         }
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
-        return completed == tcs.Task ? await tcs.Task.ConfigureAwait(false) : Instance;
+        try
+        {
+            return await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs)).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return Instance;
+        }
     }
 
-#pragma warning disable CA2213
-    private ParcelFileDescriptor? _tunInterface;
-    private CancellationTokenSource? _vpnCts;
-    private Thread? _txThread;
-    private Thread? _rxThread;
-#pragma warning restore CA2213
-    private PowerManager.WakeLock? _wakeLock;
-    private long _wakeLockRenewTicks;
+    [LibraryImport("libc", EntryPoint = "read", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial nint Read(int fd, byte* buf, nuint count);
 
-    private readonly Channel<(byte[] buffer, int length)> _downstreamChannel =
-        Channel.CreateBounded<(byte[] buffer, int length)>(
-            new BoundedChannelOptions(2048) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
-
-    [LibraryImport("libc", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial nint read(int fd, byte* buf, nuint count);
-
-    [LibraryImport("libc", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial nint write(int fd, byte* buf, nuint count);
+    [LibraryImport("libc", EntryPoint = "write", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial nint Write(int fd, byte* buf, nuint count);
 
     //удержание блокировки процессора для предотвращения засыпания сокетов в фоне
     private void AcquireWakeLock()
@@ -77,23 +100,30 @@ public sealed partial class OctopusVpnService : VpnService
             _wakeLock?.SetReferenceCounted(false);
         }
 
-        if (_wakeLock is not null)
+        if (_wakeLock is null)
         {
-            _wakeLock.Acquire(3_600_000L);
-            Volatile.Write(ref _wakeLockRenewTicks, System.Environment.TickCount64);
+            return;
         }
+
+        _wakeLock.Acquire(3_600_000L);
+        Volatile.Write(ref _wakeLockRenewTicks, Environment.TickCount64);
     }
 
     private void EnsureWakeLockHeld()
     {
-        var now = System.Environment.TickCount64;
-        if (now - Volatile.Read(ref _wakeLockRenewTicks) >= 300_000L || _wakeLock is { IsHeld: false })
+        var now = Environment.TickCount64;
+        if (_wakeLock is not null && now - Volatile.Read(ref _wakeLockRenewTicks) < 300_000L)
         {
-            try
-            {
-                AcquireWakeLock();
-            }
-            catch { }
+            return;
+        }
+
+        try
+        {
+            AcquireWakeLock();
+        }
+        catch
+        {
+            // ignored
         }
     }
 
@@ -117,10 +147,11 @@ public sealed partial class OctopusVpnService : VpnService
     public override void OnDestroy()
     {
         IsActive = false;
-        if (Instance == this)
+        if (Instance != null && Instance.Equals(this))
         {
             Instance = null;
         }
+
         StopNativeVpn();
         base.OnDestroy();
     }
@@ -132,9 +163,12 @@ public sealed partial class OctopusVpnService : VpnService
         {
             try
             {
-                await AndroidVpnService.Instance.StopVpnAsync().ConfigureAwait(false);
+                await AndroidVpnService.Orchestrator.StopVpnAsync().ConfigureAwait(false);
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         });
         base.OnRevoke();
     }
@@ -166,6 +200,7 @@ public sealed partial class OctopusVpnService : VpnService
             {
                 AppLogger.Log($"[VPN PROTECT] Socket fd={fd} successfully protected from VPN routing loop.");
             }
+
             return ok;
         }
         catch (Exception ex)
@@ -173,13 +208,6 @@ public sealed partial class OctopusVpnService : VpnService
             AppLogger.LogError($"[VPN PROTECT ERROR] {ex.Message}");
             return false;
         }
-    }
-
-    //привязка платформенной защиты сокетов к транспортным фабрикам ядра
-    public static void HookProtection()
-    {
-        ObxodkaStreamTransport.OnSocketCreated = sock => ProtectSocket(sock);
-        ObxodkaWebSocketTransport.OnSocketCreated = sock => ProtectSocket(sock);
     }
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -193,7 +221,7 @@ public sealed partial class OctopusVpnService : VpnService
 
         if (OperatingSystem.IsAndroidVersionAtLeast(34))
         {
-            StartForeground(s_notificationId, CreateNotification(), global::Android.Content.PM.ForegroundService.TypeSpecialUse);
+            StartForeground(s_notificationId, CreateNotification(), ForegroundService.TypeSpecialUse);
         }
         else
         {
@@ -202,40 +230,40 @@ public sealed partial class OctopusVpnService : VpnService
 
         OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
         OctopusEngine.Current.OnPacketReceived += InjectPacketToAndroid;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-        OctopusEngine.Current.OnConnectionDropped += HandleEngineDrop;
 
         _ = ServiceReadyTcs?.TrySetResult(this);
 
         return StartCommandResult.Sticky;
     }
 
-    private VpnNetworkCallback? _networkCallback;
-
     private void RegisterNetworkCallback()
     {
         try
         {
-            var cm = (ConnectivityManager?)GetSystemService(ConnectivityService);
-            if (cm is not null)
-            {
-                _networkCallback = new VpnNetworkCallback();
-                if (OperatingSystem.IsAndroidVersionAtLeast(24))
-                {
-                    cm.RegisterDefaultNetworkCallback(_networkCallback);
-                }
-                else
-                {
-                    using var builder = new NetworkRequest.Builder();
-                    var request = builder
-                        .AddCapability(NetCapability.Internet)?
-                        .AddCapability(NetCapability.NotVpn)?
-                        .Build();
+            UnregisterNetworkCallback();
 
-                    if (request is not null)
-                    {
-                        cm.RegisterNetworkCallback(request, _networkCallback);
-                    }
+            var cm = (ConnectivityManager?)GetSystemService(ConnectivityService);
+            if (cm is null)
+            {
+                return;
+            }
+
+            _networkCallback = new VpnNetworkCallback();
+            if (OperatingSystem.IsAndroidVersionAtLeast(24))
+            {
+                cm.RegisterDefaultNetworkCallback(_networkCallback);
+            }
+            else
+            {
+                using var builder = new NetworkRequest.Builder();
+                var request = builder
+                    .AddCapability(NetCapability.Internet)?
+                    .AddCapability(NetCapability.NotVpn)?
+                    .Build();
+
+                if (request is not null)
+                {
+                    cm.RegisterNetworkCallback(request, _networkCallback);
                 }
             }
         }
@@ -257,144 +285,16 @@ public sealed partial class OctopusVpnService : VpnService
                 _networkCallback = null;
             }
         }
-        catch { }
-    }
-
-    //отслеживание смены физических сетей wi-fi и сотовой связи для делегирования реконнекта ядру
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
-    private sealed class VpnNetworkCallback : ConnectivityManager.NetworkCallback
-    {
-        public volatile bool IsActive = true;
-        private long _lastActiveNetworkId = -1;
-        private long _lastReconnectTicks;
-        private const long MinRoamingDebounceMs = 1000;
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
-        public VpnNetworkCallback() { }
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
-        public VpnNetworkCallback(IntPtr handle, global::Android.Runtime.JniHandleOwnership transfer) : base(handle, transfer) { }
-
-        public override void OnAvailable(Network network)
+        catch
         {
-            if (!IsActive)
-            {
-                return;
-            }
-
-            base.OnAvailable(network);
-            HandleNetworkEvent(network, "OnAvailable");
-        }
-
-        public override void OnCapabilitiesChanged(Network network, NetworkCapabilities capabilities)
-        {
-            if (!IsActive)
-            {
-                return;
-            }
-
-            base.OnCapabilitiesChanged(network, capabilities);
-            HandleNetworkEvent(network, "OnCapabilitiesChanged", capabilities);
-        }
-
-        private void HandleNetworkEvent(Network network, string source, NetworkCapabilities? caps = null)
-        {
-            try
-            {
-                var cm = (ConnectivityManager?)global::Android.App.Application.Context.GetSystemService(ConnectivityService);
-                caps ??= cm?.GetNetworkCapabilities(network);
-                if (caps is null || caps.HasTransport(TransportType.Vpn))
-                {
-                    return;
-                }
-
-                if (!caps.HasCapability(NetCapability.Internet))
-                {
-                    return;
-                }
-
-                var netId = network.NetworkHandle;
-                AppLogger.Log($"[NETWORK ROAMING] {source}: Physical network available: {network} (Handle: {netId})");
-
-                if (OperatingSystem.IsAndroidVersionAtLeast(22))
-                {
-                    _ = Instance?.SetUnderlyingNetworks([network]);
-                }
-
-                if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
-                {
-                    var now = System.Environment.TickCount64;
-                    var elapsed = now - Volatile.Read(ref _lastReconnectTicks);
-
-                    if (elapsed < MinRoamingDebounceMs)
-                    {
-                        _lastActiveNetworkId = netId;
-                        return;
-                    }
-
-                    _lastActiveNetworkId = netId;
-                    Volatile.Write(ref _lastReconnectTicks, now);
-                    AppLogger.Log($"[NETWORK ROAMING] Physical network changed to {netId}. Delegating seamless reconnect to engine.");
-                    if (AndroidVpnService.Instance?.CurrentState is AppVpnState.Connected or AppVpnState.Reconnecting)
-                    {
-                        AndroidVpnService.Instance.TriggerImmediateReconnect();
-                    }
-                }
-                else
-                {
-                    _lastActiveNetworkId = netId;
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogError($"[NETWORK ROAMING ERROR] {ex.Message}");
-            }
-        }
-
-        public override void OnLost(Network network)
-        {
-            if (!IsActive)
-            {
-                return;
-            }
-
-            try
-            {
-                base.OnLost(network);
-                var cm = (ConnectivityManager?)global::Android.App.Application.Context.GetSystemService(ConnectivityService);
-                var caps = cm?.GetNetworkCapabilities(network);
-                if (caps is not null && caps.HasTransport(TransportType.Vpn))
-                {
-                    return;
-                }
-
-                var netId = network.NetworkHandle;
-                AppLogger.Log($"[NETWORK ROAMING] Physical network lost: {network} (Handle: {netId})");
-                if (_lastActiveNetworkId == netId)
-                {
-                    _lastActiveNetworkId = -1;
-                    if (OperatingSystem.IsAndroidVersionAtLeast(22))
-                    {
-                        _ = Instance?.SetUnderlyingNetworks(null);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogError($"[NETWORK ROAMING ERROR] {ex.Message}");
-            }
+            // ignored
         }
     }
-
-    private void HandleEngineDrop() =>
-        AndroidVpnService.Instance.HandleEngineDrop();
 
     private void CreateNotificationChannel()
     {
-        using var channel = new NotificationChannel(ChannelId, "Obxodka VPN Status", NotificationImportance.Low)
-        {
-            Description = "Показывает статус подключения"
-        };
+        using var channel = new NotificationChannel(ChannelId, "Obxodka VPN Status", NotificationImportance.Low);
+        channel.Description = "Показывает статус подключения";
         var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
         notificationManager?.CreateNotificationChannel(channel);
     }
@@ -412,7 +312,7 @@ public sealed partial class OctopusVpnService : VpnService
         using var builder = new NotificationCompat.Builder(this, ChannelId);
         _ = builder.SetContentTitle("Obxodka");
         _ = builder.SetContentText(VpnStatusMessages.ProtectedConnectionActive);
-        _ = builder.SetSmallIcon(Maui.Resource.Drawable.notification_icon);
+        _ = builder.SetSmallIcon(ResourceConstant.Drawable.notification_icon);
         _ = builder.SetOngoing(true);
         _ = builder.SetContentIntent(pendingIntent);
 
@@ -422,7 +322,7 @@ public sealed partial class OctopusVpnService : VpnService
     //инжекция входящего пакета от сервера в сетевой стек android
     private void InjectPacketToAndroid(byte[] packet, int length)
     {
-        if (!_isTunRunning || _vpnCts is null || _vpnCts.IsCancellationRequested)
+        if (!_isTunRunning)
         {
             ArrayPool<byte>.Shared.Return(packet);
             return;
@@ -434,12 +334,6 @@ public sealed partial class OctopusVpnService : VpnService
         }
     }
 
-    private readonly Lock _tunLock = new();
-    private string? _currentTunIp;
-    private int _currentTunMtu;
-    private volatile bool _isTunRunning;
-    private int _tunGeneration;
-
     //обновление mtu существующего tun интерфейса при адаптивной подстройке ядра
     public void OnMtuUpdated(int newMtu)
     {
@@ -449,13 +343,21 @@ public sealed partial class OctopusVpnService : VpnService
             return;
         }
 
-        if (Math.Abs(clampedMtu - _currentTunMtu) < 20)
+        if (clampedMtu <= _currentTunMtu)
+        {
+            //при снижении mtu конвейер PacketPipeline сам зажимает tcp mss и фрагментирует пакеты без разрыва активных сокетов tun0
+            AppLogger.Log(
+                $"[VPN MTU] Applying downshifted MTU {clampedMtu}B in PacketPipeline without tearing down active tun0 ({_currentTunMtu}B).");
+            return;
+        }
+
+        if (clampedMtu - _currentTunMtu < 20)
         {
             return;
         }
 
         AppLogger.Log($"[VPN MTU] Applying updated TUN MTU on Android: {_currentTunMtu} -> {clampedMtu}");
-        _ = EstablishTun(forceRebuild: true);
+        _ = EstablishTun(true);
     }
 
     //инициализация и подъем виртуального интерфейса tun0 с настройками dns из ядра
@@ -471,28 +373,60 @@ public sealed partial class OctopusVpnService : VpnService
                     return false;
                 }
 
-                if (!forceRebuild && _tunInterface != null && _currentTunIp == ip && _isTunRunning && _txThread is { IsAlive: true } && _rxThread is { IsAlive: true })
+                if (!forceRebuild && _tunInterface != null && _currentTunIp == ip && _isTunRunning && _txThread is { IsAlive: true } &&
+                    _rxThread is { IsAlive: true })
                 {
-                    AppLogger.Log($"[VPN ESTABLISH] TUN already active for {ip}/32 with healthy worker threads. Preserving tunnel interface.");
+                    AppLogger.Log(
+                        $"[VPN ESTABLISH] TUN already active for {ip}/32 with healthy worker threads. Preserving tunnel interface.");
                     return true;
                 }
 
                 _isTunRunning = false;
                 _currentTunIp = null;
 
-                try
-                {
-                    _vpnCts?.Cancel();
-                }
-                catch { }
-
-                try
-                {
-                    _tunInterface?.Close();
-                }
-                catch { }
-
+                var oldCts = _vpnCts;
+                _vpnCts = null;
+                var oldTun = _tunInterface;
                 _tunInterface = null;
+                var oldTx = _txThread;
+                _txThread = null;
+                var oldRx = _rxThread;
+                _rxThread = null;
+
+                try
+                {
+                    oldCts?.Cancel();
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                try
+                {
+                    oldTun?.Close();
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                try
+                {
+                    if (oldTx is { IsAlive: true } && Thread.CurrentThread != oldTx)
+                    {
+                        _ = oldTx.Join(300);
+                    }
+
+                    if (oldRx is { IsAlive: true } && Thread.CurrentThread != oldRx)
+                    {
+                        _ = oldRx.Join(300);
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
 
                 while (_downstreamChannel.Reader.TryRead(out var stale))
                 {
@@ -501,9 +435,13 @@ public sealed partial class OctopusVpnService : VpnService
 
                 try
                 {
-                    _vpnCts?.Dispose();
+                    oldCts?.Dispose();
+                    oldTun?.Dispose();
                 }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
 
                 _vpnCts = new CancellationTokenSource();
                 var ct = _vpnCts.Token;
@@ -517,8 +455,10 @@ public sealed partial class OctopusVpnService : VpnService
                     .SetBlocking(true)
                     .AddRoute("0.0.0.0", 0);
 
+                var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
                 var ip6 = OctopusEngine.Current.AssignedIpV6;
-                var effectiveV6 = (!string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) && parsedV6.AddressFamily == AddressFamily.InterNetworkV6)
+                var effectiveV6 = !blockIpv6 && !string.IsNullOrEmpty(ip6) && IPAddress.TryParse(ip6, out var parsedV6) &&
+                                  parsedV6.AddressFamily == AddressFamily.InterNetworkV6
                     ? ip6
                     : "fd00::2";
 
@@ -553,13 +493,19 @@ public sealed partial class OctopusVpnService : VpnService
                     _ = builder.AddDnsServer(dns);
                 }
 
-                foreach (var dns6 in DnsDefaults.TunnelDnsServersIPv6)
+                if (!blockIpv6)
                 {
-                    try
+                    foreach (var dns6 in DnsDefaults.TunnelDnsServersIPv6)
                     {
-                        _ = builder.AddDnsServer(dns6);
+                        try
+                        {
+                            _ = builder.AddDnsServer(dns6);
+                        }
+                        catch
+                        {
+                            // ignored
+                        }
                     }
-                    catch { }
                 }
 
                 var bypassed = new AppManager().GetBypassedPackages();
@@ -569,14 +515,20 @@ public sealed partial class OctopusVpnService : VpnService
                     {
                         _ = builder.AddDisallowedApplication(pkg);
                     }
-                    catch { }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
 
                 try
                 {
                     _ = builder.AddDisallowedApplication(PackageName ?? "com.octocore.obxodka");
                 }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
 
                 _tunInterface = builder.Establish();
                 if (_tunInterface is { FileDescriptor: not null })
@@ -603,7 +555,7 @@ public sealed partial class OctopusVpnService : VpnService
                     _txThread = new Thread(() => ProcessTraffic(tunFd, gen, ct))
                     {
                         IsBackground = true,
-                        Priority = System.Threading.ThreadPriority.Highest,
+                        Priority = ThreadPriority.Highest,
                         Name = "AndroidTunReader"
                     };
                     _txThread.Start();
@@ -611,12 +563,13 @@ public sealed partial class OctopusVpnService : VpnService
                     _rxThread = new Thread(() => ProcessDownstreamTraffic(tunFd, gen, ct))
                     {
                         IsBackground = true,
-                        Priority = System.Threading.ThreadPriority.Highest,
+                        Priority = ThreadPriority.Highest,
                         Name = "AndroidTunWriter"
                     };
                     _rxThread.Start();
 
-                    AppLogger.Log($"[VPN ESTABLISH] TUN successfully established for {ip}/32 (MTU {Math.Min(SmartMtuEngine.CurrentMtu, 1400)})");
+                    AppLogger.Log(
+                        $"[VPN ESTABLISH] TUN successfully established for {ip}/32 (MTU {Math.Min(SmartMtuEngine.CurrentMtu, 1400)})");
                     LastEstablishError = null;
                     return true;
                 }
@@ -657,14 +610,16 @@ public sealed partial class OctopusVpnService : VpnService
                             {
                                 fixed (byte* ptr = buf)
                                 {
-                                    var written = write(tunFd, ptr, (nuint)len);
-                                    if (written < 0)
+                                    var written = Write(tunFd, ptr, (nuint)len);
+                                    if (written >= 0)
                                     {
-                                        var errno = Marshal.GetLastPInvokeError();
-                                        if (errno == 4)
-                                        {
-                                            _ = write(tunFd, ptr, (nuint)len);
-                                        }
+                                        return;
+                                    }
+
+                                    var errno = Marshal.GetLastPInvokeError();
+                                    if (errno == 4)
+                                    {
+                                        _ = Write(tunFd, ptr, (nuint)len);
                                     }
                                 }
                             }
@@ -688,11 +643,11 @@ public sealed partial class OctopusVpnService : VpnService
                         break;
                     }
                 }
-                catch (System.OperationCanceledException)
+                catch (OperationCanceledException)
                 {
                     break;
                 }
-                catch (AggregateException ae) when (ae.InnerException is System.OperationCanceledException)
+                catch (AggregateException ae) when (ae.InnerException is OperationCanceledException)
                 {
                     break;
                 }
@@ -727,13 +682,18 @@ public sealed partial class OctopusVpnService : VpnService
                     {
                         fixed (byte* ptr = buffer)
                         {
-                            bytesRead = read(tunFd, ptr, 16384);
+                            bytesRead = Read(tunFd, ptr, 16384);
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
+                    if (!ct.IsCancellationRequested)
+                    {
+                        AppLogger.LogError($"[TUN READ ERROR] {ex.Message}");
+                    }
+
                     break;
                 }
 
@@ -745,6 +705,7 @@ public sealed partial class OctopusVpnService : VpnService
                     {
                         continue;
                     }
+
                     break;
                 }
 
@@ -774,52 +735,88 @@ public sealed partial class OctopusVpnService : VpnService
     //полная остановка системного туннеля и освобождение ресурсов дескриптора
     public void StopNativeVpn()
     {
-        _ = Interlocked.Increment(ref _tunGeneration);
-        IsActive = false;
-        _currentTunIp = null;
-        _isTunRunning = false;
+        CancellationTokenSource? cts;
+        ParcelFileDescriptor? tunIf;
+        Thread? txThread;
+        Thread? rxThread;
 
-        OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
-        OctopusEngine.Current.OnConnectionDropped -= HandleEngineDrop;
-
-        var cts = _vpnCts;
-        _vpnCts = null;
-
-        var tunIf = _tunInterface;
-        _tunInterface = null;
-
-        try
+        lock (_tunLock)
         {
-            cts?.Cancel();
-        }
-        catch { }
+            _ = Interlocked.Increment(ref _tunGeneration);
+            IsActive = false;
+            _currentTunIp = null;
+            _isTunRunning = false;
 
-        try
-        {
-            tunIf?.Close();
-        }
-        catch { }
+            OctopusEngine.Current.OnPacketReceived -= InjectPacketToAndroid;
 
-        ReleaseWakeLock();
-        UnregisterNetworkCallback();
+            cts = _vpnCts;
+            _vpnCts = null;
 
-        while (_downstreamChannel.Reader.TryRead(out var stale))
-        {
-            if (stale.buffer is { Length: > 0 })
-            {
-                ArrayPool<byte>.Shared.Return(stale.buffer);
-            }
-        }
+            tunIf = _tunInterface;
+            _tunInterface = null;
 
-        _ = Task.Run(() =>
-        {
+            txThread = _txThread;
+            _txThread = null;
+
+            rxThread = _rxThread;
+            _rxThread = null;
+
             try
             {
-                cts?.Dispose();
-                tunIf?.Dispose();
+                cts?.Cancel();
             }
-            catch { }
-        });
+            catch
+            {
+                // ignored
+            }
+
+            try
+            {
+                tunIf?.Close();
+            }
+            catch
+            {
+                // ignored
+            }
+
+            ReleaseWakeLock();
+            UnregisterNetworkCallback();
+
+            while (_downstreamChannel.Reader.TryRead(out var stale))
+            {
+                if (stale.buffer is { Length: > 0 })
+                {
+                    ArrayPool<byte>.Shared.Return(stale.buffer);
+                }
+            }
+        }
+
+        if (cts != null || tunIf != null)
+        {
+            //дожидаемся выхода рабочих потоков tun0 перед освобождением дескриптора без передачи отмененного токена
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    if (txThread is { IsAlive: true } && Thread.CurrentThread != txThread)
+                    {
+                        _ = txThread.Join(500);
+                    }
+
+                    if (rxThread is { IsAlive: true } && Thread.CurrentThread != rxThread)
+                    {
+                        _ = rxThread.Join(500);
+                    }
+
+                    cts?.Dispose();
+                    tunIf?.Dispose();
+                }
+                catch
+                {
+                    // ignored
+                }
+            });
+        }
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -847,4 +844,134 @@ public sealed partial class OctopusVpnService : VpnService
 
         base.Dispose(disposing);
     }
+
+    //отслеживание смены физических сетей wi-fi и сотовой связи для делегирования ре коннекта ядру
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+    private sealed class VpnNetworkCallback : ConnectivityManager.NetworkCallback
+    {
+        private const long MinRoamingDebounceMs = 1000;
+        public volatile bool IsActive = true;
+        private long _lastActiveNetworkId = -1;
+        private long _lastReconnectTicks;
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
+        public VpnNetworkCallback() { }
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(VpnNetworkCallback))]
+        public VpnNetworkCallback(IntPtr handle, JniHandleOwnership transfer) : base(handle, transfer) { }
+
+        public override void OnAvailable(Network network)
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            base.OnAvailable(network);
+            HandleNetworkEvent(network, "OnAvailable");
+        }
+
+        public override void OnCapabilitiesChanged(Network network, NetworkCapabilities capabilities)
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            base.OnCapabilitiesChanged(network, capabilities);
+            HandleNetworkEvent(network, "OnCapabilitiesChanged", capabilities);
+        }
+
+        private void HandleNetworkEvent(Network network, string source, NetworkCapabilities? caps = null)
+        {
+            try
+            {
+                var cm = (ConnectivityManager?)Application.Context.GetSystemService(ConnectivityService);
+                caps ??= cm?.GetNetworkCapabilities(network);
+                if (caps is null || caps.HasTransport(TransportType.Vpn))
+                {
+                    return;
+                }
+
+                if (!caps.HasCapability(NetCapability.Internet))
+                {
+                    return;
+                }
+
+                var netId = network.NetworkHandle;
+                AppLogger.Log($"[NETWORK ROAMING] {source}: Physical network available: {network} (Handle: {netId})");
+
+                if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                {
+                    _ = Instance?.SetUnderlyingNetworks([network]);
+                }
+
+                if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId)
+                {
+                    var now = Environment.TickCount64;
+                    var elapsed = now - Volatile.Read(ref _lastReconnectTicks);
+
+                    if (elapsed < MinRoamingDebounceMs)
+                    {
+                        _lastActiveNetworkId = netId;
+                        return;
+                    }
+
+                    _lastActiveNetworkId = netId;
+                    Volatile.Write(ref _lastReconnectTicks, now);
+                    AppLogger.Log($"[NETWORK ROAMING] Physical network changed to {netId}. Delegating seamless reconnect to engine.");
+                    AndroidVpnService.Instance.NotifyPlatformNetworkChanged();
+                }
+                else
+                {
+                    _lastActiveNetworkId = netId;
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogError($"[NETWORK ROAMING ERROR] {ex.Message}");
+            }
+        }
+
+        public override void OnLost(Network network)
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            try
+            {
+                base.OnLost(network);
+                var cm = (ConnectivityManager?)Application.Context.GetSystemService(ConnectivityService);
+                var caps = cm?.GetNetworkCapabilities(network);
+                if (caps is not null && caps.HasTransport(TransportType.Vpn))
+                {
+                    return;
+                }
+
+                var netId = network.NetworkHandle;
+                AppLogger.Log($"[NETWORK ROAMING] Physical network lost: {network} (Handle: {netId})");
+                if (_lastActiveNetworkId == netId)
+                {
+                    _lastActiveNetworkId = -1;
+                    if (OperatingSystem.IsAndroidVersionAtLeast(22))
+                    {
+                        _ = Instance?.SetUnderlyingNetworks(null);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogError($"[NETWORK ROAMING ERROR] {ex.Message}");
+            }
+        }
+    }
+
+#pragma warning disable CA2213
+    private ParcelFileDescriptor? _tunInterface;
+    private CancellationTokenSource? _vpnCts;
+    private Thread? _txThread;
+    private Thread? _rxThread;
+#pragma warning restore CA2213
 }

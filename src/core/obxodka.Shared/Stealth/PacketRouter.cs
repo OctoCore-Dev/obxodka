@@ -37,18 +37,19 @@ public static class PacketRouter
             var ihl = (packet[0] & 0x0F) * 4;
             if (ihl < 20 || length < ihl)
             {
-                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
+                SelectRaysFromHealth(false, aliveMask, preferredRay, 0, out primaryRay, out secondaryRay);
                 return;
             }
 
             var flagsAndOffset = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(6, 2));
             var fragOffset = flagsAndOffset & 0x1FFF;
+            var isMoreFragments = (flagsAndOffset & 0x2000) != 0;
 
-            if (fragOffset > 0)
+            if (fragOffset > 0 || isMoreFragments)
             {
                 if (protocol is 1 or 17)
                 {
-                    SelectRaysFromHealth(isLatencyCritical: true, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
+                    SelectRaysFromHealth(true, aliveMask, preferredRay, 0, out primaryRay, out secondaryRay);
                     return;
                 }
 
@@ -57,20 +58,20 @@ public static class PacketRouter
                 var id = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(4, 2));
                 unchecked
                 {
-                    hash = (hash * 31) + fragSrcIp;
-                    hash = (hash * 31) + fragDstIp;
-                    hash = (hash * 31) + id;
-                    hash = (hash * 31) + protocol;
+                    hash = hash * 31 + fragSrcIp;
+                    hash = hash * 31 + fragDstIp;
+                    hash = hash * 31 + id;
+                    hash = hash * 31 + protocol;
                 }
 
-                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash, out primaryRay, out secondaryRay);
+                SelectRaysFromHealth(false, aliveMask, preferredRay, hash, out primaryRay, out secondaryRay);
                 return;
             }
 
             var srcPort = length >= ihl + 2 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2)) : 0;
             var dstPort = length >= ihl + 4 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2)) : 0;
 
-            if (protocol == 1 || (protocol == 17 && (srcPort == 53 || dstPort == 53)))
+            if (protocol == 1 || protocol == 17 && (srcPort == 53 || dstPort == 53))
             {
                 isIcmpOrDns = true;
             }
@@ -84,16 +85,16 @@ public static class PacketRouter
 
             unchecked
             {
-                hash = (hash * 31) + srcIp;
-                hash = (hash * 31) + dstIp;
-                hash = (hash * 31) + srcPort;
-                hash = (hash * 31) + dstPort;
-                hash = (hash * 31) + protocol;
+                hash = hash * 31 + srcIp;
+                hash = hash * 31 + dstIp;
+                hash = hash * 31 + srcPort;
+                hash = hash * 31 + dstPort;
+                hash = hash * 31 + protocol;
             }
 
             if (protocol == 17 && !isIcmpOrDns && !isGamingUdp)
             {
-                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
+                SelectRaysFromHealth(false, aliveMask, preferredRay, 0, out primaryRay, out secondaryRay);
                 return;
             }
         }
@@ -103,7 +104,7 @@ public static class PacketRouter
             var srcPort = length >= 42 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(40, 2)) : 0;
             var dstPort = length >= 44 ? BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(42, 2)) : 0;
 
-            if (nextHeader == 58 || (nextHeader == 17 && (srcPort == 53 || dstPort == 53)))
+            if (nextHeader == 58 || nextHeader == 17 && (srcPort == 53 || dstPort == 53))
             {
                 isIcmpOrDns = true;
             }
@@ -117,16 +118,16 @@ public static class PacketRouter
 
             unchecked
             {
-                hash = (hash * 31) + srcIp;
-                hash = (hash * 31) + dstIp;
-                hash = (hash * 31) + srcPort;
-                hash = (hash * 31) + dstPort;
-                hash = (hash * 31) + nextHeader;
+                hash = hash * 31 + srcIp;
+                hash = hash * 31 + dstIp;
+                hash = hash * 31 + srcPort;
+                hash = hash * 31 + dstPort;
+                hash = hash * 31 + nextHeader;
             }
 
             if (nextHeader == 17 && !isIcmpOrDns && !isGamingUdp)
             {
-                SelectRaysFromHealth(isLatencyCritical: false, aliveMask, preferredRay, hash: 0, out primaryRay, out secondaryRay);
+                SelectRaysFromHealth(false, aliveMask, preferredRay, 0, out primaryRay, out secondaryRay);
                 return;
             }
         }
@@ -152,17 +153,21 @@ public static class PacketRouter
         if (isLatencyCritical)
         {
             //критичные данные игры dns пинг основной путь в живой рабочий луч
-            primaryRay = (preferredRay is 0 or 1 && (aliveMask & (1 << preferredRay)) != 0)
+            primaryRay = preferredRay is 0 or 1 && (aliveMask & (1 << preferredRay)) != 0
                 ? preferredRay
-                : (r0 ? 0 : (r1 ? 1 : 0));
+                : r0
+                    ? 0
+                    : r1
+                        ? 1
+                        : 0;
 
             //дублирование hedging строго между рабочими лучами ray 0 и ray 1
             //если летит по ray 0 а ray 1 жив дублируем в ray 1
             //если летит по ray 1 а ray 0 жив дублируем в ray 0
             //если жив только один рабочий луч дублировать некуда
-            secondaryRay = (primaryRay == 0 && r1)
+            secondaryRay = primaryRay == 0 && r1
                 ? 1
-                : (primaryRay == 1 && r0)
+                : primaryRay == 1 && r0
                     ? 0
                     : -1;
         }
@@ -174,9 +179,9 @@ public static class PacketRouter
             //распределяем строго между рабочими лучами ray 0 и ray 1
             primaryRay = (r0, r1) switch
             {
-                (true, true) => hash & 1,        //оба живы: балансировка 50/50 по 5-tuple хэшу
-                (true, false) => 0,              //ray 1 упал: 100% в ray 0
-                (false, true) => 1,              //ray 0 упал: 100% в ray 1
+                (true, true) => hash & 1, //оба живы: балансировка 50/50 по 5-tuple хэшу
+                (true, false) => 0, //ray 1 упал: 100% в ray 0
+                (false, true) => 1, //ray 0 упал: 100% в ray 1
                 _ => preferredRay is 0 or 1 ? preferredRay : 0
             };
         }
@@ -188,6 +193,6 @@ public static class PacketRouter
         //пользовательский трафик распределяется между рабочими лучами
         var clamped = Math.Clamp(activeRays, 1, 2);
         var mask = (byte)((1 << clamped) - 1);
-        GetRays(packet, mask, preferredRay: -1, out primaryRay, out secondaryRay);
+        GetRays(packet, mask, -1, out primaryRay, out secondaryRay);
     }
 }

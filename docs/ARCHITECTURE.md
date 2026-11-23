@@ -239,4 +239,7 @@ flowchart TB
 * **Пользовательское соглашение и условия использования:** [TERMS_OF_SERVICE.md](../TERMS_OF_SERVICE.md)
 * **Политика безопасности и криптографическая спецификация:** [.github/SECURITY.md](../.github/SECURITY.md)
 * **Руководство по диагностике и устранению неполадок:** [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+* **Постмортем HTTP/2 Kestrel Stream Abort:** [docs/POSTMORTEM_KESTREL_STREAM_ABORT.md](POSTMORTEM_KESTREL_STREAM_ABORT.md)
+* **Журнал блокировок и дайджест ТСПУ:** [docs/BLOCKING_DIGEST.md](BLOCKING_DIGEST.md)
+* **История версий и изменений:** [CHANGELOG.md](../CHANGELOG.md)
 * **Создание и публикация тем оформления:** [GitHub Wiki: themes](https://github.com/OctoCore-Dev/themes/wiki)

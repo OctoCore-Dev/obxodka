@@ -1,9 +1,10 @@
 using Android.Content;
 using Application = Android.App.Application;
+using Uri = Android.Net.Uri;
 
-namespace obxodka.Platforms.Android;
+namespace obxodka.Services;
 
-//сервис проверки обновлений приложения в google play для android
+//сервис проверки обновлений приложения в Google Play для android
 public sealed class AndroidAppUpdaterService : IAppUpdaterService
 {
     private static readonly HttpClient s_httpClient = new()
@@ -11,11 +12,11 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         Timeout = TimeSpan.FromSeconds(6)
     };
 
-    //проверка наличия новой версии приложения в google play
+    //проверка наличия новой версии приложения в Google Play
     public async Task<StoreUpdateInfo> CheckVersionAsync()
     {
         var currentVersion = AppInfo.Current.VersionString;
-        var packageName = Application.Context?.PackageName ?? "com.octocore.obxodka";
+        var packageName = Application.Context.PackageName ?? "com.octocore.obxodka";
         var storeUrl = $"https://play.google.com/store/apps/details?id={packageName}&hl=ru";
 
         try
@@ -33,12 +34,12 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
                 {
                     var hasUpdate = StoreVersionParser.IsNewerVersion(currentVersion, storeVersion);
                     return new StoreUpdateInfo(
-                        HasUpdate: hasUpdate,
-                        CurrentVersion: currentVersion,
-                        LatestVersion: storeVersion,
-                        StoreName: "Google Play",
-                        StoreUrl: storeUrl,
-                        ReleaseNotes: whatsNew);
+                        hasUpdate,
+                        currentVersion,
+                        storeVersion,
+                        "Google Play",
+                        storeUrl,
+                        whatsNew);
                 }
             }
         }
@@ -48,7 +49,7 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
         catch (OperationCanceledException)
         {
-            //таймаут или отмена проверки обновлений
+            //тайм-аут или отмена проверки обновлений
         }
         catch (Exception ex)
         {
@@ -56,11 +57,11 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
 
         return new StoreUpdateInfo(
-            HasUpdate: false,
-            CurrentVersion: currentVersion,
-            LatestVersion: currentVersion,
-            StoreName: "Google Play",
-            StoreUrl: storeUrl);
+            false,
+            currentVersion,
+            currentVersion,
+            "Google Play",
+            storeUrl);
     }
 
     //запуск проверки обновлений и показ диалога пользователю
@@ -71,28 +72,46 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
             var updateInfo = await CheckVersionAsync().ConfigureAwait(false);
             if (updateInfo.HasUpdate)
             {
-                MainThread.BeginInvokeOnMainThread(async () =>
+                MainThread.BeginInvokeOnMainThread(async void () =>
                 {
-                    var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes) ? string.Empty : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
-                    if (notes.Length > 450)
+                    try
                     {
-                        notes = notes[..450] + "...";
-                    }
-                    var msg = $"В Google Play доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете обновить приложение сейчас?";
-                    var update = await NeoAlert.ShowConfirmAsync("Доступно обновление", msg, "Обновить", "Позже");
+                        var notes = string.IsNullOrWhiteSpace(updateInfo.ReleaseNotes)
+                            ? string.Empty
+                            : $"\n\nЧто нового:\n{updateInfo.ReleaseNotes.Trim()}";
+                        if (notes.Length > 450)
+                        {
+                            notes = notes[..450] + "...";
+                        }
 
-                    if (update)
+                        var msg =
+                            $"В Google Play доступна новая версия v{updateInfo.LatestVersion} (у вас установлена v{updateInfo.CurrentVersion}).{notes}\n\nЖелаете обновить приложение сейчас?";
+                        var update = await NeoAlert.ShowConfirmAsync("Доступно обновление", msg, "Обновить", "Позже");
+
+                        if (update)
+                        {
+                            await OpenPlayStoreAsync();
+                        }
+                    }
+                    catch
                     {
-                        await OpenPlayStoreAsync();
+                        // ignored
                     }
                 });
             }
             else if (manualCheck)
             {
-                MainThread.BeginInvokeOnMainThread(async () =>
+                MainThread.BeginInvokeOnMainThread(async void () =>
                 {
-                    var msg = $"У вас установлена самая свежая версия (v{updateInfo.CurrentVersion}).";
-                    await NeoAlert.ShowAsync("Обновления", msg, "OK");
+                    try
+                    {
+                        var msg = $"У вас установлена самая свежая версия (v{updateInfo.CurrentVersion}).";
+                        await NeoAlert.ShowAsync("Обновления", msg);
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
                 });
             }
         }
@@ -106,30 +125,30 @@ public sealed class AndroidAppUpdaterService : IAppUpdaterService
         }
     }
 
-    //открытие страницы приложения в магазине google play
+    //открытие страницы приложения в магазине Google Play
     public static async Task OpenPlayStoreAsync()
     {
-        var packageName = Application.Context?.PackageName ?? "com.octocore.obxodka";
+        var packageName = Application.Context.PackageName ?? "com.octocore.obxodka";
         try
         {
-            using var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse($"market://details?id={packageName}"));
+            using var intent = new Intent(Intent.ActionView, Uri.Parse($"market://details?id={packageName}"));
             _ = intent.SetPackage("com.android.vending");
             _ = intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop);
-            Application.Context?.StartActivity(intent);
+            Application.Context.StartActivity(intent);
         }
         catch
         {
             try
             {
-                using var fallbackIntent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse($"market://details?id={packageName}"));
+                using var fallbackIntent = new Intent(Intent.ActionView, Uri.Parse($"market://details?id={packageName}"));
                 _ = fallbackIntent.AddFlags(ActivityFlags.NewTask);
-                Application.Context?.StartActivity(fallbackIntent);
+                Application.Context.StartActivity(fallbackIntent);
             }
             catch
             {
                 try
                 {
-                    _ = await Launcher.OpenAsync(new Uri($"https://play.google.com/store/apps/details?id={packageName}"));
+                    _ = await Launcher.OpenAsync(new System.Uri($"https://play.google.com/store/apps/details?id={packageName}"));
                 }
                 catch (Exception ex)
                 {

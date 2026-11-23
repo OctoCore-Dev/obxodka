@@ -8,7 +8,8 @@ public class DisconnectProtocolTests
     public void ObxodkaFramingEncodesAndDecodesDisconnectCommand()
     {
         var frame = ObxodkaFraming.Pack(ObxodkaFraming.CmdDisconnect, ReadOnlySpan<byte>.Empty, out var totalLen);
-        Assert.True(ObxodkaFraming.TryDecodeHeader(frame.AsSpan(0, ObxodkaFraming.HeaderSize), out var decodedTotal, out var decodedPayload, out var cmd, out _));
+        Assert.True(ObxodkaFraming.TryDecodeHeader(frame.AsSpan(0, ObxodkaFraming.HeaderSize), out var decodedTotal, out var decodedPayload,
+            out var cmd, out _));
         Assert.Equal(ObxodkaFraming.CmdDisconnect, cmd);
         Assert.Equal(0, decodedPayload);
         Assert.Equal(totalLen, decodedTotal);
@@ -34,7 +35,7 @@ public class DisconnectProtocolTests
     [InlineData(3665, "1ч 01м 05с")]
     public void TimeFormatHelperFormatsVerboseSecondsCorrectly(long seconds, string expectedVerbose)
     {
-        var formatted = TimeFormatHelper.FormatSeconds(seconds, true);
+        var formatted = TimeFormatHelper.FormatSeconds(seconds);
         Assert.Equal(expectedVerbose, formatted);
     }
 }

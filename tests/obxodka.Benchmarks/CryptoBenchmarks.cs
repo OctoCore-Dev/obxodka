@@ -3,9 +3,15 @@ namespace obxodka.Benchmarks;
 [MemoryDiagnoser]
 public sealed class CryptoBenchmarks : IDisposable
 {
+    private byte[] _packed1420 = null!;
     private byte[] _payload1420 = null!;
     private byte[] _payload64 = null!;
-    private byte[] _packed1420 = null!;
+
+    public void Dispose()
+    {
+        Cleanup();
+        GC.SuppressFinalize(this);
+    }
 
     [GlobalSetup]
     public void Setup()
@@ -26,12 +32,6 @@ public sealed class CryptoBenchmarks : IDisposable
         {
             ArrayPool<byte>.Shared.Return(_packed1420);
         }
-    }
-
-    public void Dispose()
-    {
-        Cleanup();
-        GC.SuppressFinalize(this);
     }
 
     [Benchmark(Description = "ObxodkaFraming Pack MTU (1420 B)")]

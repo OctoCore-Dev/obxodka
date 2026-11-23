@@ -1,11 +1,14 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Account;
 
 //карточка активного устройства в списке профиля
-public sealed partial class DeviceCardView : ContentView
+public sealed partial class DeviceCardView
 {
+    public DeviceCardView() => InitializeComponent();
     public event EventHandler? RemoveClicked;
 
-    public DeviceCardView() => InitializeComponent();
+    //обновление фона карточки под цвет темы
+    public void UpdateCardOpacity(Color bgSurface) =>
+        CardBorder.BackgroundColor = bgSurface;
 
     //подсветка текущего устройства и скрытие кнопки удаления
     public void SetIsCurrentDevice(bool isCurrent)
@@ -25,14 +28,10 @@ public sealed partial class DeviceCardView : ContentView
         CardBorder.StrokeThickness = isCurrent ? 1.5 : 1.0;
     }
 
-    //обновление фона карточки под цвет темы
-    public void UpdateCardOpacity(Color bgSurface) =>
-        CardBorder.BackgroundColor = bgSurface;
-
     //клик по кнопке отзыва сессии устройства
     private void OnRemoveDeviceClicked(object? sender, TappedEventArgs e)
     {
-        _ = UIAnimations.PlayIconWiggleAsync(DeleteIcon, 18);
+        _ = DeleteIcon.PlayIconWiggleAsync(18);
         RemoveClicked?.Invoke(this, EventArgs.Empty);
     }
 }

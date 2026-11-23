@@ -3,7 +3,11 @@ namespace obxodka.Core;
 public sealed partial class OctopusEngine
 {
     //проверка двусторонней проходимости канала передачи данных
-    public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default)
+    public Task<bool> VerifyDownlinkAsync(TimeSpan timeout, CancellationToken ct = default) =>
+        VerifyDownlinkAsync(timeout, false, ct);
+
+    //проверка двусторонней проходимости канала с опциональным требованием свежего ответа от нового транспорта
+    public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, bool forceFreshProbe, CancellationToken ct = default)
     {
         if (!IsConnected || _transport is null)
         {
@@ -21,7 +25,7 @@ public sealed partial class OctopusEngine
         var initialReceived = TotalBytesReceived;
         var initialSent = TotalBytesSent;
 
-        if (initialReceived > 0)
+        if (!forceFreshProbe && initialReceived > 0)
         {
             AppLogger.Log($"[PROBE SUCCESS] Downlink already active with {initialReceived}B received.");
             _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
@@ -33,12 +37,19 @@ public sealed partial class OctopusEngine
 
         void OnPacket(byte[] pkt, int len)
         {
-            if (len > 0)
+            if (len <= 0)
             {
-                var proto = len >= 20 ? ((pkt[0] >> 4) == 4 ? $"IPv4(proto={pkt[9]})" : "IPv6") : "NonIP";
-                AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
-                _ = tcs.TrySetResult(true);
+                return;
             }
+
+            var proto = len >= 20 ? pkt[0] >> 4 == 4 ? $"IPv4(proto={pkt[9]})" : "IPv6" : "NonIP";
+            if (forceFreshProbe && !IsFreshProbeReplyPacket(pkt, len))
+            {
+                return;
+            }
+
+            AppLogger.Log($"[PROBE RX] Received verified downlink packet ({proto}, {len}B). Total RX={TotalBytesReceived}B");
+            _ = tcs.TrySetResult(true);
         }
 
         void OnPing(long rtt)
@@ -58,30 +69,37 @@ public sealed partial class OctopusEngine
                 var cycle = Interlocked.Increment(ref probeCycle);
                 try
                 {
-                    await _transport.SendPingProbeAsync().ConfigureAwait(false);
+                    if (_transport is { } activeTransport)
+                    {
+                        await activeTransport.SendPingProbeAsync().ConfigureAwait(false);
+                    }
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException or InvalidOperationException)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException
+                                               or InvalidOperationException)
                 {
                     //подавление сетевой ошибки отправки зонда
                 }
 
                 try
                 {
-                    if (BuildIcmpProbePacket(AssignedIp, "100.64.0.1", 28) is { } pIcmpSelf)
+                    if (BuildIcmpProbePacket(AssignedIp) is { } pIcmpSelf)
                     {
                         _ = SendPacketAsync(pIcmpSelf);
                     }
-                    if (cycle % 2 == 1 && BuildDnsProbePacket(AssignedIp, 1) is { } p1)
+
+                    if (cycle % 2 == 1 && BuildDnsProbePacket(AssignedIp) is { } p1)
                     {
                         _ = SendPacketAsync(p1);
                     }
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException or InvalidOperationException)
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or IOException or SocketException
+                                               or InvalidOperationException)
                 {
                     //подавление ошибки генерации или отправки icmp пакета
                 }
 
-                AppLogger.Log($"[PROBE TX #{cycle}] Sent lightweight Ping + ICMP(28B). TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
+                AppLogger.Log(
+                    $"[PROBE TX #{cycle}] Sent lightweight Ping + ICMP(28B). TotalSent={TotalBytesSent}B, TotalRecv={TotalBytesReceived}B");
             }
 
             _ = Task.Run(SendProbesAsync, linkedCts.Token);
@@ -89,12 +107,10 @@ public sealed partial class OctopusEngine
             var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
             while (Stopwatch.GetTimestamp() < deadline && !linkedCts.IsCancellationRequested)
             {
-                if (TotalBytesReceived > initialReceived)
+                if (tcs.Task.IsCompletedSuccessfully || !forceFreshProbe && TotalBytesReceived > initialReceived)
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                    EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
@@ -105,8 +121,6 @@ public sealed partial class OctopusEngine
                 {
                     var curTx = TotalBytesSent - initialSent;
                     var curRx = TotalBytesReceived - initialReceived;
-                    _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                    EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
                     EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(curTx, curRx));
                     return true;
                 }
@@ -116,6 +130,12 @@ public sealed partial class OctopusEngine
 
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
+            if (tcs.Task.IsCompletedSuccessfully)
+            {
+                EmitStatus(VpnStatusMessages.ChannelVerifiedDuplex(deltaTx, deltaRx));
+                return true;
+            }
+
             if (deltaTx <= 0)
             {
                 EmitStatus(VpnStatusMessages.TxTransmissionFailed);
@@ -124,31 +144,53 @@ public sealed partial class OctopusEngine
             else if (deltaRx <= 0)
             {
                 EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
-                AppLogger.LogError($"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server.");
+                AppLogger.LogError(
+                    $"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server.");
             }
-            else
-            {
-                _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
-            }
-            return deltaRx > 0 && deltaTx > 0;
+
+            return !forceFreshProbe && deltaRx > 0 && deltaTx > 0;
         }
         catch (OperationCanceledException)
         {
             var deltaRx = TotalBytesReceived - initialReceived;
             var deltaTx = TotalBytesSent - initialSent;
-            if (deltaRx > 0)
-            {
-                _ = _transport.SendMtuSyncAsync(SmartMtuEngine.CurrentMtu);
-                EmitStatus(VpnStatusMessages.MtuLocked(SmartMtuEngine.CurrentMtu));
-            }
-            return deltaRx > 0 && deltaTx > 0;
+            return tcs.Task.IsCompletedSuccessfully || !forceFreshProbe && deltaRx > 0 && deltaTx > 0;
         }
         finally
         {
             OnProbePacketInspect -= OnPacket;
             OnPingUpdated -= OnPing;
         }
+    }
+
+    //проверка является ли входящий пакет ответным сигналом зонда, а не старым фоновым udp из очереди сервера
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsFreshProbeReplyPacket(byte[] pkt, int len)
+    {
+        if (len < 20 || pkt[0] >> 4 != 4)
+        {
+            return false;
+        }
+
+        var proto = pkt[9];
+        switch (proto)
+        {
+            case 1:
+                return true;
+            case 17:
+                {
+                    var ihl = (pkt[0] & 0x0F) * 4;
+                    if (ihl >= 20 && len >= ihl + 8)
+                    {
+                        var srcPort = BinaryPrimitives.ReadUInt16BigEndian(pkt.AsSpan(ihl, 2));
+                        return srcPort == 53;
+                    }
+
+                    break;
+                }
+        }
+
+        return false;
     }
 
     //сборка легковесного icmp ping пакета для зондирования
@@ -205,7 +247,8 @@ public sealed partial class OctopusEngine
             return null;
         }
 
-        byte[] dns = [
+        byte[] dns =
+        [
             0x1A, 0x2B, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x03, 0x64, 0x6e, 0x73, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x00,
             0x00, 0x01, 0x00, 0x01
@@ -255,10 +298,12 @@ public sealed partial class OctopusEngine
                 sum += (uint)(data[i] << 8);
             }
         }
-        while ((sum >> 16) != 0)
+
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
+
         return (ushort)~sum;
     }
 }

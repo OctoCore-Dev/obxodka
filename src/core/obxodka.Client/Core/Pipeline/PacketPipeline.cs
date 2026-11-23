@@ -4,7 +4,11 @@ namespace obxodka.Core.Pipeline;
 //строгая последовательность: фильтр петель -> adblock -> split tunnel -> mss clamping -> smart mtu нарезка -> отправка в сокет
 public sealed class PacketPipeline(OctopusEngine engine)
 {
-    private readonly OctopusEngine _engine = engine;
+    //блокировать ли исходящий ipv6-трафик (режим только ipv4 для предотвращения любых ipv6-проверок)
+    public bool BlockIpv6Traffic { get; set; }
+
+    //делегат мгновенного локального отклонения заблокированного ipv6-пакета (например tcp rst)
+    public Func<byte[], int, bool>? Ipv6BlockResponder { get; set; }
 
     //делегат перехвата платформенного раздельного туннелирования (split tunnel)
     public Func<byte[], int, bool>? SplitTunnelInterceptor { get; set; }
@@ -18,10 +22,33 @@ public sealed class PacketPipeline(OctopusEngine engine)
     //делегат обратной доставки пакета в виртуальный сетевой интерфейс ос (wintun / android tun)
     public Action<byte[], int>? LocalDelivery { get; set; }
 
+    //проверка нужно ли блокировать исходящий ipv6 пакет в режиме только ipv4
+    public bool ShouldDropIpv6Packet(ReadOnlySpan<byte> packet) =>
+        BlockIpv6Traffic && packet.Length > 0 && packet[0] >> 4 == 6;
+
+    //проверка отбрасывания мультикаста и пакетов от старых сокетов с чужим локальным ip до туннеля
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool ShouldDropOutgoingIpv4Noise(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 20 || packet[0] >> 4 != 4)
+        {
+            return false;
+        }
+
+        var dstFirstOctet = packet[16];
+        if (dstFirstOctet is 0 or >= 224)
+        {
+            return true;
+        }
+
+        var assignedIpUint = engine.AssignedIpUint;
+        return assignedIpUint != 0 && BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(12, 4)) != assignedIpUint;
+    }
+
     //обработка исходящего l3-пакета из сетевого стека ос (uplink)
     public void ProcessOutgoingPacket(byte[] inputBuf, int length, IVpnTransport? transport)
     {
-        if (length < 20 || transport is null || !_engine.IsConnected)
+        if (length < 20 || transport is null || !engine.IsConnected)
         {
             ArrayPool<byte>.Shared.Return(inputBuf);
             return;
@@ -29,9 +56,24 @@ public sealed class PacketPipeline(OctopusEngine engine)
 
         var span = inputBuf.AsSpan(0, length);
 
-        //этап 1: фильтрация петель трафика к vpn серверу
-        if (_engine.IsServerDestination(span, length))
+        //этап 1: фильтрация петель трафика к vpn серверу, широковещательных пакетов и чужих source ip
+        if (engine.IsServerDestination(span, length))
         {
+            ArrayPool<byte>.Shared.Return(inputBuf);
+            return;
+        }
+
+        var version = inputBuf[0] >> 4;
+        if (ShouldDropOutgoingIpv4Noise(span))
+        {
+            ArrayPool<byte>.Shared.Return(inputBuf);
+            return;
+        }
+
+        //этап 1.5: опциональная блокировка исходящего ipv6-трафика (режим только ipv4)
+        if (ShouldDropIpv6Packet(span))
+        {
+            _ = Ipv6BlockResponder?.Invoke(inputBuf, length);
             ArrayPool<byte>.Shared.Return(inputBuf);
             return;
         }
@@ -57,14 +99,14 @@ public sealed class PacketPipeline(OctopusEngine engine)
             return;
         }
 
-        //этап 4: оптимизация tcp mss под текущий mtu туннеля
+        //этап 4: оптимизация tcp mss под текущий mtu туннеля и учет реально уходящего в туннель трафика
+        engine.RecordOutgoingPacketBytes(length);
         var currentMtu = SmartMtuEngine.CurrentMtu;
         SmartMtuEngine.ClampTcpMss(span, currentMtu);
 
         //этап 5: смарт-нарезка пакетов превышающих mtu туннеля (без ложных icmp сбоев в сокеты игр)
         if (length > currentMtu)
         {
-            var version = inputBuf[0] >> 4;
             if (version == 4)
             {
                 //нарезаем на валидные ipv4 фрагменты с уникальным id и отправляем напрямую в сокет
@@ -86,6 +128,7 @@ public sealed class PacketPipeline(OctopusEngine engine)
                     {
                         ArrayPool<byte>.Shared.Return(icmpPkt);
                     }
+
                     ArrayPool<byte>.Shared.Return(inputBuf);
                     return;
                 }
@@ -100,6 +143,7 @@ public sealed class PacketPipeline(OctopusEngine engine)
                 {
                     ArrayPool<byte>.Shared.Return(icmp6Pkt);
                 }
+
                 ArrayPool<byte>.Shared.Return(inputBuf);
                 return;
             }

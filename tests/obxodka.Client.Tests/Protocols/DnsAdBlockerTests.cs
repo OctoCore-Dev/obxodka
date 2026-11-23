@@ -23,7 +23,7 @@ public class DnsAdBlockerTests
         Assert.NotNull(result);
         var answerIp = new byte[4];
         Buffer.BlockCopy(result, result.Length - 4, answerIp, 0, 4);
-        Assert.Equal(new byte[] { 0, 0, 0, 0 }, answerIp);
+        Assert.Equal("\0\0\0\0"u8.ToArray(), answerIp);
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class DnsAdBlockerTests
     [Fact]
     public void ProcessPacketWhenQueryingBlockedDomainIPv6ReturnsNoDataResponse()
     {
-        var packet = CreateDnsQueryPacket("googleadservices.com", qtype: 28);
+        var packet = CreateDnsQueryPacket("googleadservices.com", 28);
         var result = DnsAdBlocker.ProcessPacket(packet, packet.Length, true);
 
         Assert.NotNull(result);
@@ -107,6 +107,7 @@ public class DnsAdBlockerTests
             Buffer.BlockCopy(partBytes, 0, packet, currentOffset, partBytes.Length);
             currentOffset += partBytes.Length;
         }
+
         packet[currentOffset++] = 0;
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset, 2), qtype);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset + 2, 2), 1);

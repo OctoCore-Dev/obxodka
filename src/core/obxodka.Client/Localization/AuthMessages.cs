@@ -3,7 +3,9 @@ namespace obxodka.Client.Localization;
 //пользовательские сообщения и тексты ошибок экрана авторизации
 public static class AuthMessages
 {
-    public const string QrDesktopHint = "Сканирование QR-кода камерой поддерживается на Android. На ПК используйте 6-значный код или вставьте ссылку из буфера.";
+    public const string QrDesktopHint =
+        "Сканирование QR-кода камерой поддерживается на Android. На ПК используйте 6-значный код или вставьте ссылку из буфера.";
+
     public const string QrInvalidPayload = "QR-код не содержит данных авторизации Обходка VPN.";
     public const string QrScanFailed = "Не удалось отсканировать QR-код.";
     public const string ClipboardEmpty = "Буфер обмена пуст.";

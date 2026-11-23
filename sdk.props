@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <NetTargetFramework>net11.0</NetTargetFramework>
+    <AndroidTargetFramework>net11.0-android</AndroidTargetFramework>
+    <WindowsTargetFramework>net11.0-windows10.0.19041.0</WindowsTargetFramework>
+    <IosTargetFramework>net11.0-ios</IosTargetFramework>
+    <MacCatalystTargetFramework>net11.0-maccatalyst</MacCatalystTargetFramework>
+  </PropertyGroup>
+</Project>

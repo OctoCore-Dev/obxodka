@@ -2,27 +2,6 @@ namespace obxodka.Core.Transports;
 
 public sealed partial class ObxodkaWebSocketTransport
 {
-    //фоновый цикл периодического пинга канала
-    private async Task PingLoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
-        {
-            try
-            {
-                await Task.Delay(5000, ct).ConfigureAwait(false);
-                await SendPingProbeAsync().ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex) when (ex is IOException or WebSocketException or ObjectDisposedException or InvalidOperationException)
-            {
-                //игнорируем сетевую ошибку отправки пинга
-            }
-        }
-    }
-
     //отправка исходящего пользовательского пакета из пула памяти
     public void SendPacketFromPool(byte[] packet, int length)
     {
@@ -53,6 +32,7 @@ public sealed partial class ObxodkaWebSocketTransport
         {
             ArrayPool<byte>.Shared.Return(discBuf);
         }
+
         return Task.CompletedTask;
     }
 
@@ -70,6 +50,7 @@ public sealed partial class ObxodkaWebSocketTransport
         {
             ArrayPool<byte>.Shared.Return(pingPayload);
         }
+
         return Task.CompletedTask;
     }
 
@@ -107,14 +88,14 @@ public sealed partial class ObxodkaWebSocketTransport
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linkedCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
-            using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
+            await using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
 
             var returnedLen = await tcs.Task.ConfigureAwait(false);
             return returnedLen >= payloadLen;
         }
         finally
         {
-            _ = _pendingMtuProbes.TryRemove(probeTs, out _);
+            _ = ((IDictionary<long, TaskCompletionSource<int>>)_pendingMtuProbes).Remove(probeTs);
         }
     }
 
@@ -171,18 +152,18 @@ public sealed partial class ObxodkaWebSocketTransport
         {
             ArrayPool<byte>.Shared.Return(buf);
         }
+
         return Task.CompletedTask;
     }
 
     //синхронное освобождение ресурсов
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
 
-        _disposed = true;
         Volatile.Write(ref _connected, false);
         _txQueue.Dispose();
         _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
@@ -195,45 +176,73 @@ public sealed partial class ObxodkaWebSocketTransport
     //асинхронное освобождение ресурсов
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
 
-        _disposed = true;
         Volatile.Write(ref _connected, false);
         using var cts = Interlocked.Exchange(ref _cts, null);
         if (cts is not null)
         {
             await cts.CancelAsync().ConfigureAwait(false);
         }
+
         var loopTasks = _activeLoopTasks;
         _activeLoopTasks = [];
+        var loopsCompleted = loopTasks.Length == 0;
         if (loopTasks.Length > 0)
         {
             try
             {
                 await Task.WhenAll(loopTasks).WaitAsync(TimeSpan.FromSeconds(1.5), CancellationToken.None).ConfigureAwait(false);
+                loopsCompleted = true;
             }
-            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or WebSocketException or IOException
+                                           or ObjectDisposedException or InvalidOperationException)
             {
                 //игнорируем таймаут ожидания завершения фоновых циклов
             }
         }
-        _txQueue.Dispose();
+
         _txQueue.DrainAndReturn(static buf => ArrayPool<byte>.Shared.Return(buf));
-        if (_webSocket is { State: WebSocketState.Open })
+        _txQueue.Dispose();
+        if (loopsCompleted && _webSocket is { State: WebSocketState.Open })
         {
             try
             {
-                await _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None).ConfigureAwait(false);
+                await _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None)
+                    .ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is WebSocketException or IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+            catch (Exception ex) when (ex is WebSocketException or IOException or OperationCanceledException or ObjectDisposedException
+                                           or InvalidOperationException)
             {
                 //подавление ошибки закрытия сокета при завершении
             }
         }
+
         _webSocket?.Dispose();
         _wsInvoker?.Dispose();
+    }
+
+    //фоновый цикл периодического пинга канала
+    private async Task PingLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && Volatile.Read(ref _connected))
+        {
+            try
+            {
+                await Task.Delay(5000, ct).ConfigureAwait(false);
+                await SendPingProbeAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex) when (ex is IOException or WebSocketException or ObjectDisposedException or InvalidOperationException)
+            {
+                //игнорируем сетевую ошибку отправки пинга
+            }
+        }
     }
 }

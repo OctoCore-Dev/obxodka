@@ -9,8 +9,10 @@ internal sealed partial class WindowsVpnService
     {
         //конфигурация сквозного конвейера обработки пакетов
         var pipeline = OctopusEngine.Current.Pipeline;
-        pipeline.SplitTunnelInterceptor = (buf, len) => _adapter is { } ad && WindowsSplitTunnelEngine.TryInterceptOutgoingPacket(buf, len, ad);
-        pipeline.IngressInspector = (span, len) => WindowsSplitTunnelEngine.InspectIncomingPacketFromVpn(span, len);
+        pipeline.Ipv6BlockResponder = (buf, len) => _adapter is { } ad && WindowsSplitTunnelEngine.TryRejectIpv6Packet(buf, len, ad);
+        pipeline.SplitTunnelInterceptor =
+            (buf, len) => _adapter is { } ad && WindowsSplitTunnelEngine.TryInterceptOutgoingPacket(buf, len, ad);
+        pipeline.IngressInspector = WindowsSplitTunnelEngine.InspectIncomingPacketFromVpn;
         pipeline.AdBlockFilter = (buf, len) => DnsAdBlocker.ProcessPacket(buf, len);
         pipeline.LocalDelivery = (buf, len) => _adapter?.SendPacket(buf, len);
 
@@ -39,11 +41,10 @@ internal sealed partial class WindowsVpnService
                     {
                         for (var i = 0; i < count; i++)
                         {
-                            processed = i;
                             var (buf, len) = batch[i];
+                            processed = i + 1;
                             OctopusEngine.Current.SendPacketFromPool(buf, len);
                         }
-                        processed = count;
                     }
                     finally
                     {
@@ -58,7 +59,10 @@ internal sealed partial class WindowsVpnService
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
             finally
             {
                 _ = tcs.TrySetResult();

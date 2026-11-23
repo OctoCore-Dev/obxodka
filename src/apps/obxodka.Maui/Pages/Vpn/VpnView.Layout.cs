@@ -1,12 +1,12 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
-using Microsoft.Maui.Controls.Shapes;
-using Path = System.IO.Path;
-
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
 //адаптивная верстка, отступы под safe area и реакция на смену темы
 public sealed partial class VpnView
 {
+    private double _lastAppliedButtonSize = -1;
+    private int _lastVpnLayoutMode = -1;
+    private AdaptiveViewport _lastViewport;
+
     //актуализация прозрачности карточек под активную тему
     public void UpdateCardOpacity()
     {
@@ -21,200 +21,255 @@ public sealed partial class VpnView
         ServerSelectorButton.BackgroundColor = bgElevated;
     }
 
-    private double _lastAllocatedW = -1;
-    private double _lastAllocatedH = -1;
-    private double _currentTopInset;
-
-    //учет отступа статусбара для мобильных экранов
-    public void SetHeaderTopInset(double top)
+    //единая адаптация экрана vpn по ssot-снимку геометрии окна без ручного widthrequest
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        if (Math.Abs(_currentTopInset - top) < 0.5)
+        if (RootLayoutGrid is null || ContentGrid is null)
         {
             return;
         }
 
-        _currentTopInset = top;
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
-        {
-            RootLayoutGrid?.Padding = new Thickness(8, 0, 8, 0);
-
-            if (ContentGrid != null)
-            {
-                var topAir = Math.Max(top + 16, 50);
-                ContentGrid.Padding = new Thickness(0, topAir, 0, 96);
-            }
-        }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayoutGrid != null)
-        {
-            RootLayoutGrid.Padding = new Thickness(8, Math.Max(top + 4, 8), 8, 0);
-        }
-
-        if (_lastAllocatedW > 0 && _lastAllocatedH > 0)
-        {
-            ApplyDynamicLayout(_lastAllocatedW, _lastAllocatedH);
-        }
-    }
-
-    //реакция на изменение размеров контейнера экрана
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width <= 0 || height <= 0)
+        if (_lastViewport == viewport && _lastAppliedButtonSize > 0)
         {
             return;
         }
 
-        if (Math.Abs(_lastAllocatedW - width) > 1 || Math.Abs(_lastAllocatedH - height) > 1)
+        _lastViewport = viewport;
+
+        var isCompact = viewport.IsCompact;
+        var isWide = viewport.UseTwoColumnVpn;
+        var isCompactLandscape = viewport.IsCompactLandscape;
+        var baseSidePad = isCompactLandscape ? 12.0 : isCompact ? 12.0 : isWide ? 24.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, isWide ? 1040.0 : 760.0);
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(96.0, viewport.SafeBottom + 86.0)
+            : isCompactLandscape
+                ? Math.Max(10.0, viewport.SafeBottom + 6.0)
+                : Math.Max(20.0, viewport.SafeBottom + 12.0);
+        var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? isCompactLandscape
+                ? Math.Max(viewport.SafeTop + 6.0, 10.0)
+                : Math.Max(viewport.SafeTop + 4.0, isCompact ? 28.0 : 16.0)
+            : isCompactLandscape
+                ? 10.0
+                : isCompact ? 10.0 : 16.0;
+
+        RootLayoutGrid.Padding = new Thickness(sidePad, 0, sidePad, 0);
+        ContentGrid.HorizontalOptions = LayoutOptions.Fill;
+        ContentGrid.Padding = new Thickness(0, topPad, 0, bottomPad);
+
+        ServerModalOverlay?.Margin = new Thickness(-sidePad, 0, -sidePad, 0);
+
+        if (ServerModalCard is not null && viewport.ContentWidth > 0 && viewport.WindowHeight > 0)
         {
-            _lastAllocatedW = width;
-            _lastAllocatedH = height;
-            ApplyDynamicLayout(width, height);
+            var modalW = Math.Clamp(viewport.ContentWidth - 40.0, 280.0, 440.0);
+            ServerModalCard.MaximumWidthRequest = modalW;
+            ServerModalCard.WidthRequest = modalW;
+            ServerModalCard.MaximumHeightRequest = Math.Clamp(viewport.WindowHeight - 28.0, 260.0, 560.0);
         }
-    }
 
-    //адаптивная перестройка сетки под мобильные и широкие экраны
-    private void ApplyDynamicLayout(double width, double height)
-    {
-        var availWidth = width - (RootLayoutGrid?.Padding.HorizontalThickness ?? 0);
-        if (availWidth > 0)
+        if (isWide)
         {
-            ApplyCardWidth(availWidth);
-        }
-
-        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
-        var isWide = AdaptiveLayoutHelper.IsWideLayout(width, isDesktopOrTablet);
-
-        if (ContentGrid is not null)
-        {
-            if (isWide)
+            var targetMode = isCompactLandscape ? 1 : 2;
+            if (_lastVpnLayoutMode != targetMode)
             {
-                if (ContentGrid.ColumnDefinitions.Count != 2)
+                _lastVpnLayoutMode = targetMode;
+                ContentGrid.ColumnDefinitions.Clear();
+                ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(5, GridUnitType.Star)));
+                ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(isCompactLandscape ? 5 : 4, GridUnitType.Star)));
+                ContentGrid.RowDefinitions.Clear();
+                ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+                ContentGrid.RowSpacing = 0;
+                Grid.SetColumn(Card1Wrapper, 0);
+                Grid.SetRow(Card1Wrapper, 0);
+                Grid.SetColumn(TopCardsGrid, 1);
+                Grid.SetRow(TopCardsGrid, 0);
+
+                TopCardsGrid.RowDefinitions.Clear();
+                if (isCompactLandscape)
                 {
-                    ContentGrid.ColumnDefinitions.Clear();
-                    ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(5, GridUnitType.Star)));
-                    ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(4, GridUnitType.Star)));
-                    ContentGrid.RowDefinitions.Clear();
-                    ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-                    ContentGrid.ColumnSpacing = 28;
-                    ContentGrid.RowSpacing = 0;
-                    Grid.SetColumn(Card1Wrapper, 0);
-                    Grid.SetRow(Card1Wrapper, 0);
-                    Grid.SetColumn(TopCardsGrid, 1);
-                    Grid.SetRow(TopCardsGrid, 0);
-                    TopCardsGrid.RowDefinitions.Clear();
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                }
+                else
+                {
                     TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
                     TopCardsGrid.RowDefinitions.Add(new RowDefinition(new GridLength(2, GridUnitType.Star)));
                     TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
                 }
+            }
+
+            if (isCompactLandscape)
+            {
+                //компактный двухколоночный дашборд для альбомных телефонов и низких окон с живым графиком
+                ContentGrid.ColumnSpacing = 12;
+                ContentGrid.MinimumHeightRequest = Math.Max(320.0, viewport.WindowHeight);
+                TopCardsGrid.RowSpacing = 8;
 
                 Card1Wrapper.MinimumHeightRequest = -1;
-                Card1ContentGrid.Padding = new Thickness(28, 32);
+                Card1ContentGrid.Padding = new Thickness(14, 10);
+                Card1ContentGrid.RowSpacing = 8;
+                StatusLabel.Margin = new Thickness(0, 4, 0, 0);
+                StatusLabel.FontSize = 13;
+
+                CardIp.Padding = new Thickness(8, 6);
+                Card2.Padding = new Thickness(12, 8);
                 GraphContainer.IsVisible = true;
                 GraphContainer.HeightRequest = -1;
+                GraphContainer.MinimumHeightRequest = 56;
+
+                Card5.Padding = new Thickness(10, 8);
+                Card6.Padding = new Thickness(10, 8);
                 Card5.HeightRequest = -1;
                 Card6.HeightRequest = -1;
-                ButtonContainerGrid.WidthRequest = 280;
-                ButtonContainerGrid.HeightRequest = 280;
-                ButtonOuterRing.WidthRequest = 260;
-                ButtonOuterRing.HeightRequest = 260;
-                ButtonOuterRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(130) };
-                ButtonMiddleRing.WidthRequest = 224;
-                ButtonMiddleRing.HeightRequest = 224;
-                ButtonMiddleRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(112) };
-                ConnectButtonCore.WidthRequest = 180;
-                ConnectButtonCore.HeightRequest = 180;
-                ConnectButtonCore.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(90) };
-                ConnectIcon.IconSize = 44;
-                ConnectButtonText.FontSize = 15;
-                TrafficGraphCanvas.InvalidateSurface();
-                return;
+                Card5.MinimumHeightRequest = 64;
+                Card6.MinimumHeightRequest = 64;
+                TokenAmountLabel.FontSize = 14.5;
+                TotalTrafficLabelMain.FontSize = 14.5;
             }
             else
             {
-                if (ContentGrid.ColumnDefinitions.Count != 1)
-                {
-                    ContentGrid.ColumnDefinitions.Clear();
-                    ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-                    ContentGrid.RowDefinitions.Clear();
-                    ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                    ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-                    ContentGrid.ColumnSpacing = 0;
-                    ContentGrid.RowSpacing = 10;
-                    Grid.SetColumn(TopCardsGrid, 0);
-                    Grid.SetRow(TopCardsGrid, 0);
-                    Grid.SetColumn(Card1Wrapper, 0);
-                    Grid.SetRow(Card1Wrapper, 1);
-                    TopCardsGrid.RowDefinitions.Clear();
-                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                    TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                }
+                ContentGrid.ColumnSpacing = 22;
+                ContentGrid.MinimumHeightRequest = viewport.WindowHeight >= 520.0 ? viewport.WindowHeight : -1;
+                TopCardsGrid.RowSpacing = 16;
+
+                Card1Wrapper.MinimumHeightRequest = -1;
+                Card1ContentGrid.Padding = new Thickness(24, 24);
+                Card1ContentGrid.RowSpacing = 16;
+                StatusLabel.Margin = new Thickness(0, 12, 0, 0);
+                StatusLabel.FontSize = 15;
+
+                CardIp.Padding = new Thickness(14, 10);
+                Card2.Padding = new Thickness(16);
+                GraphContainer.IsVisible = true;
+                GraphContainer.HeightRequest = -1;
+                GraphContainer.MinimumHeightRequest = 140;
+
+                Card5.Padding = new Thickness(14, 12);
+                Card6.Padding = new Thickness(14, 12);
+                Card5.HeightRequest = -1;
+                Card6.HeightRequest = -1;
+                Card5.MinimumHeightRequest = 72;
+                Card6.MinimumHeightRequest = 72;
+                TokenAmountLabel.FontSize = 18;
+                TotalTrafficLabelMain.FontSize = 18;
             }
+
+            var wideBtn = AdaptiveLayoutHelper.CalculateWideVpnButtonSize(viewport);
+            ApplyButtonMetrics(
+                wideBtn,
+                (int)Math.Max(26, Math.Round(wideBtn * 0.165)),
+                Math.Max(12, Math.Round(wideBtn * 0.058)));
+            TrafficGraphCanvas.InvalidateSurface();
+            return;
         }
 
-        var (buttonSize, graphHeight, _) = AdaptiveLayoutHelper.CalculateVpnViewDimensions(
-            width,
-            height,
-            _currentTopInset,
-            isDesktopOrTablet);
+        if (_lastVpnLayoutMode != 0 || ContentGrid.ColumnDefinitions.Count != 1 || Grid.GetRow(Card1Wrapper) != 1)
+        {
+            _lastVpnLayoutMode = 0;
+            ContentGrid.ColumnDefinitions.Clear();
+            ContentGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ContentGrid.RowDefinitions.Clear();
+            ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ContentGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ContentGrid.ColumnSpacing = 0;
+            ContentGrid.RowSpacing = 12;
+            Grid.SetColumn(TopCardsGrid, 0);
+            Grid.SetRow(TopCardsGrid, 0);
+            Grid.SetColumn(Card1Wrapper, 0);
+            Grid.SetRow(Card1Wrapper, 1);
+            TopCardsGrid.RowDefinitions.Clear();
+            TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            TopCardsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        }
 
-        var isShortScreen = AdaptiveLayoutHelper.IsShortScreen(height);
-        if (isShortScreen)
+        var metrics = AdaptiveLayoutHelper.CalculateVerticalVpnLayout(viewport, topPad, bottomPad);
+        ContentGrid.MinimumHeightRequest = metrics.ContentMinHeight;
+        CardIp.Padding = isCompact ? new Thickness(8, 6) : new Thickness(12, 8);
+        Card2.Padding = isCompact ? new Thickness(12, 8) : new Thickness(14, 12);
+        Card5.Padding = isCompact ? new Thickness(12, 8) : new Thickness(14, 10);
+        Card6.Padding = isCompact ? new Thickness(12, 8) : new Thickness(14, 10);
+        Card5.HeightRequest = -1;
+        Card6.HeightRequest = -1;
+        Card5.MinimumHeightRequest = metrics.StatCardHeight;
+        Card6.MinimumHeightRequest = metrics.StatCardHeight;
+        TokenAmountLabel.FontSize = isCompact ? 15 : 18;
+        TotalTrafficLabelMain.FontSize = isCompact ? 15 : 18;
+        Card1ContentGrid.RowSpacing = isCompact ? 8 : 12;
+        StatusLabel.Margin = isCompact ? new Thickness(0, 4, 0, 0) : new Thickness(0, 8, 0, 0);
+        StatusLabel.FontSize = isCompact ? 13 : 15;
+
+        if (!metrics.ShowGraph)
         {
             Card1Wrapper.MinimumHeightRequest = -1;
-            Card1ContentGrid.Padding = new Thickness(12, 6, 12, 16);
-            TopCardsGrid.RowSpacing = 6;
-            if (ContentGrid is { } cgShort)
-            {
-                cgShort.RowSpacing = 6;
-            }
-            Card5.HeightRequest = 48;
-            Card6.HeightRequest = 48;
+            Card1ContentGrid.Padding = new Thickness(14, 10, 14, 12);
+            TopCardsGrid.RowSpacing = 8;
+            ContentGrid.RowSpacing = 8;
             GraphContainer.IsVisible = false;
+            GraphContainer.MinimumHeightRequest = 0;
             GraphContainer.HeightRequest = 0;
         }
         else
         {
-            Card1ContentGrid.Padding = new Thickness(16, 14, 16, 26);
-            TopCardsGrid.RowSpacing = 10;
-            if (ContentGrid is { } cgNormal)
-            {
-                cgNormal.RowSpacing = 10;
-            }
-            Card5.HeightRequest = 64;
-            Card6.HeightRequest = 64;
+            Card1ContentGrid.Padding = isCompact
+                ? new Thickness(14, 12, 14, 12)
+                : new Thickness(18, 16, 18, 18);
+            TopCardsGrid.RowSpacing = isCompact ? 8 : 10;
+            ContentGrid.RowSpacing = isCompact ? 8 : 12;
             GraphContainer.IsVisible = true;
-            GraphContainer.HeightRequest = graphHeight;
-
-            var topCardsH = TopCardsGrid.Height > 0 ? TopCardsGrid.Height : (48.0 + 48.0 + 64.0 + graphHeight + 30.0);
-            var estimatedAvailableForCard1 = height - _currentTopInset - 100.0 - topCardsH;
-            var targetCard1MinHeight = Math.Clamp(Math.Round(estimatedAvailableForCard1), 340.0, 540.0);
-            Card1Wrapper.MinimumHeightRequest = targetCard1MinHeight;
+            GraphContainer.MinimumHeightRequest = 76;
+            GraphContainer.HeightRequest = metrics.GraphHeight;
+            Card1Wrapper.MinimumHeightRequest = metrics.HeroHeight;
         }
 
+        ApplyButtonMetrics(
+            metrics.ButtonSize,
+            (int)Math.Max(22, Math.Round(metrics.ButtonSize * 0.165)),
+            Math.Max(11, Math.Round(metrics.ButtonSize * 0.058)));
+
+        TrafficGraphCanvas.InvalidateSurface();
+    }
+
+    //применение размеров колец кнопки только при реальном изменении габаритов без лишних аллокаций
+    private void ApplyButtonMetrics(double buttonSize, int iconSize, double fontSize)
+    {
+        if (Math.Abs(_lastAppliedButtonSize - buttonSize) < 0.5)
+        {
+            return;
+        }
+
+        _lastAppliedButtonSize = buttonSize;
         ButtonContainerGrid.WidthRequest = buttonSize;
         ButtonContainerGrid.HeightRequest = buttonSize;
 
-        var outerRingSize = Math.Round(buttonSize * 0.935);
+        var outerRingSize = Math.Round(buttonSize * 0.93);
         ButtonOuterRing.WidthRequest = outerRingSize;
         ButtonOuterRing.HeightRequest = outerRingSize;
-        ButtonOuterRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(outerRingSize / 2.0) };
+        ButtonOuterRing.StrokeShape = new RoundRectangle
+        {
+            CornerRadius = new CornerRadius(outerRingSize / 2.0)
+        };
 
-        var middleRingSize = Math.Round(buttonSize * 0.828);
+        var middleRingSize = Math.Round(buttonSize * 0.80);
         ButtonMiddleRing.WidthRequest = middleRingSize;
         ButtonMiddleRing.HeightRequest = middleRingSize;
-        ButtonMiddleRing.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(middleRingSize / 2.0) };
+        ButtonMiddleRing.StrokeShape = new RoundRectangle
+        {
+            CornerRadius = new CornerRadius(middleRingSize / 2.0)
+        };
 
-        var coreSize = Math.Round(buttonSize * 0.707);
+        var coreSize = Math.Round(buttonSize * 0.65);
         ConnectButtonCore.WidthRequest = coreSize;
         ConnectButtonCore.HeightRequest = coreSize;
-        ConnectButtonCore.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(coreSize / 2.0) };
+        ConnectButtonCore.StrokeShape = new RoundRectangle
+        {
+            CornerRadius = new CornerRadius(coreSize / 2.0)
+        };
 
-        ConnectIcon.IconSize = (int)Math.Max(22, Math.Round(buttonSize * 0.165));
-        ConnectButtonText.FontSize = Math.Max(10, Math.Round(buttonSize * 0.058));
-
-        GraphContainer.HeightRequest = graphHeight;
-        TrafficGraphCanvas.InvalidateSurface();
+        ConnectIcon.IconSize = iconSize;
+        ConnectButtonText.FontSize = fontSize;
     }
 
     //перерисовка канвасов и обновление стилей при смене темы
@@ -239,16 +294,25 @@ public sealed partial class VpnView
             Card1Wrapper.Stroke = borderSubtle;
             ServerSelectorButton.Stroke = borderMedium;
 
-            var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
-            if (currentState == AppVpnState.Disconnected)
+            var currentState = _vpnService.CurrentState;
+            switch (currentState)
             {
-                StatusLabel.Text = GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected);
-                ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction);
-            }
-            else if (currentState == AppVpnState.Connected)
-            {
-                StatusLabel.Text = GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected);
-                ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction);
+                case AppVpnState.Disconnected:
+                    StatusLabel.Text = GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected);
+                    ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction);
+                    break;
+                case AppVpnState.Connected:
+                    StatusLabel.Text = GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected);
+                    ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction);
+                    break;
+                case AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting:
+                    StatusLabel.Text = GetStatusTextForState(currentState, StatusLabel.Text);
+                    ConnectButtonText.Text = GetButtonTextForState(currentState, ConnectButtonText.Text);
+                    break;
+                case AppVpnState.Error:
+                    StatusLabel.Text = GetStatusTextForState(AppVpnState.Error, StatusLabel.Text);
+                    ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Error, VpnStatusMessages.StartAction);
+                    break;
             }
 
             var hasCustom = !string.IsNullOrEmpty(_buttonImageIdlePath) ||
@@ -264,27 +328,31 @@ public sealed partial class VpnView
                 return;
             }
 
-            if (currentState == AppVpnState.Disconnected)
+            switch (currentState)
             {
-                _ = UIAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-                ConnectButtonCore.ClearValue(BackgroundColorProperty);
-                ConnectButtonCore.ClearValue(Border.StrokeProperty);
-                ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
-                ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
-            }
-            else if (currentState == AppVpnState.Connected)
-            {
-                _ = UIAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
-                var accentColor = GetAppColor("Accent", s_cyanAccent);
-                var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
-                if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
-                {
-                    accentColor = ovColor;
-                    StatusLabel.TextColor = ovColor;
-                    ConnectIcon.IconColor = ovColor;
-                }
-                ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
-                ConnectButtonCore.Stroke = accentColor;
+                case AppVpnState.Disconnected:
+                    _ = UiAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    ConnectButtonCore.ClearValue(BackgroundColorProperty);
+                    ConnectButtonCore.ClearValue(Border.StrokeProperty);
+                    ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
+                    ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
+                    break;
+                case AppVpnState.Connected:
+                    {
+                        _ = UiAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                        var accentColor = GetAppColor("Accent", s_cyanAccent);
+                        var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
+                        if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
+                        {
+                            accentColor = ovColor;
+                            StatusLabel.TextColor = ovColor;
+                            ConnectIcon.IconColor = ovColor;
+                        }
+
+                        ConnectButtonCore.BackgroundColor = accentColor.WithAlpha(0.12f);
+                        ConnectButtonCore.Stroke = accentColor;
+                        break;
+                    }
             }
         });
     }
@@ -301,7 +369,11 @@ public sealed partial class VpnView
                 return color;
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
+
         return fallback;
     }
 }

@@ -43,7 +43,8 @@ public sealed class TelemetryFilterTests
     }
 
     [Theory]
-    [InlineData("[2026-11-07 06:20:58.805 UTC] [ERROR] [PLAY STORE VERSION CHECK ERROR] Connection failure | Exception: HttpRequestException: Connection failure")]
+    [InlineData(
+        "[2026-11-07 06:20:58.805 UTC] [ERROR] [PLAY STORE VERSION CHECK ERROR] Connection failure | Exception: HttpRequestException: Connection failure")]
     [InlineData("[WINDOWS STORE CATALOG CHECK] Failed to fetch catalog")]
     [InlineData("[ANDROID UPDATE CHECK] Network timeout")]
     public void ShouldSendToServer_FiltersOutStoreUpdateCheckNoise(string message)
@@ -79,14 +80,17 @@ public sealed class TelemetryFilterTests
     [InlineData("[SECURITY] CERT PINNING MISMATCH! Expected: FORGED_HASH_THAT_DOES_NOT_MATCH_THE_SERVER_KEY")]
     [InlineData("Pinned validation failed: FAKE_PIN")]
     [InlineData("[TEST-ONLY] Simulated ray desync")]
-    public void ShouldSendToServer_FiltersOutSyntheticSecurityTestMarkers(string message)
-    {
+    public void ShouldSendToServer_FiltersOutSyntheticSecurityTestMarkers(string message) =>
         Assert.False(TelemetryFilter.ShouldSendToServer(message));
-    }
 
     [Fact]
-    public void IsTestEnvironment_DetectsXunitRunner()
+    public void IsTestEnvironment_DetectsXunitRunner() => Assert.True(TelemetryFilter.IsTestEnvironment);
+
+    [Fact]
+    public void ShouldSendToServer_FiltersTelemetryRecursionAndAllowsWarnings()
     {
-        Assert.True(TelemetryFilter.IsTestEnvironment);
+        Assert.False(TelemetryFilter.ShouldSendToServer("[WINDOWS] [WARN] [TELEMETRY] Send failed"));
+        Assert.False(TelemetryFilter.ShouldSendToServer("[ERROR] POST api/Vpn/telemetry timed out"));
+        Assert.True(TelemetryFilter.ShouldSendToServer("[WINDOWS] [WARN] [OCTOPUS-ROTATE] MidSessionRxStall: trying step 2/4"));
     }
 }

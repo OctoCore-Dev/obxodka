@@ -1,30 +1,16 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Account;
 
 //экран профиля пользователя, баланса, adblock и рефералов
-public sealed partial class ProfileView : ContentView
+public sealed partial class ProfileView : IAdaptivePage
 {
-    private static Color ErrorColor =>
-        Application.Current?.Resources.TryGetValue("Error", out var val) == true && val is Color c ? c : Color.FromArgb("#EF4444");
-
-    private static Color AccentColor =>
-        Application.Current?.Resources.TryGetValue("Accent", out var val) == true && val is Color c ? c : Color.FromArgb("#00E5FF");
-
-    private long _lastRemainingSeconds;
-    private MainPage _parent = null!;
-    private ApiService? _apiService;
-    private string? _myReferralCode;
-    public event EventHandler? BuyTokensRequested;
-    public event EventHandler? LogoutRequested;
-    public event EventHandler? BalanceRefreshRequested;
-
     public static readonly BindableProperty IsEditingAllowedProperty =
         BindableProperty.Create(nameof(IsEditingAllowed), typeof(bool), typeof(ProfileView), true);
 
-    public bool IsEditingAllowed
-    {
-        get => (bool)GetValue(IsEditingAllowedProperty);
-        set => SetValue(IsEditingAllowedProperty, value);
-    }
+    private ApiService? _apiService;
+    private bool? _isTwoColumns;
+    private long _lastRemainingSeconds;
+    private string? _myReferralCode;
+    private MainPage? _parent;
 
     public ProfileView()
     {
@@ -36,91 +22,28 @@ public sealed partial class ProfileView : ContentView
         UpdateAdBlockSubtitle();
         TelemetrySwitch.IsToggled = Preferences.Default.Get(AppPreferenceKeys.UseTelemetry, true);
 
-        if (DeviceInfo.Idiom != DeviceIdiom.Phone)
-        {
-            CardLogout.IsVisible = false;
-        }
-
-        ProfileScrollView.SizeChanged += (s, e) =>
-        {
-            if (ProfileScrollView.Width > 0)
-            {
-                ApplyCardWidth(ProfileScrollView.Width);
-            }
-        };
-
-        ProfileScrollView.Scrolled += (s, e) =>
-            CardStackScrollHelper.ApplyToChildren(
-                ProfileScrollView,
-                ContentGrid.Children,
-                zone: 65.0,
-                minScale: 0.92,
-                power: 2.5);
-
         Unloaded += OnUnloaded;
     }
 
-    //расчет ширины для перестроения интерфейса
-    public void ForceLayoutWidth()
+    private static Color ErrorColor =>
+        Application.Current?.Resources.TryGetValue("Error", out var val) == true && val is Color c ? c : Color.FromArgb("#EF4444");
+
+    private static Color AccentColor =>
+        Application.Current?.Resources.TryGetValue("Accent", out var val) == true && val is Color c ? c : Color.FromArgb("#00E5FF");
+
+    public bool IsEditingAllowed
     {
-        if (ProfileScrollView.Width > 0)
-        {
-            ApplyCardWidth(ProfileScrollView.Width);
-        }
-        else if (Width > 0 && RootLayoutGrid is not null)
-        {
-            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
+        get => (bool)GetValue(IsEditingAllowedProperty);
+        set => SetValue(IsEditingAllowedProperty, value);
     }
 
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width > 0 && RootLayoutGrid is not null)
+    //обновление карточек и баланса при смене темы оформления
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            var availableWidth = width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
-    }
-
-    //подгонка ширины карточек с ограничением максимума
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0 || ContentGrid is null)
-        {
-            return;
-        }
-
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
-        {
-            return;
-        }
-
-        ContentGrid.WidthRequest = safeWidth;
-        ContentGrid.MaximumWidthRequest = safeWidth;
-    }
-
-    //инициализация зависимостей и подписка на статус vpn
-    public void Initialize(MainPage parent, ThemeManager? _ = null, ApiService? apiService = null)
-    {
-        if (_parent?.VpnService is not null)
-        {
-            _parent.VpnService.OnStateChanged -= OnVpnStateChanged;
-        }
-
-        _parent = parent;
-        _apiService = apiService;
-        _parent.VpnService.OnStateChanged += OnVpnStateChanged;
-        IsEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
-    }
+            UpdateCardOpacity();
+            UpdateBalance(_lastRemainingSeconds);
+        });
 
     //отписка от событий при выгрузке страницы
     private void OnUnloaded(object? sender, EventArgs e) => _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
@@ -128,6 +51,102 @@ public sealed partial class ProfileView : ContentView
     //блокировка настроек во время активного подключения vpn
     private void OnVpnStateChanged(AppVpnState s) =>
         MainThread.BeginInvokeOnMainThread(() => IsEditingAllowed = s == AppVpnState.Disconnected);
+
+    //сохранение настройки сбора анонимной телеметрии
+    private void OnTelemetryToggled(object? sender, ToggledEventArgs e) =>
+        Preferences.Default.Set(AppPreferenceKeys.UseTelemetry, e.Value);
+
+    //клик по кнопке пополнения баланса
+    private void OnBuyTokensClicked(object? sender, EventArgs e) =>
+        BuyTokensRequested?.Invoke(this, EventArgs.Empty);
+
+    //переход к экрану удаления профиля
+    private void OnDeleteAccountClicked(object? sender, EventArgs e)
+    {
+        if (_parent is not null)
+        {
+            _ = _parent.SwitchTabAsync("delete");
+        }
+    }
+
+    //выход из текущей учетной записи
+    private void OnLogoutClicked(object? sender, EventArgs e) =>
+        LogoutRequested?.Invoke(this, EventArgs.Empty);
+
+    public event EventHandler? BuyTokensRequested;
+    public event EventHandler? LogoutRequested;
+    public event EventHandler? BalanceRefreshRequested;
+
+
+    //единая адаптация экрана профиля по ssot-снимку геометрии окна без ручного widthrequest
+    public void ApplyViewport(AdaptiveViewport viewport)
+    {
+        if (RootLayoutGrid is null || ContentStack is null || ProfileTopGrid is null)
+        {
+            return;
+        }
+
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
+        var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
+            : isCompact ? 16.0 : 24.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
+
+        RootLayoutGrid.Padding = new Thickness(sidePad, 0, sidePad, 0);
+        ContentStack.Padding = new Thickness(0, topPad, 0, bottomPad);
+        CardLogout.IsVisible = !viewport.UseSidebar;
+
+        var isTwoColumns = viewport.UseMultiColumnContent;
+        if (_isTwoColumns == isTwoColumns)
+        {
+            return;
+        }
+
+        _isTwoColumns = isTwoColumns;
+        ProfileTopGrid.ColumnDefinitions.Clear();
+        ProfileTopGrid.RowDefinitions.Clear();
+        if (isTwoColumns)
+        {
+            ProfileTopGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ProfileTopGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ProfileTopGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ProfileTopGrid.ColumnSpacing = 16;
+            ProfileTopGrid.RowSpacing = 0;
+
+            Grid.SetRow(CardProfile, 0);
+            Grid.SetColumn(CardProfile, 0);
+            Grid.SetRow(CardBalance, 0);
+            Grid.SetColumn(CardBalance, 1);
+        }
+        else
+        {
+            ProfileTopGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            ProfileTopGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ProfileTopGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            ProfileTopGrid.ColumnSpacing = 0;
+            ProfileTopGrid.RowSpacing = 14;
+
+            Grid.SetRow(CardProfile, 0);
+            Grid.SetColumn(CardProfile, 0);
+            Grid.SetRow(CardBalance, 1);
+            Grid.SetColumn(CardBalance, 0);
+        }
+    }
+
+    //инициализация зависимостей и подписка на статус vpn
+    public void Initialize(MainPage parent, ThemeManager? _ = null, ApiService? apiService = null)
+    {
+        _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
+
+        _parent = parent;
+        _apiService = apiService;
+        parent.VpnService.OnStateChanged += OnVpnStateChanged;
+        IsEditingAllowed = parent.VpnService.CurrentState == AppVpnState.Disconnected;
+    }
 
     //каскадная анимация появления карточек профиля
     public async Task PlayEntranceAnimationAsync()
@@ -163,56 +182,79 @@ public sealed partial class ProfileView : ContentView
     //копирование персонального промокода в буфер обмена
     private async void OnCopyReferralCodeClickedAsync(object? sender, TappedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_myReferralCode))
+        try
         {
-            await LoadReferralCodeAsync();
-        }
+            if (string.IsNullOrWhiteSpace(_myReferralCode))
+            {
+                await LoadReferralCodeAsync();
+            }
 
-        if (!string.IsNullOrWhiteSpace(_myReferralCode))
-        {
+            if (string.IsNullOrWhiteSpace(_myReferralCode))
+            {
+                return;
+            }
+
             await Clipboard.Default.SetTextAsync(_myReferralCode);
-            await _parent.DisplayAlertAsync(AccountMessages.ReferralCopiedTitle, AccountMessages.ReferralCopiedMessage(_myReferralCode), AccountMessages.ButtonOk);
+            if (_parent is not null)
+            {
+                await _parent.DisplayAlertAsync(AccountMessages.ReferralCopiedTitle, AccountMessages.ReferralCopiedMessage(_myReferralCode),
+                    AccountMessages.ButtonOk);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[COPY REFERRAL ERROR] {ex.Message}", ex);
         }
     }
 
     //активация введенного промокода или кода приглашения
     private async void OnActivatePromoClickedAsync(object? sender, EventArgs e)
     {
-        if (_apiService is null)
-        {
-            return;
-        }
-
-        var code = PromoCodeEntry.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(code))
-        {
-            await _parent.DisplayAlertAsync(AccountMessages.AttentionTitle, AccountMessages.ReferralCodePrompt, AccountMessages.ButtonOk);
-            return;
-        }
-
-        await UIAnimations.SetButtonLoadingAsync(BtnActivatePromoBorder, BtnActivatePromo, LoaderActivatePromo, true);
         try
         {
-            var (success, data, error) = await _apiService.ActivateReferralCodeAsync(code);
-            if (success)
+            if (_apiService is null || _parent is null)
             {
-                PromoCodeEntry.Text = string.Empty;
-                BalanceRefreshRequested?.Invoke(this, EventArgs.Empty);
-                await _parent.DisplayAlertAsync(AccountMessages.SuccessTitle, data?.Message ?? AccountMessages.PromoActivatedSuccess, AccountMessages.ButtonOk);
+                return;
             }
-            else
+
+            var code = PromoCodeEntry.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(code))
             {
-                await _parent.DisplayAlertAsync(AccountMessages.ErrorTitle, ApiErrorHandler.ParseGeneralError(error, AccountMessages.PromoActivateFailed), AccountMessages.ButtonOk);
+                await _parent.DisplayAlertAsync(AccountMessages.AttentionTitle, AccountMessages.ReferralCodePrompt,
+                    AccountMessages.ButtonOk);
+                return;
+            }
+
+            await UiAnimations.SetButtonLoadingAsync(BtnActivatePromoBorder, BtnActivatePromo, LoaderActivatePromo, true);
+            try
+            {
+                var (success, data, error) = await _apiService.ActivateReferralCodeAsync(code);
+                if (success)
+                {
+                    PromoCodeEntry.Text = string.Empty;
+                    BalanceRefreshRequested?.Invoke(this, EventArgs.Empty);
+                    await _parent.DisplayAlertAsync(AccountMessages.SuccessTitle, data?.Message ?? AccountMessages.PromoActivatedSuccess,
+                        AccountMessages.ButtonOk);
+                }
+                else
+                {
+                    await _parent.DisplayAlertAsync(AccountMessages.ErrorTitle,
+                        ApiErrorHandler.ParseGeneralError(error, AccountMessages.PromoActivateFailed), AccountMessages.ButtonOk);
+                }
+            }
+            finally
+            {
+                await UiAnimations.SetButtonLoadingAsync(BtnActivatePromoBorder, BtnActivatePromo, LoaderActivatePromo, false);
             }
         }
         catch (Exception ex)
         {
             AppLogger.LogError($"[ACTIVATE PROMO ERROR] {ex.Message}", ex);
-            await _parent.DisplayAlertAsync(AccountMessages.ErrorTitle, ApiErrorHandler.ParseGeneralError(ex.Message, AccountMessages.PromoActivateFailed), AccountMessages.ButtonOk);
-        }
-        finally
-        {
-            await UIAnimations.SetButtonLoadingAsync(BtnActivatePromoBorder, BtnActivatePromo, LoaderActivatePromo, false);
+            if (_parent is not null)
+            {
+                await _parent.DisplayAlertAsync(AccountMessages.ErrorTitle,
+                    ApiErrorHandler.ParseGeneralError(ex.Message, AccountMessages.PromoActivateFailed), AccountMessages.ButtonOk);
+            }
         }
     }
 
@@ -224,7 +266,7 @@ public sealed partial class ProfileView : ContentView
         var providerName = "EMAIL";
         var iconSource = "email_logo.png";
 
-        if (session.Email is { Length: > 0 } email && email.IndexOf('@') is var atIdx && atIdx >= 0)
+        if (session.Email is { Length: > 0 } email && email.IndexOf('@') is var atIdx and >= 0)
         {
             var domain = email.AsSpan(atIdx + 1);
 
@@ -233,30 +275,31 @@ public sealed partial class ProfileView : ContentView
                 providerName = "GOOGLE";
                 iconSource = "google_logo.png";
             }
-            else if (domain.StartsWith("yandex.", StringComparison.OrdinalIgnoreCase) || domain.Equals("ya.ru", StringComparison.OrdinalIgnoreCase))
+            else if (domain.StartsWith("yandex.", StringComparison.OrdinalIgnoreCase) ||
+                     domain.Equals("ya.ru", StringComparison.OrdinalIgnoreCase))
             {
                 providerName = "YANDEX";
                 iconSource = "yandex_logo.png";
             }
             else if (domain.Equals("mail.ru", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("inbox.ru", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("list.ru", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("bk.ru", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("internet.ru", StringComparison.OrdinalIgnoreCase))
+                     domain.Equals("inbox.ru", StringComparison.OrdinalIgnoreCase) ||
+                     domain.Equals("list.ru", StringComparison.OrdinalIgnoreCase) ||
+                     domain.Equals("bk.ru", StringComparison.OrdinalIgnoreCase) ||
+                     domain.Equals("internet.ru", StringComparison.OrdinalIgnoreCase))
             {
                 providerName = "MAIL.RU";
                 iconSource = "mailru_logo.png";
             }
             else if (domain.Equals("outlook.com", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("hotmail.com", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("live.com", StringComparison.OrdinalIgnoreCase))
+                     domain.Equals("hotmail.com", StringComparison.OrdinalIgnoreCase) ||
+                     domain.Equals("live.com", StringComparison.OrdinalIgnoreCase))
             {
                 providerName = "MICROSOFT";
                 iconSource = "microsoft_logo.png";
             }
             else if (domain.Equals("icloud.com", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("me.com", StringComparison.OrdinalIgnoreCase) ||
-                    domain.Equals("mac.com", StringComparison.OrdinalIgnoreCase))
+                     domain.Equals("me.com", StringComparison.OrdinalIgnoreCase) ||
+                     domain.Equals("mac.com", StringComparison.OrdinalIgnoreCase))
             {
                 providerName = "APPLE";
                 iconSource = "apple_logo.png";
@@ -289,7 +332,7 @@ public sealed partial class ProfileView : ContentView
         }
         else
         {
-            ProfileTokenLabel.Text = TimeFormatHelper.FormatSeconds(remainingSeconds, true);
+            ProfileTokenLabel.Text = TimeFormatHelper.FormatSeconds(remainingSeconds);
             ProfileTokenLabel.TextColor = AccentColor;
         }
     }
@@ -297,10 +340,10 @@ public sealed partial class ProfileView : ContentView
     //применение цветов активной темы к фону карточек
     public void UpdateCardOpacity()
     {
-        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+        var bgSurface = Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor
             ? bgColor
             : Color.FromArgb("#161622");
-        var borderSubtle = (Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc)
+        var borderSubtle = Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc
             ? bsc
             : Color.FromArgb("#282838");
 
@@ -320,47 +363,35 @@ public sealed partial class ProfileView : ContentView
         CardDeleteAccount.Stroke = borderSubtle;
     }
 
-    //компенсация отступа под статусбар на мобильных устройствах
-    public void SetHeaderTopInset(double top)
+    //сброс кэшированных данных профиля при выходе из аккаунта
+    public void ResetAccountCache()
     {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
-        {
-            RootLayoutGrid?.Padding = new Thickness(16, 0, 16, 0);
-
-            if (ContentGrid != null)
-            {
-                var topAir = Math.Max(top + 16, 50);
-                ContentGrid.Padding = new Thickness(0, topAir, 0, 140);
-            }
-        }
+        _myReferralCode = string.Empty;
+        MainThread.BeginInvokeOnMainThread(() => MyReferralCodeLabel.Text = "------");
     }
 
-    //обновление карточек и баланса при смене темы оформления
-    public void OnThemeChanged() =>
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            UpdateCardOpacity();
-            UpdateBalance(_lastRemainingSeconds);
-        });
-
-    //клик по кнопке пополнения баланса
-    private void OnBuyTokensClicked(object? sender, EventArgs e) =>
-        BuyTokensRequested?.Invoke(this, EventArgs.Empty);
-
-    //переход к экрану удаления профиля
-    private void OnDeleteAccountClicked(object? sender, EventArgs e) =>
-        _ = _parent.SwitchTabAsync("delete");
-
-    //выход из текущей учетной записи
-    private void OnLogoutClicked(object? sender, EventArgs e) =>
-        LogoutRequested?.Invoke(this, EventArgs.Empty);
+    private bool _isUpdatingAdBlockSwitch;
 
     //переключение adblock dns фильтрации
     private void OnAdBlockToggled(object? sender, ToggledEventArgs e)
     {
+        if (_isUpdatingAdBlockSwitch)
+        {
+            return;
+        }
+
         if (!IsEditingAllowed)
         {
-            AdBlockSwitch.IsToggled = !e.Value;
+            try
+            {
+                _isUpdatingAdBlockSwitch = true;
+                AdBlockSwitch.IsToggled = !e.Value;
+            }
+            finally
+            {
+                _isUpdatingAdBlockSwitch = false;
+            }
+
             return;
         }
 
@@ -384,8 +415,4 @@ public sealed partial class ProfileView : ContentView
             ? $"L3 фильтрация активна ({rules:N0} правил, заблокировано: {blocked:N0})"
             : $"L3 фильтрация активна (активных правил: {rules:N0})";
     }
-
-    //сохранение настройки сбора анонимной телеметрии
-    private void OnTelemetryToggled(object? sender, ToggledEventArgs e) =>
-        Preferences.Default.Set(AppPreferenceKeys.UseTelemetry, e.Value);
 }

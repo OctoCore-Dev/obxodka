@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using obxodka.Core.Models;
 using obxodka.Shared.Geo;
 
 namespace obxodka.Platforms.Windows;
@@ -9,11 +8,7 @@ namespace obxodka.Platforms.Windows;
 [SupportedOSPlatform("windows10.0.19041.0")]
 internal static partial class WindowsSplitTunnelEngine
 {
-    public static SplitTunnelPolicy Policy { get; } = new();
-
-    public static event Action? OnRoutesUpdated;
-
-    private static readonly ConcurrentDictionary<uint, MIB_IPFORWARDROW> s_pinnedRoutes = new();
+    private static readonly ConcurrentDictionary<uint, Win32NetworkHelper.MibIpForwardRow> s_pinnedRoutes = new();
     private static readonly ConcurrentDictionary<uint, string> s_routeReasons = new();
     private static readonly ConcurrentDictionary<uint, (string ExeName, string FullPath, long TimestampTicks)> s_pidCache = new();
     private static readonly ConcurrentDictionary<uint, (bool IsBypassed, string ExeName, long TimestampTicks)> s_portCache = new();
@@ -25,8 +20,29 @@ internal static partial class WindowsSplitTunnelEngine
     private static volatile uint s_baseMetric = 25;
     private static IPAddress? s_physicalLocalIp;
     private static volatile uint s_vpnServerIpUint;
+    public static SplitTunnelPolicy Policy { get; } = new();
 
     public static int ActiveRouteCount => s_pinnedRoutes.Count;
+
+    //передача актуального снимка правил сплит-туннеля в wfp anti-leak фильтр
+    public static void SyncWfpLeakGuard()
+    {
+        var policy = Policy;
+        if (!policy.Enabled || s_physicalGatewayUint == 0)
+        {
+            Win32WfpLeakGuard.SetSplitTunnelSnapshot(false, [], [], []);
+            return;
+        }
+
+        var (paths, names) = policy.GetBypassedExecutablesSnapshot();
+        var list = new List<(uint, uint)>(s_pinnedRoutes.Count);
+        foreach (var row in s_pinnedRoutes.Values)
+        {
+            list.Add((row.DwForwardDest, row.DwForwardMask));
+        }
+
+        Win32WfpLeakGuard.SetSplitTunnelSnapshot(true, paths, names, list);
+    }
 
     public static IReadOnlyList<(string DestinationIp, string Reason)> ActiveBypassRoutes
     {
@@ -54,6 +70,9 @@ internal static partial class WindowsSplitTunnelEngine
         }
     }
 
+
+    public static event Action? OnRoutesUpdated;
+
     //асинхронное уведомление подписчиков об изменении списка активных маршрутов
     private static void NotifyRoutesUpdatedAsync() =>
         _ = ThreadPool.UnsafeQueueUserWorkItem(static _ => OnRoutesUpdated?.Invoke(), null);
@@ -61,7 +80,8 @@ internal static partial class WindowsSplitTunnelEngine
     //конфигурация параметров физического сетевого адаптера и шлюза роутера
     public static void ConfigurePhysicalGateway(string gatewayIp, int physicalIfIndex, IPAddress? physicalLocalIp, string? vpnServerIp)
     {
-        if (string.IsNullOrWhiteSpace(gatewayIp) || !IPAddress.TryParse(gatewayIp, out var gwAddr) || gwAddr.AddressFamily != AddressFamily.InterNetwork)
+        if (string.IsNullOrWhiteSpace(gatewayIp) || !IPAddress.TryParse(gatewayIp, out var gwAddr) ||
+            gwAddr.AddressFamily != AddressFamily.InterNetwork)
         {
             return;
         }
@@ -71,14 +91,15 @@ internal static partial class WindowsSplitTunnelEngine
         s_physicalIfIndex = physicalIfIndex;
         s_physicalLocalIp = physicalLocalIp;
 
-        if (!string.IsNullOrWhiteSpace(vpnServerIp) && IPAddress.TryParse(vpnServerIp, out var srvAddr) && srvAddr.AddressFamily == AddressFamily.InterNetwork)
+        if (!string.IsNullOrWhiteSpace(vpnServerIp) && IPAddress.TryParse(vpnServerIp, out var srvAddr) &&
+            srvAddr.AddressFamily == AddressFamily.InterNetwork)
         {
             s_vpnServerIpUint = MemoryMarshal.Read<uint>(srvAddr.GetAddressBytes());
         }
 
-        s_baseMetric = s_vpnServerIpUint != 0 && GetBestRoute(s_vpnServerIpUint, 0, out var srvRow) == 0 && srvRow.DwForwardMetric1 > 0
+        s_baseMetric = s_vpnServerIpUint != 0 && Win32NetworkHelper.GetBestRoute(s_vpnServerIpUint, 0, out var srvRow) == 0 && srvRow.DwForwardMetric1 > 0
             ? srvRow.DwForwardMetric1
-            : GetBestRoute(gwUint, 0, out var gwRow) == 0 && gwRow.DwForwardMetric1 > 0
+            : Win32NetworkHelper.GetBestRoute(gwUint, 0, out var gwRow) == 0 && gwRow.DwForwardMetric1 > 0
                 ? gwRow.DwForwardMetric1
                 : 25;
     }
@@ -100,6 +121,7 @@ internal static partial class WindowsSplitTunnelEngine
             if (!policy.Enabled || s_physicalGatewayUint == 0)
             {
                 CleanupAllRoutesInternal();
+                SyncWfpLeakGuard();
                 NotifyRoutesUpdatedAsync();
                 return;
             }
@@ -108,16 +130,18 @@ internal static partial class WindowsSplitTunnelEngine
 
             foreach (var rawIp in policy.CustomBypassIps.ToArray())
             {
-                if (IPAddress.TryParse(rawIp, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork)
+                if (!IPAddress.TryParse(rawIp, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork)
                 {
-                    var ipUint = MemoryMarshal.Read<uint>(ip.GetAddressBytes());
-                    PinPhysicalHostRoute(ipUint, rawIp, notify: false);
+                    continue;
                 }
+
+                var ipUint = MemoryMarshal.Read<uint>(ip.GetAddressBytes());
+                PinPhysicalHostRoute(ipUint, rawIp, false);
             }
 
             if (policy.HasBypassedExecutables)
             {
-                PinActiveProcessEndpoints(notify: false);
+                PinActiveProcessEndpoints(false);
             }
 
             if (policy.HasDomainRules)
@@ -140,7 +164,8 @@ internal static partial class WindowsSplitTunnelEngine
                 }
             }
 
-            _ = DnsFlushResolverCache();
+            _ = Win32NetworkHelper.FlushDnsCache();
+            SyncWfpLeakGuard();
             NotifyRoutesUpdatedAsync();
         }
         finally
@@ -150,38 +175,21 @@ internal static partial class WindowsSplitTunnelEngine
     }
 
     //проверка является ли ipv4 адрес маршрутизируемым публичным адресом
-#pragma warning disable IDE0046
     private static bool IsRoutablePublicIpv4(uint ipNetworkOrder)
     {
         var b0 = (byte)(ipNetworkOrder & 0xFF);
         var b1 = (byte)((ipNetworkOrder >> 8) & 0xFF);
 
-        if (b0 is 0 or 127 or 10 or >= 224)
+        switch (b0)
         {
-            return false;
+            case 0 or 127 or 10 or >= 224:
+            case 172 when b1 is >= 16 and <= 31:
+            case 192 when b1 == 168:
+            case 100 when (b1 & 0xC0) == 64:
+            case 169 when b1 == 254:
+                return false;
         }
 
-        if (b0 == 172 && b1 is >= 16 and <= 31)
-        {
-            return false;
-        }
-
-        if (b0 == 192 && b1 == 168)
-        {
-            return false;
-        }
-
-        if (b0 == 169 && b1 == 254)
-        {
-            return false;
-        }
-
-        if (s_vpnServerIpUint != 0 && ipNetworkOrder == s_vpnServerIpUint)
-        {
-            return false;
-        }
-
-        return true;
+        return s_vpnServerIpUint == 0 || ipNetworkOrder != s_vpnServerIpUint;
     }
-#pragma warning restore IDE0046
 }

@@ -6,29 +6,44 @@ public sealed class RayInspector
     //максимальное количество отслеживаемых лучей
     public const int MaxInspectorRays = 3;
 
-    //метки времени последней отправки по лучам
-    private readonly long[] _lastTxTicks = new long[MaxInspectorRays];
-
-    //метки времени последнего приема по лучам
-    private readonly long[] _lastRxTicks = new long[MaxInspectorRays];
-
-    //сглаженный rtt по лучам в миллисекундах
-    private readonly long[] _rayRtt = new long[MaxInspectorRays];
-
-    //счетчики потерянных эхо зондов по лучам
-    private readonly int[] _lostProbes = new int[MaxInspectorRays];
-
-    //флаги зависания или блэкхола лучей
-    private readonly int[] _isBlackholed = new int[MaxInspectorRays];
+    //история диагностических шагов подключения
+    private readonly List<string> _history = [];
 
     //блокировка истории диагностических шагов
     private readonly Lock _historyLock = new();
 
-    //история диагностических шагов подключения
-    private readonly List<string> _history = [];
+    //флаги зависания или блэкхола лучей
+    private readonly int[] _isBlackholed = new int[MaxInspectorRays];
+
+    //метки времени последнего приема по лучам
+    private readonly long[] _lastRxTicks = new long[MaxInspectorRays];
+
+    //метки времени последней отправки по лучам
+    private readonly long[] _lastTxTicks = new long[MaxInspectorRays];
+
+    //счетчики потерянных эхо зондов по лучам
+    private readonly int[] _lostProbes = new int[MaxInspectorRays];
+
+    //сглаженный rtt по лучам в миллисекундах
+    private readonly long[] _rayRtt = new long[MaxInspectorRays];
 
     //счетчик попыток подключения
     private int _attemptsCount;
+
+    //базовый срез отправленных пакетов для оконного расчета mtu блэкхола
+    private long _baselineDataTxCount;
+
+    //количество отправленных крупных юникаст пакетов данных
+    private long _dataTxCount;
+
+    //метка времени последнего приема данных
+    private long _lastDataRxTicks;
+
+    //метка времени последней миграции луча для защиты от дребезга
+    private long _lastMigrationTicks;
+
+    //метка времени последней записи о минимальном mtu
+    private long _lastMinMtuStepTicks;
 
     //метка времени последней отправки инцидента
     private long _lastReportTicks;
@@ -36,20 +51,20 @@ public sealed class RayInspector
     //счетчик зависаний из за mtu
     private int _mtuStalls;
 
-    //метка времени последнего приема данных
-    private long _lastDataRxTicks;
+    //текущее количество попыток подключения
+    public int AttemptsCount => Volatile.Read(ref _attemptsCount);
 
-    //количество отправленных крупных юникаст пакетов данных
-    private long _dataTxCount;
+    //получение rtt луча в миллисекундах
+    public long GetRayRtt(int ray) =>
+        (uint)ray < MaxInspectorRays ? Volatile.Read(ref _rayRtt[ray]) : 0;
 
-    //базовый срез отправленных пакетов для оконного расчета mtu блэкхола
-    private long _baselineDataTxCount;
+    //получение времени последнего приема по лучу
+    public long GetLastRxTicks(int ray) =>
+        (uint)ray < MaxInspectorRays ? Volatile.Read(ref _lastRxTicks[ray]) : 0;
 
-    //метка времени последней миграции луча для защиты от дребезга
-    private long _lastMigrationTicks;
-
-    //метка времени последней записи о минимальном mtu
-    private long _lastMinMtuStepTicks;
+    //получение времени последней отправки по лучу
+    public long GetLastTxTicks(int ray) =>
+        (uint)ray < MaxInspectorRays ? Volatile.Read(ref _lastTxTicks[ray]) : 0;
 
     //запись шага в историю диагностики
     public void RecordStep(string step)
@@ -60,6 +75,7 @@ public sealed class RayInspector
             {
                 _history.RemoveAt(0);
             }
+
             var ts = DateTime.UtcNow.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
             _history.Add($"[{ts}] {step}");
         }
@@ -77,9 +93,6 @@ public sealed class RayInspector
     //увеличение счетчика попыток подключения
     public void IncrementAttempts() => Interlocked.Increment(ref _attemptsCount);
 
-    //текущее количество попыток подключения
-    public int AttemptsCount => Volatile.Read(ref _attemptsCount);
-
     //фиксация отправки пакета по лучу
     public void RecordTx(int ray, long timestamp)
     {
@@ -92,12 +105,14 @@ public sealed class RayInspector
     //фиксация приема пакета по лучу
     public void RecordRx(int ray, long timestamp)
     {
-        if ((uint)ray < MaxInspectorRays)
+        if ((uint)ray >= MaxInspectorRays)
         {
-            Volatile.Write(ref _lastRxTicks[ray], timestamp);
-            Volatile.Write(ref _isBlackholed[ray], 0);
-            Volatile.Write(ref _lostProbes[ray], 0);
+            return;
         }
+
+        Volatile.Write(ref _lastRxTicks[ray], timestamp);
+        Volatile.Write(ref _isBlackholed[ray], 0);
+        Volatile.Write(ref _lostProbes[ray], 0);
     }
 
     //фиксация отправки пользовательского пакета данных
@@ -112,39 +127,38 @@ public sealed class RayInspector
         }
 
         var version = packet[0] >> 4;
-        if (version == 4)
+        switch (version)
         {
-            if (packet.Length < 20)
-            {
+            case 4 when packet.Length < 20:
                 return;
-            }
+            case 4:
+                {
+                    var dst0 = packet[16];
+                    var dst1 = packet[17];
+                    var dst3 = packet[19];
+                    //игнорируем мультикаст бродкаст и link-local пакеты на которые сервер не отвечает
+                    if (dst0 >= 224 || dst3 == 255 || dst0 == 169 && dst1 == 254)
+                    {
+                        return;
+                    }
 
-            var dst0 = packet[16];
-            var dst1 = packet[17];
-            var dst3 = packet[19];
-            //игнорируем мультикаст бродкаст и link-local пакеты на которые сервер не отвечает
-            if (dst0 >= 224 || dst3 == 255 || (dst0 == 169 && dst1 == 254))
-            {
+                    break;
+                }
+            case 6 when packet.Length < 40:
                 return;
-            }
-        }
-        else if (version == 6)
-        {
-            if (packet.Length < 40)
-            {
-                return;
-            }
+            case 6:
+                {
+                    var dst0 = packet[24];
+                    var dst1 = packet[25];
+                    if (dst0 == 0xFF || dst0 == 0xFE && (dst1 & 0xC0) == 0x80)
+                    {
+                        return;
+                    }
 
-            var dst0 = packet[24];
-            var dst1 = packet[25];
-            if (dst0 == 0xFF || (dst0 == 0xFE && (dst1 & 0xC0) == 0x80))
-            {
+                    break;
+                }
+            default:
                 return;
-            }
-        }
-        else
-        {
-            return;
         }
 
         _ = Interlocked.Increment(ref _dataTxCount);
@@ -154,11 +168,13 @@ public sealed class RayInspector
     public void RecordDataRx(int length = 0)
     {
         Volatile.Write(ref _lastDataRxTicks, Stopwatch.GetTimestamp());
-        if (length is 0 or >= 20)
+        if (length is not (0 or >= 20))
         {
-            Volatile.Write(ref _mtuStalls, 0);
-            Volatile.Write(ref _baselineDataTxCount, Volatile.Read(ref _dataTxCount));
+            return;
         }
+
+        Volatile.Write(ref _mtuStalls, 0);
+        Volatile.Write(ref _baselineDataTxCount, Volatile.Read(ref _dataTxCount));
     }
 
     //фиксация ответа на пинг зонд и расчет rtt
@@ -173,7 +189,7 @@ public sealed class RayInspector
         if (rtt is >= 0 and < 10000)
         {
             var prev = Volatile.Read(ref _rayRtt[ray]);
-            Volatile.Write(ref _rayRtt[ray], prev <= 0 ? rtt : ((prev * 3) + rtt) / 4);
+            Volatile.Write(ref _rayRtt[ray], prev <= 0 ? rtt : (prev * 3 + rtt) / 4);
         }
 
         Volatile.Write(ref _lastRxTicks[ray], nowTs);
@@ -189,18 +205,6 @@ public sealed class RayInspector
             Volatile.Write(ref _isBlackholed[ray], 1);
         }
     }
-
-    //получение rtt луча в миллисекундах
-    public long GetRayRtt(int ray) =>
-        (uint)ray < MaxInspectorRays ? Volatile.Read(ref _rayRtt[ray]) : 0;
-
-    //получение времени последнего приема по лучу
-    public long GetLastRxTicks(int ray) =>
-        (uint)ray < MaxInspectorRays ? Volatile.Read(ref _lastRxTicks[ray]) : 0;
-
-    //получение времени последней отправки по лучу
-    public long GetLastTxTicks(int ray) =>
-        (uint)ray < MaxInspectorRays ? Volatile.Read(ref _lastTxTicks[ray]) : 0;
 
     //проверка живости луча по времени тишины
     public bool IsRayAlive(int ray, long nowTs, double maxSilenceMs = 6000)
@@ -230,7 +234,7 @@ public sealed class RayInspector
         }
 
         var lastMigration = Volatile.Read(ref _lastMigrationTicks);
-        if (lastMigration > 0 && ((nowTs - lastMigration) * 1000.0 / Stopwatch.Frequency) < 5000)
+        if (lastMigration > 0 && (nowTs - lastMigration) * 1000.0 / Stopwatch.Frequency < 5000)
         {
             return false;
         }
@@ -248,20 +252,25 @@ public sealed class RayInspector
         var minTxWaitMs = Math.Max(150.0, rtt * 2.0);
         var minRxSilenceMs = Math.Max(2000.0, rtt * 4.0);
 
-        if (txAge >= minTxWaitMs && txAge < 1500 && rxAge > minRxSilenceMs)
+        if (!(txAge >= minTxWaitMs) || !(txAge < 1500) || !(rxAge > minRxSilenceMs))
         {
-            //кандидатом на переключение данных могут быть только рабочие data-лучи ray 0 и ray 1
-            for (var candidate = 0; candidate < 2; candidate++)
+            return false;
+        }
+
+        //кандидатом на переключение данных могут быть только рабочие data-лучи ray 0 и ray 1
+        for (var candidate = 0; candidate < 2; candidate++)
+        {
+            if (candidate == currentPrimaryRay || !IsRayAlive(candidate, nowTs, 3000))
             {
-                if (candidate != currentPrimaryRay && IsRayAlive(candidate, nowTs, 3000))
-                {
-                    Volatile.Write(ref _isBlackholed[currentPrimaryRay], 1);
-                    Volatile.Write(ref _lastMigrationTicks, nowTs);
-                    fallbackRay = candidate;
-                    RecordStep($"Asymmetric blackhole on Ray #{currentPrimaryRay} (TX age: {txAge:F0}ms, RX age: {rxAge:F0}ms). Switching to Ray #{candidate}");
-                    return true;
-                }
+                continue;
             }
+
+            Volatile.Write(ref _isBlackholed[currentPrimaryRay], 1);
+            Volatile.Write(ref _lastMigrationTicks, nowTs);
+            fallbackRay = candidate;
+            RecordStep(
+                $"Asymmetric blackhole on Ray #{currentPrimaryRay} (TX age: {txAge:F0}ms, RX age: {rxAge:F0}ms). Switching to Ray #{candidate}");
+            return true;
         }
 
         return false;
@@ -287,36 +296,40 @@ public sealed class RayInspector
         if (lastDataRx == 0)
         {
             var stalls = Interlocked.Increment(ref _mtuStalls);
-            if (stalls >= 3)
+            if (stalls < 3)
             {
-                Volatile.Write(ref _mtuStalls, 0);
-                Volatile.Write(ref _baselineDataTxCount, txCount);
-                return true;
+                return false;
             }
-            return false;
+
+            Volatile.Write(ref _mtuStalls, 0);
+            Volatile.Write(ref _baselineDataTxCount, txCount);
+            return true;
         }
 
         var silenceData = (nowTs - lastDataRx) * 1000.0 / Stopwatch.Frequency;
-        if (silenceData > 3500)
+        if (!(silenceData > 3500))
         {
-            var stalls = Interlocked.Increment(ref _mtuStalls);
-            if (stalls >= 3)
-            {
-                Volatile.Write(ref _mtuStalls, 0);
-                Volatile.Write(ref _baselineDataTxCount, txCount);
-                return true;
-            }
             return false;
         }
 
-        return false;
+        {
+            var stalls = Interlocked.Increment(ref _mtuStalls);
+            if (stalls < 3)
+            {
+                return false;
+            }
+
+            Volatile.Write(ref _mtuStalls, 0);
+            Volatile.Write(ref _baselineDataTxCount, txCount);
+            return true;
+        }
     }
 
     //троттлинг записи о сохранении блэкхола на минимальном mtu
     public void TryRecordMinMtuPersistence(int currentMtu, long nowTs)
     {
         var prev = Volatile.Read(ref _lastMinMtuStepTicks);
-        if (prev > 0 && ((nowTs - prev) * 1000.0 / Stopwatch.Frequency) < 60000)
+        if (prev > 0 && (nowTs - prev) * 1000.0 / Stopwatch.Frequency < 60000)
         {
             return;
         }
@@ -328,30 +341,26 @@ public sealed class RayInspector
     //адаптивное ступенчатое понижение mtu
     public bool TryDownshiftMtu(int currentMtu, out int newMtu)
     {
-        if (currentMtu > 1360)
+        switch (currentMtu)
         {
-            newMtu = 1360;
-        }
-        else if (currentMtu > 1300)
-        {
-            newMtu = 1300;
-        }
-        else if (currentMtu > 1280)
-        {
-            newMtu = 1280;
-        }
-        else if (currentMtu > 1240)
-        {
-            newMtu = 1240;
-        }
-        else if (currentMtu > 1200)
-        {
-            newMtu = 1200;
-        }
-        else
-        {
-            newMtu = currentMtu;
-            return false;
+            case > 1360:
+                newMtu = 1360;
+                break;
+            case > 1300:
+                newMtu = 1300;
+                break;
+            case > 1280:
+                newMtu = 1280;
+                break;
+            case > 1240:
+                newMtu = 1240;
+                break;
+            case > 1200:
+                newMtu = 1200;
+                break;
+            default:
+                newMtu = currentMtu;
+                return false;
         }
 
         Volatile.Write(ref _mtuStalls, 0);
@@ -369,14 +378,17 @@ public sealed class RayInspector
         {
             mask |= PacketRouter.Ray0Mask;
         }
+
         if (IsRayAlive(1, nowTs, maxSilenceMs))
         {
             mask |= PacketRouter.Ray1Mask;
         }
+
         if (IsRayAlive(2, nowTs, maxSilenceMs))
         {
             mask |= PacketRouter.Ray2Mask;
         }
+
         return mask;
     }
 
@@ -397,10 +409,11 @@ public sealed class RayInspector
 
         var nowTicks = Stopwatch.GetTimestamp();
         var lastReport = Volatile.Read(ref _lastReportTicks);
-        if (lastReport > 0 && ((nowTicks - lastReport) * 1000.0 / Stopwatch.Frequency) < 300000)
+        if (lastReport > 0 && (nowTicks - lastReport) * 1000.0 / Stopwatch.Frequency < 300000)
         {
             return false;
         }
+
         Volatile.Write(ref _lastReportTicks, nowTicks);
 
         try
@@ -408,38 +421,39 @@ public sealed class RayInspector
             var userEmail = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, "anonymous");
             var hwid = DeviceHelper.Hwid;
             var version = typeof(RayInspector).Assembly.GetName().Version?.ToString() ?? "2.0.0";
-            var platform = OperatingSystem.IsWindows() ? "Windows" : (OperatingSystem.IsAndroid() ? "Android" : "Other");
+            var platform = OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsAndroid() ? "Android" : "Other";
 
             var report = new IncidentReportDto(
-                Email: string.IsNullOrWhiteSpace(userEmail) ? "anonymous" : userEmail,
-                Hwid: hwid,
-                ClientVersion: version,
-                Platform: platform,
-                ClientIp: null,
-                TargetServerIp: targetIp,
-                TargetHost: targetHost,
-                EffectivePort: effectivePort,
-                Reason: reason,
-                DiagnosticSteps: GetDiagnosticSteps(),
-                AttemptsCount: Volatile.Read(ref _attemptsCount),
-                LastObservedMtu: currentMtu,
-                Ray0Rtt: GetRayRtt(0),
-                Ray1Rtt: GetRayRtt(1),
-                Ray2Rtt: GetRayRtt(2),
-                Ray0Blackholed: Volatile.Read(ref _isBlackholed[0]) == 1,
-                Ray1Blackholed: Volatile.Read(ref _isBlackholed[1]) == 1,
-                Ray2Blackholed: Volatile.Read(ref _isBlackholed[2]) == 1,
-                TimestampUtc: DateTime.UtcNow);
+                string.IsNullOrWhiteSpace(userEmail) ? "anonymous" : userEmail,
+                hwid,
+                version,
+                platform,
+                null,
+                targetIp,
+                targetHost,
+                effectivePort,
+                reason,
+                GetDiagnosticSteps(),
+                Volatile.Read(ref _attemptsCount),
+                currentMtu,
+                GetRayRtt(0),
+                GetRayRtt(1),
+                GetRayRtt(2),
+                Volatile.Read(ref _isBlackholed[0]) == 1,
+                Volatile.Read(ref _isBlackholed[1]) == 1,
+                Volatile.Read(ref _isBlackholed[2]) == 1,
+                DateTime.UtcNow);
 
             var useDefaultApiPipeline = string.IsNullOrWhiteSpace(apiBaseUrl) ||
-                                        string.Equals(apiBaseUrl.TrimEnd('/'), AppConfig.ApiBaseUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+                                        string.Equals(apiBaseUrl.TrimEnd('/'), AppConfig.ApiBaseUrl.TrimEnd('/'),
+                                            StringComparison.OrdinalIgnoreCase);
 
             var endpoint = useDefaultApiPipeline
                 ? AppConfig.ApiUrl("api/vpn/incident")
                 : $"{apiBaseUrl!.TrimEnd('/')}/api/vpn/incident";
 
             //блокируем отправку тестовых инцидентов на боевой сервер при прогоне юнит тестов
-            if (obxodka.Client.Telemetry.TelemetryFilter.IsTestEnvironment &&
+            if (TelemetryFilter.IsTestEnvironment &&
                 !endpoint.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
                 !endpoint.Contains("localhost", StringComparison.OrdinalIgnoreCase))
             {
@@ -456,16 +470,19 @@ public sealed class RayInspector
             }
 
             using var handler = ApiService.CreateDefaultHandler();
-            using var httpClient = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(3.5) };
+            using var httpClient = new HttpClient(handler, true);
+            httpClient.Timeout = TimeSpan.FromSeconds(3.5);
             _ = httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Device-Hwid", hwid);
             _ = httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Telemetry-Token", AppConfig.TelemetryAuthToken);
             var json = JsonSerializer.Serialize(report, AppJsonContext.Default.IncidentReportDto);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
-            AppLogger.LogWarning($"[RAY-INSPECTOR] Telemetry incident report dispatched to {endpoint}: {reason} (Status={response.StatusCode})");
+            AppLogger.LogWarning(
+                $"[RAY-INSPECTOR] Telemetry incident report dispatched to {endpoint}: {reason} (Status={response.StatusCode})");
             return response.IsSuccessStatusCode;
         }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or JsonException or NotSupportedException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException
+                                       or JsonException or NotSupportedException or InvalidOperationException)
         {
             return false;
         }
@@ -482,6 +499,7 @@ public sealed class RayInspector
             Volatile.Write(ref _lostProbes[i], 0);
             Volatile.Write(ref _isBlackholed[i], 0);
         }
+
         Volatile.Write(ref _mtuStalls, 0);
         Volatile.Write(ref _lastDataRxTicks, 0);
         Volatile.Write(ref _dataTxCount, 0);

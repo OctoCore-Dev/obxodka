@@ -6,7 +6,7 @@ public static class PlatformThrottler
     private static readonly ConcurrentDictionary<string, long> s_lastTimestamps = new();
 
     //вызов действия не чаще указанного интервала
-    public static void Post(string key, TimeSpan minInterval, Action action)
+    public static void Post(string key, TimeSpan minInterval, Action? action)
     {
         if (action is null)
         {
@@ -21,7 +21,7 @@ public static class PlatformThrottler
             s_lastTimestamps[key] = now;
             try
             {
-                PlatformServices.MainThread.BeginInvokeOnMainThread(action);
+                PlatformServices.MainThread?.BeginInvokeOnMainThread(action);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {

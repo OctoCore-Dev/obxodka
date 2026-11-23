@@ -17,7 +17,8 @@ public class PacketFuzzingTests
             Assert.NotNull(packed);
             Assert.True(totalLen >= ObxodkaFraming.HeaderSize + sample.Length);
 
-            Assert.True(ObxodkaFraming.TryDecodeHeader(packed.AsSpan(0, ObxodkaFraming.HeaderSize), out var decTotal, out var decPayload, out var cmd, out _));
+            Assert.True(ObxodkaFraming.TryDecodeHeader(packed.AsSpan(0, ObxodkaFraming.HeaderSize), out var decTotal, out var decPayload,
+                out var cmd, out _));
             Assert.Equal(totalLen, decTotal);
             Assert.Equal(sample.Length, decPayload);
             Assert.Equal(ObxodkaFraming.CmdData, cmd);

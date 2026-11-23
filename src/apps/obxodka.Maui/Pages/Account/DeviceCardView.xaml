@@ -1,13 +1,13 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.DeviceCardView"
+    x:Class="obxodka.Pages.Account.DeviceCardView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:converters="clr-namespace:obxodka.Converters"
     xmlns:helpers="clr-namespace:obxodka.Helpers"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
     xmlns:models="clr-namespace:obxodka.Models;assembly=obxodka.Shared"
-    x:Name="ThisDeviceCard"
     x:DataType="models:DeviceItem">
     <ContentView.Resources>
         <ResourceDictionary>
@@ -23,7 +23,7 @@
         <Grid>
             <Border
                 x:Name="DeleteBtn"
-                helpers:UIAnimations.BounceOnClick="True"
+                helpers:UiAnimations.BounceOnClick="True"
                 BackgroundColor="{DynamicResource ErrorDim}"
                 HeightRequest="40"
                 HorizontalOptions="End"
@@ -51,19 +51,18 @@
                 VerticalOptions="Center">
 
                 <Border
-                    x:Name="DeviceIconWrapper"
-                    BackgroundColor="{DynamicResource PrimaryDim}"
-                    HeightRequest="64"
+                    BackgroundColor="{DynamicResource BgElevated}"
+                    HeightRequest="60"
                     HorizontalOptions="Center"
-                    StrokeShape="RoundRectangle 32"
-                    StrokeThickness="0"
-                    WidthRequest="64">
+                    Stroke="{DynamicResource BorderMedium}"
+                    StrokeShape="RoundRectangle 30"
+                    StrokeThickness="1"
+                    WidthRequest="60">
                     <mi:MauiIcon
-                        x:Name="DeviceIcon"
                         HorizontalOptions="Center"
                         Icon="{Binding Name, Converter={StaticResource DeviceIconConverter}}"
                         IconColor="{DynamicResource Primary}"
-                        IconSize="32"
+                        IconSize="28"
                         VerticalOptions="Center" />
                 </Border>
 
@@ -97,14 +96,12 @@
                         Spacing="6"
                         VerticalOptions="Center">
                         <BoxView
-                            x:Name="CurrentDeviceDot"
                             CornerRadius="3"
                             HeightRequest="6"
                             VerticalOptions="Center"
                             WidthRequest="6"
                             Color="{DynamicResource Success}" />
                         <Label
-                            x:Name="CurrentDeviceLabel"
                             FontFamily="{DynamicResource AppFontMedium}"
                             FontSize="11"
                             Text="Текущее устройство"

@@ -1,83 +1,68 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Account;
 
 //экран списка авторизованных устройств пользователя
-public sealed partial class DevicesView : ContentView
+public sealed partial class DevicesView : IAdaptivePage
 {
     private static readonly TimeSpan s_cacheTtl = TimeSpan.FromSeconds(30);
+    private ApiService _apiService = null!;
+    private int _columnsCount = 1;
+    private DateTime _lastFetchTime = DateTime.MinValue;
 
     private MainPage _parent = null!;
-    private ApiService _apiService = null!;
-    private DateTime _lastFetchTime = DateTime.MinValue;
+
+    public DevicesView() => InitializeComponent();
 
     public ObservableCollection<DeviceItem> ConnectedDevices { get; set; } = [];
 
-    public DevicesView()
+    //перерисовка плитки при смене темы оформления
+    public void OnThemeChanged() =>
+        MainThread.BeginInvokeOnMainThread(RebuildDevicesGrid);
+
+    //сброс кэша времени обновления устройств
+    public void InvalidateCache() => _lastFetchTime = DateTime.MinValue;
+
+    //единая адаптация экрана устройств по ssot-снимку геометрии окна без ручного widthrequest
+    public void ApplyViewport(AdaptiveViewport viewport)
     {
-        InitializeComponent();
-
-        DevicesScrollView.SizeChanged += (s, e) =>
-        {
-            if (DevicesScrollView.Width > 0)
-            {
-                ApplyCardWidth(DevicesScrollView.Width);
-            }
-        };
-
-        DevicesScrollView.Scrolled += (s, e) =>
-            CardStackScrollHelper.ApplyToChildren(
-                DevicesScrollView,
-                DevicesGrid.Children,
-                zone: 65.0,
-                minScale: 0.92,
-                power: 2.5);
-    }
-
-    //расчет ширины для перестроения интерфейса
-    public void ForceLayoutWidth()
-    {
-        if (DevicesScrollView.Width > 0)
-        {
-            ApplyCardWidth(DevicesScrollView.Width);
-        }
-        else if (Width > 0 && RootLayout is not null)
-        {
-            var avail = Width - RootLayout.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width > 0 && RootLayout is not null)
-        {
-            var availableWidth = width - RootLayout.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
-    }
-
-    //подгонка ширины карточек устройств
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0 || DevicesGrid is null)
+        if (RootLayout is null || DevicesGrid is null)
         {
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
+        var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
+            : isCompact ? 16.0 : 24.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
+
+        RootLayout.Padding = new Thickness(sidePad, topPad, sidePad, 0);
+        DevicesGrid.HorizontalOptions = LayoutOptions.Fill;
+        DevicesGrid.Padding = new Thickness(0, 0, 0, bottomPad);
+
+        var newCols = viewport.UseMultiColumnContent ? 2 : 1;
+        if (_columnsCount == newCols)
         {
             return;
         }
 
-        DevicesGrid.WidthRequest = safeWidth;
-        DevicesGrid.MaximumWidthRequest = safeWidth;
+        _columnsCount = newCols;
+        DevicesGrid.ColumnDefinitions.Clear();
+        DevicesGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        if (newCols == 2)
+        {
+            DevicesGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            DevicesGrid.ColumnSpacing = 16;
+        }
+        else
+        {
+            DevicesGrid.ColumnSpacing = 0;
+        }
+
+        RebuildDevicesGrid();
     }
 
     //инициализация зависимостей экрана устройств
@@ -105,7 +90,7 @@ public sealed partial class DevicesView : ContentView
 
         DevicesLoadingOverlay.IsVisible = true;
         DevicesGrid.IsVisible = false;
-        _ = UIAnimations.HideErrorLabelAsync(DevicesErrorLabel);
+        _ = UiAnimations.HideErrorLabelAsync(DevicesErrorLabel);
 
         try
         {
@@ -117,6 +102,7 @@ public sealed partial class DevicesView : ContentView
                 {
                     ConnectedDevices.Add(d);
                 }
+
                 _lastFetchTime = DateTime.UtcNow;
             }
             else if (!string.IsNullOrEmpty(error) && ConnectedDevices.Count == 0)
@@ -145,13 +131,10 @@ public sealed partial class DevicesView : ContentView
         }
     }
 
-    //сброс кэша времени обновления устройств
-    public void InvalidateCache() => _lastFetchTime = DateTime.MinValue;
-
     //обновление темы карточек устройств
     public void UpdateCardOpacity()
     {
-        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+        var bgSurface = Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor
             ? bgColor
             : Color.FromArgb("#161622");
 
@@ -163,24 +146,6 @@ public sealed partial class DevicesView : ContentView
             }
         }
     }
-
-    //отступ сверху под системные элементы управления
-    public void SetHeaderTopInset(double top)
-    {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            var topAir = Math.Max(top + 16, 50);
-            RootLayout.Padding = new Thickness(16, topAir, 16, 0);
-        }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            RootLayout.Padding = new Thickness(16, Math.Max(top + 4, 12), 16, 0);
-        }
-    }
-
-    //перерисовка плитки при смене темы оформления
-    public void OnThemeChanged() =>
-        MainThread.BeginInvokeOnMainThread(RebuildDevicesGrid);
 
     //построение плитки устройств с текущим во главе
     private void RebuildDevicesGrid()
@@ -201,7 +166,7 @@ public sealed partial class DevicesView : ContentView
             return;
         }
 
-        var bgSurface = (Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor)
+        var bgSurface = Application.Current?.Resources.TryGetValue("BgSurface", out var bg) == true && bg is Color bgColor
             ? bgColor
             : Color.FromArgb("#161622");
 
@@ -211,7 +176,7 @@ public sealed partial class DevicesView : ContentView
             .ThenByDescending(d => d.LastActive)
             .ToList();
 
-        var columnsCount = DeviceInfo.Idiom == DeviceIdiom.Desktop ? 2 : 1;
+        var columnsCount = _columnsCount;
         var col = 0;
         var row = 0;
 
@@ -222,9 +187,13 @@ public sealed partial class DevicesView : ContentView
                 DevicesGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             }
 
-            var isCurrent = !string.IsNullOrEmpty(device.Hwid) && string.Equals(device.Hwid, currentHwid, StringComparison.OrdinalIgnoreCase);
+            var isCurrent = !string.IsNullOrEmpty(device.Hwid) &&
+                            string.Equals(device.Hwid, currentHwid, StringComparison.OrdinalIgnoreCase);
 
-            var card = new DeviceCardView { BindingContext = device };
+            var card = new DeviceCardView
+            {
+                BindingContext = device
+            };
             card.SetIsCurrentDevice(isCurrent);
             card.UpdateCardOpacity(bgSurface);
             card.RemoveClicked += OnRemoveDeviceClickedAsync;
@@ -234,49 +203,73 @@ public sealed partial class DevicesView : ContentView
             DevicesGrid.Children.Add(card);
 
             col++;
-            if (col >= columnsCount)
+            if (col < columnsCount)
             {
-                col = 0;
-                row++;
+                continue;
             }
+
+            col = 0;
+            row++;
         }
     }
 
     //отзыв сессии выбранного устройства
     private async void OnRemoveDeviceClickedAsync(object? sender, EventArgs e)
     {
-        var hwidToRemove = ((sender as Element)?.BindingContext as DeviceItem)?.Hwid;
-        if (string.IsNullOrEmpty(hwidToRemove))
+        try
         {
-            return;
-        }
-
-        if (hwidToRemove == DeviceHelper.Hwid)
-        {
-            await ShowDevicesErrorAsync(AccountMessages.CannotDeleteCurrentDevice);
-            return;
-        }
-
-        var confirm = await _parent.DisplayAlertAsync(AccountMessages.DeleteDeviceTitle, AccountMessages.DeleteDeviceConfirm, AccountMessages.ButtonConfirmYes, AccountMessages.ButtonCancel);
-        if (!confirm)
-        {
-            return;
-        }
-
-        var item = ConnectedDevices.FirstOrDefault(d => d.Hwid == hwidToRemove);
-        if (item is not null)
-        {
-            _ = ConnectedDevices.Remove(item);
-            RebuildDevicesGrid();
-        }
-
-        _ = Task.Run(async () =>
-        {
-            try
+            var hwidToRemove = ((sender as Element)?.BindingContext as DeviceItem)?.Hwid;
+            if (string.IsNullOrEmpty(hwidToRemove))
             {
-                var (success, error) = await _apiService.RemoveDeviceAsync(hwidToRemove);
-                if (!success)
+                return;
+            }
+
+            if (hwidToRemove == DeviceHelper.Hwid)
+            {
+                await ShowDevicesErrorAsync(AccountMessages.CannotDeleteCurrentDevice);
+                return;
+            }
+
+            var confirm = await _parent.DisplayAlertAsync(AccountMessages.DeleteDeviceTitle, AccountMessages.DeleteDeviceConfirm,
+                AccountMessages.ButtonConfirmYes, AccountMessages.ButtonCancel);
+            if (!confirm)
+            {
+                return;
+            }
+
+            var item = ConnectedDevices.FirstOrDefault(d => d.Hwid == hwidToRemove);
+            if (item is not null)
+            {
+                _ = ConnectedDevices.Remove(item);
+                RebuildDevicesGrid();
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
                 {
+                    var (success, error) = await _apiService.RemoveDeviceAsync(hwidToRemove);
+                    if (!success)
+                    {
+                        await MainThread.InvokeOnMainThreadAsync(async () =>
+                        {
+                            if (item is not null)
+                            {
+                                ConnectedDevices.Add(item);
+                                RebuildDevicesGrid();
+                            }
+
+                            await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(error, AccountMessages.RemoveDeviceFailed));
+                        });
+                    }
+                    else
+                    {
+                        _lastFetchTime = DateTime.MinValue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.LogError($"[REMOVE DEVICE ERROR] {ex.Message}", ex);
                     await MainThread.InvokeOnMainThreadAsync(async () =>
                     {
                         if (item is not null)
@@ -284,35 +277,24 @@ public sealed partial class DevicesView : ContentView
                             ConnectedDevices.Add(item);
                             RebuildDevicesGrid();
                         }
-                        await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(error, AccountMessages.RemoveDeviceFailed));
+
+                        await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(ex.Message, AccountMessages.ConnectionProblem));
                     });
                 }
-                else
-                {
-                    _lastFetchTime = DateTime.MinValue;
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogError($"[REMOVE DEVICE ERROR] {ex.Message}", ex);
-                await MainThread.InvokeOnMainThreadAsync(async () =>
-                {
-                    if (item is not null)
-                    {
-                        ConnectedDevices.Add(item);
-                        RebuildDevicesGrid();
-                    }
-                    await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(ex.Message, AccountMessages.ConnectionProblem));
-                });
-            }
-        });
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[REMOVE DEVICE ERROR] {ex.Message}", ex);
+            await ShowDevicesErrorAsync(ApiErrorHandler.ParseGeneralError(ex.Message, AccountMessages.ConnectionProblem));
+        }
     }
 
     //показ плашки ошибки с анимацией
     private async Task ShowDevicesErrorAsync(string msg)
     {
         DevicesErrorLabel.Text = msg;
-        await UIAnimations.ShowErrorLabelAsync(DevicesErrorLabel);
+        await UiAnimations.ShowErrorLabelAsync(DevicesErrorLabel);
         await this.ShakeErrorAsync();
     }
 }

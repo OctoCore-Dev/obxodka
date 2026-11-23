@@ -13,7 +13,7 @@ public sealed partial class ThemeManager
             ? propEl.GetString()
             : null;
 
-    public bool ApplyTheme(ThemeManifest manifest)
+    public bool ApplyTheme(ThemeManifest? manifest)
     {
         if (manifest == null || !ThemeValidator.ValidateManifest(manifest, out _))
         {
@@ -28,14 +28,7 @@ public sealed partial class ThemeManager
         }
         else
         {
-            try
-            {
-                MainThread.InvokeOnMainThreadAsync(() => InjectThemeResources(manifest)).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                //подавление ошибок вызова в основном потоке
-            }
+            MainThread.BeginInvokeOnMainThread(() => InjectThemeResources(manifest));
         }
 
         ActiveTheme = manifest;
@@ -93,12 +86,18 @@ public sealed partial class ThemeManager
         var buttonRingPath = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonRing);
         var fontFilePath = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Ui?.FontFile);
 
-        var connectSound = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Sounds?.Connect ?? GetObxodkaNestedProperty(manifest, "sounds", "connect"));
-        var disconnectSound = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Sounds?.Disconnect ?? GetObxodkaNestedProperty(manifest, "sounds", "disconnect"));
-        var clickSound = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Sounds?.Click ?? GetObxodkaNestedProperty(manifest, "sounds", "click"));
-        var hoverSound = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Sounds?.Hover ?? GetObxodkaNestedProperty(manifest, "sounds", "hover"));
-        var notificationSound = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Sounds?.Notification ?? GetObxodkaNestedProperty(manifest, "sounds", "notification"));
-        var ambientSound = ThemeStorageService.ResolveFilePath(folderPath, manifest.Core.Sounds?.Ambient ?? GetObxodkaNestedProperty(manifest, "sounds", "ambient"));
+        var connectSound = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Core.Sounds?.Connect ?? GetObxodkaNestedProperty(manifest, "sounds", "connect"));
+        var disconnectSound = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Core.Sounds?.Disconnect ?? GetObxodkaNestedProperty(manifest, "sounds", "disconnect"));
+        var clickSound = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Core.Sounds?.Click ?? GetObxodkaNestedProperty(manifest, "sounds", "click"));
+        var hoverSound = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Core.Sounds?.Hover ?? GetObxodkaNestedProperty(manifest, "sounds", "hover"));
+        var notificationSound = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Core.Sounds?.Notification ?? GetObxodkaNestedProperty(manifest, "sounds", "notification"));
+        var ambientSound = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Core.Sounds?.Ambient ?? GetObxodkaNestedProperty(manifest, "sounds", "ambient"));
 
         if (!string.IsNullOrEmpty(clickSound) && !string.IsNullOrEmpty(connectSound) &&
             string.Equals(clickSound, connectSound, StringComparison.OrdinalIgnoreCase))
@@ -134,7 +133,8 @@ public sealed partial class ThemeManager
             foreach (var rawSprite in rawSprites)
             {
                 var resolvedSprite = ThemeStorageService.ResolveFilePath(folderPath, rawSprite);
-                if (!string.IsNullOrEmpty(resolvedSprite) && !particleSpritePaths.Contains(resolvedSprite, StringComparer.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(resolvedSprite) &&
+                    !particleSpritePaths.Contains(resolvedSprite, StringComparer.OrdinalIgnoreCase))
                 {
                     particleSpritePaths.Add(resolvedSprite);
                 }
@@ -155,20 +155,28 @@ public sealed partial class ThemeManager
             cornerBottomRight = ThemeStorageService.ResolveStickerPath(folderPath, stickersMap, "bottomRight");
         }
 
-        var buttonImageIdle = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageIdle ?? GetObxodkaNestedProperty(manifest, "vpnButton", "idle"));
-        var buttonImageConnecting = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageConnecting ?? GetObxodkaNestedProperty(manifest, "vpnButton", "connecting"));
-        var buttonImageActive = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageActive ?? GetObxodkaNestedProperty(manifest, "vpnButton", "active"));
-        var buttonImageError = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonImageError ?? GetObxodkaNestedProperty(manifest, "vpnButton", "error"));
+        var buttonImageIdle = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonImageIdle ?? GetObxodkaNestedProperty(manifest, "vpnButton", "idle"));
+        var buttonImageConnecting = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonImageConnecting ?? GetObxodkaNestedProperty(manifest, "vpnButton", "connecting"));
+        var buttonImageActive = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonImageActive ?? GetObxodkaNestedProperty(manifest, "vpnButton", "active"));
+        var buttonImageError = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonImageError ?? GetObxodkaNestedProperty(manifest, "vpnButton", "error"));
 
-        var buttonVideoIdle = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoIdle ?? GetObxodkaNestedProperty(manifest, "vpnButton", "idleWebp"));
-        var buttonVideoConnecting = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoConnecting ?? GetObxodkaNestedProperty(manifest, "vpnButton", "connectingWebp"));
-        var buttonVideoActive = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoActive ?? GetObxodkaNestedProperty(manifest, "vpnButton", "activeWebp"));
-        var buttonVideoError = ThemeStorageService.ResolveFilePath(folderPath, manifest.Decorations?.ButtonVideoError ?? GetObxodkaNestedProperty(manifest, "vpnButton", "errorWebp"));
+        var buttonVideoIdle = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonVideoIdle ?? GetObxodkaNestedProperty(manifest, "vpnButton", "idleWebp"));
+        var buttonVideoConnecting = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonVideoConnecting ?? GetObxodkaNestedProperty(manifest, "vpnButton", "connectingWebp"));
+        var buttonVideoActive = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonVideoActive ?? GetObxodkaNestedProperty(manifest, "vpnButton", "activeWebp"));
+        var buttonVideoError = ThemeStorageService.ResolveFilePath(folderPath,
+            manifest.Decorations?.ButtonVideoError ?? GetObxodkaNestedProperty(manifest, "vpnButton", "errorWebp"));
 
         var overlayCandidate = manifest.Vfx?.OverlayImage ?? manifest.Vfx?.Physics?.OverlayImage ??
-            (manifest.Vfx?.ScreenOverlay?.EndsWith(".png", StringComparison.OrdinalIgnoreCase) == true ||
-            manifest.Vfx?.ScreenOverlay?.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) == true ||
-            manifest.Vfx?.ScreenOverlay?.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) == true
+            (manifest.Vfx?.ScreenOverlay.EndsWith(".png", StringComparison.OrdinalIgnoreCase) == true ||
+             manifest.Vfx?.ScreenOverlay.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) == true ||
+             manifest.Vfx?.ScreenOverlay.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) == true
                 ? manifest.Vfx.ScreenOverlay
                 : null);
         var screenOverlayPath = ThemeStorageService.ResolveFilePath(folderPath, overlayCandidate);
@@ -214,7 +222,7 @@ public sealed partial class ThemeManager
             ButtonVideoConnectingPath = buttonVideoConnecting,
             ButtonVideoActivePath = buttonVideoActive,
             ButtonVideoErrorPath = buttonVideoError,
-            ScreenOverlayPath = screenOverlayPath,
+            ScreenOverlayPath = screenOverlayPath
         };
 
         OnThemeApplied?.Invoke(args);

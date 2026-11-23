@@ -3,8 +3,8 @@ namespace obxodka.Benchmarks;
 [MemoryDiagnoser]
 public class DnsBenchmarks
 {
-    private byte[] _blockedPacket = null!;
     private byte[] _allowedPacket = null!;
+    private byte[] _blockedPacket = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -32,6 +32,7 @@ public class DnsBenchmarks
             Buffer.BlockCopy(partBytes, 0, packet, currentOffset, partBytes.Length);
             currentOffset += partBytes.Length;
         }
+
         packet[currentOffset++] = 0;
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset, 2), 1);
         BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(currentOffset + 2, 2), 1);

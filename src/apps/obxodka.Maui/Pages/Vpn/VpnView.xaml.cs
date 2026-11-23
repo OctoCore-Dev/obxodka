@@ -1,7 +1,6 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
-public sealed partial class VpnView : ContentView, IDisposable
+public sealed partial class VpnView : IDisposable, IAdaptivePage
 {
     private static readonly Color s_greenDot = Color.FromArgb("#10B981");
     private static readonly Color s_greenText = Color.FromArgb("#34D399");
@@ -40,10 +39,17 @@ public sealed partial class VpnView : ContentView, IDisposable
     private string? _lastErrorMessage;
     private VpnServerDto? _selectedServer;
     private List<VpnServerDto> _cachedServers = [];
-    private readonly Dictionary<string, long> _serverPings = [];
+    private readonly ConcurrentDictionary<string, long> _serverPings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Stopwatch _loaderStopwatch = new();
+#if WINDOWS
+    private bool _loaderVsyncActive;
+    private long _loaderLastVsyncTicks;
+    private bool _graphVsyncActive;
+    private long _graphLastVsyncTicks;
+#else
     private IDispatcherTimer? _loaderTimer;
     private IDispatcherTimer? _graphAnimTimer;
+#endif
     private double _targetSpeedUp, _targetSpeedDown;
     private double _smoothSpeedUp, _smoothSpeedDown;
     private double _smoothMaxSpeed = 1024.0;
@@ -58,49 +64,58 @@ public sealed partial class VpnView : ContentView, IDisposable
         StrokeWidth = 3.5f,
         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 8f)
     };
+
     private readonly SKPaint _polyCorePaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Stroke,
         StrokeWidth = 1.6f
     };
+
     private readonly SKPaint _crystalAmbientPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill,
         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 26f)
     };
+
     private readonly SKPaint _reactorSparkPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill
     };
+
     private readonly SKPaint _reactorSparkGlowPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill,
         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 6f)
     };
+
     private readonly SKPaint _reactorTrackPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Stroke,
         StrokeWidth = 1.5f
     };
+
     private readonly SKPaint _shockwavePaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Stroke
     };
+
     private readonly SKPaint _auraPaint = new()
     {
         IsAntialias = true,
         Style = SKPaintStyle.Fill
     };
+
     private readonly SKPaint _customButtonBitmapPaint = new()
     {
         IsAntialias = true
     };
+
     private float _shockwaveProgress = -1f;
     private bool _shockwaveIsConnect;
     private float _loaderAngle;
@@ -109,19 +124,53 @@ public sealed partial class VpnView : ContentView, IDisposable
 
     private static readonly (float speed, float delay, float ox, float oy, float size, int sides)[] s_polyConfigs =
     [
-        ( 1.0f,   0f, 0.5f, 0.5f, 0.76f, 5),
-        (-1.0f,   0f, 0.5f, 0.5f, 0.66f, 6),
-        ( 1.5f,  60f, 0.5f, 0.6f, 0.56f, 5),
+        (1.0f, 0f, 0.5f, 0.5f, 0.76f, 5),
+        (-1.0f, 0f, 0.5f, 0.5f, 0.66f, 6),
+        (1.5f, 60f, 0.5f, 0.6f, 0.56f, 5),
         (-1.5f, -60f, 0.4f, 0.4f, 0.46f, 4),
-        ( 2.0f, 120f, 0.6f, 0.4f, 0.38f, 6),
+        (2.0f, 120f, 0.6f, 0.4f, 0.38f, 6)
     ];
 
-    private readonly SKPaint _graphStrokeUpPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
-    private readonly SKPaint _graphStrokeDownPaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
-    private readonly SKPaint _graphFillPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _graphDotGlowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _graphDotSolidPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+    private readonly SKPaint _graphStrokeUpPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = 2.5f,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round
+    };
+
+    private readonly SKPaint _graphStrokeDownPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = 2.5f,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round
+    };
+
+    private readonly SKPaint _graphFillPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
+    private readonly SKPaint _graphDotGlowPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
+    private readonly SKPaint _graphDotSolidPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
     private readonly List<SKPoint> _graphPointsBuffer = [with(256)];
+    private readonly List<GraphSample> _graphSamplesSnapshot = [with(256)];
+    private readonly SKPathBuilder _graphStrokeBuilder = new();
+    private readonly SKPathBuilder _graphFillBuilder = new();
     private SKShader? _cachedAuraShader;
     private float _lastAuraCx, _lastAuraCy, _lastAuraR, _lastAuraGlow;
     private SKColor _lastAuraColor, _lastAuraBloomColor;
@@ -159,65 +208,19 @@ public sealed partial class VpnView : ContentView, IDisposable
     private float _buttonTransitionProgress = 1f;
     private readonly Stopwatch _buttonAnimStopwatch = new();
     private long _lastButtonAnimTicks;
+#if WINDOWS
+    private bool _buttonVsyncActive;
+    private long _buttonLastVsyncTicks;
+#else
     private IDispatcherTimer? _buttonAnimationTimer;
+#endif
     private CancellationTokenSource? _buttonAnimCts;
     private bool _isWindowFocused = true;
 
     public VpnView()
     {
         InitializeComponent();
-        RootLayoutGrid.SizeChanged += (s, e) =>
-        {
-            if (RootLayoutGrid.Width > 0)
-            {
-                var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
-                if (avail > 0)
-                {
-                    ApplyCardWidth(avail);
-                }
-            }
-        };
-
         Unloaded += (_, _) => Dispose();
-    }
-
-    //принудительный пересчет ширины карточки при изменении размера
-    public void ForceLayoutWidth()
-    {
-        if (Width > 0 && RootLayoutGrid is not null)
-        {
-            var avail = Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-        else if (RootLayoutGrid is { Width: > 0 })
-        {
-            var avail = RootLayoutGrid.Width - RootLayoutGrid.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    //установка адаптивной ширины карточки
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0 || ContentGrid is null)
-        {
-            return;
-        }
-
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
-        {
-            return;
-        }
-
-        ContentGrid.WidthRequest = safeWidth;
-        ContentGrid.MaximumWidthRequest = safeWidth;
     }
 
     //инициализация сервисов и подписка на события туннеля
@@ -231,15 +234,23 @@ public sealed partial class VpnView : ContentView, IDisposable
         LoadSavedServerSelection();
         _ = RefreshServerListAsync();
 
+        SubscribeEvents();
+    }
+
+    //подписка на события состояния vpn и сетевого ядра
+    public void SubscribeEvents()
+    {
         _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred -= HandleVpnError;
         _vpnService.OnLogUpdated -= HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
+        OctopusEngine.Current.OnProtocolChanged -= HandleProtocolChanged;
 
         _vpnService.OnStateChanged += HandleAppVpnStateChanged;
         _vpnService.OnErrorOccurred += HandleVpnError;
         _vpnService.OnLogUpdated += HandleVpnLog;
         OctopusEngine.Current.OnPingUpdated += HandlePingUpdated;
+        OctopusEngine.Current.OnProtocolChanged += HandleProtocolChanged;
 
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         OctopusEngine.Current.OnTrafficUpdated += OnTrafficUpdated;
@@ -251,18 +262,16 @@ public sealed partial class VpnView : ContentView, IDisposable
     //отписка от сетевых событий и остановка фоновых таймеров
     public void UnsubscribeEvents()
     {
-        if (_vpnService is not null)
-        {
-            _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
-            _vpnService.OnErrorOccurred -= HandleVpnError;
-            _vpnService.OnLogUpdated -= HandleVpnLog;
-        }
+        _vpnService.OnStateChanged -= HandleAppVpnStateChanged;
+        _vpnService.OnErrorOccurred -= HandleVpnError;
+        _vpnService.OnLogUpdated -= HandleVpnLog;
 
         OctopusEngine.Current.OnPingUpdated -= HandlePingUpdated;
+        OctopusEngine.Current.OnProtocolChanged -= HandleProtocolChanged;
         OctopusEngine.Current.OnTrafficUpdated -= OnTrafficUpdated;
         PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
 
-        StopLoaderAnimation(animateExit: false);
+        StopLoaderAnimation(false);
         StopGraphAnimation();
         DisposeAnimatedButtonResources();
         _ = this.AbortAnimation("ReactorMorph");
@@ -289,6 +298,8 @@ public sealed partial class VpnView : ContentView, IDisposable
         _cachedAuraShader?.Dispose();
         _cachedGraphUpFillShader?.Dispose();
         _cachedGraphDownFillShader?.Dispose();
+        _graphStrokeBuilder.Dispose();
+        _graphFillBuilder.Dispose();
         _graphStrokeUpPaint.Dispose();
         _graphStrokeDownPaint.Dispose();
         _graphFillPaint.Dispose();
@@ -321,7 +332,7 @@ public sealed partial class VpnView : ContentView, IDisposable
     }
 
     //обновление отображения баланса времени и трафика
-    public void UpdateBalanceUI(string timeText, string? trafficText = null)
+    public void UpdateBalanceUi(string timeText, string? trafficText = null)
     {
         TokenAmountLabel.Text = timeText;
         if (trafficText is not null)

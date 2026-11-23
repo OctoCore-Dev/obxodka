@@ -1,3 +1,7 @@
+#if WINDOWS
+using Microsoft.UI.Xaml;
+#endif
+
 namespace obxodka.Maui.Theming.Controls;
 
 //наложение визуальных эффектов темы оформления частицы шейдеры и интерактивный отклик на трафик
@@ -9,18 +13,54 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     private readonly List<SKBitmap> _spriteBitmaps = [];
     private readonly Random _random = new(1337);
     private readonly Stopwatch _stopwatch = new();
-    private readonly SKPaint _bitmapPaint = new() { IsAntialias = true };
-    private readonly SKPaint _fallbackPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _shaderPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _strokePaint = new() { IsAntialias = true, Style = SKPaintStyle.Stroke };
-    private readonly SKPaint _glowPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill, BlendMode = SKBlendMode.Plus };
+
+    private readonly SKPaint _bitmapPaint = new()
+    {
+        IsAntialias = true
+    };
+
+    private readonly SKPaint _fallbackPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
+    private readonly SKPaint _shaderPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+
+    private readonly SKPaint _strokePaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke
+    };
+
+    private readonly SKPaint _glowPaint = new()
+    {
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill,
+        BlendMode = SKBlendMode.Plus
+    };
+
     private readonly SKPath _starPath = CreateStarPath();
     private readonly SKPath _petalPath = CreatePetalPath();
     private readonly SKPath _diamondPath = CreateDiamondPath();
     private readonly SKPathBuilder _wavePathBuilder = new();
+    private SKShader? _auroraRibbonShader0;
+    private SKShader? _auroraRibbonShader1;
+    private float _lastAuroraHeight;
+    private SKColor _lastAuroraAccent;
+    private SKColor _lastAuroraPrimary;
     private static readonly SKSamplingOptions s_samplingOptions = new(SKFilterMode.Linear);
 
+#if WINDOWS
+    private bool _vsyncSubscribed;
+    private long _lastVsyncTickMs;
+#else
     private IDispatcherTimer? _timer;
+#endif
     private MovementType _movementType = MovementType.Falling;
     private string _particleTypeName = "none";
     private string _screenOverlay = "none";
@@ -113,7 +153,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     protected override void OnHandlerChanged()
     {
         base.OnHandlerChanged();
-        if (Handler?.PlatformView is Microsoft.UI.Xaml.UIElement element)
+        if (Handler?.PlatformView is UIElement element)
         {
             element.IsHitTestVisible = false;
         }
@@ -133,8 +173,8 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     //конфигурация эффектов темы с одиночным спрайтом
     public void Configure(string? spritePath, ThemeVfx? vfx, Color? primaryColor, Color? accentColor)
     {
-        IEnumerable<string>? paths = !string.IsNullOrWhiteSpace(spritePath) ? [spritePath] : null;
-        Configure(paths, vfx, primaryColor, accentColor, particlesEnabled: true);
+        IEnumerable<string>? paths = !string.IsNullOrWhiteSpace(spritePath) ? (string[])[spritePath] : null;
+        Configure(paths, vfx, primaryColor, accentColor);
     }
 
     //конфигурация эффектов темы с набором спрайтов и палитрой
@@ -206,7 +246,14 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                     {
 #pragma warning disable CA1508 // skia interop может вернуть null несмотря на отсутствие аннотаций
                         using var codec = SKCodec.Create(path);
-                        if (codec is { Info: { Width: > 0 and <= SafeThemeExtractor.MaxImageDimension, Height: > 0 and <= SafeThemeExtractor.MaxImageDimension } })
+                        if (codec is
+                            {
+                                Info:
+                                {
+                                    Width: > 0 and <= SafeThemeExtractor.MaxImageDimension,
+                                    Height: > 0 and <= SafeThemeExtractor.MaxImageDimension
+                                }
+                            })
                         {
                             var bmp = SKBitmap.Decode(codec);
                             if (bmp is not null)
@@ -234,7 +281,14 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
                 {
 #pragma warning disable CA1508 // skia interop может вернуть null несмотря на отсутствие аннотаций
                     using var codec = SKCodec.Create(screenOverlayImagePath);
-                    if (codec is { Info: { Width: > 0 and <= SafeThemeExtractor.MaxImageDimension, Height: > 0 and <= SafeThemeExtractor.MaxImageDimension } })
+                    if (codec is
+                        {
+                            Info:
+                            {
+                                Width: > 0 and <= SafeThemeExtractor.MaxImageDimension,
+                                Height: > 0 and <= SafeThemeExtractor.MaxImageDimension
+                            }
+                        })
                     {
                         _screenOverlayBitmap = SKBitmap.Decode(codec);
                     }
@@ -265,8 +319,8 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
 
             _customMinSize = (float?)(vfx.Physics?.MinSize ?? vfx.MinSize);
             _customMaxSize = (float?)(vfx.Physics?.MaxSize ?? vfx.MaxSize);
-            _customSpeedX = (float?)(vfx.Physics?.SpeedX);
-            _customSpeedY = (float?)(vfx.Physics?.SpeedY);
+            _customSpeedX = (float?)vfx.Physics?.SpeedX;
+            _customSpeedY = (float?)vfx.Physics?.SpeedY;
             _customRotationSpeed = (float?)(vfx.Physics?.RotationSpeed ?? vfx.RotationSpeed);
             _customSwaySpeed = (float?)(vfx.Physics?.SwaySpeed ?? vfx.SwaySpeed);
             _customTwinkleSpeed = (float?)(vfx.Physics?.TwinkleSpeed ?? vfx.TwinkleSpeed);
@@ -275,7 +329,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             _speedMultiplier = (float)Math.Clamp(vfx.Speed > 0 ? vfx.Speed : 1.0, 0.2, 5.0);
             _sizeMultiplier = (float)Math.Clamp(vfx.Size > 0 ? vfx.Size : 1.0, 0.2, 5.0);
 
-            var count = (int)(18 + (Math.Clamp(vfx.Intensity, 0.1, 1.0) * 30));
+            var count = (int)(18 + Math.Clamp(vfx.Intensity, 0.1, 1.0) * 30);
             var initW = Width > 1 ? (float)Width : 800f;
             var initH = Height > 1 ? (float)Height : 600f;
             _lastWidth = Width > 1 ? (float)Width : 0f;
@@ -301,6 +355,37 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         InvalidateSurface();
     }
 
+    //обработка одного кадра физики частиц
+    private void StepAnimationFrame()
+    {
+        if (!IsVisible || !HasActiveVisuals())
+        {
+            return;
+        }
+
+        var now = _stopwatch.Elapsed.TotalSeconds;
+        var dt = (float)Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
+        _lastFrameSeconds = now;
+
+        UpdatePhysics((float)Width, (float)Height, dt);
+        InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратный такт перерисовки частиц по vsync экрана
+    private void OnVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _lastVsyncTickMs < 15)
+        {
+            return;
+        }
+
+        _lastVsyncTickMs = nowTicks;
+        StepAnimationFrame();
+    }
+#endif
+
     //запуск анимации кадров
     public void StartAnimation()
     {
@@ -310,24 +395,22 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             _lastFrameSeconds = _stopwatch.Elapsed.TotalSeconds;
         }
 
+#if WINDOWS
+        if (_vsyncSubscribed)
+        {
+            return;
+        }
+
+        _lastFrameSeconds = _stopwatch.Elapsed.TotalSeconds;
+        _lastVsyncTickMs = 0;
+        _vsyncSubscribed = true;
+        WinUiVsync.Subscribe(OnVsyncRendering);
+#else
         if (_timer is null)
         {
             _timer = Dispatcher.CreateTimer();
             _timer.Interval = TimeSpan.FromMilliseconds(16);
-            _timer.Tick += (_, _) =>
-            {
-                if (!IsVisible || !HasActiveVisuals())
-                {
-                    return;
-                }
-
-                var now = _stopwatch.Elapsed.TotalSeconds;
-                var dt = (float)Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
-                _lastFrameSeconds = now;
-
-                UpdatePhysics((float)Width, (float)Height, dt);
-                InvalidateSurface();
-            };
+            _timer.Tick += (_, _) => StepAnimationFrame();
         }
 
         if (!_timer.IsRunning)
@@ -335,15 +418,26 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             _lastFrameSeconds = _stopwatch.Elapsed.TotalSeconds;
             _timer.Start();
         }
+#endif
     }
 
     //остановка анимации
     public void StopAnimation()
     {
+#if WINDOWS
+        if (!_vsyncSubscribed)
+        {
+            return;
+        }
+
+        _vsyncSubscribed = false;
+        WinUiVsync.Unsubscribe(OnVsyncRendering);
+#else
         if (_timer?.IsRunning is true)
         {
             _timer.Stop();
         }
+#endif
     }
 
     //освобождение ресурсов канваса и шейдеров
@@ -368,6 +462,8 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         _petalPath.Dispose();
         _diamondPath.Dispose();
         _wavePathBuilder.Dispose();
+        _auroraRibbonShader0?.Dispose();
+        _auroraRibbonShader1?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

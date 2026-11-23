@@ -57,14 +57,19 @@ public static class BootstrapConfig
                             }
                         }
 
-                        parsed[i] = item with { Ip = decIp, Mirrors = decItemMirrors };
+                        parsed[i] = item with
+                        {
+                            Ip = decIp,
+                            Mirrors = decItemMirrors
+                        };
                     }
 
                     return (parsed, [.. mirrorList]);
                 }
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or JsonException or FormatException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or JsonException or FormatException
+                                       or ArgumentException or NotSupportedException)
         {
             AppLogger.Log($"[BOOTSTRAP] Failed to load servers.json: {ex.Message}");
         }

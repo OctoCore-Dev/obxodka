@@ -1,3 +1,5 @@
+using Path = System.IO.Path;
+
 namespace obxodka.Platforms.Windows;
 
 //управление политиками и списком исключений приложений для windows
@@ -9,13 +11,12 @@ public sealed partial class AppManager : IAppManager
     public const string PresetBanksKey = "obxodka_win_preset_banks";
     public const string PresetMediaKey = "obxodka_win_preset_media";
     public const string PresetMarketKey = "obxodka_win_preset_market";
-    public const string PresetRuTldsKey = "obxodka_win_preset_rutlds";
+    public const string PresetRuTldsKey = AppPreferenceKeys.BypassRuSites;
     public const string CustomRulesKey = "obxodka_win_custom_rules";
 
-    private List<AppInfoItem>? _cachedApps;
-
-    private static readonly HashSet<string> s_ignoredExeNames = new(
+    private static readonly HashSet<string> s_ignoredExeNames =
     [
+        with(StringComparer.OrdinalIgnoreCase),
         "obxodka.exe",
         "obxodka.Maui.exe",
         "obxodka.Shared.exe",
@@ -53,7 +54,7 @@ public sealed partial class AppManager : IAppManager
         "setup.exe",
         "update.exe",
         "updater.exe"
-    ], StringComparer.OrdinalIgnoreCase);
+    ];
 
     private static readonly string[] s_defaultBypassedExes =
     [
@@ -65,12 +66,28 @@ public sealed partial class AppManager : IAppManager
         "Transmission-qt.exe"
     ];
 
+
+    private List<AppInfoItem>? _cachedApps;
+
+    //получение списка исключенных пакетов
+    public List<string> GetBypassedPackages() => LoadBypassedPackagesList();
+
+    //сохранение списка исключенных пакетов
+    public void SaveBypassedPackages(List<string> packages)
+    {
+        var filtered = packages
+            .Where(p => !string.IsNullOrWhiteSpace(p) && !IsSelfOrProtectedApp(p, p))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        Preferences.Set(BypassedAppsKey, string.Join("|", filtered));
+        SyncPolicyFromPreferences();
+    }
+
     //проверка является ли приложение самой обходкой или защищенным процессом
     public static bool IsSelfOrProtectedApp(string? exePath, string? exeName = null, string? friendlyName = null)
     {
-        if (Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(exePath) ||
-            Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(exeName) ||
-            Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(friendlyName))
+        if (SplitTunnelPolicy.IsProtectedObxodkaEntry(exePath) ||
+            SplitTunnelPolicy.IsProtectedObxodkaEntry(exeName) ||
+            SplitTunnelPolicy.IsProtectedObxodkaEntry(friendlyName))
         {
             return true;
         }
@@ -112,16 +129,19 @@ public sealed partial class AppManager : IAppManager
         var raw = Preferences.Get(CustomRulesKey, string.Empty);
         return string.IsNullOrWhiteSpace(raw)
             ? []
-            : [.. raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(r => !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(r))];
+            :
+            [
+                .. raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(r => !SplitTunnelPolicy.IsProtectedObxodkaEntry(r))
+            ];
     }
 
     //сохранение пользовательских правил доменов и ip адресов
     public static void SaveCustomRules(IEnumerable<string> rules)
     {
         var normalized = rules
-            .Select(Core.Models.SplitTunnelPolicy.NormalizeRuleEntry)
-            .Where(r => !string.IsNullOrWhiteSpace(r) && !Core.Models.SplitTunnelPolicy.IsProtectedObxodkaEntry(r))
+            .Select(SplitTunnelPolicy.NormalizeRuleEntry)
+            .Where(r => !string.IsNullOrWhiteSpace(r) && !SplitTunnelPolicy.IsProtectedObxodkaEntry(r))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -132,29 +152,19 @@ public sealed partial class AppManager : IAppManager
     //загрузка списка исключений из хранилища настроек
     private static List<string> LoadBypassedPackagesList()
     {
-        if (Preferences.ContainsKey(BypassedAppsKey))
+        if (!Preferences.ContainsKey(BypassedAppsKey))
         {
-            var saved = Preferences.Get(BypassedAppsKey, string.Empty);
-            return string.IsNullOrWhiteSpace(saved)
-                ? []
-                : [.. saved.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Where(p => !IsSelfOrProtectedApp(p, p))];
+            return [.. s_defaultBypassedExes];
         }
 
-        return [.. s_defaultBypassedExes];
-    }
-
-    //получение списка исключенных пакетов
-    public List<string> GetBypassedPackages() => LoadBypassedPackagesList();
-
-    //сохранение списка исключенных пакетов
-    public void SaveBypassedPackages(List<string> packages)
-    {
-        var filtered = packages
-            .Where(p => !string.IsNullOrWhiteSpace(p) && !IsSelfOrProtectedApp(p, p))
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-        Preferences.Set(BypassedAppsKey, string.Join("|", filtered));
-        SyncPolicyFromPreferences();
+        var saved = Preferences.Get(BypassedAppsKey, string.Empty);
+        return string.IsNullOrWhiteSpace(saved)
+            ? []
+            :
+            [
+                .. saved.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(p => !IsSelfOrProtectedApp(p, p))
+            ];
     }
 
     //получение сохраненных путей пользовательских исполняемых файлов
@@ -163,8 +173,11 @@ public sealed partial class AppManager : IAppManager
         var saved = Preferences.Get(CustomExesKey, string.Empty);
         return string.IsNullOrWhiteSpace(saved)
             ? []
-            : [.. saved.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(p => !IsSelfOrProtectedApp(p))];
+            :
+            [
+                .. saved.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(p => !IsSelfOrProtectedApp(p))
+            ];
     }
 
     //добавление пользовательского исполняемого файла в список исключений
@@ -213,6 +226,7 @@ public sealed partial class AppManager : IAppManager
             {
                 existing.IconPath = iconPath;
             }
+
             return existing;
         }
 

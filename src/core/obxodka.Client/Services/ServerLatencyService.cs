@@ -5,7 +5,7 @@ public static class ServerLatencyService
 {
     //параллельный замер задержки серверов
     public static async Task<IReadOnlyList<VpnServerDto>> RankServersByLatencyAsync(
-        IReadOnlyList<VpnServerDto> servers,
+        IReadOnlyList<VpnServerDto>? servers,
         int timeoutMs = 800,
         CancellationToken ct = default)
     {
@@ -14,18 +14,14 @@ public static class ServerLatencyService
             return servers ?? [];
         }
 
-        var tasks = new List<Task<(VpnServerDto server, long rttMs, bool ok)>>();
-        foreach (var s in servers)
-        {
-            tasks.Add(ProbeServerAsync(s, timeoutMs, ct));
-        }
+        var tasks = servers.Select(s => ProbeServerAsync(s, timeoutMs, ct)).ToList();
 
         try
         {
             var results = await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromMilliseconds(timeoutMs + 200), ct).ConfigureAwait(false);
             var healthy = results
                 .Where(r => r.ok)
-                .OrderBy(r => r.rttMs + (r.server.LoadPercent / 5))
+                .OrderBy(r => r.rttMs + r.server.LoadPercent / 5)
                 .Select(r => r.server)
                 .ToList();
 
@@ -36,7 +32,8 @@ public static class ServerLatencyService
             healthy.AddRange(unreachable);
             return healthy.Count > 0 ? healthy : servers;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException or IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException
+                                       or IOException or InvalidOperationException)
         {
             return servers;
         }
@@ -54,23 +51,22 @@ public static class ServerLatencyService
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeoutMs);
 
-            IPAddress resolvedIp;
-            if (!IPAddress.TryParse(server.Ip, out resolvedIp!))
+            if (!IPAddress.TryParse(server.Ip, out var resolvedIp))
             {
                 resolvedIp = await ApiService.ResolveHostAntiPoisonAsync(server.Ip, cts.Token).ConfigureAwait(false);
             }
 
-            using var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
-            {
-                NoDelay = true
-            };
+            using var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            socket.NoDelay = true;
 
+            OctopusEngine.Current.ProtectSocket(socket);
             var port = server.Port > 0 ? server.Port : 443;
             await socket.ConnectAsync(new IPEndPoint(resolvedIp, port), cts.Token).ConfigureAwait(false);
             sw.Stop();
             return (server, sw.ElapsedMilliseconds, true);
         }
-        catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException or IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException or IOException
+                                       or InvalidOperationException)
         {
             return (server, long.MaxValue, false);
         }

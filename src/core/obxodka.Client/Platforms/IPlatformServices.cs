@@ -72,7 +72,8 @@ public interface INotificationService
 public sealed record CertificateAuditResult(bool HasUntrustedRoot, string? CertificateName, string? Thumbprint, string? Details);
 
 //событие изменения подключения к сети
-public sealed class AppConnectivityChangedEventArgs(AppNetworkAccess networkAccess, IEnumerable<AppConnectionProfile> connectionProfiles) : EventArgs
+public sealed class AppConnectivityChangedEventArgs(AppNetworkAccess networkAccess, IEnumerable<AppConnectionProfile> connectionProfiles)
+    : EventArgs
 {
     public AppNetworkAccess NetworkAccess { get; } = networkAccess;
     public IEnumerable<AppConnectionProfile> ConnectionProfiles { get; } = connectionProfiles;
@@ -80,7 +81,11 @@ public sealed class AppConnectivityChangedEventArgs(AppNetworkAccess networkAcce
 
 //профиль сетевого адаптера
 public sealed record AppConnectionProfile(NetworkConnectionType ConnectionType, AppNetworkAccess NetworkAccess);
+
 public enum NetworkConnectionType { Unknown, Cellular, Wifi, Bluetooth, Ethernet, Other }
+
 public enum AppNetworkAccess { Unknown, None, Local, ConstrainedInternet, Internet }
-public enum AppDeviceIdiom { Unknown, Phone, Tablet, Desktop, TV, Watch, Car }
+
+public enum AppDeviceIdiom { Unknown, Phone, Tablet, Desktop, Tv, Watch, Car }
+
 public enum AppDeviceType { Unknown, Physical, Virtual }

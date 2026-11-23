@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Path = System.IO.Path;
 
 namespace obxodka.Platforms.Windows;
 
@@ -10,47 +11,6 @@ internal static partial class WindowsSplitTunnelEngine
     private const int TcpTableOwnerPidAll = 5;
     private const int UdpTableOwnerPid = 1;
     private const uint ProcessQueryLimitedInformation = 0x1000;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MIB_TCPROW_OWNER_PID
-    {
-        public uint State;
-        public uint LocalAddr;
-        public uint LocalPort;
-        public uint RemoteAddr;
-        public uint RemotePort;
-        public uint OwningPid;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct MIB_TCP6ROW_OWNER_PID
-    {
-        public fixed byte LocalAddr[16];
-        public uint LocalScopeId;
-        public uint LocalPort;
-        public fixed byte RemoteAddr[16];
-        public uint RemoteScopeId;
-        public uint RemotePort;
-        public uint State;
-        public uint OwningPid;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MIB_UDPROW_OWNER_PID
-    {
-        public uint LocalAddr;
-        public uint LocalPort;
-        public uint OwningPid;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct MIB_UDP6ROW_OWNER_PID
-    {
-        public fixed byte LocalAddr[16];
-        public uint LocalScopeId;
-        public uint LocalPort;
-        public uint OwningPid;
-    }
 
     [LibraryImport("iphlpapi.dll", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -113,9 +73,9 @@ internal static partial class WindowsSplitTunnelEngine
             }
 
             var numEntries = *(uint*)buffer;
-            var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_TCPROW_OWNER_PID));
+            var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MibTcpRowOwnerPid));
             var safeCount = Math.Min(numEntries, maxEntries);
-            var rowPtr = (MIB_TCPROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
+            var rowPtr = (MibTcpRowOwnerPid*)((byte*)buffer + sizeof(uint));
 
             for (uint i = 0; i < safeCount; i++)
             {
@@ -128,7 +88,7 @@ internal static partial class WindowsSplitTunnelEngine
                 if (TryGetProcessInfo(row.OwningPid, out var exeName, out var fullPath) &&
                     policy.IsProcessBypassed(exeName, fullPath))
                 {
-                    PinPhysicalHostRoute(row.RemoteAddr, exeName, notify: false);
+                    PinPhysicalHostRoute(row.RemoteAddr, exeName, false);
                 }
             }
 
@@ -144,7 +104,8 @@ internal static partial class WindowsSplitTunnelEngine
     }
 
     //проверка принадлежит ли порт сокета процессу из списка исключений
-    private static unsafe bool IsPortOwnedByBypassedProcess(bool isTcp, ushort localPortHostOrder, out string matchedExeName, bool isIpv6 = false)
+    private static unsafe bool IsPortOwnedByBypassedProcess(bool isTcp, ushort localPortHostOrder, out string matchedExeName,
+        bool isIpv6 = false)
     {
         matchedExeName = string.Empty;
         var policy = Policy;
@@ -183,44 +144,52 @@ internal static partial class WindowsSplitTunnelEngine
                             var numEntries = *(uint*)buffer;
                             if (!isIpv6)
                             {
-                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_TCPROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MibTcpRowOwnerPid));
                                 var safeCount = Math.Min(numEntries, maxEntries);
-                                var rowPtr = (MIB_TCPROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
+                                var rowPtr = (MibTcpRowOwnerPid*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost == localPortHostOrder || rowPortHost == portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
-                                        if (TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) &&
-                                            policy.IsProcessBypassed(exe, fullPath))
-                                        {
-                                            matchedExeName = exe;
-                                            s_portCache[cacheKey] = (true, exe, nowTicks);
-                                            return true;
-                                        }
+                                        continue;
                                     }
+
+                                    if (!TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) ||
+                                        !policy.IsProcessBypassed(exe, fullPath))
+                                    {
+                                        continue;
+                                    }
+
+                                    matchedExeName = exe;
+                                    s_portCache[cacheKey] = (true, exe, nowTicks);
+                                    return true;
                                 }
                             }
                             else
                             {
-                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_TCP6ROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MibTcp6RowOwnerPid));
                                 var safeCount = Math.Min(numEntries, maxEntries);
-                                var rowPtr6 = (MIB_TCP6ROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
+                                var rowPtr6 = (MibTcp6RowOwnerPid*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr6[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost == localPortHostOrder || rowPortHost == portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
-                                        if (TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) &&
-                                            policy.IsProcessBypassed(exe, fullPath))
-                                        {
-                                            matchedExeName = exe;
-                                            s_portCache[cacheKey] = (true, exe, nowTicks);
-                                            return true;
-                                        }
+                                        continue;
                                     }
+
+                                    if (!TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) ||
+                                        !policy.IsProcessBypassed(exe, fullPath))
+                                    {
+                                        continue;
+                                    }
+
+                                    matchedExeName = exe;
+                                    s_portCache[cacheKey] = (true, exe, nowTicks);
+                                    return true;
                                 }
                             }
                         }
@@ -248,44 +217,52 @@ internal static partial class WindowsSplitTunnelEngine
                             var numEntries = *(uint*)buffer;
                             if (!isIpv6)
                             {
-                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_UDPROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MibUdpRowOwnerPid));
                                 var safeCount = Math.Min(numEntries, maxEntries);
-                                var rowPtr = (MIB_UDPROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
+                                var rowPtr = (MibUdpRowOwnerPid*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost == localPortHostOrder || rowPortHost == portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
-                                        if (TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) &&
-                                            policy.IsProcessBypassed(exe, fullPath))
-                                        {
-                                            matchedExeName = exe;
-                                            s_portCache[cacheKey] = (true, exe, nowTicks);
-                                            return true;
-                                        }
+                                        continue;
                                     }
+
+                                    if (!TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) ||
+                                        !policy.IsProcessBypassed(exe, fullPath))
+                                    {
+                                        continue;
+                                    }
+
+                                    matchedExeName = exe;
+                                    s_portCache[cacheKey] = (true, exe, nowTicks);
+                                    return true;
                                 }
                             }
                             else
                             {
-                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MIB_UDP6ROW_OWNER_PID));
+                                var maxEntries = (uint)Math.Max(0, (allocatedSize - sizeof(uint)) / sizeof(MibUdp6RowOwnerPid));
                                 var safeCount = Math.Min(numEntries, maxEntries);
-                                var rowPtr6 = (MIB_UDP6ROW_OWNER_PID*)((byte*)buffer + sizeof(uint));
+                                var rowPtr6 = (MibUdp6RowOwnerPid*)((byte*)buffer + sizeof(uint));
                                 for (uint i = 0; i < safeCount; i++)
                                 {
                                     var row = rowPtr6[i];
-                                    var rowPortHost = (ushort)(row.LocalPort & 0xFFFF);
-                                    if (rowPortHost == localPortHostOrder || rowPortHost == portNetworkOrder)
+                                    var rowPortRaw = (ushort)(row.LocalPort & 0xFFFF);
+                                    if (rowPortRaw != portNetworkOrder)
                                     {
-                                        if (TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) &&
-                                            policy.IsProcessBypassed(exe, fullPath))
-                                        {
-                                            matchedExeName = exe;
-                                            s_portCache[cacheKey] = (true, exe, nowTicks);
-                                            return true;
-                                        }
+                                        continue;
                                     }
+
+                                    if (!TryGetProcessInfo(row.OwningPid, out var exe, out var fullPath) ||
+                                        !policy.IsProcessBypassed(exe, fullPath))
+                                    {
+                                        continue;
+                                    }
+
+                                    matchedExeName = exe;
+                                    s_portCache[cacheKey] = (true, exe, nowTicks);
+                                    return true;
                                 }
                             }
                         }
@@ -307,7 +284,7 @@ internal static partial class WindowsSplitTunnelEngine
     }
 
     //получение имени исполняемого файла и полного пути процесса по его pid
-    private static unsafe bool TryGetProcessInfo(uint pid, out string exeName, out string fullPath)
+    private static bool TryGetProcessInfo(uint pid, out string exeName, out string fullPath)
     {
         exeName = string.Empty;
         fullPath = string.Empty;
@@ -349,5 +326,46 @@ internal static partial class WindowsSplitTunnelEngine
         }
 
         return false;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MibTcpRowOwnerPid
+    {
+        public uint State;
+        public uint LocalAddr;
+        public uint LocalPort;
+        public uint RemoteAddr;
+        public uint RemotePort;
+        public uint OwningPid;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct MibTcp6RowOwnerPid
+    {
+        public fixed byte LocalAddr[16];
+        public uint LocalScopeId;
+        public uint LocalPort;
+        public fixed byte RemoteAddr[16];
+        public uint RemoteScopeId;
+        public uint RemotePort;
+        public uint State;
+        public uint OwningPid;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MibUdpRowOwnerPid
+    {
+        public uint LocalAddr;
+        public uint LocalPort;
+        public uint OwningPid;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct MibUdp6RowOwnerPid
+    {
+        public fixed byte LocalAddr[16];
+        public uint LocalScopeId;
+        public uint LocalPort;
+        public uint OwningPid;
     }
 }

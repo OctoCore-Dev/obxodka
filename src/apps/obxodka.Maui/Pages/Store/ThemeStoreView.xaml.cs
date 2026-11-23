@@ -1,59 +1,52 @@
-namespace obxodka.Pages;
+namespace obxodka.Pages.Store;
 
-public sealed partial class ThemeStoreView : ContentView
+public sealed partial class ThemeStoreView : IAdaptivePage
 {
-    private ThemeManager? _themeManager;
-    private ThemeCatalogResponse? _currentCatalog;
     private readonly Dictionary<string, Label> _activeDownloadLabels = [];
-    private string _currentTab = "community";
-    private string _activeFilter = "all";
-    private string _searchQuery = string.Empty;
-    private double _currentSafeWidth = -1;
-    private bool _isUpdatingSliderInternally;
-    private readonly HashSet<VisualElement> _revealedCards = [];
     private readonly Dictionary<string, (Border CardBorder, HorizontalStackLayout ActionLayout, ThemeCardModel Model)> _cardMap = [];
+    private readonly HashSet<VisualElement> _revealedCards = [];
+    private string _activeFilter = "all";
+    private ThemeCatalogResponse? _currentCatalog;
+    private string _currentTab = "community";
+    private bool _isUpdatingSliderInternally;
     private ThemeCardModel? _previewModalModel;
-
-    public event EventHandler? BackRequested;
+    private string _searchQuery = string.Empty;
+    private ThemeManager? _themeManager;
 
     public ThemeStoreView()
     {
         InitializeComponent();
 
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
-        {
-            BtnBackText.IsVisible = false;
-            BtnResetText.IsVisible = false;
-        }
-
-        ThemeScrollView.SizeChanged += (s, e) =>
-        {
-            if (ThemeScrollView.Width > 0)
-            {
-                ApplyCardWidth(ThemeScrollView.Width);
-            }
-        };
-
         ThemeScrollView.Scrolled += OnThemeScrollViewScrolled;
 
-        var swipeLeft = new SwipeGestureRecognizer { Direction = SwipeDirection.Left };
+        var swipeLeft = new SwipeGestureRecognizer
+        {
+            Direction = SwipeDirection.Left
+        };
         swipeLeft.Swiped += (s, e) =>
         {
-            if (_currentTab == "community")
+            if (_currentTab != "community")
             {
-                ThemeAudioService.PlayClick();
-                _ = SwitchTabAnimatedAsync("installed");
+                return;
             }
+
+            ThemeAudioService.PlayClick();
+            _ = SwitchTabAnimatedAsync("installed");
         };
 
-        var swipeRight = new SwipeGestureRecognizer { Direction = SwipeDirection.Right };
+        var swipeRight = new SwipeGestureRecognizer
+        {
+            Direction = SwipeDirection.Right
+        };
         swipeRight.Swiped += (s, e) =>
         {
-            if (_currentTab == "installed")
+            if (_currentTab != "installed")
             {
-                ThemeAudioService.PlayClick();
-                _ = SwitchTabAnimatedAsync("community");
+                return;
             }
+
+            ThemeAudioService.PlayClick();
+            _ = SwitchTabAnimatedAsync("community");
         };
 
         ThemeCardsStack.GestureRecognizers.Add(swipeLeft);
@@ -63,110 +56,70 @@ public sealed partial class ThemeStoreView : ContentView
     }
 
     private void OnViewUnloaded(object? sender, EventArgs e) => Cleanup();
+    public event EventHandler? BackRequested;
+
 
     public void Cleanup()
     {
-        if (_themeManager is { } manager)
-        {
-            manager.OnCatalogUpdated -= HandleCatalogUpdated;
-            manager.ThemeDownloadProgressChanged -= HandleDownloadProgressChanged;
-            manager.VideoEnabledChanged -= HandleVideoEnabledChanged;
-            manager.AlwaysPlayVideoChanged -= HandleAlwaysPlayVideoChanged;
-            manager.CardOpacityChanged -= HandleCardOpacityChanged;
-            manager.GlowIntensityChanged -= HandleGlowIntensityChanged;
-            manager.SoundsEnabledChanged -= HandleSoundsEnabledChanged;
-            manager.ClickSoundsEnabledChanged -= HandleClickSoundsEnabledChanged;
-            manager.SoundVolumeChanged -= HandleSoundVolumeChanged;
-            manager.AmbientEnabledChanged -= HandleAmbientEnabledChanged;
-            manager.ParticlesEnabledChanged -= HandleParticlesEnabledChanged;
-            manager.FramesEnabledChanged -= HandleFramesEnabledChanged;
-            _themeManager = null;
-        }
-    }
-
-    public void ForceLayoutWidth()
-    {
-        if (ThemeScrollView.Width > 0)
-        {
-            ApplyCardWidth(ThemeScrollView.Width);
-        }
-        else if (Width > 0 && RootLayout is not null)
-        {
-            var avail = Width - RootLayout.Padding.HorizontalThickness;
-            if (avail > 0)
-            {
-                ApplyCardWidth(avail);
-            }
-        }
-    }
-
-    public void SetHeaderTopInset(double top)
-    {
-        if (DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            var topAir = Math.Max(top + 16, 50);
-            RootLayout.Padding = new Thickness(16, topAir, 16, 0);
-        }
-        else if (DeviceInfo.Idiom == DeviceIdiom.Phone && RootLayout != null)
-        {
-            RootLayout.Padding = new Thickness(16, Math.Max(top + 4, 10), 16, 0);
-        }
-    }
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width > 0 && RootLayout is not null)
-        {
-            var availableWidth = width - RootLayout.Padding.HorizontalThickness;
-            if (availableWidth > 0)
-            {
-                ApplyCardWidth(availableWidth);
-            }
-        }
-    }
-
-    private void ApplyCardWidth(double targetWidth)
-    {
-        if (targetWidth <= 0)
+        if (_themeManager is not { } manager)
         {
             return;
         }
 
-        var safeWidth = Math.Min(targetWidth - 6, 950);
-        if (safeWidth <= 0)
+        manager.OnCatalogUpdated -= HandleCatalogUpdated;
+        manager.ThemeDownloadProgressChanged -= HandleDownloadProgressChanged;
+        manager.VideoEnabledChanged -= HandleVideoEnabledChanged;
+        manager.AlwaysPlayVideoChanged -= HandleAlwaysPlayVideoChanged;
+        manager.CardOpacityChanged -= HandleCardOpacityChanged;
+        manager.GlowIntensityChanged -= HandleGlowIntensityChanged;
+        manager.SoundsEnabledChanged -= HandleSoundsEnabledChanged;
+        manager.ClickSoundsEnabledChanged -= HandleClickSoundsEnabledChanged;
+        manager.SoundVolumeChanged -= HandleSoundVolumeChanged;
+        manager.AmbientEnabledChanged -= HandleAmbientEnabledChanged;
+        manager.ParticlesEnabledChanged -= HandleParticlesEnabledChanged;
+        manager.FramesEnabledChanged -= HandleFramesEnabledChanged;
+        _themeManager = null;
+    }
+
+    //адаптация отступов и модального окна каталога тем по единому снимку экрана
+    public void ApplyViewport(AdaptiveViewport viewport)
+    {
+        if (RootLayout is null || ThemeCardsStack is null)
         {
             return;
         }
 
-        _currentSafeWidth = safeWidth;
+        var isCompact = viewport.IsCompact;
+        var baseSidePad = isCompact ? 16.0 : viewport.IsExpanded ? 28.0 : 20.0;
+        var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
 
-        ThemeCardsStack.WidthRequest = safeWidth;
-        ThemeCardsStack.MaximumWidthRequest = safeWidth;
+        var topAir = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 44.0 : 24.0)
+            : isCompact ? 14.0 : 24.0;
+        var bottomPad = !viewport.UseSidebar
+            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
+            : Math.Max(28.0, viewport.SafeBottom + 16.0);
 
-        CardSearch.WidthRequest = safeWidth;
-        CardSearch.MaximumWidthRequest = safeWidth;
+        var pad = new Thickness(sidePad, topAir, sidePad, 0);
+        RootLayout.Padding = pad;
+        ThemeCardsStack.HorizontalOptions = LayoutOptions.Fill;
+        ThemeCardsStack.Padding = new Thickness(0, 0, 0, bottomPad);
+        ThemePreviewModalOverlay?.Margin = new Thickness(-pad.Left, -pad.Top, -pad.Right, -pad.Bottom);
 
-        TabsGrid.WidthRequest = safeWidth;
-        TabsGrid.MaximumWidthRequest = safeWidth;
-
-        FilterChipsScrollView.WidthRequest = safeWidth;
-        FilterChipsScrollView.MaximumWidthRequest = safeWidth;
-
-        CardVfxSettings.WidthRequest = safeWidth;
-        CardVfxSettings.MaximumWidthRequest = safeWidth;
-
-        ThemesContainer.WidthRequest = safeWidth;
-        ThemesContainer.MaximumWidthRequest = safeWidth;
-
-        foreach (var child in ThemesContainer.Children)
+        if (ThemePreviewModalCard is not null && viewport.ContentWidth > 0)
         {
-            if (child is VisualElement visual)
-            {
-                visual.WidthRequest = safeWidth;
-                visual.MaximumWidthRequest = safeWidth;
-            }
+            var modalW = Math.Clamp(viewport.ContentWidth - 40.0, 280.0, 500.0);
+            ThemePreviewModalCard.MaximumWidthRequest = modalW;
+            ThemePreviewModalCard.WidthRequest = modalW;
         }
+
+        BtnBackText.IsVisible = !isCompact;
+        BtnResetText.IsVisible = !isCompact;
+        LabelHeaderSubtitle.IsVisible = !isCompact;
+        BtnBack.Padding = isCompact ? new Thickness(0) : new Thickness(12, 0);
+        BtnBack.WidthRequest = isCompact ? 40 : -1;
+        BtnResetTheme.Padding = isCompact ? new Thickness(0) : new Thickness(12, 0);
+        BtnResetTheme.WidthRequest = isCompact ? 40 : -1;
     }
 
     public void Initialize(ThemeManager themeManager)
@@ -202,7 +155,7 @@ public sealed partial class ThemeStoreView : ContentView
         _themeManager.FramesEnabledChanged += HandleFramesEnabledChanged;
 
         RefreshSettingsControls();
-        UpdateFilterChipsUI();
+        UpdateFilterChipsUi();
 
         _ = LoadCatalogAsync();
     }
@@ -237,6 +190,7 @@ public sealed partial class ThemeStoreView : ContentView
         {
             _isUpdatingSliderInternally = false;
         }
+
         LabelCardOpacityValue.Text = $"{(int)Math.Round(opacity * 100)}%";
         LabelGlowIntensityValue.Text = $"{(int)Math.Round(glow * 100)}%";
         LabelSoundVolumeValue.Text = $"{(int)Math.Round(volume * 100)}%";
@@ -281,6 +235,7 @@ public sealed partial class ThemeStoreView : ContentView
                 {
                     SliderCardOpacity.Value = val;
                 }
+
                 LabelCardOpacityValue.Text = $"{(int)Math.Round(val * 100)}%";
             }
             finally
@@ -311,6 +266,7 @@ public sealed partial class ThemeStoreView : ContentView
                 {
                     SliderGlowIntensity.Value = val;
                 }
+
                 LabelGlowIntensityValue.Text = $"{(int)Math.Round(val * 100)}%";
             }
             finally
@@ -341,6 +297,7 @@ public sealed partial class ThemeStoreView : ContentView
                 {
                     SliderSoundVolume.Value = val;
                 }
+
                 LabelSoundVolumeValue.Text = $"{(int)Math.Round(val * 100)}%";
             }
             finally
@@ -408,29 +365,19 @@ public sealed partial class ThemeStoreView : ContentView
 
         foreach (var child in ThemesContainer.Children)
         {
-            if (child is VisualElement visual && !_revealedCards.Contains(visual))
+            if (child is not VisualElement visual || _revealedCards.Contains(visual))
             {
-                if (visual.Y > 0 && visual.Y <= revealThreshold)
-                {
-                    _ = _revealedCards.Add(visual);
-                    visual.Opacity = 0;
-                    visual.TranslationY = 16;
-                    _ = visual.FadeToAsync(1.0, 200, Easing.CubicOut);
-                    _ = visual.TranslateToAsync(0, 0, 200, Easing.CubicOut);
-                }
+                continue;
             }
-        }
 
-        if (ThemesContainer.Children.Count > 0)
-        {
-            CardStackScrollHelper.ApplyToChildren(
-                ThemesContainer.Children.OfType<VisualElement>(),
-                scrollY,
-                viewportHeight,
-                containerOffsetY: ThemesContainer.Y,
-                zone: 70.0,
-                minScale: 0.92,
-                power: 2.2);
+            if (visual.Y > 0 && visual.Y <= revealThreshold)
+            {
+                _ = _revealedCards.Add(visual);
+                visual.Opacity = 0;
+                visual.TranslationY = 16;
+                _ = visual.FadeToAsync(1.0, 200, Easing.CubicOut);
+                _ = visual.TranslateToAsync(0, 0, 200, Easing.CubicOut);
+            }
         }
     }
 
@@ -438,10 +385,11 @@ public sealed partial class ThemeStoreView : ContentView
     {
         _currentCatalog = freshCatalog;
         UpdateTabButtons();
-        RenderThemes(animate: false);
+        RenderThemes(false);
     }
 
-    private void HandleDownloadProgressChanged(object? sender, (string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error) e)
+    private void HandleDownloadProgressChanged(object? sender,
+        (string ThemeId, double Progress, bool IsCompleted, bool Success, string? Error) e)
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -453,7 +401,7 @@ public sealed partial class ThemeStoreView : ContentView
                 }
 
                 UpdateTabButtons();
-                RenderThemes(animate: false);
+                RenderThemes(false);
             }
             else
             {
@@ -464,11 +412,13 @@ public sealed partial class ThemeStoreView : ContentView
 
     private void UpdateDownloadingCardLabel(string themeId, double progress)
     {
-        if (_activeDownloadLabels.TryGetValue(themeId, out var label))
+        if (!_activeDownloadLabels.TryGetValue(themeId, out var label))
         {
-            var pct = (int)Math.Round(progress * 100);
-            label.Text = pct > 0 ? $"Загрузка {pct}%..." : "Загрузка...";
+            return;
         }
+
+        var pct = (int)Math.Round(progress * 100);
+        label.Text = pct > 0 ? $"Загрузка {pct}%..." : "Загрузка...";
     }
 
     public async Task PlayEntranceAnimationAsync()
@@ -489,14 +439,16 @@ public sealed partial class ThemeStoreView : ContentView
 
         foreach (var child in ThemesContainer.Children.Take(4))
         {
-            if (child is VisualElement visual)
+            if (child is not VisualElement visual)
             {
-                cards.Add(visual);
-                _ = _revealedCards.Add(visual);
+                continue;
             }
+
+            cards.Add(visual);
+            _ = _revealedCards.Add(visual);
         }
 
-        await UIAnimations.PlayEntranceCascadeAsync(35, 240, [.. cards]);
+        await UiAnimations.PlayEntranceCascadeAsync(35, 240, [.. cards]);
     }
 
     public async Task LoadCatalogAsync(bool forceRefresh = false)
@@ -516,9 +468,9 @@ public sealed partial class ThemeStoreView : ContentView
 
         try
         {
-            _currentCatalog = await _themeManager.LoadCatalogAsync(forceRefresh: forceRefresh);
+            _currentCatalog = await _themeManager.LoadCatalogAsync(forceRefresh);
             UpdateTabButtons();
-            RenderThemes(animate: true);
+            RenderThemes();
         }
         catch (Exception ex)
         {

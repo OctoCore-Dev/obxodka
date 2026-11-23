@@ -1,149 +1,10 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
-using Microsoft.Maui.Controls.Shapes;
 using Path = System.IO.Path;
 
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
 //кастомная анимированная кнопка тем оформления и спрайтовый плеер
 public sealed partial class VpnView
 {
-    private sealed partial class ButtonAnimatedClip : IDisposable
-    {
-        private const int MaxButtonDimension = 280;
-        private readonly List<SKBitmap> _frames = [];
-        private readonly List<int> _durations = [];
-        private int _currentFrameIndex;
-        private int _elapsedMs;
-
-        public int FrameCount => _frames.Count;
-        public SKBitmap? CurrentBitmap => _frames.Count > 0 ? _frames[_currentFrameIndex] : null;
-
-        //уменьшение размера битмапа для оптимизации памяти
-        private static SKBitmap DownscaleIfNeeded(SKBitmap bmp)
-        {
-            if (bmp.Width <= MaxButtonDimension && bmp.Height <= MaxButtonDimension)
-            {
-                return bmp;
-            }
-
-            var scale = Math.Min((float)MaxButtonDimension / bmp.Width, (float)MaxButtonDimension / bmp.Height);
-            var targetW = Math.Max(1, (int)Math.Round(bmp.Width * scale));
-            var targetH = Math.Max(1, (int)Math.Round(bmp.Height * scale));
-            var resizedInfo = new SKImageInfo(targetW, targetH, SKColorType.Rgba8888, SKAlphaType.Premul);
-            var resized = bmp.Resize(resizedInfo, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
-            if (resized != null)
-            {
-                bmp.Dispose();
-                return resized;
-            }
-            return bmp;
-        }
-
-        [SuppressMessage("Maintainability", "CA1508:Avoid dead conditional code", Justification = "SKCodec.Create can return null for non-codec or corrupt streams")]
-        public static ButtonAnimatedClip? Load(string path, int maxFrames = 180, CancellationToken ct = default)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                {
-                    return null;
-                }
-
-                using var stream = File.OpenRead(path);
-                using var codec = SKCodec.Create(stream);
-                if (codec == null)
-                {
-                    var staticBmp = SKBitmap.Decode(path);
-                    if (staticBmp == null)
-                    {
-                        return null;
-                    }
-
-                    var staticClip = new ButtonAnimatedClip();
-                    staticClip._frames.Add(DownscaleIfNeeded(staticBmp));
-                    staticClip._durations.Add(1000);
-                    return staticClip;
-                }
-
-                var count = codec.FrameCount;
-                var clip = new ButtonAnimatedClip();
-                var frameInfos = codec.FrameInfo;
-
-                var step = count > maxFrames ? (int)Math.Ceiling((double)count / maxFrames) : 1;
-
-                for (var i = 0; i < count; i += step)
-                {
-                    if (ct.IsCancellationRequested)
-                    {
-                        clip.Dispose();
-                        return null;
-                    }
-
-                    var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
-                    var bmp = new SKBitmap(info);
-                    var opts = new SKCodecOptions(i);
-                    var res = codec.GetPixels(info, bmp.GetPixels(), opts);
-                    if (res is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
-                    {
-                        bmp.Dispose();
-                        continue;
-                    }
-
-                    var dur = frameInfos != null && frameInfos.Length > i ? frameInfos[i].Duration : 16;
-                    if (dur <= 0)
-                    {
-                        dur = 16;
-                    }
-
-                    dur *= step;
-
-                    clip._frames.Add(DownscaleIfNeeded(bmp));
-                    clip._durations.Add(dur);
-                }
-
-                if (clip._frames.Count == 0)
-                {
-                    clip.Dispose();
-                    return null;
-                }
-
-                return clip;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogWarning($"[AnimButton] Не удалось загрузить кадры кнопки для {path}: {ex.Message}");
-                return null;
-            }
-        }
-
-        //продвижение тайминга кадра анимации кнопки
-        public void Advance(int stepMs)
-        {
-            if (_frames.Count <= 1)
-            {
-                return;
-            }
-
-            _elapsedMs += stepMs;
-            while (_durations.Count > _currentFrameIndex && _elapsedMs >= _durations[_currentFrameIndex])
-            {
-                _elapsedMs -= _durations[_currentFrameIndex];
-                _currentFrameIndex = (_currentFrameIndex + 1) % _frames.Count;
-            }
-        }
-
-        //освобождение битмапов покадровой анимации
-        public void Dispose()
-        {
-            foreach (var f in _frames)
-            {
-                f.Dispose();
-            }
-            _frames.Clear();
-            _durations.Clear();
-        }
-    }
-
     //отрисовка кадра анимированной кнопки темы
     private void OnCustomButtonAnimatedCanvasPaint(object? sender, SKPaintSurfaceEventArgs e)
     {
@@ -195,7 +56,43 @@ public sealed partial class VpnView
         }
     }
 
-    //запуск таймера анимации кастомной кнопки темы
+    //шаг обновления кадра кастомной анимированной кнопки темы
+    private void StepCustomButtonFrame()
+    {
+        var nowTicks = _buttonAnimStopwatch.ElapsedTicks;
+        var dtMs = (int)Math.Clamp((nowTicks - _lastButtonAnimTicks) * 1000.0 / Stopwatch.Frequency, 4.0, 100.0);
+        _lastButtonAnimTicks = nowTicks;
+
+        _buttonAnimatedCurrent?.Advance(dtMs);
+        if (_buttonAnimatedPrev is not null)
+        {
+            _buttonAnimatedPrev.Advance(dtMs);
+            _buttonTransitionProgress = Math.Min(1f, _buttonTransitionProgress + dtMs / 300f);
+            if (_buttonTransitionProgress >= 1f)
+            {
+                _buttonAnimatedPrev = null;
+            }
+        }
+
+        CustomButtonAnimatedCanvas.InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратная синхронизация кадров кастомной кнопки через vsync экрана
+    private void OnCustomButtonVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _buttonLastVsyncTicks < 15)
+        {
+            return;
+        }
+
+        _buttonLastVsyncTicks = nowTicks;
+        StepCustomButtonFrame();
+    }
+#endif
+
+    //запуск цикла анимации кастомной кнопки темы
     private void StartButtonAnimation()
     {
         if (!_isWindowFocused)
@@ -203,6 +100,18 @@ public sealed partial class VpnView
             return;
         }
 
+#if WINDOWS
+        if (_buttonVsyncActive)
+        {
+            return;
+        }
+
+        _buttonAnimStopwatch.Restart();
+        _lastButtonAnimTicks = 0;
+        _buttonLastVsyncTicks = 0;
+        _buttonVsyncActive = true;
+        Platforms.Windows.WinUiVsync.Subscribe(OnCustomButtonVsyncRendering);
+#else
         if (_buttonAnimationTimer is not null)
         {
             return;
@@ -212,34 +121,24 @@ public sealed partial class VpnView
         _lastButtonAnimTicks = 0;
         _buttonAnimationTimer = Dispatcher.CreateTimer();
         _buttonAnimationTimer.Interval = TimeSpan.FromMilliseconds(16);
-#pragma warning disable IDE0058
-        _buttonAnimationTimer.Tick += (_, _) =>
-        {
-            var nowTicks = _buttonAnimStopwatch.ElapsedTicks;
-            var dtMs = (int)Math.Clamp((nowTicks - _lastButtonAnimTicks) * 1000.0 / Stopwatch.Frequency, 4.0, 100.0);
-            _lastButtonAnimTicks = nowTicks;
-
-            _buttonAnimatedCurrent?.Advance(dtMs);
-            if (_buttonAnimatedPrev is not null)
-            {
-                _buttonAnimatedPrev.Advance(dtMs);
-                _buttonTransitionProgress = Math.Min(1f, _buttonTransitionProgress + (dtMs / 300f));
-                if (_buttonTransitionProgress >= 1f)
-                {
-                    _buttonAnimatedPrev = null;
-                }
-            }
-            CustomButtonAnimatedCanvas.InvalidateSurface();
-        };
-#pragma warning restore IDE0058
+        _buttonAnimationTimer.Tick += (_, _) => StepCustomButtonFrame();
         _buttonAnimationTimer.Start();
+#endif
     }
 
-    //остановка таймера анимации кнопки темы
+    //остановка цикла анимации кнопки темы
     private void StopButtonAnimation()
     {
+#if WINDOWS
+        if (_buttonVsyncActive)
+        {
+            _buttonVsyncActive = false;
+            Platforms.Windows.WinUiVsync.Unsubscribe(OnCustomButtonVsyncRendering);
+        }
+#else
         _buttonAnimationTimer?.Stop();
         _buttonAnimationTimer = null;
+#endif
         _buttonAnimStopwatch.Stop();
     }
 
@@ -271,7 +170,8 @@ public sealed partial class VpnView
         return state switch
         {
             AppVpnState.Connected => _buttonImageActivePath ?? _buttonImageIdlePath,
-            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonImageConnectingPath ?? _buttonImageIdlePath,
+            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonImageConnectingPath ??
+                _buttonImageIdlePath,
             AppVpnState.Error => _buttonImageErrorPath ?? _buttonImageIdlePath,
             AppVpnState.Disconnected => _buttonImageIdlePath,
             _ => _buttonImageIdlePath
@@ -284,7 +184,8 @@ public sealed partial class VpnView
         return state switch
         {
             AppVpnState.Connected => _buttonAnimatedActive ?? _buttonAnimatedIdle,
-            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonAnimatedConnecting ?? _buttonAnimatedIdle,
+            AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting => _buttonAnimatedConnecting ??
+                _buttonAnimatedIdle,
             AppVpnState.Error => _buttonAnimatedError ?? _buttonAnimatedIdle,
             AppVpnState.Disconnected => _buttonAnimatedIdle,
             _ => null
@@ -314,9 +215,9 @@ public sealed partial class VpnView
         _buttonImageErrorPath = imageErrorPath;
 
         var hasStaticCustom = !string.IsNullOrEmpty(imageIdlePath) ||
-                                !string.IsNullOrEmpty(imageConnectingPath) ||
-                                !string.IsNullOrEmpty(imageActivePath) ||
-                                !string.IsNullOrEmpty(imageErrorPath);
+                              !string.IsNullOrEmpty(imageConnectingPath) ||
+                              !string.IsNullOrEmpty(imageActivePath) ||
+                              !string.IsNullOrEmpty(imageErrorPath);
 
         var idleCandidate = videoIdlePath ?? (IsPotentialAnimatedFile(imageIdlePath) ? imageIdlePath : null);
         var connCandidate = videoConnectingPath ?? (IsPotentialAnimatedFile(imageConnectingPath) ? imageConnectingPath : null);
@@ -324,9 +225,9 @@ public sealed partial class VpnView
         var errorCandidate = videoErrorPath ?? (IsPotentialAnimatedFile(imageErrorPath) ? imageErrorPath : null);
 
         var hasAnyAnim = !string.IsNullOrEmpty(idleCandidate) ||
-                        !string.IsNullOrEmpty(connCandidate) ||
-                        !string.IsNullOrEmpty(activeCandidate) ||
-                        !string.IsNullOrEmpty(errorCandidate);
+                         !string.IsNullOrEmpty(connCandidate) ||
+                         !string.IsNullOrEmpty(activeCandidate) ||
+                         !string.IsNullOrEmpty(errorCandidate);
 
         _activeCardFramePath = cardFramePath;
         var framesEnabled = ThemeManager.Instance?.FramesEnabled ?? true;
@@ -362,14 +263,16 @@ public sealed partial class VpnView
                 ConnectButtonCore.BackgroundColor = Colors.Transparent;
                 ConnectButtonCore.Stroke = Colors.Transparent;
 
-                var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
+                var currentState = _vpnService.CurrentState;
                 var initialPath = GetButtonImagePathForState(currentState);
-                if (!string.IsNullOrEmpty(initialPath) && File.Exists(initialPath))
+                if (string.IsNullOrEmpty(initialPath) || !File.Exists(initialPath))
                 {
-                    CustomButtonImage.Source = ImageSource.FromFile(initialPath);
-                    CustomButtonImage.IsVisible = true;
-                    CustomButtonImage.Opacity = 1;
+                    return;
                 }
+
+                CustomButtonImage.Source = ImageSource.FromFile(initialPath);
+                CustomButtonImage.IsVisible = true;
+                CustomButtonImage.Opacity = 1;
             }
             else if (!hasAnyAnim)
             {
@@ -471,7 +374,7 @@ public sealed partial class VpnView
                     _buttonAnimatedActive = activeClip;
                     _buttonAnimatedError = errorClip;
 
-                    var currentState = _vpnService?.CurrentState ?? AppVpnState.Disconnected;
+                    var currentState = _vpnService.CurrentState;
                     await UpdateCustomButtonStateAsync(currentState);
                 });
             }
@@ -492,8 +395,8 @@ public sealed partial class VpnView
 
         var ext = Path.GetExtension(path);
         return ext.Equals(".webp", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".apng", StringComparison.OrdinalIgnoreCase);
+               || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+               || ext.Equals(".apng", StringComparison.OrdinalIgnoreCase);
     }
 
     //сброс кнопки к стандартному стилю приложения
@@ -557,6 +460,7 @@ public sealed partial class VpnView
                 _buttonAnimatedPrev = _buttonAnimatedCurrent;
                 _buttonTransitionProgress = 0f;
             }
+
             _buttonAnimatedCurrent = targetClip;
             CustomButtonImage.IsVisible = false;
             CustomButtonAnimatedCanvas.IsVisible = true;
@@ -598,6 +502,7 @@ public sealed partial class VpnView
                 CustomButtonImage.Source = ImageSource.FromFile(targetImagePath);
                 CustomButtonImage.IsVisible = true;
             }
+
             return;
         }
 
@@ -605,6 +510,4 @@ public sealed partial class VpnView
         CustomButtonImage.Source = null;
         DefaultButtonContent.IsVisible = true;
     }
-
-
 }

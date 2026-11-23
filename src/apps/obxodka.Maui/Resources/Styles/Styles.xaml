@@ -1,4 +1,5 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
+
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
@@ -48,7 +49,7 @@
         <Setter Property="Padding" Value="16,10" />
         <Setter Property="MinimumHeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="44" />
-        <Setter Property="helpers:UIAnimations.BounceOnClick" Value="True" />
+        <Setter Property="helpers:UiAnimations.BounceOnClick" Value="True" />
         <Setter Property="VisualStateManager.VisualStateGroups">
             <VisualStateGroupList>
                 <VisualStateGroup x:Name="CommonStates">
@@ -117,7 +118,13 @@
     </Style>
 
     <Style TargetType="BoxView">
-        <Setter Property="BackgroundColor" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="DividerLine" TargetType="BoxView">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="Color" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="HeightRequest" Value="1" />
     </Style>
 
     <Style TargetType="CheckBox">
@@ -205,14 +212,54 @@
     </Style>
 
 
+    <Style x:Key="PageHeaderTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontTitle}" />
+        <Setter Property="FontSize" Value="{OnIdiom Phone=24, Default=26}" />
+        <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
+    </Style>
+
+    <Style x:Key="SectionTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontBold}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CharacterSpacing" Value="0.6" />
+        <Setter Property="TextColor" Value="{DynamicResource TextMuted}" />
+    </Style>
+
     <Style x:Key="NeoCard" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{DynamicResource BgSurface}" />
         <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+        <Setter Property="StrokeThickness" Value="{DynamicResource CardBorderThickness}" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 16', iOS='RoundRectangle 16', Default='RoundRectangle 10'}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="0" />
-        <Setter Property="helpers:UIAnimations.AnimateEntrance" Value="True" />
+        <Setter Property="helpers:UiAnimations.AnimateEntrance" Value="True" />
+    </Style>
+
+    <Style x:Key="CardElevated" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgElevated}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderMedium}" />
+        <Setter Property="StrokeThickness" Value="{DynamicResource CardBorderThickness}" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 16', iOS='RoundRectangle 16', Default='RoundRectangle 10'}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+    </Style>
+
+    <Style x:Key="SettingsRowCard" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgSurface}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="StrokeThickness" Value="{DynamicResource CardBorderThickness}" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 14', iOS='RoundRectangle 14', Default='RoundRectangle 8'}" />
+        <Setter Property="Padding" Value="16,14" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="helpers:UiAnimations.AnimateEntrance" Value="True" />
+    </Style>
+
+    <Style x:Key="BadgePill" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{DynamicResource BgElevated}" />
+        <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 999" />
+        <Setter Property="Padding" Value="10,4" />
     </Style>
 
     <Style x:Key="BtnSecondary" TargetType="Button">
@@ -291,45 +338,38 @@
         <Setter Property="BackgroundColor" Value="{DynamicResource Primary}" />
         <Setter Property="Stroke" Value="{DynamicResource BorderMedium}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-        <Setter Property="helpers:UIAnimations.BounceOnClick" Value="True" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 12', iOS='RoundRectangle 12', Default='RoundRectangle 6'}" />
+        <Setter Property="helpers:UiAnimations.BounceOnClick" Value="True" />
     </Style>
 
     <Style x:Key="NeoBtnDanger" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{DynamicResource ErrorDim}" />
         <Setter Property="Stroke" Value="{DynamicResource ErrorDim}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
-        <Setter Property="helpers:UIAnimations.BounceOnClick" Value="True" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 12', iOS='RoundRectangle 12', Default='RoundRectangle 6'}" />
+        <Setter Property="helpers:UiAnimations.BounceOnClick" Value="True" />
     </Style>
 
     <Style x:Key="NeoInput" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{DynamicResource BgInput}" />
         <Setter Property="Stroke" Value="{DynamicResource BorderSubtle}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
-        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 12', iOS='RoundRectangle 12', Default='RoundRectangle 6'}" />
+        <Setter Property="Padding" Value="12,4" />
     </Style>
 
     <Style x:Key="SideNavItem" TargetType="Border">
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="Stroke" Value="Transparent" />
         <Setter Property="StrokeThickness" Value="0" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+        <Setter Property="StrokeShape" Value="{OnPlatform Android='RoundRectangle 12', iOS='RoundRectangle 12', Default='RoundRectangle 6'}" />
+        <Setter Property="HeightRequest" Value="42" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="VisualStateManager.VisualStateGroups">
-            <VisualStateGroupList>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver" />
-                </VisualStateGroup>
-            </VisualStateGroupList>
-        </Setter>
     </Style>
 
     <Style x:Key="BottomNavItem" TargetType="Border">
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="HeightRequest" Value="56" />
+        <Setter Property="HeightRequest" Value="54" />
         <Setter Property="HorizontalOptions" Value="Fill" />
         <Setter Property="VerticalOptions" Value="Center" />
         <Setter Property="StrokeThickness" Value="0" />

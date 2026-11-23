@@ -8,7 +8,9 @@ public static class StoreMessages
     public const string PaymentSuccessHours = "Оплата прошла успешно! Часы зачислены на ваш баланс.";
     public const string PaymentPendingTitle = "Ожидание";
     public const string PaymentPendingBody = "Платеж находится в обработке Google Play.";
-    public const string PaymentVerifyError = "Ошибка связи с сервером при зачислении часов. Убедитесь, что интернет активен, и нажмите кнопку еще раз.";
+
+    public const string PaymentVerifyError =
+        "Ошибка связи с сервером при зачислении часов. Убедитесь, что интернет активен, и нажмите кнопку еще раз.";
 
     public const string ThemeAppliedSuccess = "Тема успешно установлена!";
     public const string ThemeApplyFailed = "Не удалось применить тему.";

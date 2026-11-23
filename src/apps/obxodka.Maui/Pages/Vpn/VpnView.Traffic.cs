@@ -1,19 +1,100 @@
-//using только для сплит тунеля хватит удалять и натыкатся потостоянно на одно и тоже 5ый раз, рома ты тупой, ии не поможет ты сам это сделал
-using Microsoft.Maui.Controls.Shapes;
-using Path = System.IO.Path;
-
-namespace obxodka.Pages;
+namespace obxodka.Pages.Vpn;
 
 //сплайновый график скорости и счетчики трафика на skia canvas
 public sealed partial class VpnView
 {
-    //запуск таймера интерполяции и отрисовки графика трафика
+    //обработка одного кадра интерполяции и перерисовки графика скорости
+    private void StepGraphFrame()
+    {
+        if (!IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
+        {
+            return;
+        }
+
+        var now = (float)_graphStopwatch.Elapsed.TotalSeconds;
+        var dt = Math.Clamp(now - _lastGraphTickTime, 0.001f, 0.1f);
+        _lastGraphTickTime = now;
+
+        _pulsePhase += dt * 5.5f;
+        if (_pulsePhase > MathF.PI * 2)
+        {
+            _pulsePhase -= MathF.PI * 2;
+        }
+
+        var speedLerp = 1.0 - Math.Exp(-8.0 * dt);
+        _smoothSpeedUp += (_targetSpeedUp - _smoothSpeedUp) * speedLerp;
+        _smoothSpeedDown += (_targetSpeedDown - _smoothSpeedDown) * speedLerp;
+
+        lock (_graphSamples)
+        {
+            if (now - _lastSampleTime >= 0.05f || _graphSamples.Count == 0)
+            {
+                _graphSamples.Add(new GraphSample(now, (float)_smoothSpeedUp, (float)_smoothSpeedDown));
+                _lastSampleTime = now;
+
+                var cutoff = now - (TimeWindowSeconds + 1.0f);
+                var removeCount = 0;
+                while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
+                {
+                    removeCount++;
+                }
+
+                if (removeCount > 0)
+                {
+                    _graphSamples.RemoveRange(0, removeCount);
+                }
+            }
+
+            var peak = 1024.0;
+            foreach (var s in _graphSamples)
+            {
+                if (s.SpeedUp > peak)
+                {
+                    peak = s.SpeedUp;
+                }
+
+                if (s.SpeedDown > peak)
+                {
+                    peak = s.SpeedDown;
+                }
+            }
+
+            var peakLerp = 1.0 - Math.Exp(-4.0 * dt);
+            _smoothMaxSpeed += (peak - _smoothMaxSpeed) * peakLerp;
+        }
+
+        TrafficGraphCanvas.InvalidateSurface();
+    }
+
+#if WINDOWS
+    //аппаратный такт перерисовки графика скорости по vsync экрана
+    private void OnGraphVsyncRendering(object? sender, object e)
+    {
+        var nowTicks = Environment.TickCount64;
+        if (nowTicks - _graphLastVsyncTicks < 15)
+        {
+            return;
+        }
+
+        _graphLastVsyncTicks = nowTicks;
+        StepGraphFrame();
+    }
+#endif
+
+    //запуск цикла интерполяции и отрисовки графика трафика
     private void StartGraphAnimation()
     {
+#if WINDOWS
+        if (_graphVsyncActive)
+        {
+            return;
+        }
+#else
         if (_graphAnimTimer is not null)
         {
             return;
         }
+#endif
 
         _graphStopwatch.Restart();
         lock (_graphSamples)
@@ -24,82 +105,35 @@ public sealed partial class VpnView
 
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;
-        _smoothSpeedUp = 0;
+        _targetSpeedUp = _smoothSpeedUp = 0;
         _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
 
+#if WINDOWS
+        _graphLastVsyncTicks = 0;
+        _graphVsyncActive = true;
+        Platforms.Windows.WinUiVsync.Subscribe(OnGraphVsyncRendering);
+#else
         _graphAnimTimer = Dispatcher.CreateTimer();
         _graphAnimTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _graphAnimTimer.Tick += (_, _) =>
-        {
-            if (!IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
-            {
-                return;
-            }
-
-            var now = (float)_graphStopwatch.Elapsed.TotalSeconds;
-            var dt = Math.Clamp(now - _lastGraphTickTime, 0.001f, 0.1f);
-            _lastGraphTickTime = now;
-
-            _pulsePhase += dt * 5.5f;
-            if (_pulsePhase > MathF.PI * 2)
-            {
-                _pulsePhase -= MathF.PI * 2;
-            }
-
-            var speedLerp = 1.0 - Math.Exp(-8.0 * dt);
-            _smoothSpeedUp += (_targetSpeedUp - _smoothSpeedUp) * speedLerp;
-            _smoothSpeedDown += (_targetSpeedDown - _smoothSpeedDown) * speedLerp;
-
-            lock (_graphSamples)
-            {
-                if (now - _lastSampleTime >= 0.05f || _graphSamples.Count == 0)
-                {
-                    _graphSamples.Add(new GraphSample(now, (float)_smoothSpeedUp, (float)_smoothSpeedDown));
-                    _lastSampleTime = now;
-
-                    var cutoff = now - (TimeWindowSeconds + 1.0f);
-                    var removeCount = 0;
-                    while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
-                    {
-                        removeCount++;
-                    }
-
-                    if (removeCount > 0)
-                    {
-                        _graphSamples.RemoveRange(0, removeCount);
-                    }
-                }
-
-                var peak = 1024.0;
-                for (var i = 0; i < _graphSamples.Count; i++)
-                {
-                    var s = _graphSamples[i];
-                    if (s.SpeedUp > peak)
-                    {
-                        peak = s.SpeedUp;
-                    }
-
-                    if (s.SpeedDown > peak)
-                    {
-                        peak = s.SpeedDown;
-                    }
-                }
-
-                var peakLerp = 1.0 - Math.Exp(-4.0 * dt);
-                _smoothMaxSpeed += (peak - _smoothMaxSpeed) * peakLerp;
-            }
-
-            TrafficGraphCanvas.InvalidateSurface();
-        };
+        _graphAnimTimer.Tick += (_, _) => StepGraphFrame();
         _graphAnimTimer.Start();
+#endif
     }
 
     //остановка анимации графика скорости
     private void StopGraphAnimation()
     {
+#if WINDOWS
+        if (_graphVsyncActive)
+        {
+            _graphVsyncActive = false;
+            Platforms.Windows.WinUiVsync.Unsubscribe(OnGraphVsyncRendering);
+        }
+#else
         _graphAnimTimer?.Stop();
         _graphAnimTimer = null;
+#endif
         _graphStopwatch.Reset();
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;
@@ -108,18 +142,41 @@ public sealed partial class VpnView
         _smoothSpeedUp = 0;
         _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
+        _lastBytesSent = 0;
+        _lastBytesReceived = 0;
 
         lock (_graphSamples)
         {
             _graphSamples.Clear();
         }
 
+        if (MainThread.IsMainThread)
+        {
+            ResetTrafficLabels();
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(ResetTrafficLabels);
+        }
+
         TrafficGraphCanvas?.InvalidateSurface();
+        return;
+
+        void ResetTrafficLabels()
+        {
+            TrafficUpLabel?.Text = "0 B/s";
+            TrafficDownLabel?.Text = "0 B/s";
+        }
     }
 
     //обработка поступления новых счетчиков трафика
     private void OnTrafficUpdated(long bytesSent, long bytesReceived)
     {
+        if (_vpnService.CurrentState != AppVpnState.Connected)
+        {
+            return;
+        }
+
         var now = DateTime.Now;
         var elapsed = (now - _lastTrafficUpdate).TotalSeconds;
         if (elapsed <= 0.05)
@@ -139,6 +196,11 @@ public sealed partial class VpnView
 
         PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(200), () =>
         {
+            if (_vpnService.CurrentState != AppVpnState.Connected)
+            {
+                return;
+            }
+
             TrafficUpLabel.Text = $"{FormatBytes(sentSpeed)}/s";
             TrafficDownLabel.Text = $"{FormatBytes(recvSpeed)}/s";
         });
@@ -158,15 +220,15 @@ public sealed partial class VpnView
         }
 
         var paddingY = 6f;
-        var usableH = h - (paddingY * 2f);
+        var usableH = h - paddingY * 2f;
 
+        s_skGridPaint.Color = GetSkiaThemeColor("BorderSubtle", new SKColor(128, 128, 128)).WithAlpha(130);
         for (var line = 1; line <= 3; line++)
         {
-            var y = paddingY + (usableH * (line / 4f));
+            var y = paddingY + usableH * (line / 4f);
             canvas.DrawLine(0, y, w, y, s_skGridPaint);
         }
 
-        List<GraphSample> samplesCopy;
         float now;
         double maxSpeed;
 
@@ -177,48 +239,30 @@ public sealed partial class VpnView
                 return;
             }
 
-            samplesCopy = [with(_graphSamples)];
+            _graphSamplesSnapshot.Clear();
+            _graphSamplesSnapshot.AddRange(_graphSamples);
             now = (float)_graphStopwatch.Elapsed.TotalSeconds;
             maxSpeed = Math.Max(_smoothMaxSpeed, 1024.0);
         }
 
-        if (samplesCopy.Count == 0)
+        if (_graphSamplesSnapshot.Count == 0)
         {
             return;
         }
 
-        var graphStyle = ThemeManager.Instance?.ActiveTheme?.Vfx?.TrafficGraphStyle?.Trim().ToLowerInvariant() ?? "neon_wave";
+        var graphStyle = ThemeManager.Instance?.ActiveTheme?.Vfx?.TrafficGraphStyle.Trim().ToLowerInvariant() ?? "neon_wave";
 
-        //построение сглаженных точек графика трафика
-        void PopulatePoints(bool isUpStream)
-        {
-            _graphPointsBuffer.Clear();
-            for (var i = 0; i < samplesCopy.Count; i++)
-            {
-                var s = samplesCopy[i];
-                var age = now - s.Time;
-                var x = w - (age / TimeWindowSeconds * w);
-                var speed = isUpStream ? s.SpeedUp : s.SpeedDown;
-                var ratio = Math.Clamp((float)(speed / maxSpeed), 0f, 1f);
-                var y = h - paddingY - (ratio * usableH);
-                _graphPointsBuffer.Add(new SKPoint(x, y));
-            }
+        var skPrimaryBright = GetSkiaThemeColor("PrimaryBright", s_skGraphUp);
+        var skAccent = GetSkiaThemeColor("Accent", s_skGraphDown);
+        var skGraphUpFill = skPrimaryBright.WithAlpha(55);
+        var skGraphDownFill = skAccent.WithAlpha(75);
 
-            if (_graphPointsBuffer.Count == 0)
-            {
-                return;
-            }
+        _graphStrokeUpPaint.Color = skPrimaryBright;
+        _graphStrokeDownPaint.Color = skAccent;
 
-            if (_graphPointsBuffer[0].X > 0)
-            {
-                _graphPointsBuffer.Insert(0, new SKPoint(0, _graphPointsBuffer[0].Y));
-            }
-
-            if (_graphPointsBuffer[^1].X < w)
-            {
-                _graphPointsBuffer.Add(new SKPoint(w, _graphPointsBuffer[^1].Y));
-            }
-        }
+        DrawStream(true, _graphStrokeUpPaint, skGraphUpFill, skPrimaryBright);
+        DrawStream(false, _graphStrokeDownPaint, skGraphDownFill, skAccent);
+        return;
 
         void DrawStream(bool isUpStream, SKPaint strokePaint, SKColor startFillColor, SKColor strokeColor)
         {
@@ -237,7 +281,7 @@ public sealed partial class VpnView
                 {
                     var sampleIdx = (int)Math.Clamp((float)b / barCount * _graphPointsBuffer.Count, 0, _graphPointsBuffer.Count - 1);
                     var ptY = _graphPointsBuffer[sampleIdx].Y;
-                    var barX = (b * slotW) + ((slotW - barW) * 0.5f) + (isUpStream ? -1.5f : 1.5f);
+                    var barX = b * slotW + (slotW - barW) * 0.5f + (isUpStream ? -1.5f : 1.5f);
                     var barTop = Math.Min(h - paddingY - 2f, ptY);
                     var rect = new SKRect(barX, barTop, barX + barW, h - paddingY);
                     _graphDotSolidPaint.Color = strokeColor.WithAlpha((byte)(isUpStream ? 110 : 165));
@@ -246,16 +290,17 @@ public sealed partial class VpnView
                     _graphDotGlowPaint.Color = strokeColor.WithAlpha(235);
                     canvas.DrawRect(barX, barTop, barW, 2.5f, _graphDotGlowPaint);
                 }
+
                 return;
             }
 
-            using var strokeBuilder = new SKPathBuilder();
-            strokeBuilder.MoveTo(_graphPointsBuffer[0]);
+            _graphStrokeBuilder.Reset();
+            _graphStrokeBuilder.MoveTo(_graphPointsBuffer[0]);
             if (graphStyle == "pulse_line")
             {
                 for (var i = 1; i < _graphPointsBuffer.Count; i++)
                 {
-                    strokeBuilder.LineTo(_graphPointsBuffer[i]);
+                    _graphStrokeBuilder.LineTo(_graphPointsBuffer[i]);
                 }
             }
             else
@@ -265,16 +310,18 @@ public sealed partial class VpnView
                     var p0 = _graphPointsBuffer[i];
                     var p1 = _graphPointsBuffer[i + 1];
                     var midX = (p0.X + p1.X) / 2f;
-                    strokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
+                    _graphStrokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
                 }
             }
-            using var strokePath = strokeBuilder.Detach();
 
-            using var fillBuilder = new SKPathBuilder(strokePath);
-            fillBuilder.LineTo(_graphPointsBuffer[^1].X, h);
-            fillBuilder.LineTo(_graphPointsBuffer[0].X, h);
-            fillBuilder.Close();
-            using var fillPath = fillBuilder.Detach();
+            using var strokePath = _graphStrokeBuilder.Detach();
+
+            _graphFillBuilder.Reset();
+            _graphFillBuilder.AddPath(strokePath);
+            _graphFillBuilder.LineTo(_graphPointsBuffer[^1].X, h);
+            _graphFillBuilder.LineTo(_graphPointsBuffer[0].X, h);
+            _graphFillBuilder.Close();
+            using var fillPath = _graphFillBuilder.Detach();
 
             SKShader fillShader;
             var effectiveFillColor = graphStyle == "aurora_ribbon"
@@ -283,7 +330,7 @@ public sealed partial class VpnView
 
             if (isUpStream)
             {
-                if (_cachedGraphUpFillShader == null || _lastGraphH != h || _lastGraphUpColor != effectiveFillColor)
+                if (_cachedGraphUpFillShader == null || Math.Abs(_lastGraphH - h) > 0.5f || _lastGraphUpColor != effectiveFillColor)
                 {
                     _cachedGraphUpFillShader?.Dispose();
                     _cachedGraphUpFillShader = SKShader.CreateLinearGradient(
@@ -294,11 +341,12 @@ public sealed partial class VpnView
                         SKShaderTileMode.Clamp);
                     _lastGraphUpColor = effectiveFillColor;
                 }
+
                 fillShader = _cachedGraphUpFillShader;
             }
             else
             {
-                if (_cachedGraphDownFillShader == null || _lastGraphH != h || _lastGraphDownColor != effectiveFillColor)
+                if (_cachedGraphDownFillShader == null || Math.Abs(_lastGraphH - h) > 0.5f || _lastGraphDownColor != effectiveFillColor)
                 {
                     _cachedGraphDownFillShader?.Dispose();
                     _cachedGraphDownFillShader = SKShader.CreateLinearGradient(
@@ -309,8 +357,10 @@ public sealed partial class VpnView
                         SKShaderTileMode.Clamp);
                     _lastGraphDownColor = effectiveFillColor;
                 }
+
                 fillShader = _cachedGraphDownFillShader;
             }
+
             _lastGraphH = h;
 
             if (graphStyle != "pulse_line")
@@ -333,8 +383,8 @@ public sealed partial class VpnView
             canvas.DrawPath(strokePath, strokePaint);
 
             var lastPt = _graphPointsBuffer[^1];
-            var pulseRadius = 4.5f + (1.8f * MathF.Sin(_pulsePhase));
-            var alphaGlow = (byte)Math.Clamp(50 + (35 * MathF.Sin(_pulsePhase)), 0, 255);
+            var pulseRadius = 4.5f + 1.8f * MathF.Sin(_pulsePhase);
+            var alphaGlow = (byte)Math.Clamp(50 + 35 * MathF.Sin(_pulsePhase), 0, 255);
 
             _graphDotGlowPaint.Color = strokeColor.WithAlpha(alphaGlow);
             canvas.DrawCircle(lastPt.X, lastPt.Y, pulseRadius, _graphDotGlowPaint);
@@ -343,20 +393,37 @@ public sealed partial class VpnView
             canvas.DrawCircle(lastPt.X, lastPt.Y, 2.5f, _graphDotSolidPaint);
         }
 
-        var skPrimaryBright = GetSkiaThemeColor("PrimaryBright", s_skGraphUp);
-        var skAccent = GetSkiaThemeColor("Accent", s_skGraphDown);
-        var skGraphUpFill = skPrimaryBright.WithAlpha(55);
-        var skGraphDownFill = skAccent.WithAlpha(75);
+        //построение сглаженных точек графика трафика
+        void PopulatePoints(bool isUpStream)
+        {
+            _graphPointsBuffer.Clear();
+            foreach (var s in _graphSamplesSnapshot)
+            {
+                var age = now - s.Time;
+                var x = w - age / TimeWindowSeconds * w;
+                var speed = isUpStream ? s.SpeedUp : s.SpeedDown;
+                var ratio = Math.Clamp((float)(speed / maxSpeed), 0f, 1f);
+                var y = h - paddingY - ratio * usableH;
+                _graphPointsBuffer.Add(new SKPoint(x, y));
+            }
 
-        _graphStrokeUpPaint.Color = skPrimaryBright;
-        _graphStrokeDownPaint.Color = skAccent;
+            if (_graphPointsBuffer.Count == 0)
+            {
+                return;
+            }
 
-        DrawStream(true, _graphStrokeUpPaint, skGraphUpFill, skPrimaryBright);
-        DrawStream(false, _graphStrokeDownPaint, skGraphDownFill, skAccent);
+            if (_graphPointsBuffer[0].X > 0)
+            {
+                _graphPointsBuffer.Insert(0, new SKPoint(0, _graphPointsBuffer[0].Y));
+            }
+
+            if (_graphPointsBuffer[^1].X < w)
+            {
+                _graphPointsBuffer.Add(new SKPoint(w, _graphPointsBuffer[^1].Y));
+            }
+        }
     }
 
     //форматирование байтов в кб и мб
     public static string FormatBytes(double bytes) => FormatHelper.FormatBytes(bytes);
-
-
 }

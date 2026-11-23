@@ -1,33 +1,52 @@
 namespace obxodka.Pages;
 
-public sealed partial class MainPage : ContentPage, IDisposable
+public sealed partial class MainPage : IDisposable
 {
-    public static MainPage? Current { get; private set; }
+    private static readonly string[] s_mainMobileTabs = ["vpn", "profile", "devices", "split", "configuration"];
 
     private readonly ApiService _apiService;
     private readonly IAppManager _appManager;
     private readonly IAppUpdaterService? _appUpdaterService;
+    private readonly IQrScannerService? _qrScanner;
     private readonly ThemeManager _themeManager;
-    private CancellationTokenSource? _vpnCts;
-    public long RemainingSeconds { get; private set; }
-    private string _activeTab = "";
-    private bool _isLoggingOut;
-    private bool _isDecorationsFaded;
-    private bool _isThemeVideoActive;
-    private bool _isWindowActive = true;
-    private int _isSyncingBalance;
-    private long _lastEngineBytesSent;
-    private long _lastEngineBytesReceived;
-    private long _lastEngineTrafficTicks;
-    private string? _activeThemeScreenFramePath;
-    private FrameSlice? _activeThemeFrameSlice;
-    private bool _hasThemeCornerDecorations;
-    private List<string>? _activeParticleSpritePaths;
-    private ThemeVfx? _activeVfx;
-    private Color _activeParticlePrimary = Colors.Transparent;
     private Color _activeParticleAccent = Colors.Transparent;
+    private Color _activeParticlePrimary = Colors.Transparent;
+    private List<string>? _activeParticleSpritePaths;
+    private string _activeTab = "";
+    private FrameSlice? _activeThemeFrameSlice;
+    private string? _activeThemeScreenFramePath;
+    private ThemeVfx? _activeVfx;
+    private bool _hasThemeCornerDecorations;
+    private bool _isDecorationsFaded;
+    private int _forceLogoutActive;
+    private int _isSyncingBalance;
+    private bool _isThemeVideoActive;
+    private bool _isVpnTabInitialized;
 
-    public IVpnService VpnService { get; }
+    private AdaptiveViewport _currentViewport;
+    private bool? _isNavChromeVisible;
+    private bool _isOverlaySidebar;
+    private bool? _isWideLayout;
+    private bool _isWindowActive = true;
+    private double _lastAppliedBottomInset = -1;
+    private ThemeAppliedEventArgs? _lastAppliedThemeArgs;
+
+    private double _lastAppliedTopInset = -1;
+    private long _lastEngineBytesReceived;
+    private long _lastEngineBytesSent;
+    private long _lastEngineTrafficTicks;
+    private int _startupHandled;
+
+    private AuthView? _tabContentAuth;
+    private ConfigurationView? _tabContentConfiguration;
+    private DeleteAccountView? _tabContentDelete;
+    private DevicesView? _tabContentDevices;
+    private PaymentView? _tabContentPayment;
+    private ProfileView? _tabContentProfile;
+    private SplitView? _tabContentSplit;
+    private ThemeStoreView? _tabContentThemeStore;
+    private VpnView? _tabContentVpn;
+    private CancellationTokenSource? _vpnCts;
 
     public MainPage(
         IVpnService vpnService,
@@ -45,26 +64,13 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _appManager = appManager;
         _themeManager = themeManager;
         _appUpdaterService = appUpdaterService;
+        _qrScanner = qrScanner;
         BindingContext = this;
-
-        TabContentAuth.Initialize(this, _apiService, qrScanner);
-
-        TabContentDelete.Initialize(this, _apiService);
-        TabContentDelete.CancelRequested += OnDeleteCancelRequested;
-        TabContentDelete.AccountDeleted += OnAccountDeletedAsync;
-
-        TabContentDevices.Initialize(this, _apiService);
-        TabContentSplit.Initialize(this, _appManager);
-        TabContentPayment.Initialize(this, _apiService);
         DesktopSidebar.Initialize(_appUpdaterService);
-        TabContentProfile.Initialize(this, _themeManager, _apiService);
-
-        TabContentThemeStore.Initialize(_themeManager);
-        TabContentThemeStore.BackRequested += (_, _) => _ = SwitchTabAsync("configuration");
-        TabContentConfiguration.ThemesRequested += (_, _) => _ = SwitchTabAsync("themes");
 
         _themeManager.OnThemeApplied += HandleThemeApplied;
         _themeManager.OnThemeReset += HandleThemeReset;
+        _themeManager.OnSystemThemeSynced += HandleSystemThemeSynced;
         _themeManager.VideoEnabledChanged += OnThemeVideoEnabledChanged;
         _themeManager.ParticlesEnabledChanged += OnThemeParticlesEnabledChanged;
         _themeManager.FramesEnabledChanged += OnThemeFramesEnabledChanged;
@@ -72,15 +78,35 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _themeManager.ParallaxEnabledChanged += OnThemeParallaxEnabledChanged;
         _themeManager.CardOpacityChanged += OnCardOpacityChanged;
         _themeManager.GlowIntensityChanged += OnGlowIntensityChanged;
+
+        //создаем только одну стартовую вкладку до восстановления темы, остальные загружаем лениво
+        var isLikelyLogged = PlatformServices.Preferences.Get(AppPreferenceKeys.UserIsLogged, false);
+        var initialTab = isLikelyLogged ? "vpn" : "auth";
+        var initialView = EnsureTabCreated(initialTab);
+
         _themeManager.RestoreActiveThemeAtStartup();
         UpdateAllViewsOpacity();
 
-        TabContentProfile.LogoutRequested += OnProfileLogoutRequestedAsync;
-        TabContentProfile.BuyTokensRequested += OnBuyTokensRequested;
-        TabContentProfile.BalanceRefreshRequested += OnProfileBalanceRefreshRequestedAsync;
+        if (!SplashOverlay.IsVisible)
+        {
+            _activeTab = initialTab;
+            initialView.Opacity = 1.0;
+            initialView.IsVisible = true;
+            if (isLikelyLogged)
+            {
+                RemainingSeconds = ReadCachedRemainingSeconds();
+                UpdateBalanceUi();
+                DesktopSidebar.UpdateActiveTab("vpn");
+                MobileBottomBar.UpdateActiveTab("vpn");
+            }
+            else
+            {
+                DesktopSidebar.HideSidebar();
+                MobileBottomBar.HideSidebar();
+            }
+        }
 
-        TabContentPayment.PaymentCompleted += OnPaymentCompletedAsync;
-        TabContentPayment.PaymentCancelled += OnPaymentCancelled;
+        RefreshAdaptiveLayout(forceApply: true);
 
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
         VpnService.OnForceLogoutRequested += HandleForceLogout;
@@ -109,6 +135,8 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         DesktopSidebar.NavTapped += OnSidebarNavTapped;
         DesktopSidebar.LogoutTapped += OnSidebarLogoutTappedAsync;
+        DesktopSidebar.ExpandedChanged += OnSidebarExpandedChanged;
+        DesktopSidebar.SidebarWidthChanged += OnSidebarWidthChanged;
         MobileBottomBar.NavTapped += OnBottomBarNavTapped;
 
         SafeAreaHelper.InsetsChanged -= OnSafeAreaInsetsChanged;
@@ -119,89 +147,50 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
 
 #if WINDOWS
-        ThemeDecorationsContainer.HandlerChanged += (s, e) =>
+        ThemeDecorationsContainer.HandlerChanged += (_, _) =>
         {
-            if (ThemeDecorationsContainer.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement el)
-            {
-                el.IsHitTestVisible = false;
-            }
-            ApplyWindowsClip(ThemeDecorationsContainer);
+            WinUiMainPageHelper.DisableHitTest(ThemeDecorationsContainer);
+            WinUiMainPageHelper.ApplyClip(ThemeDecorationsContainer);
         };
-        ThemeBackgroundViewport.HandlerChanged += (s, e) =>
+        ThemeBackgroundViewport.HandlerChanged += (_, _) =>
         {
-            if (ThemeBackgroundViewport.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement el)
-            {
-                el.IsHitTestVisible = false;
-            }
-            ApplyWindowsClip(ThemeBackgroundViewport);
+            WinUiMainPageHelper.DisableHitTest(ThemeBackgroundViewport);
+            WinUiMainPageHelper.ApplyClip(ThemeBackgroundViewport);
         };
-        ThemeBackgroundMover.HandlerChanged += (s, e) =>
+        ThemeBackgroundMover.HandlerChanged += (_, _) => WinUiMainPageHelper.DisableHitTest(ThemeBackgroundMover);
+        ThemeBackgroundImage.HandlerChanged += (_, _) => WinUiMainPageHelper.DisableHitTest(ThemeBackgroundImage);
+        ThemeBackgroundVideo.HandlerChanged += (_, _) => WinUiMainPageHelper.ConfigureVideoPlayer(ThemeBackgroundVideo);
+        ThemeBackgroundVideoDimmer.HandlerChanged += (_, _) => WinUiMainPageHelper.DisableHitTest(ThemeBackgroundVideoDimmer);
+        ThisPage.HandlerChanged += (_, _) =>
         {
-            if (ThemeBackgroundMover.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement el)
-            {
-                el.IsHitTestVisible = false;
-            }
-        };
-        ThemeBackgroundImage.HandlerChanged += (s, e) =>
-        {
-            if (ThemeBackgroundImage.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement el)
-            {
-                el.IsHitTestVisible = false;
-            }
-        };
-        ThemeBackgroundVideo.HandlerChanged += (s, e) => ConfigureNativeVideoPlayer();
-        ThemeBackgroundVideoDimmer.HandlerChanged += (s, e) =>
-        {
-            if (ThemeBackgroundVideoDimmer.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement el)
-            {
-                el.IsHitTestVisible = false;
-            }
-        };
-        ThisPage.HandlerChanged += (s, e) =>
-        {
-            ApplyWindowsClip(ThisPage);
-            if (ThisPage.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement el)
-            {
-                el.AddHandler(
-                    Microsoft.UI.Xaml.UIElement.PointerMovedEvent,
-                    new Microsoft.UI.Xaml.Input.PointerEventHandler((sender, args) =>
+            WinUiMainPageHelper.ApplyClip(ThisPage);
+            WinUiMainPageHelper.AttachPointerHandlers(
+                ThisPage,
+                (x, y) => HandlePointerInteraction(x, y, ThisPage.Width, ThisPage.Height),
+                (x, y) =>
+                {
+                    ThemeParticles?.TriggerPointerBurst((float)x, (float)y);
+                    if (!_isWindowActive)
                     {
-                        var pt = args.GetCurrentPoint(el);
-                        HandlePointerInteraction(pt.Position.X, pt.Position.Y, ThisPage.Width, ThisPage.Height);
-                    }),
-                    true);
-
-                el.AddHandler(
-                    Microsoft.UI.Xaml.UIElement.PointerPressedEvent,
-                    new Microsoft.UI.Xaml.Input.PointerEventHandler((sender, args) =>
+                        OnWindowActivated();
+                    }
+                },
+                (x, y) =>
+                {
+                    var w = ThisPage.Width;
+                    var h = ThisPage.Height;
+                    if (w <= 0 || h <= 0 || x <= 4 || y <= 4 || x >= w - 4 || y >= h - 4)
                     {
-                        var pt = args.GetCurrentPoint(el);
-                        ThemeParticles?.TriggerPointerBurst((float)pt.Position.X, (float)pt.Position.Y);
-                        if (!_isWindowActive)
-                        {
-                            OnWindowActivated();
-                        }
-                    }),
-                    true);
-
-                el.AddHandler(
-                    Microsoft.UI.Xaml.UIElement.PointerExitedEvent,
-                    new Microsoft.UI.Xaml.Input.PointerEventHandler((sender, args) =>
-                    {
-                        var pt = args.GetCurrentPoint(el);
-                        var pos = pt.Position;
-                        var w = ThisPage.Width;
-                        var h = ThisPage.Height;
-                        if (w <= 0 || h <= 0 || pos.X <= 4 || pos.Y <= 4 || pos.X >= w - 4 || pos.Y >= h - 4)
-                        {
-                            RestoreDecorationsOpacity();
-                        }
-                    }),
-                    true);
-            }
+                        RestoreDecorationsOpacity();
+                    }
+                });
         };
 #endif
     }
+
+    public static MainPage? Current { get; private set; }
+    public long RemainingSeconds { get; private set; }
+    public IVpnService VpnService { get; }
 
     public void Dispose()
     {
@@ -213,7 +202,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         App.WindowDeactivated -= OnWindowDeactivated;
         App.DeepLinkLoginReceived -= OnDeepLinkLoginReceived;
 
-        TabContentVpn.UnsubscribeEvents();
+        _tabContentVpn?.UnsubscribeEvents();
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
         VpnService.OnStateChanged -= OnVpnStateChangedForTheme;
         OctopusEngine.Current.OnTrafficUpdated -= OnEngineTrafficUpdated;
@@ -223,6 +212,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
 
         _themeManager.OnThemeApplied -= HandleThemeApplied;
         _themeManager.OnThemeReset -= HandleThemeReset;
+        _themeManager.OnSystemThemeSynced -= HandleSystemThemeSynced;
         _themeManager.VideoEnabledChanged -= OnThemeVideoEnabledChanged;
         _themeManager.ParticlesEnabledChanged -= OnThemeParticlesEnabledChanged;
         _themeManager.FramesEnabledChanged -= OnThemeFramesEnabledChanged;
@@ -231,16 +221,38 @@ public sealed partial class MainPage : ContentPage, IDisposable
         _themeManager.CardOpacityChanged -= OnCardOpacityChanged;
         _themeManager.GlowIntensityChanged -= OnGlowIntensityChanged;
 
-        TabContentDelete.CancelRequested -= OnDeleteCancelRequested;
-        TabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
-        TabContentProfile.LogoutRequested -= OnProfileLogoutRequestedAsync;
-        TabContentProfile.BuyTokensRequested -= OnBuyTokensRequested;
-        TabContentProfile.BalanceRefreshRequested -= OnProfileBalanceRefreshRequestedAsync;
-        TabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
-        TabContentPayment.PaymentCancelled -= OnPaymentCancelled;
-        TabContentPayment.StopPaymentPolling();
+        if (_tabContentConfiguration is not null)
+        {
+            _tabContentConfiguration.ThemesRequested -= OnConfigurationThemesRequested;
+            _tabContentConfiguration.Dispose();
+        }
+
+        _tabContentThemeStore?.BackRequested -= OnThemeStoreBackRequested;
+        _tabContentVpn?.Dispose();
+        if (_tabContentDelete is not null)
+        {
+            _tabContentDelete.CancelRequested -= OnDeleteCancelRequested;
+            _tabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
+        }
+
+        if (_tabContentProfile is not null)
+        {
+            _tabContentProfile.LogoutRequested -= OnProfileLogoutRequestedAsync;
+            _tabContentProfile.BuyTokensRequested -= OnBuyTokensRequestedAsync;
+            _tabContentProfile.BalanceRefreshRequested -= OnProfileBalanceRefreshRequestedAsync;
+        }
+
+        if (_tabContentPayment is not null)
+        {
+            _tabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
+            _tabContentPayment.PaymentCancelled -= OnPaymentCancelled;
+            _tabContentPayment.StopPaymentPolling();
+        }
+
         DesktopSidebar.NavTapped -= OnSidebarNavTapped;
         DesktopSidebar.LogoutTapped -= OnSidebarLogoutTappedAsync;
+        DesktopSidebar.ExpandedChanged -= OnSidebarExpandedChanged;
+        DesktopSidebar.SidebarWidthChanged -= OnSidebarWidthChanged;
         MobileBottomBar.NavTapped -= OnBottomBarNavTapped;
         SafeAreaHelper.InsetsChanged -= OnSafeAreaInsetsChanged;
         if (Current == this)
@@ -251,32 +263,17 @@ public sealed partial class MainPage : ContentPage, IDisposable
         GC.SuppressFinalize(this);
     }
 
+    private void HandleApiUnauthorized() =>
+        HandleForceLogout("Сессия истекла. Пожалуйста, войдите снова.");
+
     private void OnDeleteCancelRequested(object? sender, EventArgs e) =>
         _ = SwitchTabAsync("profile");
 
-    private async void OnAccountDeletedAsync(object? sender, EventArgs e) =>
-        await PerformLogoutAsync();
+    private void OnConfigurationThemesRequested(object? sender, EventArgs e) =>
+        _ = SwitchTabAsync("themes");
 
-    private async void OnProfileLogoutRequestedAsync(object? sender, EventArgs e) =>
-        await HandleLogoutClickAsync();
-
-    private async void OnProfileBalanceRefreshRequestedAsync(object? sender, EventArgs e) =>
-        await SyncBalanceFromServerAsync();
-
-    public Task TriggerBalanceSyncAsync() => SyncBalanceFromServerAsync();
-
-    private void OnBuyTokensRequested(object? sender, EventArgs e)
-    {
-        _ = SwitchTabAsync("payment");
-        TabContentPayment.LoadPaymentPage();
-    }
-
-    private async void OnPaymentCompletedAsync(object? sender, EventArgs e)
-    {
-        var session = await AuthManager.LoadSessionAsync();
-        await SyncBalanceFromServerAsync(session);
-        await SwitchTabAsync("profile");
-    }
+    private void OnThemeStoreBackRequested(object? sender, EventArgs e) =>
+        _ = SwitchTabAsync("configuration");
 
     private void OnPaymentCancelled(object? sender, EventArgs e) =>
         _ = SwitchTabAsync("profile");
@@ -284,108 +281,163 @@ public sealed partial class MainPage : ContentPage, IDisposable
     private void OnSidebarNavTapped(object? sender, string tab) =>
         _ = SwitchTabAsync(tab);
 
-    private async void OnSidebarLogoutTappedAsync(object? sender, EventArgs e) =>
-        await HandleLogoutClickAsync();
-
     private void OnBottomBarNavTapped(object? sender, string tab) =>
         _ = SwitchTabAsync(tab);
 
-    private void OnDeepLinkLoginReceived(string email, string code) =>
-        MainThread.BeginInvokeOnMainThread(async () =>
+    private async void OnAccountDeletedAsync(object? sender, EventArgs e)
+    {
+        try
         {
-            App.PendingDeepLinkLogin = null;
+            await PerformLogoutAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[MAINPAGE ACCOUNT DELETED ERROR] {ex.Message}", ex);
+        }
+    }
+
+    private async void OnProfileLogoutRequestedAsync(object? sender, EventArgs e)
+    {
+        try
+        {
+            await HandleLogoutClickAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[MAINPAGE LOGOUT ERROR] {ex.Message}", ex);
+        }
+    }
+
+    private async void OnProfileBalanceRefreshRequestedAsync(object? sender, EventArgs e)
+    {
+        try
+        {
+            await SyncBalanceFromServerAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[MAINPAGE BALANCE REFRESH ERROR] {ex.Message}");
+        }
+    }
+
+    private async void OnBuyTokensRequestedAsync(object? sender, EventArgs e)
+    {
+        try
+        {
+            await SwitchTabAsync("payment");
+            _tabContentPayment?.LoadPaymentPage();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[MAINPAGE PAYMENT NAV ERROR] {ex.Message}", ex);
+        }
+    }
+
+    private async void OnPaymentCompletedAsync(object? sender, EventArgs e)
+    {
+        try
+        {
             var session = await AuthManager.LoadSessionAsync();
-            if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
-            {
-                return;
-            }
+            await SyncBalanceFromServerAsync(session);
+            await SwitchTabAsync("profile");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[MAINPAGE PAYMENT COMPLETED ERROR] {ex.Message}", ex);
+        }
+    }
 
-            if (_activeTab != "auth")
-            {
-                DesktopSidebar.HideSidebar();
-                MobileBottomBar.HideSidebar();
-                await SwitchTabAsync("auth");
-            }
+    private async void OnSidebarLogoutTappedAsync(object? sender, EventArgs e)
+    {
+        try
+        {
+            await HandleLogoutClickAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogError($"[MAINPAGE SIDEBAR LOGOUT ERROR] {ex.Message}", ex);
+        }
+    }
 
-            await TabContentAuth.HandleDeepLinkLoginAsync(email, code);
+    private void OnDeepLinkLoginReceived(string email, string code) =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
+        {
+            try
+            {
+                App.PendingDeepLinkLogin = null;
+                var session = await AuthManager.LoadSessionAsync();
+                if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
+                {
+                    return;
+                }
+
+                if (_activeTab != "auth")
+                {
+                    DesktopSidebar.HideSidebar();
+                    MobileBottomBar.HideSidebar();
+                    await SwitchTabAsync("auth");
+                }
+
+                if (_tabContentAuth is not null)
+                {
+                    await _tabContentAuth.HandleDeepLinkLoginAsync(email, code);
+                }
+            }
+            catch
+            {
+                // ignored
+            }
         });
 
     private void HandleForceLogout(string message)
     {
-        if (_isLoggingOut)
+        if (_activeTab == "auth")
         {
             return;
         }
 
-        _isLoggingOut = true;
-        MainThread.BeginInvokeOnMainThread(async () =>
+        if (Interlocked.CompareExchange(ref _forceLogoutActive, 1, 0) != 0)
         {
-            await DisplayAlertAsync("Внимание", message, "OK");
-            await PerformLogoutAsync();
-            _isLoggingOut = false;
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(async void () =>
+        {
+            try
+            {
+                if (_activeTab == "auth")
+                {
+                    return;
+                }
+
+                //сначала очищаем сессию и переводим на экран входа чтобы фоновые запросы больше не вызывали 401
+                await PerformLogoutAsync();
+                await DisplayAlertAsync("Внимание", message, "OK");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogWarning($"[FORCE LOGOUT ERROR] {ex.Message}");
+            }
+            finally
+            {
+                Volatile.Write(ref _forceLogoutActive, 0);
+            }
         });
-    }
-
-    private void HandleApiUnauthorized() =>
-        HandleForceLogout("Сессия истекла. Пожалуйста, войдите снова.");
-
-    private bool? _isWideLayout;
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        base.OnSizeAllocated(width, height);
-        if (width <= 0 || height <= 0)
-        {
-            return;
-        }
-
-        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
-        var isWide = AdaptiveLayoutHelper.IsWideLayout(width, isDesktopOrTablet);
-        if (_isWideLayout != isWide)
-        {
-            _isWideLayout = isWide;
-            ApplyAdaptiveLayout(isWide);
-        }
-
-        if (!isWide)
-        {
-            MobileBottomBar.SetCompactMode(AdaptiveLayoutHelper.IsShortScreen(height));
-        }
-    }
-
-    private void ApplyAdaptiveLayout(bool isWide)
-    {
-        if (isWide)
-        {
-            MobileBottomBar.IsVisible = false;
-            MobileBottomBar.HideSidebar();
-            DesktopSidebar.IsVisible = true;
-            Grid.SetColumn(MainContentContainer, 1);
-            Grid.SetColumnSpan(MainContentContainer, 1);
-            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
-            {
-                _ = DesktopSidebar.PlayEntranceAnimationAsync();
-            }
-        }
-        else
-        {
-            DesktopSidebar.IsVisible = false;
-            DesktopSidebar.HideSidebar();
-            MobileBottomBar.IsVisible = true;
-            Grid.SetColumn(MainContentContainer, 0);
-            Grid.SetColumnSpan(MainContentContainer, 2);
-            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
-            {
-                _ = MobileBottomBar.PlayEntranceAnimationAsync();
-            }
-        }
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
 
-        _ = AnimateSplashIconAsync();
+        if (Interlocked.CompareExchange(ref _startupHandled, 1, 0) != 0)
+        {
+            return;
+        }
+
+        if (SplashOverlay.IsVisible)
+        {
+            _ = AnimateSplashIconAsync();
+        }
 
         _ = Task.Run(async () =>
         {
@@ -399,55 +451,78 @@ public sealed partial class MainPage : ContentPage, IDisposable
                 AppLogger.LogError("[AUTH LOAD ERROR]", ex);
             }
 
-            MainThread.BeginInvokeOnMainThread(async () =>
+            _ = Task.Run(async () =>
             {
-                if (SplashOverlay.IsVisible)
+                try
                 {
-                    await Task.Delay(1000);
-                    _ = SplashOverlay.FadeToAsync(0, 350, Easing.CubicInOut);
-                    await Task.Delay(360);
-                    SplashOverlay.InputTransparent = true;
-                    SplashOverlay.IsVisible = false;
-#if WINDOWS
-                    if (SplashOverlay.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement splashElement)
+                    if (_appUpdaterService is not null)
                     {
-                        splashElement.IsHitTestVisible = false;
+                        await Task.Delay(2500);
+                        await _appUpdaterService.CheckForUpdatesAsync();
                     }
-#endif
                 }
-
-                _ = Task.Run(async () =>
+                catch (Exception ex)
                 {
-                    try
+                    AppLogger.LogWarning($"[AUTO UPDATE CHECK] {ex.Message}");
+                }
+            });
+
+            MainThread.BeginInvokeOnMainThread(async void () =>
+            {
+                try
+                {
+                    if (SplashOverlay.IsVisible)
                     {
-                        if (_appUpdaterService is not null)
+                        await Task.Delay(1000);
+                        _ = SplashOverlay.FadeToAsync(0, 350, Easing.CubicInOut);
+                        await Task.Delay(360);
+                        SplashOverlay.InputTransparent = true;
+                        SplashOverlay.IsVisible = false;
+#if WINDOWS
+                        WinUiMainPageHelper.DisableHitTest(SplashOverlay);
+#endif
+                    }
+
+                    if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
+                    {
+                        if (_activeTab == "vpn")
                         {
-                            await Task.Delay(2500);
-                            await _appUpdaterService.CheckForUpdatesAsync(manualCheck: false);
+                            ApplySessionBalance(session);
+                            HandlePendingTileAction();
+                            await SyncBalanceFromServerAsync(session);
+                        }
+                        else
+                        {
+                            await SwitchToAppAfterAuthAsync(session);
+                            HandlePendingTileAction();
                         }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        AppLogger.LogWarning($"[AUTO UPDATE CHECK] {ex.Message}");
-                    }
-                });
+                        if (_activeTab != "auth")
+                        {
+                            DesktopSidebar.HideSidebar();
+                            MobileBottomBar.HideSidebar();
+                            await SwitchTabAsync("auth", SplashOverlay.IsVisible);
+                        }
 
-                if (session is { IsLoggedIn: true, JwtToken.Length: > 0 })
-                {
-                    await SwitchToAppAfterAuthAsync();
-                    HandlePendingTileAction();
-                }
-                else
-                {
-                    DesktopSidebar.HideSidebar();
-                    MobileBottomBar.HideSidebar();
-                    await SwitchTabAsync("auth");
-                    _ = TabContentAuth.PlayEntranceAnimationAsync();
-                    if (App.PendingDeepLinkLogin is { } pendingLogin)
-                    {
+                        if (SplashOverlay.IsVisible)
+                        {
+                            _ = _tabContentAuth?.PlayEntranceAnimationAsync();
+                        }
+
+                        if (App.PendingDeepLinkLogin is not { } pendingLogin || _tabContentAuth is null)
+                        {
+                            return;
+                        }
+
                         App.PendingDeepLinkLogin = null;
-                        await TabContentAuth.HandleDeepLinkLoginAsync(pendingLogin.Email, pendingLogin.Code);
+                        await _tabContentAuth.HandleDeepLinkLoginAsync(pendingLogin.Email, pendingLogin.Code);
                     }
+                }
+                catch
+                {
+                    // ignored
                 }
             });
         });
@@ -474,39 +549,20 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
     }
 
-    public async Task SwitchToAppAfterAuthAsync()
+    public async Task SwitchToAppAfterAuthAsync(UserSession? preloadedSession = null)
     {
-        var session = await AuthManager.LoadSessionAsync();
-        if (session is not null)
+        ApiService.ResetUnauthorizedState();
+        var session = preloadedSession ?? await AuthManager.LoadSessionAsync();
+        ApplySessionBalance(session);
+
+        if (_tabContentAuth is { IsVisible: true })
         {
-            RemainingSeconds = session.BalanceSeconds > 0
-                ? session.BalanceSeconds
-                : (session.SubscriptionUntil is { } until && until > DateTime.UtcNow
-                    ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
-                    : 0);
-            UpdateBalanceUI();
+            _ = _tabContentAuth.FadeToAsync(0, 300);
+            await Task.Delay(300);
         }
 
-        _ = TabContentAuth.FadeToAsync(0, 300);
-        await Task.Delay(300);
-
-        TabContentVpn.Initialize(this, VpnService, _apiService);
-        _ = SwitchTabAsync("vpn");
-
-        var isDesktopOrTablet = DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet;
-        var isWide = _isWideLayout ?? AdaptiveLayoutHelper.IsWideLayout(Width, isDesktopOrTablet);
-        _isWideLayout = isWide;
-        ApplyAdaptiveLayout(isWide);
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(800);
-                _ = await _appManager.GetInstalledAppsAsync();
-            }
-            catch { }
-        });
+        var animateEntrance = _activeTab == "auth" || SplashOverlay.IsVisible;
+        await SwitchTabAsync("vpn", animateEntrance);
 
         await SyncBalanceFromServerAsync(session);
     }
@@ -520,7 +576,7 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
 
         App.PendingTileAction = false;
-        TabContentVpn.TriggerTileToggle();
+        (EnsureTabCreated("vpn") as VpnView)?.TriggerTileToggle();
     }
 
     private async Task HandleLogoutClickAsync()
@@ -532,1272 +588,43 @@ public sealed partial class MainPage : ContentPage, IDisposable
         }
     }
 
+    private int _authGeneration;
+
     private async Task PerformLogoutAsync()
     {
+        _ = Interlocked.Increment(ref _authGeneration);
+
         if (_vpnCts is { } cts)
         {
             await cts.CancelAsync().ConfigureAwait(false);
         }
-        TabContentVpn.UnsubscribeEvents();
+
+        _tabContentPayment?.StopPaymentPolling();
         _ = Task.Run(async () =>
         {
             try
             {
                 await VpnService.StopVpnAsync();
             }
-            catch { }
-        });
-
-        await AuthManager.ClearSessionAsync();
-        AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-        TabContentVpn.UpdateActiveNode();
-
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            DesktopSidebar.HideSidebar();
-            MobileBottomBar.HideSidebar();
-            _ = SwitchTabAsync("auth");
-        });
-    }
-
-    private static readonly string[] s_mainMobileTabs = ["vpn", "profile", "devices", "split", "configuration"];
-
-    private void OnContentSwipedLeft(object? sender, SwipedEventArgs e)
-    {
-        if (DeviceInfo.Idiom != DeviceIdiom.Phone || _activeTab == "auth")
-        {
-            return;
-        }
-
-        var idx = Array.IndexOf(s_mainMobileTabs, _activeTab);
-        if (idx >= 0 && idx < s_mainMobileTabs.Length - 1)
-        {
-            _ = SwitchTabAsync(s_mainMobileTabs[idx + 1]);
-        }
-    }
-
-    private void OnContentSwipedRight(object? sender, SwipedEventArgs e)
-    {
-        if (DeviceInfo.Idiom != DeviceIdiom.Phone || _activeTab == "auth")
-        {
-            return;
-        }
-
-        var idx = Array.IndexOf(s_mainMobileTabs, _activeTab);
-        if (idx > 0)
-        {
-            _ = SwitchTabAsync(s_mainMobileTabs[idx - 1]);
-        }
-    }
-
-    public async Task SwitchTabAsync(string tab)
-    {
-        if (_activeTab == tab)
-        {
-            return;
-        }
-
-        var prevTab = _activeTab;
-        if (prevTab == "payment")
-        {
-            TabContentPayment.StopPaymentPolling();
-        }
-
-        _activeTab = tab;
-
-        DesktopSidebar.UpdateActiveTab(tab);
-        MobileBottomBar.UpdateActiveTab(tab);
-
-        var outgoing = GetTabContent(prevTab);
-        var incoming = GetTabContent(tab);
-        await UIAnimations.SwitchViewAsync(outgoing, incoming);
-        UpdateAllViewsOpacity();
-
-        switch (tab)
-        {
-            case "vpn":
-                TabContentVpn.ForceLayoutWidth();
-                _ = TabContentVpn.PlayEntranceAnimationAsync();
-                _ = SyncBalanceFromServerAsync();
-                break;
-            case "configuration":
-                TabContentConfiguration.ForceLayoutWidth();
-                TabContentConfiguration.OnAppearing();
-                _ = TabContentConfiguration.PlayEntranceAnimationAsync();
-                break;
-            case "profile":
-                TabContentProfile.ForceLayoutWidth();
-                var session = await AuthManager.LoadSessionAsync();
-                TabContentProfile.UpdateProfileInfo(session);
-                TabContentProfile.UpdateBalance(RemainingSeconds);
-                _ = TabContentProfile.LoadReferralCodeAsync();
-                _ = TabContentProfile.PlayEntranceAnimationAsync();
-                _ = SyncBalanceFromServerAsync(session);
-                break;
-            case "devices":
-                TabContentDevices.ForceLayoutWidth();
-                _ = TabContentDevices.PlayEntranceAnimationAsync();
-                _ = TabContentDevices.LoadDevicesAsync();
-                break;
-            case "split":
-                TabContentSplit.ForceLayoutWidth();
-                _ = TabContentSplit.PlayEntranceAnimationAsync();
-                _ = TabContentSplit.LoadSplitAppsAsync();
-                break;
-            case "auth":
-                _ = TabContentAuth.PlayEntranceAnimationAsync();
-                break;
-            case "delete":
-                _ = TabContentDelete.PlayEntranceAnimationAsync();
-                break;
-            case "payment":
-                _ = TabContentPayment.PlayEntranceAnimationAsync();
-                break;
-            case "themes":
-                TabContentThemeStore.ForceLayoutWidth();
-                _ = TabContentThemeStore.PlayEntranceAnimationAsync();
-                _ = TabContentThemeStore.LoadCatalogAsync();
-                break;
-            default:
-                break;
-        }
-    }
-
-    private View? GetTabContent(string? tab) => tab switch
-    {
-        "auth" => TabContentAuth,
-        "vpn" => TabContentVpn,
-        "configuration" => TabContentConfiguration,
-        "profile" => TabContentProfile,
-        "devices" => TabContentDevices,
-        "payment" => TabContentPayment,
-        "split" => TabContentSplit,
-        "delete" => TabContentDelete,
-        "themes" => TabContentThemeStore,
-        _ => null
-    };
-
-    private void OnVpnStateChangedForTheme(AppVpnState state) =>
-        MainThread.BeginInvokeOnMainThread(() => ThemeParticles?.TriggerVpnStateEffect(state));
-
-    private void OnEngineTrafficUpdated(long bytesSent, long bytesReceived)
-    {
-        var nowTicks = Environment.TickCount64;
-        var elapsedSec = (nowTicks - _lastEngineTrafficTicks) / 1000.0;
-        if (elapsedSec <= 0.05)
-        {
-            return;
-        }
-
-        var deltaBytes = Math.Max(0L, bytesSent - _lastEngineBytesSent + (bytesReceived - _lastEngineBytesReceived));
-        _lastEngineBytesSent = bytesSent;
-        _lastEngineBytesReceived = bytesReceived;
-        _lastEngineTrafficTicks = nowTicks;
-
-        var totalMbps = deltaBytes * 8.0 / (elapsedSec * 1_000_000.0);
-        ThemeParticles?.SetTrafficSpeedMbps(totalMbps);
-    }
-
-    public void NotifyVpnConnected()
-    {
-        DesktopSidebar.UpdateVpnStatus(true);
-        if (_vpnCts is null && RemainingSeconds > 0)
-        {
-            _vpnCts = new CancellationTokenSource();
-            _ = ConsumeTimeLoopAsync(_vpnCts.Token);
-        }
-
-        ThemeParticles?.TriggerVpnStateEffect(AppVpnState.Connected);
-
-        if (_themeManager.SoundsEnabled)
-        {
-            ThemeAudioService.PlayConnect();
-        }
-    }
-
-    public void NotifyVpnDisconnected()
-    {
-        DesktopSidebar.UpdateVpnStatus(false);
-        _vpnCts?.Cancel();
-        _vpnCts = null;
-
-        ThemeParticles?.TriggerVpnStateEffect(AppVpnState.Disconnected);
-        ThemeParticles?.SetTrafficSpeedMbps(0);
-        ThemeAudioService.UpdateAmbientState(false);
-
-        if (_themeManager.SoundsEnabled)
-        {
-            ThemeAudioService.PlayDisconnect();
-        }
-    }
-
-    private static ImageSource? LoadLocalImage(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            return null;
-        }
-
-        try
-        {
-            var bytes = File.ReadAllBytes(path);
-            return ImageSource.FromStream(() => new MemoryStream(bytes));
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogWarning($"[MainPage] Error loading local image '{path}': {ex.Message}");
-            return null;
-        }
-    }
-
-    private static void SetDecorationElement(Image target, string? path, ref bool hasAny)
-    {
-        if (!string.IsNullOrEmpty(path) && File.Exists(path))
-        {
-            target.Source = LoadLocalImage(path);
-            target.IsVisible = true;
-            hasAny = true;
-        }
-        else
-        {
-            target.Source = null;
-            target.IsVisible = false;
-        }
-    }
-
-    private static void ClearImageElement(Image target)
-    {
-        target.Source = null;
-        target.IsVisible = false;
-    }
-
-    private void OnCardOpacityChanged(double opacity) =>
-        MainThread.BeginInvokeOnMainThread(UpdateAllViewsOpacity);
-
-    private void OnGlowIntensityChanged(double glow) =>
-        MainThread.BeginInvokeOnMainThread(() => TabContentVpn?.OnThemeChanged());
-
-    private void UpdateAllViewsOpacity()
-    {
-        TabContentVpn?.UpdateCardOpacity();
-        DesktopSidebar?.UpdateCardOpacity();
-        MobileBottomBar?.UpdateCardOpacity();
-        TabContentConfiguration?.UpdateCardOpacity();
-        TabContentProfile?.UpdateCardOpacity();
-        TabContentThemeStore?.UpdateCardOpacity();
-        TabContentDevices?.UpdateCardOpacity();
-        TabContentPayment?.UpdateCardOpacity();
-        TabContentDelete?.UpdateCardOpacity();
-        TabContentSplit?.UpdateCardOpacity();
-        TabContentAuth?.UpdateCardOpacity();
-    }
-
-    private void NotifyViewsThemeChanged()
-    {
-        UpdateAllViewsOpacity();
-        TabContentVpn?.OnThemeChanged();
-        TabContentConfiguration?.OnThemeChanged();
-        TabContentSplit?.OnThemeChanged();
-        DesktopSidebar?.OnThemeChanged();
-        MobileBottomBar?.OnThemeChanged();
-        TabContentProfile?.OnThemeChanged();
-        TabContentThemeStore?.OnThemeChanged();
-        TabContentDevices?.OnThemeChanged();
-        TabContentPayment?.OnThemeChanged();
-        TabContentDelete?.OnThemeChanged();
-        TabContentAuth?.OnThemeChanged();
-        NeoDialog?.OnThemeChanged();
-    }
-
-    private async Task ShowThemeTransitionAsync(string title, string? subtitle = null)
-    {
-        if (SplashOverlay.IsVisible)
-        {
-            return;
-        }
-
-        try
-        {
-            ThemeTransitionTitle.Text = title;
-            ThemeTransitionSubtitle.Text = subtitle ?? "Настройка визуального оформления";
-            ThemeTransitionOverlay.Opacity = 0;
-            ThemeTransitionOverlay.IsVisible = true;
-            ThemeTransitionSpinner.IsRunning = true;
-            _ = await ThemeTransitionOverlay.FadeToAsync(1.0, 140, Easing.CubicOut);
-        }
-        catch
-        {
-        }
-    }
-
-    private async Task HideThemeTransitionAsync()
-    {
-        if (!ThemeTransitionOverlay.IsVisible)
-        {
-            return;
-        }
-
-        try
-        {
-            await Task.Delay(180);
-            _ = await ThemeTransitionOverlay.FadeToAsync(0.0, 160, Easing.CubicIn);
-            ThemeTransitionOverlay.IsVisible = false;
-            ThemeTransitionSpinner.IsRunning = false;
-        }
-        catch
-        {
-            ThemeTransitionOverlay.IsVisible = false;
-        }
-    }
-
-    private void HandleThemeApplied(ThemeAppliedEventArgs e)
-    {
-        MainThread.BeginInvokeOnMainThread(async () =>
-        {
-            try
-            {
-                await ShowThemeTransitionAsync("Применение темы...", e.Manifest.Name);
-
-                var bgBaseColor = Color.TryParse(e.Manifest.Core.Colors.BgBase, out var parsedBgBase)
-                    ? parsedBgBase
-                    : Color.FromArgb("#0E0E14");
-
-                ThisPage.BackgroundColor = bgBaseColor;
-                BackgroundColor = bgBaseColor;
-#if ANDROID
-                if (OperatingSystem.IsAndroidVersionAtLeast(29))
-                {
-                    MainActivity.UpdateSystemBarsTheme(bgBaseColor);
-                }
-#endif
-
-                var willPlayVideo = !string.IsNullOrEmpty(e.BackgroundVideoPath) &&
-                                    File.Exists(e.BackgroundVideoPath) &&
-                                    _themeManager.VideoEnabled;
-
-                ThemeBackgroundMover.CancelAnimations();
-                ThemeBackgroundMover.Scale = _themeManager.ParallaxEnabled ? 1.015 : 1.0;
-                ThemeBackgroundMover.TranslationX = 0;
-                ThemeBackgroundMover.TranslationY = 0;
-
-                if (!string.IsNullOrEmpty(e.BackgroundImagePath) && File.Exists(e.BackgroundImagePath))
-                {
-                    ThemeBackgroundImage.Source = LoadLocalImage(e.BackgroundImagePath);
-                    ThemeBackgroundImage.Opacity = willPlayVideo ? 1.0 : (e.Manifest.Background?.Opacity ?? 0.45);
-                    ThemeBackgroundImage.Scale = 1.0;
-                    ThemeBackgroundImage.TranslationX = 0;
-                    ThemeBackgroundImage.TranslationY = 0;
-                    ThemeBackgroundImage.IsVisible = true;
-                }
-                else
-                {
-                    ClearImageElement(ThemeBackgroundImage);
-                }
-
-                var framesEnabled = _themeManager.FramesEnabled;
-                _activeThemeScreenFramePath = e.ScreenFramePath;
-                _activeThemeFrameSlice = e.FrameSlice;
-
-                var hasScreenFrame = !string.IsNullOrEmpty(e.ScreenFramePath) && File.Exists(e.ScreenFramePath);
-                if (framesEnabled && hasScreenFrame)
-                {
-                    ThemeScreenFrameOverlay.SetFrame(e.ScreenFramePath, e.FrameSlice);
-                }
-                else
-                {
-                    ThemeScreenFrameOverlay.Clear();
-                }
-
-                var hasTopDecorations = false;
-                SetDecorationElement(ThemeCornerTopLeft, e.CornerTopLeftPath, ref hasTopDecorations);
-                SetDecorationElement(ThemeCornerTopRight, e.CornerTopRightPath, ref hasTopDecorations);
-
-                var hasBottomDecorations = false;
-                SetDecorationElement(ThemeCornerBottomLeft, e.CornerBottomLeftPath, ref hasBottomDecorations);
-                SetDecorationElement(ThemeCornerBottomRight, e.CornerBottomRightPath, ref hasBottomDecorations);
-
-                var hasDecorations = hasTopDecorations || hasBottomDecorations;
-                _hasThemeCornerDecorations = hasDecorations;
-                ThemeScreenFrameOverlay.IsVisible = framesEnabled && hasScreenFrame;
-                ThemeDecorationsContainer.IsVisible = framesEnabled && (hasScreenFrame || hasDecorations);
-                ThemeDecorationsContainer.Opacity = 1.0;
-                ThemeDecorationsContainer.TranslationX = 0;
-                ThemeDecorationsContainer.TranslationY = 0;
-
-                MainContentContainer.Margin = new Thickness(0);
-
-                _ = Color.TryParse(e.Manifest.Core.Colors.Primary, out var primary);
-                _ = Color.TryParse(e.Manifest.Core.Colors.Accent, out var accent);
-                _activeParticleSpritePaths = e.ParticleSpritePaths;
-                _activeVfx = e.Manifest.Vfx;
-                _activeParticlePrimary = primary;
-                _activeParticleAccent = accent;
-
-                ThemeParticles.Configure(
-                    e.ParticleSpritePaths,
-                    e.Manifest.Vfx,
-                    primary,
-                    accent,
-                    _themeManager.ParticlesEnabled,
-                    e.ScreenOverlayPath);
-
-                TabContentVpn?.ApplyThemeButton(
-                    e.ButtonImageIdlePath,
-                    e.ButtonImageConnectingPath,
-                    e.ButtonImageActivePath,
-                    e.ButtonImageErrorPath,
-                    e.ButtonVideoIdlePath,
-                    e.ButtonVideoConnectingPath,
-                    e.ButtonVideoActivePath,
-                    e.ButtonVideoErrorPath,
-                    e.CardFramePath,
-                    e.ButtonRingPath);
-
-                try
-                {
-                    ThemeBackgroundVideo.Stop();
-                }
-                catch { }
-
-                if (willPlayVideo && e.BackgroundVideoPath is not null)
-                {
-                    try
-                    {
-                        _isThemeVideoActive = true;
-                        ThemeBackgroundVideo.ShouldShowPlaybackControls = false;
-                        ThemeBackgroundVideo.Opacity = 1.0;
-                        ThemeBackgroundVideo.Scale = 1.0;
-                        ThemeBackgroundVideo.TranslationX = 0;
-                        ThemeBackgroundVideo.TranslationY = 0;
-                        ThemeBackgroundVideo.Source = MediaSource.FromFile(e.BackgroundVideoPath);
-                        ThemeBackgroundVideo.IsVisible = true;
-                        if (_isWindowActive)
-                        {
-                            ThemeBackgroundVideo.Play();
-                        }
-                        else
-                        {
-                            ThemeBackgroundVideo.Pause();
-                        }
-
-                        var targetOpacity = e.Manifest.Background?.Opacity ?? 0.45;
-                        ThemeBackgroundVideoDimmer.Color = bgBaseColor;
-                        ThemeBackgroundVideoDimmer.Opacity = Math.Clamp(1.0 - targetOpacity, 0.0, 1.0);
-                        ThemeBackgroundVideoDimmer.IsVisible = true;
-
-#if WINDOWS
-                        ConfigureNativeVideoPlayer();
-#endif
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.LogWarning($"[MainPage] Video playback error: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        _isThemeVideoActive = false;
-#if WINDOWS
-#pragma warning disable CA1416
-                        if (ThemeBackgroundVideo.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.MediaPlayerElement winPlayer)
-                        {
-                            try
-                            {
-                                winPlayer.MediaPlayer?.Pause();
-                                winPlayer.SetMediaPlayer(null);
-                            }
-                            catch { }
-                        }
-#pragma warning restore CA1416
-#endif
-                        ThemeBackgroundVideo.IsVisible = false;
-                        ThemeBackgroundVideo.Source = null;
-                        ThemeBackgroundVideoDimmer.IsVisible = false;
-                    }
-                    catch { }
-                }
-
-                ThemeAudioService.UpdateAmbientState(false);
-
-                NotifyViewsThemeChanged();
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogWarning($"[MainPage] HandleThemeApplied error: {ex.Message}");
-            }
-            finally
-            {
-                await HideThemeTransitionAsync();
-            }
-        });
-    }
-
-    private void HandleThemeReset()
-    {
-        MainThread.BeginInvokeOnMainThread(async () =>
-        {
-            try
-            {
-                await ShowThemeTransitionAsync("Сброс темы...", "Возвращение к стандартному оформлению");
-
-                var defaultBg = (Color)(Application.Current?.Resources["BgBase"] ?? Color.FromArgb("#0E0E14"));
-                ThisPage.BackgroundColor = defaultBg;
-                BackgroundColor = defaultBg;
-#if ANDROID
-                if (OperatingSystem.IsAndroidVersionAtLeast(29))
-                {
-                    MainActivity.UpdateSystemBarsTheme(defaultBg);
-                }
-#endif
-
-                ThemeBackgroundMover.CancelAnimations();
-                ThemeBackgroundMover.Scale = 1.0;
-                ThemeBackgroundMover.TranslationX = 0;
-                ThemeBackgroundMover.TranslationY = 0;
-                ClearImageElement(ThemeBackgroundImage);
-                ThemeBackgroundImage.Scale = 1.0;
-                ThemeBackgroundImage.TranslationX = 0;
-                ThemeBackgroundImage.TranslationY = 0;
-                ThemeScreenFrameOverlay.Clear();
-                ClearImageElement(ThemeCornerTopLeft);
-                ClearImageElement(ThemeCornerTopRight);
-                ClearImageElement(ThemeCornerBottomLeft);
-                ClearImageElement(ThemeCornerBottomRight);
-                ThemeDecorationsContainer.IsVisible = false;
-                ThemeDecorationsContainer.Opacity = 1.0;
-                ThemeDecorationsContainer.TranslationX = 0;
-                ThemeDecorationsContainer.TranslationY = 0;
-                _isDecorationsFaded = false;
-                MainContentContainer.Margin = new Thickness(0);
-
-                ThemeParticles.Configure(spritePaths: null, null, null, null, false);
-                _activeThemeScreenFramePath = null;
-                _activeThemeFrameSlice = null;
-                _hasThemeCornerDecorations = false;
-                _activeParticleSpritePaths = null;
-                _activeVfx = null;
-
-#if WINDOWS
-#pragma warning disable CA1416
-                if (ThemeBackgroundVideo.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.MediaPlayerElement winPlayer)
-                {
-                    try
-                    {
-                        winPlayer.MediaPlayer?.Pause();
-                        winPlayer.SetMediaPlayer(null);
-                    }
-                    catch { }
-                }
-#pragma warning restore CA1416
-#endif
-                try
-                {
-                    _isThemeVideoActive = false;
-                    ThemeBackgroundVideo.Stop();
-                }
-                catch { }
-                ThemeBackgroundVideo.IsVisible = false;
-                ThemeBackgroundVideo.Source = null;
-                ThemeBackgroundVideoDimmer.IsVisible = false;
-
-                TabContentVpn?.ResetThemeButton();
-                NotifyViewsThemeChanged();
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogWarning($"[MainPage] HandleThemeReset error: {ex.Message}");
-            }
-            finally
-            {
-                await HideThemeTransitionAsync();
-            }
-        });
-    }
-
-    private void HandlePointerInteraction(double x, double y, double width, double height)
-    {
-        ThemeParticles?.SetPointerPosition((float)x, (float)y, true);
-        UpdateDecorationFade(x, y, width, height);
-        UpdatePointerParallax(x, y, width, height);
-    }
-
-    private void UpdatePointerParallax(double x, double y, double width, double height)
-    {
-        if (width <= 1 || height <= 1)
-        {
-            return;
-        }
-
-        if (!_themeManager.ParallaxEnabled)
-        {
-            if (ThemeBackgroundMover.TranslationX != 0 || ThemeBackgroundMover.TranslationY != 0 || ThemeBackgroundMover.Scale != 1.0)
-            {
-                ThemeBackgroundMover.CancelAnimations();
-                ThemeBackgroundMover.Scale = 1.0;
-                ThemeBackgroundMover.TranslationX = 0;
-                ThemeBackgroundMover.TranslationY = 0;
-            }
-            if (ThemeDecorationsContainer.TranslationX != 0 || ThemeDecorationsContainer.TranslationY != 0)
-            {
-                ThemeDecorationsContainer.TranslationX = 0;
-                ThemeDecorationsContainer.TranslationY = 0;
-            }
-            return;
-        }
-
-        var rawParallax = _themeManager.ActiveTheme?.Vfx?.ParallaxIntensity ?? 0.35;
-        var parallax = Math.Clamp(rawParallax <= 0.001 ? 0.35 : rawParallax, 0.0, 1.0);
-
-        var nx = Math.Clamp(((x / width) - 0.5) * 2.0, -1.0, 1.0);
-        var ny = Math.Clamp(((y / height) - 0.5) * 2.0, -1.0, 1.0);
-
-        if (ThemeBackgroundImage.IsVisible || ThemeBackgroundVideo.IsVisible)
-        {
-            ThemeBackgroundMover.CancelAnimations();
-            ThemeBackgroundMover.Scale = 1.015;
-            var maxOffsetX = Math.Min(8.0 * parallax, 10.0);
-            var maxOffsetY = Math.Min(3.0 * parallax, 4.0);
-            ThemeBackgroundMover.TranslationX = -nx * maxOffsetX;
-            ThemeBackgroundMover.TranslationY = -ny * maxOffsetY;
-        }
-
-        if (ThemeDecorationsContainer.IsVisible)
-        {
-            ThemeDecorationsContainer.TranslationX = nx * 3.0 * parallax;
-            ThemeDecorationsContainer.TranslationY = ny * 2.0 * parallax;
-        }
-    }
-
-    private void OnThemeParallaxEnabledChanged(bool enabled)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (!enabled)
-            {
-                ThemeBackgroundMover.CancelAnimations();
-                ThemeBackgroundMover.Scale = 1.0;
-                ThemeBackgroundMover.TranslationX = 0;
-                ThemeBackgroundMover.TranslationY = 0;
-                ThemeDecorationsContainer.TranslationX = 0;
-                ThemeDecorationsContainer.TranslationY = 0;
-            }
-            else
-            {
-                ThemeBackgroundMover.Scale = 1.015;
-            }
-        });
-    }
-
-    private void UpdateDecorationFade(double x, double y, double width, double height)
-    {
-        if (!ThemeDecorationsContainer.IsVisible || width <= 0 || height <= 0)
-        {
-            return;
-        }
-
-        const double topThreshold = 140;
-        const double bottomThreshold = 80;
-        const double sideThreshold = 100;
-
-        var isNearEdgeOrCorner = y < topThreshold
-                                || y > (height - bottomThreshold)
-                                || x < sideThreshold
-                                || x > (width - sideThreshold);
-
-        if (isNearEdgeOrCorner)
-        {
-            if (!_isDecorationsFaded)
-            {
-                _isDecorationsFaded = true;
-                ThemeDecorationsContainer.CancelAnimations();
-                _ = ThemeDecorationsContainer.FadeToAsync(0.0, 120, Easing.CubicOut);
-            }
-        }
-        else
-        {
-            if (_isDecorationsFaded)
-            {
-                _isDecorationsFaded = false;
-                ThemeDecorationsContainer.CancelAnimations();
-                _ = ThemeDecorationsContainer.FadeToAsync(1.0, 180, Easing.CubicIn);
-            }
-        }
-    }
-
-    private void RestoreDecorationsOpacity()
-    {
-        ThemeParticles?.SetPointerPosition(0, 0, false);
-
-        if (ThemeBackgroundImage.IsVisible || ThemeBackgroundVideo.IsVisible)
-        {
-            ThemeBackgroundMover.CancelAnimations();
-            _ = ThemeBackgroundMover.TranslateToAsync(0, 0, 220, Easing.CubicOut);
-        }
-
-        if (ThemeDecorationsContainer.IsVisible)
-        {
-            ThemeDecorationsContainer.TranslationX = 0;
-            ThemeDecorationsContainer.TranslationY = 0;
-            if (_isDecorationsFaded)
-            {
-                _isDecorationsFaded = false;
-                ThemeDecorationsContainer.CancelAnimations();
-                _ = ThemeDecorationsContainer.FadeToAsync(1.0, 180, Easing.CubicIn);
-            }
-        }
-    }
-
-    private void OnPagePointerMoved(object? sender, PointerEventArgs e)
-    {
-        var pos = e.GetPosition(ThisPage);
-        if (pos.HasValue)
-        {
-            HandlePointerInteraction(pos.Value.X, pos.Value.Y, ThisPage.Width, ThisPage.Height);
-        }
-    }
-
-    private void OnPagePointerPressed(object? sender, PointerEventArgs e)
-    {
-        var pos = e.GetPosition(ThisPage);
-        if (pos.HasValue)
-        {
-            ThemeParticles?.TriggerPointerBurst((float)pos.Value.X, (float)pos.Value.Y);
-        }
-    }
-
-    private void OnPageTapped(object? sender, TappedEventArgs e)
-    {
-        var pos = e.GetPosition(ThisPage);
-        if (pos.HasValue)
-        {
-            ThemeParticles?.TriggerPointerBurst((float)pos.Value.X, (float)pos.Value.Y);
-        }
-    }
-
-    public void TriggerParticleBurst(float x, float y) =>
-        ThemeParticles?.TriggerPointerBurst(x, y);
-
-    private void OnPagePointerExited(object? sender, PointerEventArgs e)
-    {
-#if WINDOWS
-        var pos = e.GetPosition(ThisPage);
-        if (pos.HasValue && ThisPage.Width > 0 && ThisPage.Height > 0)
-        {
-            var p = pos.Value;
-            if (p.X > 4 && p.Y > 4 && p.X < ThisPage.Width - 4 && p.Y < ThisPage.Height - 4)
-            {
-                return;
-            }
-        }
-#endif
-        RestoreDecorationsOpacity();
-    }
-
-    private double _lastAppliedTopInset = -1;
-    private double _lastAppliedBottomInset = -1;
-
-    private void OnSafeAreaInsetsChanged(double top, double bottom) =>
-        ApplySafeArea(top, bottom);
-
-    private void ApplySafeArea(double top, double bottom)
-    {
-        if (DeviceInfo.Platform != DevicePlatform.Android && DeviceInfo.Platform != DevicePlatform.iOS)
-        {
-            return;
-        }
-
-        if (Math.Abs(_lastAppliedTopInset - top) < 0.5 && Math.Abs(_lastAppliedBottomInset - bottom) < 0.5)
-        {
-            return;
-        }
-
-        _lastAppliedTopInset = top;
-        _lastAppliedBottomInset = bottom;
-
-        MainContentContainer.Padding = new Thickness(0);
-        MobileBottomBar.ApplyBottomInset(bottom);
-
-        var safeTop = Math.Max(0, top);
-        TabContentVpn?.SetHeaderTopInset(safeTop);
-        TabContentConfiguration?.SetHeaderTopInset(safeTop);
-        TabContentSplit?.SetHeaderTopInset(safeTop);
-        TabContentProfile?.SetHeaderTopInset(safeTop);
-        TabContentThemeStore?.SetHeaderTopInset(safeTop);
-        TabContentDevices?.SetHeaderTopInset(safeTop);
-        TabContentAuth?.SetHeaderTopInset(safeTop);
-        TabContentPayment?.SetHeaderTopInset(safeTop);
-        TabContentDelete?.SetHeaderTopInset(safeTop);
-    }
-
-    private void UpdateBalanceUI()
-    {
-        var timeText = TimeFormatHelper.FormatSeconds(RemainingSeconds, false);
-        TabContentVpn.UpdateBalanceUI(timeText);
-        TabContentProfile.UpdateBalance(RemainingSeconds);
-    }
-
-    private void OnAppResumed() =>
-        MainThread.BeginInvokeOnMainThread(async () =>
-        {
-            if (_activeTab != "auth")
-            {
-                await SyncBalanceFromServerAsync();
-            }
-        });
-
-    private void OnWindowActivated()
-    {
-        _isWindowActive = true;
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (_isThemeVideoActive && ThemeBackgroundVideo.IsVisible)
-            {
-                try
-                {
-                    ThemeBackgroundVideo.Play();
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.LogWarning($"[MainPage] Error resuming video on activation: {ex.Message}");
-                }
-            }
-
-            if (ThemeParticles.IsVisible)
-            {
-                try
-                {
-                    ThemeParticles.StartAnimation();
-                }
-                catch { }
-            }
-
-            TabContentVpn?.OnWindowFocusChanged(true);
-            if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
-            {
-                _ = SyncBalanceFromServerAsync();
-            }
-        });
-    }
-
-    private void OnWindowDeactivated()
-    {
-        _isWindowActive = false;
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            var alwaysPlay = _themeManager?.AlwaysPlayVideoEnabled ?? false;
-            if (!alwaysPlay)
-            {
-                if (_isThemeVideoActive && ThemeBackgroundVideo.IsVisible)
-                {
-                    try
-                    {
-                        ThemeBackgroundVideo.Pause();
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.LogWarning($"[MainPage] Error pausing video on deactivation: {ex.Message}");
-                    }
-                }
-
-                if (ThemeParticles.IsVisible)
-                {
-                    try
-                    {
-                        ThemeParticles.StopAnimation();
-                    }
-                    catch { }
-                }
-
-                TabContentVpn?.OnWindowFocusChanged(false);
-            }
-        });
-    }
-
-    private void OnThemeParticlesEnabledChanged(bool enabled) =>
-        MainThread.BeginInvokeOnMainThread(() =>
-            ThemeParticles.Configure(
-                _activeParticleSpritePaths,
-                _activeVfx,
-                _activeParticlePrimary,
-                _activeParticleAccent,
-                enabled));
-
-    private void OnThemeFramesEnabledChanged(bool enabled)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            var hasFrame = !string.IsNullOrEmpty(_activeThemeScreenFramePath) && File.Exists(_activeThemeScreenFramePath);
-            if (enabled && hasFrame)
-            {
-                ThemeScreenFrameOverlay.SetFrame(_activeThemeScreenFramePath, _activeThemeFrameSlice);
-            }
-            else
-            {
-                ThemeScreenFrameOverlay.Clear();
-            }
-
-            ThemeScreenFrameOverlay.IsVisible = enabled && hasFrame;
-            ThemeDecorationsContainer.IsVisible = enabled && (hasFrame || _hasThemeCornerDecorations);
-            ThemeParticles.InvalidateSurface();
-            TabContentVpn?.SetCardFrameVisibility(enabled);
-        });
-    }
-
-    private void OnThemeVideoEnabledChanged(bool enabled)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (!enabled)
-            {
-                _isThemeVideoActive = false;
-                try
-                {
-                    ThemeBackgroundVideo.Stop();
-                }
-                catch { }
-                ThemeBackgroundVideo.IsVisible = false;
-                ThemeBackgroundVideo.Source = null;
-                ThemeBackgroundVideoDimmer.IsVisible = false;
-                if (ThemeBackgroundImage.IsVisible)
-                {
-                    ThemeBackgroundImage.Opacity = _themeManager.ActiveTheme?.Background?.Opacity ?? 0.45;
-                }
-            }
-            else
-            {
-                if (_themeManager.ActiveTheme is not null)
-                {
-                    _themeManager.ReapplyActiveTheme();
-                }
-            }
-        });
-    }
-
-    private void OnAlwaysPlayVideoChanged(bool alwaysPlay)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (alwaysPlay && !_isWindowActive)
-            {
-                if (_isThemeVideoActive && ThemeBackgroundVideo.IsVisible)
-                {
-                    try
-                    {
-                        ThemeBackgroundVideo.Play();
-                    }
-                    catch { }
-                }
-
-                if (ThemeParticles.IsVisible)
-                {
-                    try
-                    {
-                        ThemeParticles.StartAnimation();
-                    }
-                    catch { }
-                }
-
-                TabContentVpn?.OnWindowFocusChanged(true);
-            }
-            else if (!alwaysPlay && !_isWindowActive)
-            {
-                if (_isThemeVideoActive && ThemeBackgroundVideo.IsVisible)
-                {
-                    try
-                    {
-                        ThemeBackgroundVideo.Pause();
-                    }
-                    catch { }
-                }
-
-                if (ThemeParticles.IsVisible)
-                {
-                    try
-                    {
-                        ThemeParticles.StopAnimation();
-                    }
-                    catch { }
-                }
-
-                TabContentVpn?.OnWindowFocusChanged(false);
-            }
-        });
-    }
-
-    private void OnConnectivityChanged(object? sender, ConnectivityChangedEventArgs e)
-    {
-        if (e.NetworkAccess == NetworkAccess.Internet)
-        {
-            MainThread.BeginInvokeOnMainThread(async () =>
-            {
-                if (_activeTab != "auth")
-                {
-                    await SyncBalanceFromServerAsync();
-                }
-            });
-        }
-    }
-
-    private async Task SyncBalanceFromServerAsync(UserSession? session = null, int retryCount = 0)
-    {
-        session ??= await AuthManager.LoadSessionAsync();
-        if (session is null || string.IsNullOrEmpty(session.JwtToken))
-        {
-            return;
-        }
-
-        if (RemainingSeconds <= 0 && (session.BalanceSeconds > 0 || (session.SubscriptionUntil is { } initUntil && initUntil > DateTime.UtcNow)))
-        {
-            var initSec = session.BalanceSeconds > 0
-                ? session.BalanceSeconds
-                : (session.SubscriptionUntil is { } until
-                    ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
-                    : 0);
-
-            if (initSec > 0)
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    if (RemainingSeconds <= 0)
-                    {
-                        RemainingSeconds = initSec;
-                        UpdateBalanceUI();
-                    }
-                });
-            }
-        }
-
-        if (Interlocked.CompareExchange(ref _isSyncingBalance, 1, 0) != 0)
-        {
-            return;
-        }
-
-        try
-        {
-            var (success, profile, error) = await _apiService.GetProfileAsync();
-            if (success && profile is not null)
-            {
-                session.SubscriptionUntil = profile.SubscriptionUntil;
-                session.BalanceSeconds = profile.BalanceSeconds;
-                await AuthManager.SaveSessionAsync(session);
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    RemainingSeconds = profile.BalanceSeconds > 0
-                        ? profile.BalanceSeconds
-                        : (profile.SubscriptionUntil is { } until
-                            ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
-                            : 0);
-
-                    UpdateBalanceUI();
-                    TabContentVpn.UpdateBalanceUI(
-                        TimeFormatHelper.FormatSeconds(RemainingSeconds, false),
-                        VpnView.FormatBytes(profile.TotalBytesUsed));
-                });
-            }
-            else
-            {
-                AppLogger.LogWarning($"[SYNC ERROR] {error}");
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    var fallbackSec = session.BalanceSeconds > 0
-                        ? session.BalanceSeconds
-                        : (session.SubscriptionUntil is { } until && until > DateTime.UtcNow
-                            ? Math.Max(0, (long)(until.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)
-                            : 0);
-                    if (fallbackSec > 0 && RemainingSeconds <= 0)
-                    {
-                        RemainingSeconds = fallbackSec;
-                        UpdateBalanceUI();
-                    }
-                });
-
-                if (retryCount < 3)
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        await Task.Delay((retryCount + 1) * 2500);
-                        await SyncBalanceFromServerAsync(session, retryCount + 1);
-                    });
-                }
-            }
-        }
-        finally
-        {
-            _ = Interlocked.Exchange(ref _isSyncingBalance, 0);
-        }
-    }
-
-    private async Task ConsumeTimeLoopAsync(CancellationToken ct)
-    {
-        var syncCounter = 0;
-        while (!ct.IsCancellationRequested && RemainingSeconds > 0)
-        {
-            try
-            {
-                await Task.Delay(1000, ct);
-                RemainingSeconds = Math.Max(0, RemainingSeconds - 1);
-                PlatformThrottler.Post("ui:balance", TimeSpan.FromMilliseconds(250), UpdateBalanceUI);
-
-                syncCounter++;
-                if (syncCounter >= 30)
-                {
-                    syncCounter = 0;
-                    _ = SyncBalanceFromServerAsync();
-                }
-            }
             catch
             {
-                break;
+                // ignored
             }
-        }
+        });
 
-        if (RemainingSeconds <= 0)
+        await AuthManager.ClearSessionAsync().ConfigureAwait(false);
+        AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+
+        await MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            await VpnService.StopVpnAsync();
-            await MainThread.InvokeOnMainThreadAsync(() =>
-                DisplayAlertAsync("Лимит", "Время действия тарифа закончилось. Пополните баланс.", "ОК"));
-        }
+            RemainingSeconds = 0;
+            _tabContentVpn?.UnsubscribeEvents();
+            _tabContentVpn?.UpdateActiveNode();
+            _tabContentProfile?.ResetAccountCache();
+            _tabContentDevices?.InvalidateCache();
+            DesktopSidebar.HideSidebar();
+            MobileBottomBar.HideSidebar();
+            await SwitchTabAsync("auth");
+        });
     }
-
-#if WINDOWS
-    private static void ApplyWindowsClip(VisualElement element)
-    {
-        if (element.Handler?.PlatformView is Microsoft.UI.Xaml.FrameworkElement fe)
-        {
-            UpdateFrameworkElementClip(fe);
-            fe.SizeChanged -= OnNativeElementSizeChangedForClip;
-            fe.SizeChanged += OnNativeElementSizeChangedForClip;
-        }
-    }
-
-    private static void OnNativeElementSizeChangedForClip(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
-    {
-        if (sender is Microsoft.UI.Xaml.FrameworkElement fe)
-        {
-            UpdateFrameworkElementClip(fe);
-        }
-    }
-
-    private static void UpdateFrameworkElementClip(Microsoft.UI.Xaml.FrameworkElement fe)
-    {
-        var w = fe.ActualWidth;
-        var h = fe.ActualHeight;
-        if (w > 0 && h > 0)
-        {
-            fe.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry
-            {
-                Rect = new Windows.Foundation.Rect(0, 0, w, h)
-            };
-        }
-    }
-
-    private void ConfigureNativeVideoPlayer()
-    {
-#pragma warning disable CA1416
-        try
-        {
-            if (ThemeBackgroundVideo.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.MediaPlayerElement winPlayer)
-            {
-                winPlayer.AreTransportControlsEnabled = false;
-                winPlayer.IsHitTestVisible = false;
-                if (winPlayer.TransportControls != null)
-                {
-                    winPlayer.TransportControls.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
-                    winPlayer.TransportControls.IsEnabled = false;
-                    winPlayer.TransportControls.IsHitTestVisible = false;
-                }
-                if (winPlayer.MediaPlayer != null)
-                {
-                    winPlayer.MediaPlayer.IsMuted = true;
-                    winPlayer.MediaPlayer.IsLoopingEnabled = true;
-                    winPlayer.MediaPlayer.AudioCategory = Windows.Media.Playback.MediaPlayerAudioCategory.Media;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogWarning($"[MainPage] Error configuring native video player: {ex.Message}");
-        }
-#pragma warning restore CA1416
-    }
-#endif
-
-    #region Custom NeoCard Dialog
-
-    //управление затемнением сайдбара при открытии модальных окон
-    public async Task SetSidebarDimmedAsync(bool dimmed)
-    {
-        if (SidebarDimmer is null)
-        {
-            return;
-        }
-
-        if (dimmed)
-        {
-            SidebarDimmer.IsVisible = true;
-            SidebarDimmer.InputTransparent = false;
-            _ = await SidebarDimmer.FadeToAsync(1.0, 180, Easing.CubicOut);
-        }
-        else
-        {
-            SidebarDimmer.InputTransparent = true;
-            _ = await SidebarDimmer.FadeToAsync(0.0, 150, Easing.CubicIn);
-            SidebarDimmer.IsVisible = false;
-        }
-    }
-
-    //клик по затемненному сайдбару для закрытия активной модалки
-    private void OnSidebarDimmerTapped(object? sender, EventArgs e)
-    {
-        ThemeAudioService.PlayClick();
-        if (TabContentVpn?.IsServerModalOpen == true)
-        {
-            _ = TabContentVpn.CloseServerModalAsync();
-        }
-        if (TabContentThemeStore?.IsPreviewModalOpen == true)
-        {
-            _ = TabContentThemeStore.ClosePreviewModalAsync();
-        }
-    }
-
-    public Task<bool> ShowCustomDialogAsync(
-        string title,
-        string message,
-        string? acceptText = null,
-        string cancelText = "OK") =>
-        NeoDialog.ShowAsync(title, message, acceptText, cancelText);
-
-    public new Task<bool> DisplayAlert(string title, string message, string accept, string cancel) =>
-        ShowCustomDialogAsync(title, message, accept, cancel);
-
-    public new Task DisplayAlert(string title, string message, string cancel) =>
-        ShowCustomDialogAsync(title, message, null, cancel);
-
-    public new Task<bool> DisplayAlert(string title, string message, string accept, string cancel, FlowDirection flowDirection)
-    {
-        _ = flowDirection;
-        return ShowCustomDialogAsync(title, message, accept, cancel);
-    }
-
-    public new Task DisplayAlert(string title, string message, string cancel, FlowDirection flowDirection)
-    {
-        _ = flowDirection;
-        return ShowCustomDialogAsync(title, message, null, cancel);
-    }
-
-    public new Task<bool> DisplayAlertAsync(string title, string message, string accept, string cancel, FlowDirection flowDirection = FlowDirection.MatchParent)
-    {
-        _ = flowDirection;
-        return ShowCustomDialogAsync(title, message, accept, cancel);
-    }
-
-    public new Task DisplayAlertAsync(string title, string message, string cancel, FlowDirection flowDirection = FlowDirection.MatchParent)
-    {
-        _ = flowDirection;
-        return ShowCustomDialogAsync(title, message, null, cancel);
-    }
-
-    #endregion
 }

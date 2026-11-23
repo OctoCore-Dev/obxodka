@@ -2,15 +2,13 @@ namespace obxodka.Maui.Theming.Services;
 
 public sealed partial class ThemeManager
 {
-    private Color _baseBgSurface = Color.FromArgb("#161622");
-    private Color _baseBgElevated = Color.FromArgb("#1E1E2E");
-    private Color _baseBgInput = Color.FromArgb("#12121C");
-
-    private readonly Dictionary<string, object> _defaultResourceSnapshot = [];
+    private Color _baseBgElevated = Color.FromArgb("#323232");
+    private Color _baseBgInput = Color.FromArgb("#252525");
+    private Color _baseBgSurface = Color.FromArgb("#2B2B2B");
 
     private double? _cachedCardOpacity;
-    private int _opacitySaveSequence;
     private long _lastApplyOpacityTicks;
+    private int _opacitySaveSequence;
 
     public double CardOpacity
     {
@@ -32,7 +30,7 @@ public sealed partial class ThemeManager
                 if (Volatile.Read(ref _opacitySaveSequence) == seq)
                 {
                     Preferences.Default.Set(ThemeCardOpacityKey, clamped);
-                    ApplyCardOpacity(clamped, forceImmediate: true);
+                    ApplyCardOpacity(clamped, true);
                 }
             });
 
@@ -40,76 +38,15 @@ public sealed partial class ThemeManager
         }
     }
 
-    //проверка и захват исходных цветов темы оформления
-    public void EnsureDefaultResourcesCaptured()
-    {
-        if (_defaultResourceSnapshot.Count > 0)
-        {
-            return;
-        }
+    //определение текущей системной темы ос с фоллбэком на темную
+    private static AppTheme GetEffectiveSystemTheme() =>
+        Application.Current?.RequestedTheme == AppTheme.Light ? AppTheme.Light : AppTheme.Dark;
 
-        if (MainThread.IsMainThread)
-        {
-            CaptureResourcesInternal();
-        }
-        else
-        {
-            try
-            {
-                _ = MainThread.InvokeOnMainThreadAsync(CaptureResourcesInternal).Wait(TimeSpan.FromSeconds(2));
-            }
-            catch
-            {
-                //подавление ошибок захвата ресурсов
-            }
-        }
-    }
-
-    private void CaptureDefaultResourcesSnapshot()
-    {
-        if (MainThread.IsMainThread)
-        {
-            CaptureResourcesInternal();
-        }
-        else
-        {
-            MainThread.BeginInvokeOnMainThread(CaptureResourcesInternal);
-        }
-    }
-
-    private void CaptureResourcesInternal()
-    {
-        var res = Application.Current?.Resources;
-        if (res == null || _defaultResourceSnapshot.Count > 0)
-        {
-            return;
-        }
-
-        string[] trackedKeys =
-        [
-            "Primary", "PrimaryBrush", "PrimaryBright", "PrimaryBrightBrush", "PrimaryLight", "PrimaryLight2", "PrimaryDim", "PrimaryGlow",
-            "Accent", "AccentBrush", "AccentDim", "AccentGlow", "AccentLight",
-            "Purple", "PurpleDim", "PurpleLight", "Pink",
-            "BgBase", "BgBaseBrush", "BgSurface", "BgSurfaceBrush", "BgElevated", "BgInput", "BgOverlay",
-            "TextPrimary", "TextPrimaryBrush", "TextSecondary", "TextMuted", "TextOnPrimary",
-            "SolidBorderDark", "BorderSubtle", "BorderSubtleBrush", "BorderMedium", "BorderStrong",
-            "Success", "SuccessBrush", "SuccessDim",
-            "Warning", "WarningDim",
-            "Error", "ErrorBrush", "ErrorDim",
-            "AppFontRegular", "AppFontMedium", "AppFontBold", "AppFontTitle",
-            "CardCornerRadius", "CardBorderThickness"
-        ];
-
-        foreach (var key in trackedKeys)
-        {
-            if (res.TryGetValue(key, out var val) && val is not null)
-            {
-                _defaultResourceSnapshot[key] = val is SolidColorBrush brush
-                    ? new SolidColorBrush(brush.Color)
-                    : val;
-            }
-        }
-    }
+    //платформенный радиус скругления карточек для системной темы по умолчанию
+    private static CornerRadius GetDefaultPlatformCornerRadius() =>
+        DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
+            ? new CornerRadius(16)
+            : new CornerRadius(10);
 
     private static void SetResourceValue(ResourceDictionary root, string key, object value)
     {
@@ -117,6 +54,7 @@ public sealed partial class ThemeManager
         {
             currentBrush.Color = newBrush.Color;
         }
+
         root[key] = value;
 
         void UpdateDict(ResourceDictionary dict)
@@ -127,6 +65,7 @@ public sealed partial class ThemeManager
                 {
                     cb.Color = nb.Color;
                 }
+
                 dict[key] = value;
             }
 
@@ -152,6 +91,9 @@ public sealed partial class ThemeManager
                 return;
             }
 
+            //сбрасываем базовые токены на темную палитру перед наложением кастомной темы, чтобы не оставались светлые цвета ос
+            ApplySystemDefaultPalette(AppTheme.Dark);
+
             Color? primaryColor = null;
             if (Color.TryParse(manifest.Core.Colors.Primary, out var parsedPrimary))
             {
@@ -164,7 +106,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "PrimaryGlow", parsedPrimary.WithAlpha(0.35f));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryBright) && Color.TryParse(manifest.Core.Colors.PrimaryBright, out var primaryBright))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryBright) &&
+                Color.TryParse(manifest.Core.Colors.PrimaryBright, out var primaryBright))
             {
                 SetResourceValue(appResources, "PrimaryBright", primaryBright);
                 SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(primaryBright));
@@ -175,7 +118,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(primaryColor));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryDim) && Color.TryParse(manifest.Core.Colors.PrimaryDim, out var parsedPrimaryDim))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryDim) &&
+                Color.TryParse(manifest.Core.Colors.PrimaryDim, out var parsedPrimaryDim))
             {
                 SetResourceValue(appResources, "PrimaryDim", parsedPrimaryDim);
             }
@@ -220,7 +164,9 @@ public sealed partial class ThemeManager
                         }
                     }
                 }
-                SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(gradStops, new Point(0, 0), new Point(1, 1)));
+
+                SetResourceValue(appResources, "PrimaryGradientBrush",
+                    new LinearGradientBrush(gradStops, new Point(0, 0), new Point(1, 1)));
             }
 
             if (Color.TryParse(manifest.Core.Colors.BgBase, out var parsedBgBase))
@@ -230,7 +176,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "BgOverlay", parsedBgBase.WithAlpha(0.70f));
             }
 
-            var rawSurface = !string.IsNullOrEmpty(manifest.Core.Colors.BgSurface) && Color.TryParse(manifest.Core.Colors.BgSurface, out var parsedSurface)
+            var rawSurface = !string.IsNullOrEmpty(manifest.Core.Colors.BgSurface) &&
+                             Color.TryParse(manifest.Core.Colors.BgSurface, out var parsedSurface)
                 ? parsedSurface
                 : Color.FromArgb("#161622");
             _baseBgSurface = rawSurface;
@@ -257,15 +204,18 @@ public sealed partial class ThemeManager
                     }
                 }
             }
+
             SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(surfaceStops, new Point(0, 0), new Point(0, 1)));
 
-            var rawElevated = !string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) && Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor)
+            var rawElevated = !string.IsNullOrEmpty(manifest.Core.Colors.BgElevated) &&
+                              Color.TryParse(manifest.Core.Colors.BgElevated, out var bgElevatedColor)
                 ? bgElevatedColor
                 : rawSurface.AddLuminosity(0.08f);
             _baseBgElevated = rawElevated;
             SetResourceValue(appResources, "BgElevated", rawElevated.WithAlpha((float)Math.Clamp(userOpacity + 0.08, 0.25, 1.0)));
 
-            var rawInput = !string.IsNullOrEmpty(manifest.Core.Colors.BgInput) && Color.TryParse(manifest.Core.Colors.BgInput, out var bgInputColor)
+            var rawInput = !string.IsNullOrEmpty(manifest.Core.Colors.BgInput) &&
+                           Color.TryParse(manifest.Core.Colors.BgInput, out var bgInputColor)
                 ? bgInputColor
                 : rawSurface.WithAlpha(0.55f);
             _baseBgInput = rawInput;
@@ -279,7 +229,8 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "TextPrimaryBrush", new SolidColorBrush(textPrimaryColor));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextSecondary) && Color.TryParse(manifest.Core.Colors.TextSecondary, out var textSecondaryColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextSecondary) &&
+                Color.TryParse(manifest.Core.Colors.TextSecondary, out var textSecondaryColor))
             {
                 SetResourceValue(appResources, "TextSecondary", textSecondaryColor);
                 SetResourceValue(appResources, "TextMuted", textSecondaryColor);
@@ -290,12 +241,14 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "TextMuted", textPrimary.WithAlpha(0.55f));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextMuted) && Color.TryParse(manifest.Core.Colors.TextMuted, out var textMutedColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.TextMuted) &&
+                Color.TryParse(manifest.Core.Colors.TextMuted, out var textMutedColor))
             {
                 SetResourceValue(appResources, "TextMuted", textMutedColor);
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.SolidBorderDark) && Color.TryParse(manifest.Core.Colors.SolidBorderDark, out var parsedBorderDark))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.SolidBorderDark) &&
+                Color.TryParse(manifest.Core.Colors.SolidBorderDark, out var parsedBorderDark))
             {
                 SetResourceValue(appResources, "SolidBorderDark", parsedBorderDark);
                 SetResourceValue(appResources, "BorderSubtle", parsedBorderDark);
@@ -312,13 +265,15 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "BorderStrong", primaryColor.WithAlpha(0.50f));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderSubtle) && Color.TryParse(manifest.Core.Colors.BorderSubtle, out var borderSubtleColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderSubtle) &&
+                Color.TryParse(manifest.Core.Colors.BorderSubtle, out var borderSubtleColor))
             {
                 SetResourceValue(appResources, "BorderSubtle", borderSubtleColor);
                 SetResourceValue(appResources, "BorderSubtleBrush", new SolidColorBrush(borderSubtleColor));
             }
 
-            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderMedium) && Color.TryParse(manifest.Core.Colors.BorderMedium, out var borderMediumColor))
+            if (!string.IsNullOrEmpty(manifest.Core.Colors.BorderMedium) &&
+                Color.TryParse(manifest.Core.Colors.BorderMedium, out var borderMediumColor))
             {
                 SetResourceValue(appResources, "BorderMedium", borderMediumColor);
             }
@@ -373,175 +328,154 @@ public sealed partial class ThemeManager
         }
     }
 
-    private void ResetDefaultResources()
+    //единый источник истины для системной темы по умолчанию (мягкий графит fluent 2 / чистая светлая)
+    private void ApplySystemDefaultPalette(AppTheme theme)
     {
         try
         {
-            _baseBgSurface = Color.FromArgb("#161622");
-            _baseBgElevated = Color.FromArgb("#1E1E2E");
-            _baseBgInput = Color.FromArgb("#12121C");
-
             var appResources = Application.Current?.Resources;
             if (appResources == null)
             {
                 return;
             }
 
-            if (_defaultResourceSnapshot.Count > 0)
-            {
-                foreach (var (key, value) in _defaultResourceSnapshot)
-                {
-                    if (value is Color c)
-                    {
-                        SetResourceValue(appResources, key, c);
-                    }
-                    else if (value is SolidColorBrush brush)
-                    {
-                        SetResourceValue(appResources, key, new SolidColorBrush(brush.Color));
-                    }
-                    else if (value is string s)
-                    {
-                        SetResourceValue(appResources, key, s);
-                    }
-                    else
-                    {
-                        SetResourceValue(appResources, key, value);
-                    }
-                }
+            var isLight = theme == AppTheme.Light;
 
-                if (_defaultResourceSnapshot.TryGetValue("BgSurface", out var snapSurf) && snapSurf is Color surfC)
-                {
-                    _baseBgSurface = surfC;
-                }
-                if (_defaultResourceSnapshot.TryGetValue("BgElevated", out var snapElev) && snapElev is Color elevC)
-                {
-                    _baseBgElevated = elevC;
-                }
-                if (_defaultResourceSnapshot.TryGetValue("BgInput", out var snapInp) && snapInp is Color inpC)
-                {
-                    _baseBgInput = inpC;
-                }
-            }
-            else
-            {
-                SetResourceValue(appResources, "Primary", Color.FromArgb("#0078D4"));
-                SetResourceValue(appResources, "PrimaryBrush", new SolidColorBrush(Color.FromArgb("#0078D4")));
-                SetResourceValue(appResources, "PrimaryBright", Color.FromArgb("#2B88D8"));
-                SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(Color.FromArgb("#2B88D8")));
-                SetResourceValue(appResources, "PrimaryLight", Color.FromArgb("#4C9CE1"));
-                SetResourceValue(appResources, "PrimaryLight2", Color.FromArgb("#0067C0"));
-                SetResourceValue(appResources, "PrimaryDim", Color.FromArgb("#005A9E"));
-                SetResourceValue(appResources, "PrimaryGlow", Color.FromArgb("#004578"));
-                SetResourceValue(appResources, "Accent", Color.FromArgb("#00E5FF"));
-                SetResourceValue(appResources, "AccentBrush", new SolidColorBrush(Color.FromArgb("#00E5FF")));
-                SetResourceValue(appResources, "AccentDim", Color.FromArgb("#005F6B"));
-                SetResourceValue(appResources, "AccentGlow", Color.FromArgb("#0097A7"));
-                SetResourceValue(appResources, "AccentLight", Color.FromArgb("#0284C7"));
-                SetResourceValue(appResources, "Purple", Color.FromArgb("#9F6FF0"));
-                SetResourceValue(appResources, "PurpleDim", Color.FromArgb("#2A1B3D"));
-                SetResourceValue(appResources, "PurpleLight", Color.FromArgb("#7C3AED"));
-                SetResourceValue(appResources, "Pink", Color.FromArgb("#EC4899"));
-                SetResourceValue(appResources, "BgBase", Color.FromArgb("#0E0E14"));
-                SetResourceValue(appResources, "BgBaseBrush", new SolidColorBrush(Color.FromArgb("#0E0E14")));
-                SetResourceValue(appResources, "BgSurface", Color.FromArgb("#161622"));
-                SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(Color.FromArgb("#161622")));
-                SetResourceValue(appResources, "BgElevated", Color.FromArgb("#202030"));
-                SetResourceValue(appResources, "BgInput", Color.FromArgb("#12121B"));
-                SetResourceValue(appResources, "BgOverlay", Color.FromArgb("#B3000000"));
-                SetResourceValue(appResources, "TextPrimary", Color.FromArgb("#FFFFFF"));
-                SetResourceValue(appResources, "TextPrimaryBrush", new SolidColorBrush(Color.FromArgb("#FFFFFF")));
-                SetResourceValue(appResources, "TextSecondary", Color.FromArgb("#D0FFFFFF"));
-                SetResourceValue(appResources, "TextMuted", Color.FromArgb("#90FFFFFF"));
-                SetResourceValue(appResources, "TextOnPrimary", Color.FromArgb("#FFFFFF"));
-                SetResourceValue(appResources, "SolidBorderDark", Color.FromArgb("#282838"));
-                SetResourceValue(appResources, "BorderSubtle", Color.FromArgb("#28283C"));
-                SetResourceValue(appResources, "BorderSubtleBrush", new SolidColorBrush(Color.FromArgb("#28283C")));
-                SetResourceValue(appResources, "BorderMedium", Color.FromArgb("#363650"));
-                SetResourceValue(appResources, "BorderStrong", Color.FromArgb("#4A4A68"));
-                SetResourceValue(appResources, "Success", Color.FromArgb("#10B981"));
-                SetResourceValue(appResources, "SuccessBrush", new SolidColorBrush(Color.FromArgb("#10B981")));
-                SetResourceValue(appResources, "SuccessDim", Color.FromArgb("#1F10B981"));
-                SetResourceValue(appResources, "Warning", Color.FromArgb("#F59E0B"));
-                SetResourceValue(appResources, "WarningDim", Color.FromArgb("#1FF59E0B"));
-                SetResourceValue(appResources, "Error", Color.FromArgb("#EF4444"));
-                SetResourceValue(appResources, "ErrorBrush", new SolidColorBrush(Color.FromArgb("#EF4444")));
-                SetResourceValue(appResources, "ErrorDim", Color.FromArgb("#1FEF4444"));
-                SetResourceValue(appResources, "AppFontRegular", "RobotoRegular");
-                SetResourceValue(appResources, "AppFontMedium", "RobotoMedium");
-                SetResourceValue(appResources, "AppFontBold", "RobotoBold");
-                SetResourceValue(appResources, "AppFontTitle", "CommissionerExtraBold");
-                SetResourceValue(appResources, "CardCornerRadius", new CornerRadius(12));
-                SetResourceValue(appResources, "CardBorderThickness", 1.0);
-            }
+            var bgBase = Color.FromArgb(isLight ? "#F3F3F3" : "#202020");
+            var bgSurface = Color.FromArgb(isLight ? "#FFFFFF" : "#2B2B2B");
+            var bgElevated = Color.FromArgb(isLight ? "#EAEAEA" : "#323232");
+            var bgInput = Color.FromArgb(isLight ? "#FFFFFF" : "#252525");
+            var bgOverlay = Color.FromArgb(isLight ? "#66000000" : "#A6000000");
 
-            var defaultPrimary = _defaultResourceSnapshot.TryGetValue("Primary", out var snapPrim) && snapPrim is Color primC
-                ? primC
-                : Color.FromArgb("#0078D4");
-            var defaultAccent = _defaultResourceSnapshot.TryGetValue("Accent", out var snapAcc) && snapAcc is Color accC
-                ? accC
-                : Color.FromArgb("#00E5FF");
+            var solidBorder = Color.FromArgb(isLight ? "#E0E0E0" : "#3A3A3A");
+            var borderSubtle = Color.FromArgb(isLight ? "#E2E2E2" : "#383838");
+            var borderMedium = Color.FromArgb(isLight ? "#CCCCCC" : "#484848");
+            var borderStrong = Color.FromArgb(isLight ? "#B0B0B0" : "#5E5E5E");
+
+            var primary = Color.FromArgb(isLight ? "#0067C0" : "#0078D4");
+            var primaryBright = Color.FromArgb(isLight ? "#005FB8" : "#60CDFF");
+            var primaryLight = Color.FromArgb(isLight ? "#0078D4" : "#4CC2FF");
+            var primaryLight2 = Color.FromArgb(isLight ? "#005A9E" : "#0067C0");
+            var primaryDim = Color.FromArgb(isLight ? "#1F0067C0" : "#2660CDFF");
+            var primaryGlow = Color.FromArgb(isLight ? "#380067C0" : "#4060CDFF");
+
+            var accent = Color.FromArgb(isLight ? "#0284C7" : "#60CDFF");
+            var accentDim = Color.FromArgb(isLight ? "#1F0284C7" : "#2660CDFF");
+            var accentGlow = Color.FromArgb(isLight ? "#380284C7" : "#4D60CDFF");
+            var accentLight = Color.FromArgb(isLight ? "#0369A1" : "#4CC2FF");
+
+            var purple = Color.FromArgb(isLight ? "#7C3AED" : "#A78BFA");
+            var purpleDim = Color.FromArgb(isLight ? "#1F7C3AED" : "#26A78BFA");
+            var purpleLight = Color.FromArgb(isLight ? "#6D28D9" : "#8B5CF6");
+            var pink = Color.FromArgb(isLight ? "#DB2777" : "#F472B6");
+
+            var textPrimary = Color.FromArgb(isLight ? "#1A1A1A" : "#FFFFFF");
+            var textSecondary = Color.FromArgb(isLight ? "#525252" : "#D2D2D2");
+            var textMuted = Color.FromArgb(isLight ? "#737373" : "#9E9E9E");
+            var textOnPrimary = Color.FromArgb("#FFFFFF");
+
+            var success = Color.FromArgb(isLight ? "#059669" : "#10B981");
+            var successDim = Color.FromArgb(isLight ? "#1F059669" : "#2410B981");
+            var warning = Color.FromArgb(isLight ? "#B45309" : "#F59E0B");
+            var warningDim = Color.FromArgb(isLight ? "#1FB45309" : "#24F59E0B");
+            var error = Color.FromArgb(isLight ? "#C42B1C" : "#EF4444");
+            var errorDim = Color.FromArgb(isLight ? "#1FC42B1C" : "#24EF4444");
+
+            _baseBgSurface = bgSurface;
+            _baseBgElevated = bgElevated;
+            _baseBgInput = bgInput;
+
+            SetResourceValue(appResources, "Primary", primary);
+            SetResourceValue(appResources, "PrimaryBrush", new SolidColorBrush(primary));
+            SetResourceValue(appResources, "PrimaryBright", primaryBright);
+            SetResourceValue(appResources, "PrimaryBrightBrush", new SolidColorBrush(primaryBright));
+            SetResourceValue(appResources, "PrimaryLight", primaryLight);
+            SetResourceValue(appResources, "PrimaryLight2", primaryLight2);
+            SetResourceValue(appResources, "PrimaryDim", primaryDim);
+            SetResourceValue(appResources, "PrimaryGlow", primaryGlow);
+
+            SetResourceValue(appResources, "Accent", accent);
+            SetResourceValue(appResources, "AccentBrush", new SolidColorBrush(accent));
+            SetResourceValue(appResources, "AccentDim", accentDim);
+            SetResourceValue(appResources, "AccentGlow", accentGlow);
+            SetResourceValue(appResources, "AccentLight", accentLight);
+
+            SetResourceValue(appResources, "Purple", purple);
+            SetResourceValue(appResources, "PurpleDim", purpleDim);
+            SetResourceValue(appResources, "PurpleLight", purpleLight);
+            SetResourceValue(appResources, "Pink", pink);
+
+            SetResourceValue(appResources, "BgBase", bgBase);
+            SetResourceValue(appResources, "BgBaseBrush", new SolidColorBrush(bgBase));
+            SetResourceValue(appResources, "BgSurface", bgSurface);
+            SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(bgSurface));
+            SetResourceValue(appResources, "BgElevated", bgElevated);
+            SetResourceValue(appResources, "BgInput", bgInput);
+            SetResourceValue(appResources, "BgOverlay", bgOverlay);
+
+            SetResourceValue(appResources, "TextPrimary", textPrimary);
+            SetResourceValue(appResources, "TextPrimaryBrush", new SolidColorBrush(textPrimary));
+            SetResourceValue(appResources, "TextSecondary", textSecondary);
+            SetResourceValue(appResources, "TextMuted", textMuted);
+            SetResourceValue(appResources, "TextOnPrimary", textOnPrimary);
+
+            SetResourceValue(appResources, "SolidBorderDark", solidBorder);
+            SetResourceValue(appResources, "BorderSubtle", borderSubtle);
+            SetResourceValue(appResources, "BorderSubtleBrush", new SolidColorBrush(borderSubtle));
+            SetResourceValue(appResources, "BorderMedium", borderMedium);
+            SetResourceValue(appResources, "BorderStrong", borderStrong);
+
+            SetResourceValue(appResources, "Success", success);
+            SetResourceValue(appResources, "SuccessBrush", new SolidColorBrush(success));
+            SetResourceValue(appResources, "SuccessDim", successDim);
+            SetResourceValue(appResources, "Warning", warning);
+            SetResourceValue(appResources, "WarningDim", warningDim);
+            SetResourceValue(appResources, "Error", error);
+            SetResourceValue(appResources, "ErrorBrush", new SolidColorBrush(error));
+            SetResourceValue(appResources, "ErrorDim", errorDim);
+
+            SetResourceValue(appResources, "AppFontRegular", "RobotoRegular");
+            SetResourceValue(appResources, "AppFontMedium", "RobotoMedium");
+            SetResourceValue(appResources, "AppFontBold", "RobotoBold");
+            SetResourceValue(appResources, "AppFontTitle", "CommissionerExtraBold");
 
             var defaultGradStops = new GradientStopCollection
             {
-                new GradientStop(defaultPrimary, 0.0f),
-                new GradientStop(defaultAccent, 1.0f)
+                new GradientStop(primary, 0.0f),
+                new GradientStop(accent, 1.0f)
             };
-            SetResourceValue(appResources, "PrimaryGradientBrush", new LinearGradientBrush(defaultGradStops, new Point(0, 0), new Point(1, 1)));
+            SetResourceValue(appResources, "PrimaryGradientBrush",
+                new LinearGradientBrush(defaultGradStops, new Point(0, 0), new Point(1, 1)));
 
+            var surfaceEnd = isLight ? bgSurface : bgSurface.AddLuminosity(0.05f);
             var defaultSurfaceStops = new GradientStopCollection
             {
-                new GradientStop(_baseBgSurface, 0.0f),
-                new GradientStop(_baseBgSurface.AddLuminosity(0.06f), 1.0f)
+                new GradientStop(bgSurface, 0.0f),
+                new GradientStop(surfaceEnd, 1.0f)
             };
-            SetResourceValue(appResources, "SurfaceGradientBrush", new LinearGradientBrush(defaultSurfaceStops, new Point(0, 0), new Point(0, 1)));
+            SetResourceValue(appResources, "SurfaceGradientBrush",
+                new LinearGradientBrush(defaultSurfaceStops, new Point(0, 0), new Point(0, 1)));
 
-            SetResourceValue(appResources, "CardCornerRadius", new CornerRadius(12));
+            SetResourceValue(appResources, "CardCornerRadius", GetDefaultPlatformCornerRadius());
             SetResourceValue(appResources, "CardBorderThickness", 1.0);
-
-            ApplyCardOpacity(CardOpacity, forceImmediate: true);
         }
         catch
         {
-            //подавление ошибок сброса ресурсов
+            //подавление ошибок применения системной палитры
         }
     }
+
+    private void ResetDefaultResources() => ApplySystemDefaultPalette(GetEffectiveSystemTheme());
 
     public void ApplyCardOpacity(double opacity, bool forceImmediate = false)
     {
         var now = Environment.TickCount64;
-        if (!forceImmediate && now - _lastApplyOpacityTicks < 35 && opacity > 0.20 && opacity < 1.00)
+        if (!forceImmediate && now - _lastApplyOpacityTicks < 35 && opacity is > 0.20 and < 1.00)
         {
             return;
         }
+
         _lastApplyOpacityTicks = now;
-
-        void UpdateAction()
-        {
-            var appResources = Application.Current?.Resources;
-            if (appResources == null)
-            {
-                return;
-            }
-
-            var baseSurface = ActiveTheme?.Core?.Colors?.BgSurface != null && Color.TryParse(ActiveTheme.Core.Colors.BgSurface, out var parsedThemeColor)
-                ? parsedThemeColor
-                : _baseBgSurface;
-
-            var surfaceWithAlpha = baseSurface.WithAlpha((float)opacity);
-            SetResourceValue(appResources, "BgSurface", surfaceWithAlpha);
-            SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(surfaceWithAlpha));
-
-            var baseElevated = ActiveTheme?.Core?.Colors?.BgElevated != null && Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)
-                ? parsedElevated
-                : _baseBgElevated;
-
-            var elevatedWithAlpha = baseElevated.WithAlpha((float)Math.Clamp(opacity + 0.08, 0.25, 1.0));
-            SetResourceValue(appResources, "BgElevated", elevatedWithAlpha);
-
-            SetResourceValue(appResources, "BgInput", _baseBgInput);
-
-            CardOpacityChanged?.Invoke(opacity);
-        }
 
         if (MainThread.IsMainThread)
         {
@@ -551,37 +485,61 @@ public sealed partial class ThemeManager
         {
             MainThread.BeginInvokeOnMainThread(UpdateAction);
         }
-    }
 
-    public static void ApplyVisualTreeCardOpacity(VisualElement? root, Color bgSurface, Color? bgElevated = null)
-    {
-        _ = root;
-        _ = bgSurface;
-        _ = bgElevated;
+        return;
+
+        void UpdateAction()
+        {
+            var appResources = Application.Current?.Resources;
+            if (appResources == null)
+            {
+                return;
+            }
+
+            //системная тема по умолчанию без обоев остается полностью непрозрачной чтобы светлые и графитовые карточки не мутнели
+            var hasCustomTheme = ActiveTheme is not null;
+            var effectiveOpacity = hasCustomTheme ? opacity : 1.0;
+
+            var baseSurface = ActiveTheme?.Core.Colors.BgSurface != null &&
+                              Color.TryParse(ActiveTheme.Core.Colors.BgSurface, out var parsedThemeColor)
+                ? parsedThemeColor
+                : _baseBgSurface;
+
+            var surfaceWithAlpha = baseSurface.WithAlpha((float)effectiveOpacity);
+            SetResourceValue(appResources, "BgSurface", surfaceWithAlpha);
+            SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(surfaceWithAlpha));
+
+            var baseElevated = ActiveTheme?.Core.Colors.BgElevated != null &&
+                               Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)
+                ? parsedElevated
+                : _baseBgElevated;
+
+            var elevatedWithAlpha = hasCustomTheme
+                ? baseElevated.WithAlpha((float)Math.Clamp(opacity + 0.08, 0.25, 1.0))
+                : baseElevated;
+            SetResourceValue(appResources, "BgElevated", elevatedWithAlpha);
+
+            SetResourceValue(appResources, "BgInput", _baseBgInput);
+
+            CardOpacityChanged?.Invoke(opacity);
+        }
     }
 
     public void ResetToDefault()
     {
+        ActiveTheme = null;
+        ActiveThemeFolderPath = null;
+        Preferences.Default.Set(ActiveThemeKey, DefaultThemePreferenceValue);
+        ThemeAudioService.Reset();
+
         if (MainThread.IsMainThread)
         {
             ResetDefaultResources();
         }
         else
         {
-            try
-            {
-                MainThread.InvokeOnMainThreadAsync(ResetDefaultResources).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                //подавление ошибок сброса в основном потоке
-            }
+            MainThread.BeginInvokeOnMainThread(ResetDefaultResources);
         }
-
-        ActiveTheme = null;
-        ActiveThemeFolderPath = null;
-        Preferences.Default.Set(ActiveThemeKey, DefaultThemePreferenceValue);
-        ThemeAudioService.Reset();
 
         OnThemeReset?.Invoke();
     }

@@ -29,6 +29,10 @@ public sealed class AuthManager
             s_cachedAuthHeader = string.IsNullOrEmpty(session.JwtToken)
                 ? null
                 : new AuthenticationHeaderValue("Bearer", session.JwtToken);
+            if (!string.IsNullOrEmpty(session.JwtToken))
+            {
+                ApiService.ResetUnauthorizedState();
+            }
 
             PlatformServices.Preferences.Set(AppPreferenceKeys.UserEmail, session.Email ?? string.Empty);
             PlatformServices.Preferences.Set(AppPreferenceKeys.UserIsLogged, session.IsLoggedIn);
@@ -80,21 +84,33 @@ public sealed class AuthManager
             var isLoggedIn = PlatformServices.Preferences.Get(AppPreferenceKeys.UserIsLogged, false);
             if (!isLoggedIn)
             {
-                s_cachedSession = new UserSession { IsLoggedIn = false };
+                s_cachedSession = new UserSession
+                {
+                    IsLoggedIn = false
+                };
                 s_cachedAuthHeader = null;
                 return s_cachedSession;
             }
 
-            var jwt = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserJwt).ConfigureAwait(false) ?? string.Empty;
-            var pass = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserPassword).ConfigureAwait(false) ?? string.Empty;
-            var vpnConf = await PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserVpnConfig).ConfigureAwait(false) ?? string.Empty;
+            var jwtTask = PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserJwt);
+            var passTask = PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserPassword);
+            var vpnConfTask = PlatformServices.SecureStorage.GetAsync(AppPreferenceKeys.UserVpnConfig);
+            var values = await Task.WhenAll(jwtTask, passTask, vpnConfTask).ConfigureAwait(false);
+
+            var jwt = values[0] ?? string.Empty;
+            var pass = values[1] ?? string.Empty;
+            var vpnConf = values[2] ?? string.Empty;
+
             var subTicks = PlatformServices.Preferences.Get(AppPreferenceKeys.UserSubUntil, 0L);
             var balanceSec = PlatformServices.Preferences.Get(AppPreferenceKeys.UserBalanceSec, 0L);
 
             if (string.IsNullOrEmpty(jwt))
             {
                 ClearSessionDataInternal();
-                s_cachedSession = new UserSession { IsLoggedIn = false };
+                s_cachedSession = new UserSession
+                {
+                    IsLoggedIn = false
+                };
                 s_cachedAuthHeader = null;
                 return s_cachedSession;
             }
@@ -118,7 +134,10 @@ public sealed class AuthManager
         {
             AppLogger.LogError("[AUTH LOAD ERROR]", ex);
             ClearSessionDataInternal();
-            s_cachedSession = new UserSession { IsLoggedIn = false };
+            s_cachedSession = new UserSession
+            {
+                IsLoggedIn = false
+            };
             s_cachedAuthHeader = null;
             return s_cachedSession;
         }
@@ -155,6 +174,7 @@ public sealed class AuthManager
         PlatformServices.Preferences.Remove(AppPreferenceKeys.UserIsLogged);
         PlatformServices.Preferences.Remove(AppPreferenceKeys.UserSubUntil);
         PlatformServices.Preferences.Remove(AppPreferenceKeys.UserBalanceSec);
+
         _ = PlatformServices.SecureStorage.Remove(AppPreferenceKeys.UserPassword);
         _ = PlatformServices.SecureStorage.Remove(AppPreferenceKeys.UserJwt);
         _ = PlatformServices.SecureStorage.Remove(AppPreferenceKeys.UserVpnConfig);

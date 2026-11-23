@@ -147,6 +147,7 @@ public static partial class DnsAdBlocker
 
     //активный набор правил блокировки
     private static volatile RuleSet s_rules = new(s_defaultBlockedDomains);
+
     //активный белый список доменов
     private static volatile RuleSet s_whitelist = new(s_defaultWhitelistDomains);
 }

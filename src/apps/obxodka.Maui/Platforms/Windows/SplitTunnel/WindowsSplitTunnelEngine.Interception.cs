@@ -23,39 +23,41 @@ internal static partial class WindowsSplitTunnelEngine
         }
 
         var version = packet[0] >> 4;
-        if (version == 4)
+        switch (version)
         {
-            var ihl = (packet[0] & 0x0F) * 4;
-            if (ihl < 20 || length < ihl + 20 || packet[9] != 17)
-            {
-                return;
-            }
+            case 4:
+                {
+                    var ihl = (packet[0] & 0x0F) * 4;
+                    if (ihl < 20 || length < ihl + 20 || packet[9] != 17)
+                    {
+                        return;
+                    }
 
-            var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2));
-            if (srcPort != 53)
-            {
-                return;
-            }
+                    var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2));
+                    if (srcPort != 53)
+                    {
+                        return;
+                    }
 
-            var dnsOffset = ihl + 8;
-            var dnsSpan = packet[dnsOffset..length];
-            PinBypassedDnsAnswerIps(dnsSpan, policy);
-        }
-        else if (version == 6)
-        {
-            if (length < 60 || packet[6] != 17)
-            {
+                    var dnsOffset = ihl + 8;
+                    var dnsSpan = packet[dnsOffset..length];
+                    PinBypassedDnsAnswerIps(dnsSpan, policy);
+                    break;
+                }
+            case 6 when length < 60 || packet[6] != 17:
                 return;
-            }
+            case 6:
+                {
+                    var srcPort6 = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(40, 2));
+                    if (srcPort6 != 53)
+                    {
+                        return;
+                    }
 
-            var srcPort6 = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(40, 2));
-            if (srcPort6 != 53)
-            {
-                return;
-            }
-
-            var dnsSpan6 = packet[48..length];
-            PinBypassedDnsAnswerIps(dnsSpan6, policy);
+                    var dnsSpan6 = packet[48..length];
+                    PinBypassedDnsAnswerIps(dnsSpan6, policy);
+                    break;
+                }
         }
     }
 
@@ -97,42 +99,55 @@ internal static partial class WindowsSplitTunnelEngine
             var srcPort6 = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(40, 2));
             var dstPort6 = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(42, 2));
 
-            if (nextHdr == 17 && dstPort6 == 53)
+            switch (nextHdr)
             {
-                var dnsSpan6 = packet[48..];
-                if (TryReadDnsQuestion(dnsSpan6, out var qName6, out var qType6, out var qNameLen6))
-                {
-                    var isDomainMatch = hasDomains && policy.IsDomainBypassed(qName6);
-                    var isAppMatch = !isDomainMatch && hasApps && IsPortOwnedByBypassedProcess(false, srcPort6, out _, isIpv6: true);
-                    if (isDomainMatch || isAppMatch)
+                case 17 when dstPort6 == 53:
                     {
-                        if (qType6 == 28)
+                        var dnsSpan6 = packet[48..];
+                        if (!TryReadDnsQuestion(dnsSpan6, out var qName6, out var qType6, out var qNameLen6))
                         {
-                            var nodata6 = CreateDnsNoDataResponse(packetBuffer, 40, 40, 48, qNameLen6, false);
-                            adapter.SendPacket(nodata6);
+                            return false;
+                        }
+
+                        var isDomainMatch = hasDomains && policy.IsDomainBypassed(qName6);
+                        var isAppMatch = !isDomainMatch && hasApps && IsPortOwnedByBypassedProcess(false, srcPort6, out _, true);
+                        if (!isDomainMatch && !isAppMatch)
+                        {
+                            return false;
+                        }
+
+                        switch (qType6)
+                        {
+                            case 28:
+                                {
+                                    var nodata6 = CreateDnsNoDataResponse(packetBuffer, 40, 40, 48, qNameLen6, false);
+                                    adapter.SendPacket(nodata6);
+                                    return true;
+                                }
+                            case 1:
+                                {
+                                    var reqCopy6 = new byte[length];
+                                    Buffer.BlockCopy(packetBuffer, 0, reqCopy6, 0, length);
+                                    _ = Task.Run(() =>
+                                        ForwardBypassedDnsQueryOnPhysicalAsync(reqCopy6, 40, 48, qName6, adapter, false));
+                                    return true;
+                                }
+                            default:
+                                return false;
+                        }
+                    }
+                case 6 when hasApps && length >= 60:
+                    {
+                        var tcpFlags = packet[53];
+                        var isSyn = (tcpFlags & 0x02) != 0 && (tcpFlags & 0x10) == 0;
+                        if (isSyn && IsPortOwnedByBypassedProcess(true, srcPort6, out _, true))
+                        {
+                            SendIpv6TcpReset(packet, adapter);
                             return true;
                         }
 
-                        if (qType6 == 1)
-                        {
-                            var reqCopy6 = new byte[length];
-                            Buffer.BlockCopy(packetBuffer, 0, reqCopy6, 0, length);
-                            _ = Task.Run(() => ForwardBypassedDnsQueryOnPhysicalAsync(reqCopy6, 40, 48, qName6, adapter, isIpv4Packet: false));
-                            return true;
-                        }
+                        break;
                     }
-                }
-                return false;
-            }
-            else if (nextHdr == 6 && hasApps && length >= 60)
-            {
-                var tcpFlags = packet[53];
-                var isSyn = (tcpFlags & 0x02) != 0 && (tcpFlags & 0x10) == 0;
-                if (isSyn && IsPortOwnedByBypassedProcess(true, srcPort6, out _, isIpv6: true))
-                {
-                    SendIpv6TcpReset(packet, adapter);
-                    return true;
-                }
             }
 
             return false;
@@ -157,133 +172,141 @@ internal static partial class WindowsSplitTunnelEngine
             return false;
         }
 
-        if (protocol == 17)
+        switch (protocol)
         {
-            var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2));
-            var dstPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2));
-
-            if (dstPort == 53 && length >= ihl + 20)
-            {
-                var dnsOffset = ihl + 8;
-                var dnsSpan = packet[dnsOffset..];
-                if (TryReadDnsQuestion(dnsSpan, out var qName, out var qType, out var qNameLen))
+            case 17:
                 {
-                    var isDomainBypassed = hasDomains && policy.IsDomainBypassed(qName);
-                    string? dnsOwnerExe = null;
-                    var isAppBypassed = !isDomainBypassed && hasApps && IsPortOwnedByBypassedProcess(false, srcPort, out dnsOwnerExe);
-                    if (isDomainBypassed || isAppBypassed)
+                    var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2));
+                    var dstPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2));
+
+                    if (dstPort == 53 && length >= ihl + 20)
                     {
-                        if (qType == 28)
+                        var dnsOffset = ihl + 8;
+                        var dnsSpan = packet[dnsOffset..];
+                        if (!TryReadDnsQuestion(dnsSpan, out var qName, out var qType, out var qNameLen))
                         {
-                            var nodata = CreateDnsNoDataResponse(packetBuffer, ihl, ihl, dnsOffset, qNameLen, true);
-                            adapter.SendPacket(nodata);
-                            return true;
+                            return false;
                         }
 
-                        if (qType == 1)
+                        var isDomainBypassed = hasDomains && policy.IsDomainBypassed(qName);
+                        string? dnsOwnerExe = null;
+                        var isAppBypassed = !isDomainBypassed && hasApps && IsPortOwnedByBypassedProcess(false, srcPort, out dnsOwnerExe);
+                        if (!isDomainBypassed && !isAppBypassed)
                         {
-                            var reasonLabel = isDomainBypassed ? qName : (dnsOwnerExe ?? qName);
-                            var reqCopy = new byte[length];
-                            Buffer.BlockCopy(packetBuffer, 0, reqCopy, 0, length);
-                            _ = Task.Run(() => ForwardBypassedDnsQueryOnPhysicalAsync(reqCopy, ihl, dnsOffset, reasonLabel, adapter, isIpv4Packet: true));
-                            return true;
+                            return false;
+                        }
+
+                        switch (qType)
+                        {
+                            case 28:
+                                {
+                                    var nodata = CreateDnsNoDataResponse(packetBuffer, ihl, ihl, dnsOffset, qNameLen, true);
+                                    adapter.SendPacket(nodata);
+                                    return true;
+                                }
+                            case 1:
+                                {
+                                    var reasonLabel = isDomainBypassed ? qName : dnsOwnerExe ?? qName;
+                                    var reqCopy = new byte[length];
+                                    Buffer.BlockCopy(packetBuffer, 0, reqCopy, 0, length);
+                                    _ = Task.Run(() =>
+                                        ForwardBypassedDnsQueryOnPhysicalAsync(reqCopy, ihl, dnsOffset, reasonLabel, adapter, true));
+                                    return true;
+                                }
+                            default:
+                                return false;
                         }
                     }
-                }
-                return false;
-            }
-            else
-            {
-                if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
-                {
-                    PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
-                    return true;
-                }
 
-                if (hasApps)
-                {
-                    var flowKey = ((ulong)dstIpUint << 32) | ((uint)srcPort << 16) | dstPort;
-                    if (!s_checkedUdpFlows.ContainsKey(flowKey))
+                    if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
                     {
-                        s_checkedUdpFlows[flowKey] = 1;
-                        if (IsPortOwnedByBypassedProcess(false, srcPort, out var exeName))
+                        PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
+                        return true;
+                    }
+
+                    if (hasApps)
+                    {
+                        var flowKey = ((ulong)dstIpUint << 32) | ((uint)srcPort << 16) | dstPort;
+                        if (s_checkedUdpFlows.TryAdd(flowKey, 1))
                         {
-                            PinPhysicalHostRoute(dstIpUint, exeName);
-                            return true;
+                            if (IsPortOwnedByBypassedProcess(false, srcPort, out var exeName))
+                            {
+                                PinPhysicalHostRoute(dstIpUint, exeName);
+                                return true;
+                            }
                         }
                     }
+
+                    break;
                 }
-            }
-        }
-        else if (protocol == 6)
-        {
-            if (length < ihl + 20)
-            {
+            case 6 when length < ihl + 20:
                 return false;
-            }
-
-            var tcpOffset = ihl;
-            var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(tcpOffset, 2));
-            var dstPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(tcpOffset + 2, 2));
-            var tcpHdrLen = ((packet[tcpOffset + 12] >> 4) & 0x0F) * 4;
-            var tcpFlags = packet[tcpOffset + 13];
-            var isSyn = (tcpFlags & 0x02) != 0 && (tcpFlags & 0x10) == 0;
-
-            if (isSyn)
-            {
-                if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
+            case 6:
                 {
-                    PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
-                    SendTcpReset(packet, ihl, adapter);
-                    return true;
-                }
+                    var srcPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl, 2));
+                    var dstPort = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(ihl + 2, 2));
+                    var tcpHdrLen = ((packet[ihl + 12] >> 4) & 0x0F) * 4;
+                    var tcpFlags = packet[ihl + 13];
+                    var isSyn = (tcpFlags & 0x02) != 0 && (tcpFlags & 0x10) == 0;
 
-                if (hasApps && IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
-                {
-                    PinPhysicalHostRoute(dstIpUint, exeName);
-                    SendTcpReset(packet, ihl, adapter);
-                    return true;
-                }
-            }
-
-            var payloadOffset = tcpOffset + tcpHdrLen;
-            if (length > payloadOffset)
-            {
-                var payload = packet[payloadOffset..];
-
-                if (payload.Length > 5)
-                {
-                    if (hasDomains)
+                    if (isSyn)
                     {
-                        var detectedHost = string.Empty;
-                        if (dstPort == 443 && payload[0] == 0x16 && payload[1] == 0x03)
+                        if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
                         {
-                            _ = TryExtractTlsSni(payload, out detectedHost);
-                        }
-                        else if (dstPort == 80 && (payload[0] == (byte)'G' || payload[0] == (byte)'P' || payload[0] == (byte)'H'))
-                        {
-                            _ = TryExtractHttpHost(payload, out detectedHost);
-                        }
-
-                        if (!string.IsNullOrEmpty(detectedHost) && policy.IsDomainBypassed(detectedHost))
-                        {
-                            PinPhysicalHostRoute(dstIpUint, detectedHost);
+                            PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
                             SendTcpReset(packet, ihl, adapter);
                             return true;
                         }
-                    }
 
-                    if (hasApps && (payload[0] == 0x16 || payload[0] == (byte)'G' || payload[0] == (byte)'P'))
-                    {
-                        if (IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
+                        if (hasApps && IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
                         {
                             PinPhysicalHostRoute(dstIpUint, exeName);
                             SendTcpReset(packet, ihl, adapter);
                             return true;
                         }
                     }
+
+                    var payloadOffset = ihl + tcpHdrLen;
+                    if (length > payloadOffset)
+                    {
+                        var payload = packet[payloadOffset..];
+
+                        if (payload.Length > 5)
+                        {
+                            if (hasDomains)
+                            {
+                                var detectedHost = string.Empty;
+                                if (dstPort == 443 && payload[0] == 0x16 && payload[1] == 0x03)
+                                {
+                                    _ = TryExtractTlsSni(payload, out detectedHost);
+                                }
+                                else if (dstPort == 80 && (payload[0] == (byte)'G' || payload[0] == (byte)'P' || payload[0] == (byte)'H'))
+                                {
+                                    _ = TryExtractHttpHost(payload, out detectedHost);
+                                }
+
+                                if (!string.IsNullOrEmpty(detectedHost) && policy.IsDomainBypassed(detectedHost))
+                                {
+                                    PinPhysicalHostRoute(dstIpUint, detectedHost);
+                                    SendTcpReset(packet, ihl, adapter);
+                                    return true;
+                                }
+                            }
+
+                            if (hasApps && (payload[0] == 0x16 || payload[0] == (byte)'G' || payload[0] == (byte)'P'))
+                            {
+                                if (IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
+                                {
+                                    PinPhysicalHostRoute(dstIpUint, exeName);
+                                    SendTcpReset(packet, ihl, adapter);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+
+                    break;
                 }
-            }
         }
 
         return false;
@@ -307,14 +330,17 @@ internal static partial class WindowsSplitTunnelEngine
             var respBytes = await QueryPhysicalDnsRawAsync(dnsPayload).ConfigureAwait(false);
             if (respBytes is { Length: >= 12 })
             {
-                PinBypassedDnsAnswerIps(respBytes, Policy, reasonLabel, forcePinAllAnswers: true);
+                PinBypassedDnsAnswerIps(respBytes, Policy, reasonLabel, true);
                 var wrapped = isIpv4Packet
                     ? WrapDnsResponsePacket(reqPacket, ipHdrLen, respBytes)
                     : WrapIpv6DnsResponsePacket(reqPacket, respBytes);
                 adapter.SendPacket(wrapped);
             }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     //выполнение сырого udp dns запроса через сокет физической сетевой карты
@@ -325,7 +351,7 @@ internal static partial class WindowsSplitTunnelEngine
         MemoryMarshal.Write(gwBytes, in gwUint);
         var gwIp = new IPAddress(gwBytes);
 
-        IPAddress[] dnsServers = [gwIp, IPAddress.Parse("77.88.8.8"), IPAddress.Parse("77.88.8.1")];
+        IPAddress[] dnsServers = [IPAddress.Parse("77.88.8.8"), IPAddress.Parse("77.88.8.1"), gwIp];
 
         foreach (var dnsIp in dnsServers)
         {
@@ -344,15 +370,22 @@ internal static partial class WindowsSplitTunnelEngine
                     {
                         socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)31, IPAddress.HostToNetworkOrder(ifIndex));
                     }
-                    catch { }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
+
                 if (s_physicalLocalIp is not null && !IPAddress.IsLoopback(s_physicalLocalIp))
                 {
                     try
                     {
                         socket.Bind(new IPEndPoint(s_physicalLocalIp, 0));
                     }
-                    catch { }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
 
                 using var cts = new CancellationTokenSource(1200);
@@ -362,7 +395,8 @@ internal static partial class WindowsSplitTunnelEngine
                 var recvBuf = ArrayPool<byte>.Shared.Rent(1500);
                 try
                 {
-                    var res = await socket.ReceiveFromAsync(recvBuf.AsMemory(0, 1450), SocketFlags.None, dnsTarget, cts.Token).ConfigureAwait(false);
+                    var res = await socket.ReceiveFromAsync(recvBuf.AsMemory(0, 1450), SocketFlags.None, dnsTarget, cts.Token)
+                        .ConfigureAwait(false);
                     if (res.ReceivedBytes >= 12)
                     {
                         var result = new byte[res.ReceivedBytes];
@@ -375,13 +409,16 @@ internal static partial class WindowsSplitTunnelEngine
                     ArrayPool<byte>.Shared.Return(recvBuf);
                 }
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
 
         return null;
     }
 
-    //генерация бинарного полезного содержимого dns-запроса типа a
+    //генерация бинарного полезного содержимого dns-запроса типа
     private static byte[] BuildDnsAQueryPayload(string domain)
     {
         var labels = domain.Trim('.').Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -398,6 +435,7 @@ internal static partial class WindowsSplitTunnelEngine
             ms.WriteByte((byte)bytes.Length);
             ms.Write(bytes);
         }
+
         ms.WriteByte(0);
 
         Span<byte> tail = stackalloc byte[4];
@@ -412,28 +450,29 @@ internal static partial class WindowsSplitTunnelEngine
     {
         try
         {
-            using var sem = new SemaphoreSlim(8, 8);
-            var tasks = domains.Select(async domain =>
-            {
-                await sem.WaitAsync().ConfigureAwait(false);
-                try
+            await Parallel.ForEachAsync(
+                domains,
+                new ParallelOptions { MaxDegreeOfParallelism = 8 },
+                async (domain, _) =>
                 {
-                    var query = BuildDnsAQueryPayload(domain);
-                    var resp = await QueryPhysicalDnsRawAsync(query).ConfigureAwait(false);
-                    if (resp is { Length: >= 12 })
+                    try
                     {
-                        PinBypassedDnsAnswerIps(resp, Policy, domain, forcePinAllAnswers: true, notify: false);
+                        var query = BuildDnsAQueryPayload(domain);
+                        var resp = await QueryPhysicalDnsRawAsync(query).ConfigureAwait(false);
+                        if (resp is { Length: >= 12 })
+                        {
+                            PinBypassedDnsAnswerIps(resp, Policy, domain, true, false);
+                        }
                     }
-                }
-                catch { }
-                finally
-                {
-                    _ = sem.Release();
-                }
-            });
-
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+                    catch
+                    {
+                        // ignored
+                    }
+                }).ConfigureAwait(false);
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 }

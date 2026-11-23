@@ -15,6 +15,7 @@ public static class Ipv6MtuHandler
         {
             sum += (uint)((pkt[i] << 8) | pkt[i + 1]);
         }
+
         sum += (uint)((tcpLen >> 16) & 0xFFFF);
         sum += (uint)(tcpLen & 0xFFFF);
         sum += 6U;
@@ -27,7 +28,7 @@ public static class Ipv6MtuHandler
                 : (uint)(tcpSpan[i] << 8);
         }
 
-        while ((sum >> 16) != 0)
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
@@ -36,12 +37,13 @@ public static class Ipv6MtuHandler
     }
 
     //создаем пакет icmpv6 packet too big если размер превышает mtu
-    public static bool TryBuildIcmpPacketTooBig(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket, out int icmpLen)
+    public static bool TryBuildIcmpPacketTooBig(ReadOnlySpan<byte> packet, int length, int clientMtu, out byte[] icmpPacket,
+        out int icmpLen)
     {
         icmpPacket = null!;
         icmpLen = 0;
 
-        if (length < 40 || (packet[0] >> 4) != 6)
+        if (length < 40 || packet[0] >> 4 != 6)
         {
             return false;
         }
@@ -76,6 +78,7 @@ public static class Ipv6MtuHandler
         {
             sum += (uint)((icmpPacket[i] << 8) | icmpPacket[i + 1]);
         }
+
         sum += (uint)((payloadLen >> 16) & 0xFFFF);
         sum += (uint)(payloadLen & 0xFFFF);
         sum += 58U;
@@ -88,7 +91,7 @@ public static class Ipv6MtuHandler
                 : (uint)(icmp6Span[i] << 8);
         }
 
-        while ((sum >> 16) != 0)
+        while (sum >> 16 != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }

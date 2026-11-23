@@ -27,9 +27,9 @@
           Outputs="$(MSBuildThisFileDirectory).github\assets\animated_header.svg">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\sync_version_assets.ps1&quot; -RootDir &quot;$(MSBuildThisFileDirectory)&quot;"
           Condition="'$(OS)' == 'Windows_NT'"
-          ContinueOnError="true" />
+          ContinueOnError="true"/>
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools/sync_version_assets.ps1&quot; -RootDir &quot;$(MSBuildThisFileDirectory)&quot;"
           Condition="'$(OS)' != 'Windows_NT'"
-          ContinueOnError="true" />
+          ContinueOnError="true"/>
   </Target>
 </Project>

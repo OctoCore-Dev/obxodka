@@ -3,12 +3,6 @@ namespace obxodka.Shared.Themes;
 //сервис управления локальным хранилищем тем, распаковки и загрузки ассетов
 public sealed partial class ThemeStorageService
 {
-    //путь к директории хранения установленных тем
-    public string ThemesDirectory { get; }
-
-    //последняя зафиксированная ошибка операций
-    public string? LastError { get; private set; }
-
     //идентификатор встроенной сезонной хэллоуин темы
     public const string SeasonalHalloweenThemeId = "halloween_seasonal_default";
 
@@ -17,6 +11,12 @@ public sealed partial class ThemeStorageService
         ThemesDirectory = themesDirectory ?? GetDefaultThemesDirectory();
         _ = Directory.CreateDirectory(ThemesDirectory);
     }
+
+    //путь к директории хранения установленных тем
+    public string ThemesDirectory { get; }
+
+    //последняя зафиксированная ошибка операций
+    public string? LastError { get; private set; }
 
     //получение стандартной директории тем в данных приложения
     public static string GetDefaultThemesDirectory() =>
@@ -32,8 +32,8 @@ public sealed partial class ThemeStorageService
         }
 
         foreach (var manifestPath in Directory.GetDirectories(ThemesDirectory)
-            .Select(dir => Path.Join(dir, "theme.json"))
-            .Where(File.Exists))
+                     .Select(dir => Path.Join(dir, "theme.json"))
+                     .Where(File.Exists))
         {
             try
             {
@@ -61,27 +61,43 @@ public sealed partial class ThemeStorageService
         return list;
     }
 
+    //безопасное разрешение директории темы внутри ThemesDirectory с защитой от path traversal
+    public string? ResolveSafeThemeDirectory(string? themeId)
+    {
+        if (!ThemeValidator.IsSafeId(themeId))
+        {
+            return null;
+        }
+
+        var baseDir = Path.GetFullPath(ThemesDirectory);
+        if (!baseDir.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+        {
+            baseDir += Path.DirectorySeparatorChar;
+        }
+
+        var targetDir = Path.GetFullPath(Path.Join(baseDir, themeId!.Trim()));
+        return targetDir.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase) && targetDir.Length > baseDir.Length
+            ? targetDir
+            : null;
+    }
+
     //проверка наличия установленной темы по id
     public bool IsThemeInstalled(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
-        {
-            return false;
-        }
-
-        var targetDir = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'));
-        return File.Exists(Path.Join(targetDir, "theme.json"));
+        var targetDir = ResolveSafeThemeDirectory(themeId);
+        return targetDir != null && File.Exists(Path.Join(targetDir, "theme.json"));
     }
 
     //чтение локальной версии установленной темы
     public string? GetInstalledThemeVersion(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
+        var targetDir = ResolveSafeThemeDirectory(themeId);
+        if (targetDir == null)
         {
             return null;
         }
 
-        var manifestPath = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'), "theme.json");
+        var manifestPath = Path.Join(targetDir, "theme.json");
         if (!File.Exists(manifestPath))
         {
             return null;
@@ -117,14 +133,14 @@ public sealed partial class ThemeStorageService
     //удаление темы с диска
     public bool DeleteTheme(string themeId)
     {
-        if (string.IsNullOrWhiteSpace(themeId))
+        var targetDir = ResolveSafeThemeDirectory(themeId);
+        if (targetDir == null)
         {
             return false;
         }
 
         try
         {
-            var targetDir = Path.Join(ThemesDirectory, themeId.TrimStart('/', '\\'));
             if (Directory.Exists(targetDir))
             {
                 Directory.Delete(targetDir, true);

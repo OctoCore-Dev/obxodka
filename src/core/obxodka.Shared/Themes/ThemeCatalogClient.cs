@@ -18,7 +18,10 @@ public static class ThemeCatalogClient
     //создание настроенного http клиента с таймаутом
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("OctoCore-Client/1.0 (Windows NT 10.0; Win64; x64)");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/plain, */*");
         return client;
@@ -30,11 +33,11 @@ public static class ThemeCatalogClient
         return string.IsNullOrWhiteSpace(rawUrl)
             ? string.Empty
             : rawUrl.StartsWith("https://raw.githubusercontent.com/OctoCore-Dev/themes/main/", StringComparison.OrdinalIgnoreCase)
-            ? rawUrl.Replace(
-                "https://raw.githubusercontent.com/OctoCore-Dev/themes/main/",
-                "https://cdn.jsdelivr.net/gh/OctoCore-Dev/themes@main/",
-                StringComparison.OrdinalIgnoreCase)
-            : rawUrl;
+                ? rawUrl.Replace(
+                    "https://raw.githubusercontent.com/OctoCore-Dev/themes/main/",
+                    "https://cdn.jsdelivr.net/gh/OctoCore-Dev/themes@main/",
+                    StringComparison.OrdinalIgnoreCase)
+                : rawUrl;
     }
 
     //нормализация url иконок и превью каталога под cdn зеркала
@@ -67,18 +70,21 @@ public static class ThemeCatalogClient
                     MustRevalidate = true
                 };
 
-                using var res = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+                using var res = await s_httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token)
+                    .ConfigureAwait(false);
                 if (res.IsSuccessStatusCode)
                 {
                     await using var stream = await res.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-                    var catalog = await JsonSerializer.DeserializeAsync(stream, ThemeJsonContext.Default.ThemeCatalogResponse, cts.Token).ConfigureAwait(false);
+                    var catalog = await JsonSerializer.DeserializeAsync(stream, ThemeJsonContext.Default.ThemeCatalogResponse, cts.Token)
+                        .ConfigureAwait(false);
                     if (catalog != null && catalog.Themes.Count > 0)
                     {
                         return catalog;
                     }
                 }
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException or JsonException or NotSupportedException or ArgumentException)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException
+                                           or JsonException or NotSupportedException or ArgumentException)
             {
                 //переход к следующему зеркалу при ошибке
             }
@@ -107,8 +113,8 @@ public static class ThemeCatalogClient
         }
 
         var isCacheStale = string.IsNullOrWhiteSpace(cacheFilePath) ||
-                            !File.Exists(cacheFilePath) ||
-                            (DateTime.UtcNow - File.GetLastWriteTimeUtc(cacheFilePath)) > TimeSpan.FromMinutes(5);
+                           !File.Exists(cacheFilePath) ||
+                           DateTime.UtcNow - File.GetLastWriteTimeUtc(cacheFilePath) > TimeSpan.FromMinutes(5);
 
         //чтение из свежего кэша с запуском фоновой проверки
         if (!forceRefresh && !isCacheStale && !string.IsNullOrWhiteSpace(cacheFilePath) && File.Exists(cacheFilePath))
@@ -129,11 +135,16 @@ public static class ThemeCatalogClient
                             if (fresh != null && fresh.Themes.Count > 0)
                             {
                                 NormalizeCatalogUrls(fresh);
-                                await File.WriteAllTextAsync(cacheFilePath, JsonSerializer.Serialize(fresh, ThemeJsonContext.Default.ThemeCatalogResponse), CancellationToken.None).ConfigureAwait(false);
+                                await File.WriteAllTextAsync(cacheFilePath,
+                                        JsonSerializer.Serialize(fresh, ThemeJsonContext.Default.ThemeCatalogResponse),
+                                        CancellationToken.None)
+                                    .ConfigureAwait(false);
                                 onBackgroundCatalogUpdated?.Invoke(fresh);
                             }
                         }
-                        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException or SecurityException or SocketException or JsonException or NotSupportedException or ArgumentException)
+                        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException
+                                                       or UnauthorizedAccessException or SecurityException or SocketException
+                                                       or JsonException or NotSupportedException or ArgumentException)
                         {
                             //подавление ошибок фонового обновления
                         }
@@ -142,7 +153,8 @@ public static class ThemeCatalogClient
                     return cachedCatalog;
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException or JsonException or NotSupportedException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException
+                                           or JsonException or NotSupportedException)
             {
                 //при повреждении кэша переходим к сетевой загрузке
             }
@@ -162,12 +174,17 @@ public static class ThemeCatalogClient
                     {
                         _ = Directory.CreateDirectory(parent);
                     }
-                    await File.WriteAllTextAsync(cacheFilePath, JsonSerializer.Serialize(catalog, ThemeJsonContext.Default.ThemeCatalogResponse), ct).ConfigureAwait(false);
+
+                    await File.WriteAllTextAsync(cacheFilePath,
+                        JsonSerializer.Serialize(catalog, ThemeJsonContext.Default.ThemeCatalogResponse), ct).ConfigureAwait(false);
                 }
+
                 return catalog;
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException or SecurityException or SocketException or JsonException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or UnauthorizedAccessException
+                                       or SecurityException or SocketException or JsonException or NotSupportedException
+                                       or ArgumentException)
         {
             //ошибка сети, пробуем устаревший кэш
         }
@@ -185,7 +202,8 @@ public static class ThemeCatalogClient
                     return cachedCatalog;
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException or JsonException or NotSupportedException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or OperationCanceledException
+                                           or JsonException or NotSupportedException)
             {
                 //кэш не читается
             }

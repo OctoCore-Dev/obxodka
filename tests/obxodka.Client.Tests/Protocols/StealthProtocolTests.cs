@@ -1,4 +1,3 @@
-using obxodka.Shared.Stealth.ClientHello;
 namespace obxodka.Client.Tests.Protocols;
 
 [Trait("Category", "Protocol")]
@@ -322,7 +321,8 @@ public sealed class StealthProtocolTests
         var buffer = new byte[totalLen];
         ObxodkaFraming.WriteFrame(buffer.AsSpan(), cmd, payload, paddingLen);
 
-        var ok = ObxodkaFraming.TryDecodeHeader(buffer.AsSpan(0, ObxodkaFraming.HeaderSize), out var decTotal, out var decPayload, out var decCmd, out var salt);
+        var ok = ObxodkaFraming.TryDecodeHeader(buffer.AsSpan(0, ObxodkaFraming.HeaderSize), out var decTotal, out var decPayload,
+            out var decCmd, out var salt);
 
         Assert.True(ok);
         Assert.Equal(totalLen, decTotal);
@@ -466,10 +466,11 @@ public sealed class StealthProtocolTests
             Assert.InRange(ObxodkaFraming.CalculatePaddingLength(ObxodkaFraming.CmdData, 400), 8, 40);
         }
     }
+
     [Fact]
     public void RayInspectorDetectsAsymmetricBlackholeAndMigratesRay()
     {
-        var inspector = new obxodka.Core.Transports.RayInspector();
+        var inspector = new RayInspector();
         var now = Stopwatch.GetTimestamp();
 
         inspector.RecordTx(0, now - (long)(Stopwatch.Frequency * 0.2));
@@ -486,7 +487,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void RayInspectorNeverRoutesUserDataToInspectorRay2()
     {
-        var inspector = new obxodka.Core.Transports.RayInspector();
+        var inspector = new RayInspector();
         var now = Stopwatch.GetTimestamp();
 
         // Ray 0 мертв (молчал 5 секунд), Ray 1 жив, Ray 2 (инспектор) жив
@@ -495,10 +496,10 @@ public sealed class StealthProtocolTests
         inspector.RecordRx(2, now - (long)(Stopwatch.Frequency * 0.1));
 
         PacketRouter.SelectRaysFromHealth(
-            isLatencyCritical: true,
-            aliveMask: inspector.GetAliveMask(now),
-            preferredRay: 1,
-            hash: 0,
+            true,
+            inspector.GetAliveMask(now),
+            1,
+            0,
             out var primaryRay,
             out var duplicateRay);
 
@@ -527,7 +528,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void RayInspectorAdaptiveMtuDownshiftAndStepLogging()
     {
-        var inspector = new obxodka.Core.Transports.RayInspector();
+        var inspector = new RayInspector();
         Assert.True(inspector.TryDownshiftMtu(1400, out var mtu1));
         Assert.Equal(1360, mtu1);
 
@@ -557,7 +558,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void RayInspectorDetectsMtuBlackhole()
     {
-        var inspector = new obxodka.Core.Transports.RayInspector();
+        var inspector = new RayInspector();
         var now = Stopwatch.GetTimestamp();
 
         inspector.RecordRx(0, now);
@@ -577,11 +578,12 @@ public sealed class StealthProtocolTests
     [Fact]
     public async Task RayInspectorRateLimitsIncidentReportsAsync()
     {
-        var inspector = new obxodka.Core.Transports.RayInspector();
+        var inspector = new RayInspector();
         inspector.RecordStep("Initial step");
 
         _ = await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
-        var secondAttempt = await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
+        var secondAttempt =
+            await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
 
         Assert.False(secondAttempt);
     }
@@ -643,6 +645,7 @@ public sealed class StealthProtocolTests
         {
             packet1[i] = (byte)(i & 0xFF);
         }
+
         for (var i = 256; i < 1200; i++)
         {
             packet1[i] = 0xAA;
@@ -662,13 +665,23 @@ public sealed class StealthProtocolTests
     }
 
     [Theory]
-    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0", null, TlsBrowserProfile.Edge)]
-    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 YaBrowser/25.2.0.0 Safari/537.36", null, TlsBrowserProfile.Yandex)]
-    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/116.0.0.0", null, TlsBrowserProfile.Opera)]
+    [InlineData(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0",
+        null, TlsBrowserProfile.Edge)]
+    [InlineData(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 YaBrowser/25.2.0.0 Safari/537.36",
+        null, TlsBrowserProfile.Yandex)]
+    [InlineData(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/116.0.0.0",
+        null, TlsBrowserProfile.Opera)]
     [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0", null, TlsBrowserProfile.Firefox)]
-    [InlineData("Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1", null, TlsBrowserProfile.SafariIos)]
-    [InlineData("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15", null, TlsBrowserProfile.SafariMac)]
-    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36", null, TlsBrowserProfile.Chrome)]
+    [InlineData(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1",
+        null, TlsBrowserProfile.SafariIos)]
+    [InlineData("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
+        null, TlsBrowserProfile.SafariMac)]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36", null,
+        TlsBrowserProfile.Chrome)]
     [InlineData("CustomAgent/1.0", "\"Microsoft Edge\";v=\"133\"", TlsBrowserProfile.Edge)]
     [InlineData("CustomAgent/1.0", "\"Opera\";v=\"116\"", TlsBrowserProfile.Opera)]
     public void DetectProfileIdentifiesBrowserCorrectly(string? userAgent, string? secChUa, TlsBrowserProfile expectedProfile)
@@ -685,7 +698,8 @@ public sealed class StealthProtocolTests
     [InlineData(TlsBrowserProfile.SafariIos, "Apple", "x-apple-orig-url")]
     [InlineData(TlsBrowserProfile.SafariMac, "Apple", "x-apple-orig-url")]
     [InlineData(TlsBrowserProfile.Chrome, "gws", "Alt-Svc")]
-    public void GetServerResponseHeadersMatchesDetectedBrowser(TlsBrowserProfile profile, string expectedServer, string? expectedCustomHeader)
+    public void GetServerResponseHeadersMatchesDetectedBrowser(TlsBrowserProfile profile, string expectedServer,
+        string? expectedCustomHeader)
     {
         var headers = RoutingHello.GetServerResponseHeaders(profile);
         Assert.Contains(headers, h => h.Key == "Server" && h.Value == expectedServer);
@@ -756,7 +770,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void TryFindSniMidsldOffsetLocatesMiddleOfSecondLevelDomain()
     {
-        var sni = Encoding.UTF8.GetBytes("vpn.obxodka.one");
+        var sni = "vpn.obxodka.one"u8.ToArray();
         var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         var found = DpiBypassStream.TryFindSniMidsldOffset(hello, out var splitOffset);
@@ -776,7 +790,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public async Task DpiBypassStreamSplitsClientHelloAtMidsldInPureL4ModeAsync()
     {
-        var sni = Encoding.UTF8.GetBytes("obxodka.one");
+        var sni = "obxodka.one"u8.ToArray();
         var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         var underlying = new TestRecordingStream();
@@ -806,7 +820,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public async Task DpiBypassStreamSplitsClientHelloIntoTwoValidRecordsInTlsRecordModeAsync()
     {
-        var sni = Encoding.UTF8.GetBytes("obxodka.one");
+        var sni = "obxodka.one"u8.ToArray();
         var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, sni);
 
         var underlying = new TestRecordingStream();
@@ -870,7 +884,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void RayInspectorIgnoresIdleSilenceAndMulticastForMtuBlackhole()
     {
-        var inspector = new obxodka.Core.Transports.RayInspector();
+        var inspector = new RayInspector();
         var now = Stopwatch.GetTimestamp();
         inspector.RecordRx(0, now);
 
@@ -879,10 +893,11 @@ public sealed class StealthProtocolTests
         {
             inspector.RecordDataTx();
         }
+
         inspector.RecordDataRx(1200);
 
         //простой 5 секунд + фоновые мультикаст пакеты ос и мелкие ack не должны вызывать ложный mtu блэкхол
-        var idleTs = now + (Stopwatch.Frequency * 5);
+        var idleTs = now + Stopwatch.Frequency * 5;
         inspector.RecordRx(0, idleTs);
 
         var mdnsIpv4 = new byte[700];
@@ -940,6 +955,126 @@ public sealed class StealthProtocolTests
         {
             OctopusEngine.ClearByteCappedNodes();
         }
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void PacketRouterIpv4Fragments_HashAllFragmentsToSamePrimaryRay_RegardlessOfOffset(int activeRays)
+    {
+        for (ushort ipId = 0x1000; ipId < 0x1020; ipId++)
+        {
+            var frag1 = new byte[1280];
+            frag1[0] = 0x45;
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(2, 2), 1280);
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(4, 2), ipId);
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(6, 2), 0x2000); //mf=1, offset=0
+            frag1[9] = 6;
+            frag1[12] = 100;
+            frag1[13] = 64;
+            frag1[14] = 0;
+            frag1[15] = 2;
+            frag1[16] = 151;
+            frag1[17] = 101;
+            frag1[18] = 1;
+            frag1[19] = 69;
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(20, 2), (ushort)(40000 + ipId));
+            BinaryPrimitives.WriteUInt16BigEndian(frag1.AsSpan(22, 2), 443);
+
+            var frag2 = new byte[200];
+            frag2[0] = 0x45;
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(2, 2), 200);
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(4, 2), ipId);
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(6, 2), 157); //mf=0, offset>0
+            frag2[9] = 6;
+            frag1.AsSpan(12, 8).CopyTo(frag2.AsSpan(12, 8));
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(20, 2), 0xDEAD);
+            BinaryPrimitives.WriteUInt16BigEndian(frag2.AsSpan(22, 2), 0xBEEF);
+
+            PacketRouter.GetRays(frag1.AsSpan(), activeRays, out var ray1, out var sec1);
+            PacketRouter.GetRays(frag2.AsSpan(), activeRays, out var ray2, out var sec2);
+
+            Assert.Equal(ray1, ray2);
+            Assert.Equal(-1, sec1);
+            Assert.Equal(-1, sec2);
+        }
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("../escape")]
+    [InlineData("..\\escape")]
+    [InlineData("theme/../../root")]
+    [InlineData("UPPERCASE_ID")]
+    public void ThemeStorageServiceResolveSafeThemeDirectoryRejectsTraversalAndInvalidIds(string? unsafeId)
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        try
+        {
+            var storage = new ThemeStorageService(tempRoot);
+            Assert.Null(storage.ResolveSafeThemeDirectory(unsafeId));
+            Assert.False(storage.DeleteTheme(unsafeId!));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ThemeStorageServiceResolveSafeThemeDirectoryAcceptsValidKebabCaseId()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        try
+        {
+            var storage = new ThemeStorageService(tempRoot);
+            var resolved = storage.ResolveSafeThemeDirectory("cyber-neon-2026");
+            Assert.NotNull(resolved);
+            Assert.StartsWith(Path.GetFullPath(tempRoot), resolved, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ChromiumHelloEmitsAlpsExtension0x4469InsteadOfInvalidCookie0x002c()
+    {
+        var hello = RoutingHello.BuildHello(TlsBrowserProfile.Chrome, "example.com"u8);
+        Assert.True(hello.Length > 60);
+
+        //ищем расширение alps 0x44 0x69 с длиной 0x00 0x05 и списком 0x00 0x03 0x02 'h' '2'
+        ReadOnlySpan<byte> expectedAlps = [0x44, 0x69, 0x00, 0x05, 0x00, 0x03, 0x02, 0x68, 0x32];
+        Assert.True(hello.AsSpan().IndexOf(expectedAlps) >= 0);
+    }
+
+    [Fact]
+    public void BuildProtocolRotationRingPreservesPerServerExpectedCertHash()
+    {
+        VpnServerDto[] servers =
+        [
+            new("185.10.20.30", 443, "NL-1", true, 10, CertHash: "HASH_NL_1"),
+            new("185.10.20.31", 443, "DE-1", true, 12, CertHash: "HASH_DE_1")
+        ];
+
+        var ring = SniEngine.BuildProtocolRotationRing(servers, "185.10.20.30", 443, null, false);
+        var nlStep = ring.FirstOrDefault(s => s.Host == "185.10.20.30" && s.Kind == TransportProtocolKind.ObxodkaStream);
+        var deStep = ring.FirstOrDefault(s => s.Host == "185.10.20.31" && s.Kind == TransportProtocolKind.ObxodkaStream);
+
+        Assert.NotNull(nlStep);
+        Assert.NotNull(deStep);
+        Assert.Equal("HASH_NL_1", nlStep.ExpectedCertHash);
+        Assert.Equal("HASH_DE_1", deStep.ExpectedCertHash);
     }
 
     private sealed class TestRecordingStream : Stream

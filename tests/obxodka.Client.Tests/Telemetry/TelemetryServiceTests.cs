@@ -21,7 +21,7 @@ public sealed class TelemetryServiceTests
     }
 
     [Fact]
-    public async Task TrackFatalCrashAsyncWritesToCrashLogFile()
+    public async Task TrackFatalCrashAsyncWritesToCrashLogFileAsync()
     {
         var crashPath = AppLogger.CrashLogFilePath;
         try

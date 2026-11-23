@@ -53,7 +53,8 @@
 
 ## <img src=".github/assets/icons/octo_zap.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Почему Obxodka?
 
-Традиционные VPN-протоколы (WireGuard, OpenVPN, IPsec) используют фиксированные порты и узнаваемые заголовки пакетов, которые мгновенно распознаются и блокируются государственными и магистральными системами глубокого анализа пакетов (**DPI / ТСПУ**).
+Традиционные VPN-протоколы (WireGuard, OpenVPN, IPsec) используют фиксированные порты и узнаваемые заголовки пакетов, которые мгновенно
+распознаются и блокируются государственными и магистральными системами глубокого анализа пакетов (**DPI / ТСПУ**).
 
 **Obxodka** решает эту задачу фундаментально через проприетарный высокоскоростной движок **OBXODKA-STREAM**:
 
@@ -92,28 +93,33 @@
 
 Сетевой трафик проходит через единый сквозной конвейер ядра `OctopusEngine`:
 
-* **Платформенные адаптеры (Windows / Android):** Перехват Layer 3 пакетов через драйвер **Wintun** (64 MB ring buffer) на Windows и нативный `VpnService` на Android с поддержкой **Split Tunneling** и исключением банковских/государственных приложений.
-* **Маршрутизация и приоритеты:** `PacketRouter` распределяет трафик по `PriorityPacketQueue` (приоритет DNS, TCP SYN/ACK, игрового UDP и ICMP) и при использовании `OBXODKA-STREAM` дублирует realtime-пакеты по `Ray 0` и `Ray 1`.
-* **Защита от фризов ТСПУ:** При обнаружении блокировки даунлинка (`TX > 0, RX = 0`) инспектор `OctopusEngine.TryEscalateToShieldAsync` на лету переключает транспорт на облачный **WebSocket Shield** (`OBXODKA-WS`) без обрыва TUN-интерфейса.
+* **Платформенные адаптеры (Windows / Android):** Перехват Layer 3 пакетов через драйвер **Wintun** (64 MB ring buffer) на Windows и
+  нативный `VpnService` на Android с поддержкой **Split Tunneling** и исключением банковских/государственных приложений.
+* **Маршрутизация и приоритеты:** `PacketRouter` распределяет трафик по `PriorityPacketQueue` (приоритет DNS, TCP SYN/ACK, игрового UDP и
+  ICMP) и при использовании `OBXODKA-STREAM` дублирует realtime-пакеты по `Ray 0` и `Ray 1`.
+* **Защита от фризов ТСПУ:** При обнаружении блокировки даунлинка (`TX > 0, RX = 0`) инспектор `OctopusEngine.TryEscalateToShieldAsync` на
+  лету переключает транспорт на облачный **WebSocket Shield** (`OBXODKA-WS`) без обрыва TUN-интерфейса.
 
 ---
 
 ## <img src=".github/assets/icons/octo_lock.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Взаимная аутентификация mTLS и DoH Anti-Poison
 
-* **Сессионные сертификаты mTLS:** При входе клиент получает персональный `.pfx`-сертификат устройства и предъявляет его при установлении туннеля.
-* **Проверка открытых ключей (SPKI Pinning):** При прямых подключениях к серверам `CertificateValidator` сверяет SHA-256 хэш публичного ключа сервера с эталоном, предотвращая MITM-подмену даже при наличии сторонних корневых сертификатов.
+* **Сессионные сертификаты mTLS:** При входе клиент получает персональный `.pfx`-сертификат устройства и предъявляет его при установлении
+  туннеля.
+* **Проверка открытых ключей (SPKI Pinning):** При прямых подключениях к серверам `CertificateValidator` сверяет SHA-256 хэш публичного
+  ключа сервера с эталоном, предотвращая MITM-подмену даже при наличии сторонних корневых сертификатов.
 * **DoH-резолвинг:** `ApiService` проверяет домены через шифрованные DoH-резолверы, отсеивая поддельные bogon/sinkhole-ответы провайдеров.
 
 ---
 
 ## <img src=".github/assets/icons/octo_chart.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Сравнение протоколов в условиях жёсткого DPI
 
-| Протокол / Подход | Маскировка под HTTPS | Резервный CDN Shield | Обработка потерь UDP/ICMP | Шифрование / Аутентификация |
-| :--- | :---: | :---: | :---: | :---: |
+| Протокол / Подход                                                                                                                    |          Маскировка под HTTPS           |       Резервный CDN Shield       |     Обработка потерь UDP/ICMP     |     Шифрование / Аутентификация      |
+|:-------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------:|:--------------------------------:|:---------------------------------:|:------------------------------------:|
 | <img src=".github/assets/icons/octo.svg" width="24" height="24" style="vertical-align:-4px;"/> **Obxodka (`OBXODKA-STREAM` + `WS`)** | HTTP/2 over TLS 1.3 + `DpiBypassStream` | Авто-эскалация на Cloudflare WSS | `Dual-Ray Hedging` + дедупликация | TLS 1.3 + mTLS `.pfx` + SPKI Pinning |
-| **Классический WireGuard** | Нет (сигнатура UDP-хендшейка) | Нет | Одиночный UDP-поток | Noise_IK / статические ключи |
-| **OpenVPN (TCP/UDP)** | Частичная (распознаётся по TLS-фреймам) | Нет | Одиночный поток / TCP-over-TCP | TLS / OpenVPN Data Channel |
-| **Shadowsocks / VLESS** | Зависит от транспорта (WS / Reality) | Опционально (CDN) | Одиночное соединение | AEAD / XTLS-TLS |
+| **Классический WireGuard**                                                                                                           |      Нет (сигнатура UDP-хендшейка)      |               Нет                |        Одиночный UDP-поток        |     Noise_IK / статические ключи     |
+| **OpenVPN (TCP/UDP)**                                                                                                                | Частичная (распознаётся по TLS-фреймам) |               Нет                |  Одиночный поток / TCP-over-TCP   |      TLS / OpenVPN Data Channel      |
+| **Shadowsocks / VLESS**                                                                                                              |  Зависит от транспорта (WS / Reality)   |        Опционально (CDN)         |       Одиночное соединение        |           AEAD / XTLS-TLS            |
 
 ---
 
@@ -121,13 +127,27 @@
 
 В **Obxodka** интегрирован передовой комплекс аппаратной защиты от телеметрии, слежки и утечек трафика:
 
-* <img src=".github/assets/icons/octo_dns.svg" width="26" height="26" style="vertical-align:-6px;"/> **Аппаратный L3 DNS Sinkhole (Windows & Android):** Встроенный в драйвер Wintun и TUN-ядро фильтр. Все попытки фоновой телеметрии (`AppMetrica`, `Yandex Metrika`, `VK Stats`, `Mail.ru`, аналитика банков, трекеры `AppsFlyer` / `Adjust`) перехватываются на сетевом уровне L3 и за **`0.05 мс` гасятся ответом `0.0.0.0`**. Шпионский пакет физически не покидает оперативную память.
-* <img src=".github/assets/icons/octo_ping.svg" width="26" height="26" style="vertical-align:-6px;"/> **Happy Eyeballs & Latency Scoring:** Параллельное неблокирующее зондирование узлов кластера при подключении. Клиент автоматически выбирает сервер с минимальным RTT и наименьшей нагрузкой.
-* <img src=".github/assets/icons/octo_stealth.svg" width="26" height="26" style="vertical-align:-6px;"/> **Multi-Stage TLS Splitting:** Динамическое расщепление первого сегмента TLS ClientHello на 1–5 байт с паузой 15–35 мс и фрагментацией тела пакета. DPI не может распознать сигнатуру рукопожатия.
-* <img src=".github/assets/icons/octo_zap.svg" width="26" height="26" style="vertical-align:-6px;"/> **Zero-Handoff Seamless Switching:** Бесшовное переключение серверов и сетевой роуминг (Wi-Fi ↔ LTE) без сброса TCP-соединений и потери пакетов.
-* <img src=".github/assets/icons/octo_shield.svg" width="26" height="26" style="vertical-align:-6px;"/> **Защита от утечек DNS (NRPT & Auto-Heal):** Принудительная изоляция через таблицу политик разрешения имен Windows (NRPT), сброс кэша резолвера и авто-восстановление системных DNS-адаптеров.
-* <img src=".github/assets/icons/octo_stealth.svg" width="26" height="26" style="vertical-align:-6px;"/> **Smart App Cloaking (Android):** Автоматическая изоляция отечественных банков, Госуслуг и сервисов (`AddDisallowedApplication`). Система Android рапортует приложениям: **`TRANSPORT_VPN: FALSE`** — банковские переводы работают без блокировок.
-* <img src=".github/assets/icons/octo_lock.svg" width="26" height="26" style="vertical-align:-6px;"/> **Hardware Kill-Switch:** Принудительная блокировка утечек IPv6 (`fd00::/8`), изоляция портов WebRTC/STUN (`3478` / `5349`) и аппаратная блокировка пакетов при разрывах связи.
+* <img src=".github/assets/icons/octo_dns.svg" width="26" height="26" style="vertical-align:-6px;"/> **Аппаратный L3 DNS Sinkhole (Windows &
+  Android):** Встроенный в драйвер Wintun и TUN-ядро фильтр. Все попытки фоновой телеметрии (`AppMetrica`, `Yandex Metrika`, `VK Stats`,
+  `Mail.ru`, аналитика банков, трекеры `AppsFlyer` / `Adjust`) перехватываются на сетевом уровне L3 и за **`0.05 мс` гасятся ответом
+  `0.0.0.0`**. Шпионский пакет физически не покидает оперативную память.
+* <img src=".github/assets/icons/octo_ping.svg" width="26" height="26" style="vertical-align:-6px;"/> **Happy Eyeballs & Latency Scoring:**
+  Параллельное неблокирующее зондирование узлов кластера при подключении. Клиент автоматически выбирает сервер с минимальным RTT и
+  наименьшей нагрузкой.
+* <img src=".github/assets/icons/octo_stealth.svg" width="26" height="26" style="vertical-align:-6px;"/> **Multi-Stage TLS Splitting:**
+  Динамическое расщепление первого сегмента TLS ClientHello на 1–5 байт с паузой 15–35 мс и фрагментацией тела пакета. DPI не может
+  распознать сигнатуру рукопожатия.
+* <img src=".github/assets/icons/octo_zap.svg" width="26" height="26" style="vertical-align:-6px;"/> **Zero-Handoff Seamless Switching:**
+  Бесшовное переключение серверов и сетевой роуминг (Wi-Fi ↔ LTE) без сброса TCP-соединений и потери пакетов.
+* <img src=".github/assets/icons/octo_shield.svg" width="26" height="26" style="vertical-align:-6px;"/> **Защита от утечек DNS (NRPT &
+  Auto-Heal):** Принудительная изоляция через таблицу политик разрешения имен Windows (NRPT), сброс кэша резолвера и авто-восстановление
+  системных DNS-адаптеров.
+* <img src=".github/assets/icons/octo_stealth.svg" width="26" height="26" style="vertical-align:-6px;"/> **Smart App Cloaking (Android):**
+  Автоматическая изоляция отечественных банков, Госуслуг и сервисов (`AddDisallowedApplication`). Система Android рапортует приложениям:
+  **`TRANSPORT_VPN: FALSE`** — банковские переводы работают без блокировок.
+* <img src=".github/assets/icons/octo_lock.svg" width="26" height="26" style="vertical-align:-6px;"/> **Hardware Kill-Switch:**
+  Принудительная блокировка утечек IPv6 (`fd00::/8`), изоляция портов WebRTC/STUN (`3478` / `5349`) и аппаратная блокировка пакетов при
+  разрывах связи.
 
 ---
 
@@ -165,9 +185,14 @@
 <summary><b>Почему клиент открыт под GNU AGPLv3 и можно ли собрать его самостоятельно?</b></summary>
 <br/>
 
-Мы открыли исходный код клиентского приложения под лицензией **[GNU AGPLv3](LICENSE)**, чтобы любой разработчик или исследователь безопасности мог убедиться в отсутствии скрытой слежки и бэкдоров. Если вы не доверяете готовым сборкам из магазинов приложений, вы можете скомпилировать клиент самостоятельно из этого репозитория и пользоваться им через свой аккаунт **Obxodka** (с активной подпиской/балансом времени).
+Мы открыли исходный код клиентского приложения под лицензией **[GNU AGPLv3](LICENSE)**, чтобы любой разработчик или исследователь
+безопасности мог убедиться в отсутствии скрытой слежки и бэкдоров. Если вы не доверяете готовым сборкам из магазинов приложений, вы можете
+скомпилировать клиент самостоятельно из этого репозитория и пользоваться им через свой аккаунт **Obxodka** (с активной подпиской/балансом
+времени).
 
-Форки и доработки приветствуются в виде **Pull Request** в ветку `develop`. Обратите внимание на **[TRADEMARK.md](TRADEMARK.md)**: сторонние сборки обязаны сохранять лицензию AGPLv3 (открытый исходный код), но не имеют права использовать бренд **Obxodka / OctoCore**, логотипы и официальные ID пакетов в сторах.
+Форки и доработки приветствуются в виде **Pull Request** в ветку `develop`. Обратите внимание на **[TRADEMARK.md](TRADEMARK.md)**: сторонние
+сборки обязаны сохранять лицензию AGPLv3 (открытый исходный код), но не имеют права использовать бренд **Obxodka / OctoCore**, логотипы и
+официальные ID пакетов в сторах.
 
 </details>
 
@@ -175,7 +200,10 @@
 <summary><b>Как Obxodka обходит блокировки DPI / ТСПУ?</b></summary>
 <br/>
 
-Обычные VPN используют протоколы с фиксированными сигнатурами (WireGuard, OpenVPN). **Obxodka** сочетает два режима: прямой **OBXODKA-STREAM** (полнодуплексный HTTP/2 поверх TLS 1.3 на портах `443`, `8443`, `2053` в режиме Zero-SNI) с нарезкой `ClientHello` в `DpiBypassStream` и облачный **OBXODKA-WS** через Cloudflare Shield с ротацией зеркал и автоматическим переключением `TryEscalateToShieldAsync` при зависании канала.
+Обычные VPN используют протоколы с фиксированными сигнатурами (WireGuard, OpenVPN). **Obxodka** сочетает два режима: прямой
+**OBXODKA-STREAM** (полнодуплексный HTTP/2 поверх TLS 1.3 на портах `443`, `8443`, `2053` в режиме Zero-SNI) с нарезкой `ClientHello` в
+`DpiBypassStream` и облачный **OBXODKA-WS** через Cloudflare Shield с ротацией зеркал и автоматическим переключением
+`TryEscalateToShieldAsync` при зависании канала.
 
 </details>
 
@@ -183,7 +211,9 @@
 <summary><b>Как Dual-Ray Hedging решает проблему пинга и потерь пакетов в онлайн-играх?</b></summary>
 <br/>
 
-В режиме `OBXODKA-STREAM` игровой UDP-трафик и ICMP-пинги клонируются в два параллельных TCP-луча (`Ray 0` и `Ray 1`). Принимающая сторона забирает первый дошедший пакет, а дубликат мгновенно отбрасывается через `PacketDeduplicator` без аллокаций памяти. Это сглаживает импульсные потери и джиттер на проблемных участках сети.
+В режиме `OBXODKA-STREAM` игровой UDP-трафик и ICMP-пинги клонируются в два параллельных TCP-луча (`Ray 0` и `Ray 1`). Принимающая сторона
+забирает первый дошедший пакет, а дубликат мгновенно отбрасывается через `PacketDeduplicator` без аллокаций памяти. Это сглаживает
+импульсные потери и джиттер на проблемных участках сети.
 
 </details>
 
@@ -191,7 +221,8 @@
 <summary><b>Ведёт ли Obxodka логи посещений (Logs)?</b></summary>
 <br/>
 
-**Нет.** Вся маршрутизация пакетов работает в оперативной памяти. Серверы не сохраняют историю посещённых сайтов, IP-адреса назначения или DNS-запросы. Подробнее читайте в [Политике конфиденциальности](PRIVACY_POLICY.md).
+**Нет.** Вся маршрутизация пакетов работает в оперативной памяти. Серверы не сохраняют историю посещённых сайтов, IP-адреса назначения или
+DNS-запросы. Подробнее читайте в [Политике конфиденциальности](PRIVACY_POLICY.md).
 
 </details>
 
@@ -222,14 +253,15 @@ dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --
 
 ## <img src=".github/assets/icons/octo_server.svg" width="34" height="34" alt="" style="vertical-align: -8px;" /> Статус умного деплоя (Smart Multi-Store Pipeline)
 
-Система релизов Obxodka использует двухконтурный механизм умного деплоя (**Smart Store Deployer & Watchdog**), предотвращающий сбои сборки при нахождении приложения на проверке:
+Система релизов Obxodka использует двухконтурный механизм умного деплоя (**Smart Store Deployer & Watchdog**), предотвращающий сбои сборки
+при нахождении приложения на проверке:
 
-| Контур / Магазин | Пайплайн | Текущий статус | Механика работы |
-|:---|:---|:---:|:---|
-| **Центральный релиз** | [`release.yml`](.github/workflows/release.yml) | [![Central Pipeline](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/release.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Central%20Pipeline)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/release.yml) | Сборка Windows MSIX, Android AAB, прогон xUnit тестов (505 тестов) и публикация в GitHub Releases. |
-| **Google Play Store** | `OctoPublisher (Android)` | [![Google Play Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/playstore.json&style=flat-square&logo=googleplay)](https://play.google.com/store/apps/details?id=com.octocore.obxodka) | Автопубликация AAB в Google Play Console (Production). При модерации переводится в очередь `[QUEUED]`. |
-| **Microsoft Store** | `OctoPublisher (Windows)` | [![Microsoft Store Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/mstore.json&style=flat-square&logo=windows)](https://apps.microsoft.com/store/detail/9NZXP5WR803J) | Автопубликация MSIX в Partner Center API. Если магазин на ревью (код 3) — не ломает сборку, а ставит в очередь `[QUEUED]`. |
-| **Smart Store Watchdog** | [`store-watchdog.yml`](.github/workflows/store-watchdog.yml) | [![Store Watchdog](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/store-watchdog.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Store%20Watchdog)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/store-watchdog.yml) | Автономный фоновый сторож: циклически проверяет окончание проверки сторами и автоматически допушивает релиз из очереди. |
+| Контур / Магазин         | Пайплайн                                                     |                                                                                                                                      Текущий статус                                                                                                                                      | Механика работы                                                                                                            |
+|:-------------------------|:-------------------------------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------------------|
+| **Центральный релиз**    | [`release.yml`](.github/workflows/release.yml)               |      [![Central Pipeline](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/release.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Central%20Pipeline)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/release.yml)      | Сборка Windows MSIX, Android AAB, прогон xUnit тестов (505 тестов) и публикация в GitHub Releases.                         |
+| **Google Play Store**    | `OctoPublisher (Android)`                                    |               [![Google Play Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/playstore.json&style=flat-square&logo=googleplay)](https://play.google.com/store/apps/details?id=com.octocore.obxodka)               | Автопубликация AAB в Google Play Console (Production). При модерации переводится в очередь `[QUEUED]`.                     |
+| **Microsoft Store**      | `OctoPublisher (Windows)`                                    |                       [![Microsoft Store Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/mstore.json&style=flat-square&logo=windows)](https://apps.microsoft.com/store/detail/9NZXP5WR803J)                       | Автопубликация MSIX в Partner Center API. Если магазин на ревью (код 3) — не ломает сборку, а ставит в очередь `[QUEUED]`. |
+| **Smart Store Watchdog** | [`store-watchdog.yml`](.github/workflows/store-watchdog.yml) | [![Store Watchdog](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/store-watchdog.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Store%20Watchdog)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/store-watchdog.yml) | Автономный фоновый сторож: циклически проверяет окончание проверки сторами и автоматически допушивает релиз из очереди.    |
 
 ---
 
@@ -241,8 +273,10 @@ dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --
       <b>Ресурсы и портал</b>
       <ul>
         <li><img src=".github/assets/icons/octo_globe.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Официальные релизы:</b> <a href="https://github.com/OctoCore-Dev/obxodka/releases">GitHub Releases</a></li>
+        <li><img src=".github/assets/icons/octo_doc.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>История версий:</b> <a href="CHANGELOG.md">CHANGELOG.md</a></li>
         <li><img src=".github/assets/icons/octo_doc.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Архитектура ядра:</b> <a href="docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
         <li><img src=".github/assets/icons/octo_tools.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Диагностика:</b> <a href="docs/TROUBLESHOOTING.md">docs/TROUBLESHOOTING.md</a></li>
+        <li><img src=".github/assets/icons/octo_terminal.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Дайджест ТСПУ:</b> <a href="docs/BLOCKING_DIGEST.md">docs/BLOCKING_DIGEST.md</a></li>
         <li><img src=".github/assets/icons/octo_shield.svg" width="18" height="18" style="vertical-align:-3px;"/> <b>Безопасность:</b> <a href=".github/SECURITY.md">.github/SECURITY.md</a></li>
       </ul>
     </td>

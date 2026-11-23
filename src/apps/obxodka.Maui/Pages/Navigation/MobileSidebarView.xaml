@@ -1,33 +1,28 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
+
 <ContentView
-    x:Class="obxodka.Pages.MobileSidebarView"
+    x:Class="obxodka.Pages.Navigation.MobileSidebarView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons">
 
     <Border
         x:Name="MobileBottomBar"
-        Margin="{OnIdiom Phone='16,0,16,20',
-                         Default='16,0,16,16'}"
-        Padding="6,6"
-        BackgroundColor="{DynamicResource BgElevated}"
-        HeightRequest="68"
+        Margin="14,0,14,16"
+        Padding="8,6"
+        BackgroundColor="{DynamicResource BgSurface}"
+        HeightRequest="66"
+        HorizontalOptions="Fill"
+        MaximumWidthRequest="460"
         Opacity="0"
         Stroke="{DynamicResource BorderMedium}"
-        StrokeThickness="1"
-        TranslationY="80">
+        StrokeThickness="{DynamicResource CardBorderThickness}"
+        TranslationY="64">
         <Border.StrokeShape>
-            <RoundRectangle CornerRadius="24" />
+            <RoundRectangle CornerRadius="26" />
         </Border.StrokeShape>
-        <Border.Shadow>
-            <Shadow
-                Brush="#000000"
-                Opacity="0.45"
-                Radius="18"
-                Offset="0,6" />
-        </Border.Shadow>
 
-        <Grid ColumnDefinitions="*, *, *, *, *">
+        <Grid ColumnDefinitions="*, *, *, *, *" ColumnSpacing="2">
 
             <Border
                 x:Name="BottomNavVpn"
@@ -36,27 +31,39 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavVpnTapped" />
                 </Border.GestureRecognizers>
-                <VerticalStackLayout
-                    HorizontalOptions="Center"
-                    Spacing="3"
+                <Grid
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="2"
                     VerticalOptions="Center">
-                    <BoxView
+                    <Border
                         x:Name="PillVpn"
-                        CornerRadius="2"
-                        HeightRequest="3"
+                        Grid.Row="0"
+                        BackgroundColor="Transparent"
+                        HeightRequest="30"
                         HorizontalOptions="Center"
-                        IsVisible="False"
-                        Opacity="0"
-                        Scale="0.5"
-                        WidthRequest="16"
-                        Color="{DynamicResource Primary}" />
-                    <mi:MauiIcon
-                        x:Name="BottomNavVpnIcon"
-                        HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=Shield24}"
-                        IconColor="{DynamicResource TextMuted}"
-                        IconSize="24" />
-                </VerticalStackLayout>
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 15"
+                        StrokeThickness="0"
+                        WidthRequest="50">
+                        <mi:MauiIcon
+                            x:Name="BottomNavVpnIcon"
+                            HorizontalOptions="Center"
+                            Icon="{mi:Fluent Icon=Shield24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="20"
+                            VerticalOptions="Center" />
+                    </Border>
+                    <Label
+                        x:Name="LabelVpn"
+                        Grid.Row="1"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="10.5"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="1"
+                        Text="VPN"
+                        TextColor="{DynamicResource TextMuted}" />
+                </Grid>
             </Border>
 
             <Border
@@ -66,27 +73,39 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavProfileTapped" />
                 </Border.GestureRecognizers>
-                <VerticalStackLayout
-                    HorizontalOptions="Center"
-                    Spacing="3"
+                <Grid
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="2"
                     VerticalOptions="Center">
-                    <BoxView
+                    <Border
                         x:Name="PillProfile"
-                        CornerRadius="2"
-                        HeightRequest="3"
+                        Grid.Row="0"
+                        BackgroundColor="Transparent"
+                        HeightRequest="30"
                         HorizontalOptions="Center"
-                        IsVisible="False"
-                        Opacity="0"
-                        Scale="0.5"
-                        WidthRequest="16"
-                        Color="{DynamicResource Primary}" />
-                    <mi:MauiIcon
-                        x:Name="BottomNavProfileIcon"
-                        HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=Person24}"
-                        IconColor="{DynamicResource TextMuted}"
-                        IconSize="24" />
-                </VerticalStackLayout>
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 15"
+                        StrokeThickness="0"
+                        WidthRequest="50">
+                        <mi:MauiIcon
+                            x:Name="BottomNavProfileIcon"
+                            HorizontalOptions="Center"
+                            Icon="{mi:Fluent Icon=Person24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="20"
+                            VerticalOptions="Center" />
+                    </Border>
+                    <Label
+                        x:Name="LabelProfile"
+                        Grid.Row="1"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="10.5"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="1"
+                        Text="Профиль"
+                        TextColor="{DynamicResource TextMuted}" />
+                </Grid>
             </Border>
 
             <Border
@@ -96,27 +115,39 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavDevicesTapped" />
                 </Border.GestureRecognizers>
-                <VerticalStackLayout
-                    HorizontalOptions="Center"
-                    Spacing="3"
+                <Grid
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="2"
                     VerticalOptions="Center">
-                    <BoxView
+                    <Border
                         x:Name="PillDevices"
-                        CornerRadius="2"
-                        HeightRequest="3"
+                        Grid.Row="0"
+                        BackgroundColor="Transparent"
+                        HeightRequest="30"
                         HorizontalOptions="Center"
-                        IsVisible="False"
-                        Opacity="0"
-                        Scale="0.5"
-                        WidthRequest="16"
-                        Color="{DynamicResource Primary}" />
-                    <mi:MauiIcon
-                        x:Name="BottomNavDevicesIcon"
-                        HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=PhoneDesktop24}"
-                        IconColor="{DynamicResource TextMuted}"
-                        IconSize="24" />
-                </VerticalStackLayout>
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 15"
+                        StrokeThickness="0"
+                        WidthRequest="50">
+                        <mi:MauiIcon
+                            x:Name="BottomNavDevicesIcon"
+                            HorizontalOptions="Center"
+                            Icon="{mi:Fluent Icon=PhoneDesktop24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="20"
+                            VerticalOptions="Center" />
+                    </Border>
+                    <Label
+                        x:Name="LabelDevices"
+                        Grid.Row="1"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="10.5"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="1"
+                        Text="Девайсы"
+                        TextColor="{DynamicResource TextMuted}" />
+                </Grid>
             </Border>
 
             <Border
@@ -126,27 +157,39 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavSplitTapped" />
                 </Border.GestureRecognizers>
-                <VerticalStackLayout
-                    HorizontalOptions="Center"
-                    Spacing="3"
+                <Grid
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="2"
                     VerticalOptions="Center">
-                    <BoxView
+                    <Border
                         x:Name="PillSplit"
-                        CornerRadius="2"
-                        HeightRequest="3"
+                        Grid.Row="0"
+                        BackgroundColor="Transparent"
+                        HeightRequest="30"
                         HorizontalOptions="Center"
-                        IsVisible="False"
-                        Opacity="0"
-                        Scale="0.5"
-                        WidthRequest="16"
-                        Color="{DynamicResource Primary}" />
-                    <mi:MauiIcon
-                        x:Name="BottomNavSplitIcon"
-                        HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=AppsList24}"
-                        IconColor="{DynamicResource TextMuted}"
-                        IconSize="24" />
-                </VerticalStackLayout>
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 15"
+                        StrokeThickness="0"
+                        WidthRequest="50">
+                        <mi:MauiIcon
+                            x:Name="BottomNavSplitIcon"
+                            HorizontalOptions="Center"
+                            Icon="{mi:Fluent Icon=AppsList24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="20"
+                            VerticalOptions="Center" />
+                    </Border>
+                    <Label
+                        x:Name="LabelSplit"
+                        Grid.Row="1"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="10.5"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="1"
+                        Text="Туннель"
+                        TextColor="{DynamicResource TextMuted}" />
+                </Grid>
             </Border>
 
             <Border
@@ -156,30 +199,41 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
                 </Border.GestureRecognizers>
-                <VerticalStackLayout
-                    HorizontalOptions="Center"
-                    Spacing="3"
+                <Grid
+                    RowDefinitions="Auto, Auto"
+                    RowSpacing="2"
                     VerticalOptions="Center">
-                    <BoxView
-                        x:Name="PillBattery"
-                        CornerRadius="2"
-                        HeightRequest="3"
+                    <Border
+                        x:Name="PillConfiguration"
+                        Grid.Row="0"
+                        BackgroundColor="Transparent"
+                        HeightRequest="30"
                         HorizontalOptions="Center"
-                        IsVisible="False"
-                        Opacity="0"
-                        Scale="0.5"
-                        WidthRequest="16"
-                        Color="{DynamicResource Primary}" />
-                    <mi:MauiIcon
-                        x:Name="BottomNavConfigurationIcon"
-                        HorizontalOptions="Center"
-                        Icon="{mi:Fluent Icon=Settings24}"
-                        IconColor="{DynamicResource TextMuted}"
-                        IconSize="24" />
-                </VerticalStackLayout>
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 15"
+                        StrokeThickness="0"
+                        WidthRequest="50">
+                        <mi:MauiIcon
+                            x:Name="BottomNavConfigurationIcon"
+                            HorizontalOptions="Center"
+                            Icon="{mi:Fluent Icon=Settings24}"
+                            IconColor="{DynamicResource TextMuted}"
+                            IconSize="20"
+                            VerticalOptions="Center" />
+                    </Border>
+                    <Label
+                        x:Name="LabelConfiguration"
+                        Grid.Row="1"
+                        FontFamily="{DynamicResource AppFontMedium}"
+                        FontSize="10.5"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="1"
+                        Text="Опции"
+                        TextColor="{DynamicResource TextMuted}" />
+                </Grid>
             </Border>
 
         </Grid>
     </Border>
 </ContentView>
-

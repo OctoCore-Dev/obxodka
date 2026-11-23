@@ -33,23 +33,28 @@ public sealed partial class ThemeParticlesOverlay
             var tint = _hasCustomTint ? _customTintColor : _accentSkColor;
             DrawVignetteOverlay(canvas, w, h, tint);
         }
-        else if (overlay.Contains("hud", StringComparison.OrdinalIgnoreCase) || overlay.Contains("cyber", StringComparison.OrdinalIgnoreCase))
+        else if (overlay.Contains("hud", StringComparison.OrdinalIgnoreCase) ||
+                 overlay.Contains("cyber", StringComparison.OrdinalIgnoreCase))
         {
             DrawCyberHudOverlay(canvas, w, h);
         }
-        else if (overlay.Contains("scanline", StringComparison.OrdinalIgnoreCase) || overlay.Contains("crt", StringComparison.OrdinalIgnoreCase))
+        else if (overlay.Contains("scanline", StringComparison.OrdinalIgnoreCase) ||
+                 overlay.Contains("crt", StringComparison.OrdinalIgnoreCase))
         {
             DrawScanlinesOverlay(canvas, w, h, 4f, 16);
         }
-        else if (overlay.Contains("aurora", StringComparison.OrdinalIgnoreCase) || overlay.Contains("wave", StringComparison.OrdinalIgnoreCase))
+        else if (overlay.Contains("aurora", StringComparison.OrdinalIgnoreCase) ||
+                 overlay.Contains("wave", StringComparison.OrdinalIgnoreCase))
         {
             DrawAuroraOverlay(canvas, w, h);
         }
-        else if (overlay.Contains("fog", StringComparison.OrdinalIgnoreCase) || overlay.Contains("mist", StringComparison.OrdinalIgnoreCase))
+        else if (overlay.Contains("fog", StringComparison.OrdinalIgnoreCase) ||
+                 overlay.Contains("mist", StringComparison.OrdinalIgnoreCase))
         {
             DrawMysticFogOverlay(canvas, w, h);
         }
-        else if (overlay.Contains("ray", StringComparison.OrdinalIgnoreCase) || overlay.Contains("beam", StringComparison.OrdinalIgnoreCase))
+        else if (overlay.Contains("ray", StringComparison.OrdinalIgnoreCase) ||
+                 overlay.Contains("beam", StringComparison.OrdinalIgnoreCase))
         {
             var tint = _hasCustomTint ? _customTintColor : _accentSkColor;
             DrawRaysOverlay(canvas, w, h, tint);
@@ -72,21 +77,21 @@ public sealed partial class ThemeParticlesOverlay
     {
         DrawScanlinesOverlay(canvas, w, h, 5f, 14);
 
-        var scanY = (_shaderTime * 90f % (h + 120f)) - 60f;
+        var scanY = _shaderTime * 90f % (h + 120f) - 60f;
         using (var beamShader = SKShader.CreateLinearGradient(
-            new SKPoint(0, scanY - 35f),
-            new SKPoint(0, scanY + 35f),
-            [_accentSkColor.WithAlpha(0), _accentSkColor.WithAlpha(28), _accentSkColor.WithAlpha(0)],
-            [0f, 0.5f, 1f],
-            SKShaderTileMode.Clamp))
+                   new SKPoint(0, scanY - 35f),
+                   new SKPoint(0, scanY + 35f),
+                   [_accentSkColor.WithAlpha(0), _accentSkColor.WithAlpha(28), _accentSkColor.WithAlpha(0)],
+                   [0f, 0.5f, 1f],
+                   SKShaderTileMode.Clamp))
         {
             _shaderPaint.Shader = beamShader;
             canvas.DrawRect(0, scanY - 35f, w, 70f, _shaderPaint);
             _shaderPaint.Shader = null;
         }
 
-        var margin = 16f;
-        var len = 26f;
+        const float margin = 16f;
+        const float len = 26f;
         _strokePaint.Color = _accentSkColor.WithAlpha(95);
         _strokePaint.StrokeWidth = 1.6f;
 
@@ -107,34 +112,53 @@ public sealed partial class ThemeParticlesOverlay
     private void DrawAuroraOverlay(SKCanvas canvas, float w, float h)
     {
         var ribbonHeight = Math.Min(h * 0.38f, 260f);
+        if (_auroraRibbonShader0 is null ||
+            _auroraRibbonShader1 is null ||
+            Math.Abs(_lastAuroraHeight - ribbonHeight) > 0.5f ||
+            _lastAuroraAccent != _accentSkColor ||
+            _lastAuroraPrimary != _primarySkColor)
+        {
+            _auroraRibbonShader0?.Dispose();
+            _auroraRibbonShader1?.Dispose();
+            _auroraRibbonShader0 = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0),
+                new SKPoint(0, ribbonHeight),
+                [_accentSkColor.WithAlpha(48), _accentSkColor.WithAlpha(0)],
+                [0f, 1f],
+                SKShaderTileMode.Clamp);
+            _auroraRibbonShader1 = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0),
+                new SKPoint(0, ribbonHeight),
+                [_primarySkColor.WithAlpha(34), _primarySkColor.WithAlpha(0)],
+                [0f, 1f],
+                SKShaderTileMode.Clamp);
+            _lastAuroraHeight = ribbonHeight;
+            _lastAuroraAccent = _accentSkColor;
+            _lastAuroraPrimary = _primarySkColor;
+        }
+
         for (var layer = 0; layer < 2; layer++)
         {
             _wavePathBuilder.Reset();
-            var baseColor = layer == 0 ? _accentSkColor : _primarySkColor;
-            var phaseOffset = (_shaderTime * (0.9f + (layer * 0.4f))) + (layer * 1.7f);
+            var phaseOffset = _shaderTime * (0.9f + layer * 0.4f) + layer * 1.7f;
 
             _wavePathBuilder.MoveTo(0, 0);
             const int segments = 16;
             for (var i = 0; i <= segments; i++)
             {
                 var x = w * i / segments;
-                var wave = (MathF.Sin((i * 0.45f) + phaseOffset) * 28f) +
-                        (MathF.Cos((i * 0.25f) - (phaseOffset * 0.7f)) * 18f);
-                var y = (ribbonHeight * (0.55f + (layer * 0.18f))) + wave;
+                var wave = MathF.Sin(i * 0.45f + phaseOffset) * 28f +
+                           MathF.Cos(i * 0.25f - phaseOffset * 0.7f) * 18f;
+                var y = ribbonHeight * (0.55f + layer * 0.18f) + wave;
                 _wavePathBuilder.LineTo(x, y);
             }
+
             _wavePathBuilder.LineTo(w, 0);
             _wavePathBuilder.Close();
 
-            using var wavePath = _wavePathBuilder.Detach();
-            using var shader = SKShader.CreateLinearGradient(
-                new SKPoint(0, 0),
-                new SKPoint(0, ribbonHeight),
-                [baseColor.WithAlpha((byte)(48 - (layer * 14))), baseColor.WithAlpha(0)],
-                [0f, 1f],
-                SKShaderTileMode.Clamp);
-            _shaderPaint.Shader = shader;
-            canvas.DrawPath(wavePath, _shaderPaint);
+            using var path = _wavePathBuilder.Detach();
+            _shaderPaint.Shader = layer == 0 ? _auroraRibbonShader0 : _auroraRibbonShader1;
+            canvas.DrawPath(path, _shaderPaint);
             _shaderPaint.Shader = null;
         }
     }
@@ -142,9 +166,9 @@ public sealed partial class ThemeParticlesOverlay
     //отрисовка динамической пульсирующей виньетки в цветах активной темы
     private void DrawVignetteOverlay(SKCanvas canvas, float w, float h, SKColor themeColor)
     {
-        var pulse = 0.5f + (0.5f * MathF.Sin(_shaderTime * 2.2f));
+        var pulse = 0.5f + 0.5f * MathF.Sin(_shaderTime * 2.2f);
         var boost = _vpnState == AppVpnState.Connected ? 1.35f : 1.0f;
-        var edgeAlpha = (byte)Math.Clamp((40f + (pulse * 26f)) * boost, 0f, 140f);
+        var edgeAlpha = (byte)Math.Clamp((40f + pulse * 26f) * boost, 0f, 140f);
         var vignetteColor = themeColor.WithAlpha(edgeAlpha);
 
         var center = new SKPoint(w * 0.5f, h * 0.5f);
@@ -169,15 +193,15 @@ public sealed partial class ThemeParticlesOverlay
         for (var layer = 0; layer < 2; layer++)
         {
             _wavePathBuilder.Reset();
-            var phase = (_shaderTime * (0.65f + (layer * 0.35f))) + (layer * 2.1f);
+            var phase = _shaderTime * (0.65f + layer * 0.35f) + layer * 2.1f;
             _wavePathBuilder.MoveTo(0, h);
 
             const int segments = 16;
             for (var i = 0; i <= segments; i++)
             {
                 var x = w * i / segments;
-                var offset = MathF.Sin((i * 0.4f) + phase) * 20f;
-                var y = topY + (layer * 28f) + offset;
+                var offset = MathF.Sin(i * 0.4f + phase) * 20f;
+                var y = topY + layer * 28f + offset;
                 _wavePathBuilder.LineTo(x, y);
             }
 
@@ -185,7 +209,7 @@ public sealed partial class ThemeParticlesOverlay
             _wavePathBuilder.Close();
 
             using var wavePath = _wavePathBuilder.Detach();
-            var fogColor = (layer == 0 ? _primarySkColor : _accentSkColor).WithAlpha((byte)(42 - (layer * 12)));
+            var fogColor = (layer == 0 ? _primarySkColor : _accentSkColor).WithAlpha((byte)(42 - layer * 12));
             using var shader = SKShader.CreateLinearGradient(
                 new SKPoint(0, topY),
                 new SKPoint(0, h),
@@ -206,15 +230,15 @@ public sealed partial class ThemeParticlesOverlay
 
         for (var i = -2; i <= 2; i++)
         {
-            var baseAngle = (MathF.PI * 0.5f) + (i * 0.22f) + (MathF.Sin((_shaderTime * 0.7f) + i) * 0.05f);
-            var spread = 0.09f;
+            var baseAngle = MathF.PI * 0.5f + i * 0.22f + MathF.Sin(_shaderTime * 0.7f + i) * 0.05f;
+            const float spread = 0.09f;
 
             var p1 = new SKPoint(
-                origin.X + (MathF.Cos(baseAngle - spread) * rayLength),
-                origin.Y + (MathF.Sin(baseAngle - spread) * rayLength));
+                origin.X + MathF.Cos(baseAngle - spread) * rayLength,
+                origin.Y + MathF.Sin(baseAngle - spread) * rayLength);
             var p2 = new SKPoint(
-                origin.X + (MathF.Cos(baseAngle + spread) * rayLength),
-                origin.Y + (MathF.Sin(baseAngle + spread) * rayLength));
+                origin.X + MathF.Cos(baseAngle + spread) * rayLength,
+                origin.Y + MathF.Sin(baseAngle + spread) * rayLength);
 
             _wavePathBuilder.Reset();
             _wavePathBuilder.MoveTo(origin);
@@ -223,7 +247,7 @@ public sealed partial class ThemeParticlesOverlay
             _wavePathBuilder.Close();
 
             using var wavePath = _wavePathBuilder.Detach();
-            var alpha = (byte)(26 - (Math.Abs(i) * 4));
+            var alpha = (byte)(26 - Math.Abs(i) * 4);
             using var shader = SKShader.CreateLinearGradient(
                 origin,
                 new SKPoint(origin.X, rayLength * 0.75f),
@@ -235,7 +259,6 @@ public sealed partial class ThemeParticlesOverlay
             _shaderPaint.Shader = null;
         }
     }
-
 
 
     //генерация векторного пути кристалла ромба
@@ -261,7 +284,7 @@ public sealed partial class ThemeParticlesOverlay
         for (var i = 0; i < points * 2; i++)
         {
             var radius = i % 2 == 0 ? outerRadius : innerRadius;
-            var angle = (i * Math.PI / points) - (Math.PI / 2);
+            var angle = i * Math.PI / points - Math.PI / 2;
             var x = (float)(radius * Math.Cos(angle));
             var y = (float)(radius * Math.Sin(angle));
 
@@ -274,6 +297,7 @@ public sealed partial class ThemeParticlesOverlay
                 builder.LineTo(x, y);
             }
         }
+
         builder.Close();
         return builder.Detach();
     }
@@ -289,4 +313,3 @@ public sealed partial class ThemeParticlesOverlay
         return builder.Detach();
     }
 }
-
