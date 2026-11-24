@@ -4,7 +4,7 @@ public sealed partial class SplitView
 {
     public async Task LoadSplitAppsAsync(bool forceReload = false)
     {
-        UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
+        ApplySplitLockState(_parent.VpnService.CurrentState);
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();
 #endif
@@ -48,12 +48,7 @@ public sealed partial class SplitView
                 RebuildAllBypassedChips();
                 UpdateCountersOnly();
                 ApplyFilterAndRenderList();
-#if WINDOWS
-                IsSplitEditingAllowed = true;
-#else
-                IsSplitEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
-                AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
-#endif
+                ApplySplitLockState(_parent.VpnService.CurrentState);
                 return;
             }
 
@@ -85,20 +80,13 @@ public sealed partial class SplitView
                 RebuildAllBypassedChips();
                 UpdateCountersOnly();
                 ApplyFilterAndRenderList();
-#if WINDOWS
-                IsSplitEditingAllowed = true;
-#else
-                IsSplitEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
-                AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
-#endif
+                ApplySplitLockState(_parent.VpnService.CurrentState);
             }
             catch (Exception ex)
             {
                 AppLogger.LogError($"[SPLIT ERROR] {ex.Message}", ex);
                 await ShowSplitErrorAsync(SettingsMessages.LoadAppsFailed);
-#if !WINDOWS
-                IsSplitEditingAllowed = false;
-#endif
+                ApplySplitLockState(_parent.VpnService.CurrentState);
             }
             finally
             {
@@ -144,6 +132,13 @@ public sealed partial class SplitView
         try
         {
 #if WINDOWS
+            if (!IsSplitEditingAllowed)
+            {
+                await _parent.DisplayAlertAsync(AccountMessages.AttentionTitle, SettingsMessages.VpnDisconnectRequired,
+                    AccountMessages.ButtonOk);
+                return;
+            }
+
             ThemeAudioService.PlayClick();
             var pickedPath = AppManager.PickExecutableFile();
             if (string.IsNullOrWhiteSpace(pickedPath))

@@ -39,10 +39,10 @@ public sealed partial class VpnView
         canvas.DrawBitmap(bmp, new SKRect(0, 0, bmp.Width, bmp.Height), dst, sampling, _customButtonBitmapPaint);
     }
 
-    //приостановка анимаций вкладки при сворачивании окна
-    public void OnWindowFocusChanged(bool isFocused)
+    //приостановка анимаций вкладки только при реальном скрытии или сворачивании окна (но не при потере фокуса на рабочем столе)
+    public void OnWindowVisibilityChanged(bool isVisible)
     {
-        _isWindowFocused = isFocused;
+        _isWindowVisible = isVisible;
         SyncAnimationLoops();
     }
 
@@ -85,7 +85,7 @@ public sealed partial class VpnView
     //запуск цикла анимации кастомной кнопки темы
     private void StartButtonAnimation()
     {
-        if (_disposed || !_isTabVisible || !_isWindowFocused)
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
         {
             return;
         }

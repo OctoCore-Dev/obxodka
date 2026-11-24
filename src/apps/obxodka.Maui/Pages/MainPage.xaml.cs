@@ -135,6 +135,8 @@ public sealed partial class MainPage : IDisposable
         App.WindowActivated += OnWindowActivated;
         App.WindowDeactivated -= OnWindowDeactivated;
         App.WindowDeactivated += OnWindowDeactivated;
+        App.WindowVisibilityChanged -= OnWindowVisibilityChanged;
+        App.WindowVisibilityChanged += OnWindowVisibilityChanged;
 
         Connectivity.Current.ConnectivityChanged -= OnConnectivityChanged;
         Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
@@ -233,6 +235,7 @@ public sealed partial class MainPage : IDisposable
 
         App.WindowActivated -= OnWindowActivated;
         App.WindowDeactivated -= OnWindowDeactivated;
+        App.WindowVisibilityChanged -= OnWindowVisibilityChanged;
         App.DeepLinkLoginReceived -= OnDeepLinkLoginReceived;
 
         _tabContentVpn?.UnsubscribeEvents();

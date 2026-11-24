@@ -4,8 +4,7 @@ namespace obxodka.Pages.Vpn;
 public sealed partial class VpnView
 {
     //обработка смены активного протокола туннеля
-    private void HandleProtocolChanged() =>
-        UpdateActiveNode(_activeConnectedNode);
+    private void HandleProtocolChanged() => UpdateActiveNode();
 
     //переключение состояния vpn по нажатию системной плитки быстрого доступа
     public void TriggerTileToggle() =>
@@ -47,52 +46,25 @@ public sealed partial class VpnView
         });
     }
 
-    //обновление отображения активного хоста подключения
-    public void UpdateActiveNode(string? host = null)
-    {
+    //обновление отображения активного протокола туннеля в верхней плашке статуса
+    public void UpdateActiveNode() =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (_vpnService.CurrentState == AppVpnState.Disconnected)
+            if (NodeHostLabel is null)
             {
-                NodeHostLabel?.Text = "Нет подключения";
                 return;
             }
 
-            var activeSni = OctopusEngine.Current.ActiveSni;
-            _activeConnectedNode = !string.IsNullOrWhiteSpace(host) &&
-                                   !IPAddress.TryParse(host, out _) &&
-                                   !host.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) &&
-                                   !host.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase)
-                ? host
-                : !string.IsNullOrWhiteSpace(activeSni)
-                    ? activeSni
-                    : "Zero-SNI";
-
-            var displayHost = _activeConnectedNode;
-            if (string.IsNullOrWhiteSpace(displayHost) ||
-                IPAddress.TryParse((string?)displayHost, out _) ||
-                displayHost.Contains(AppConfig.PrimaryDomain, StringComparison.OrdinalIgnoreCase) ||
-                displayHost.Contains(AppConfig.MirrorDomain, StringComparison.OrdinalIgnoreCase))
+            var state = _vpnService.CurrentState;
+            NodeHostLabel.Text = state switch
             {
-                displayHost = "Прямой TLS (Zero-SNI)";
-            }
-
-            if (_vpnService.CurrentState == AppVpnState.Connected && OctopusEngine.Current is { } engine)
-            {
-#pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
-                var rayTag = ProtocolPipelineRegistry.ResolveActiveTag(engine.ActiveProtocol, engine.ActiveRays) switch
-                {
-                    StreamTransportTag stream => $"{stream.ActiveRays}L",
-                    WebSocketTransportTag => "WS",
-                    XhttpTransportTag => "XHTTP"
-                };
-#pragma warning restore IDE0072
-                displayHost = $"{displayHost} • {rayTag}";
-            }
-
-            NodeHostLabel?.Text = displayHost;
+                AppVpnState.Disconnected or AppVpnState.Error => "Нет подключения",
+                AppVpnState.Disconnecting => VpnStatusMessages.Disconnecting,
+                AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Connected =>
+                    ProtocolPipelineRegistry.FormatLiveStatusBadge(OctopusEngine.Current.ActiveProtocol, OctopusEngine.Current.ActiveRays),
+                _ => "Нет подключения"
+            };
         });
-    }
 
 
     //обновление статуса и цвета ip адреса
@@ -388,7 +360,6 @@ public sealed partial class VpnView
                         ResetPingIndicators();
                         TriggerShockwave(false);
                         UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
-                        _activeConnectedNode = null;
                         UpdateActiveNode();
                         ConnectButtonCore.IsEnabled = true;
                         SetNeonState(
@@ -407,7 +378,7 @@ public sealed partial class VpnView
                         AnimateReactorMorph(1.0f, 650);
                         TriggerShockwave(true);
                         UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp, textPrimary, accent);
-                        UpdateActiveNode(_activeConnectedNode);
+                        UpdateActiveNode();
                         ConnectButtonCore.IsEnabled = true;
                         SetNeonState(
                             GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected),
@@ -424,7 +395,6 @@ public sealed partial class VpnView
                         AnimateErrorMorph(1.0f, 350);
                         TriggerShockwave(false);
                         UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
-                        _activeConnectedNode = null;
                         UpdateActiveNode();
                         ConnectButtonCore.IsEnabled = true;
                         PlatformServices.Notification.ShowUnexpectedDisconnectNotification();
@@ -787,7 +757,7 @@ public sealed partial class VpnView
                     OctopusEngine.DynamicSslPublicKeyHash = OctopusEngine.DirectOriginCertHash;
                 }
 
-                UpdateActiveNode(targetServer.Ip);
+                UpdateActiveNode();
 
                 AppLogger.Log(
                     $"[VPN-TARGET] User initiated connect to: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port}) | Role: {targetServer.Role ?? "worker"} | Provider: {targetServer.Provider} | Flag: {targetServer.Flag}");

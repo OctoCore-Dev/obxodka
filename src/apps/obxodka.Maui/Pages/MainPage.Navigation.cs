@@ -419,6 +419,7 @@ public sealed partial class MainPage
                     {
                         IsVisible = false
                     };
+                    _tabContentConfiguration.Initialize(VpnService);
                     _tabContentConfiguration.ThemesRequested += OnConfigurationThemesRequested;
                     ApplyInitialDecorations(_tabContentConfiguration);
                     MainContentContainer.Children.Add(_tabContentConfiguration);

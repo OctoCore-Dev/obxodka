@@ -591,7 +591,6 @@ public sealed partial class MainPage
                             }
                         }
 
-                        _tabContentVpn?.OnWindowFocusChanged(true);
                         break;
                     }
                 case false when !_isWindowActive:
@@ -620,7 +619,6 @@ public sealed partial class MainPage
                             }
                         }
 
-                        _tabContentVpn?.OnWindowFocusChanged(false);
                         break;
                     }
             }

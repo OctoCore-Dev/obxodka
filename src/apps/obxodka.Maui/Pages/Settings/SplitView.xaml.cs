@@ -40,8 +40,6 @@ public sealed partial class SplitView : IAdaptivePage
             OnNativeAppsScrollOffsetChanged);
         ModeTabsGrid.IsVisible = true;
         ChipAddExe.IsVisible = true;
-        AndroidWarningBanner.IsVisible = false;
-        IsSplitEditingAllowed = true;
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
             Platforms.Windows.WindowsSplitTunnelEngine.OnRoutesUpdated += OnWindowsRoutesUpdated;
@@ -93,7 +91,7 @@ public sealed partial class SplitView : IAdaptivePage
         _parent = parent;
         _appManager = appManager;
         _parent.VpnService.OnStateChanged += OnVpnStateChanged;
-        UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
+        ApplySplitLockState(_parent.VpnService.CurrentState);
     }
 
     //безопасная замена и освобождение токена отмены без утечек
@@ -198,18 +196,9 @@ public sealed partial class SplitView : IAdaptivePage
     private void OnVpnStateChanged(AppVpnState s) =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            UpdateRestartWarningVisibility(s);
+            ApplySplitLockState(s);
 #if WINDOWS
-            IsSplitEditingAllowed = true;
             UpdateWindowsDynamicRouteCounter();
-#else
-            if (_allApps.Count <= 0)
-            {
-                return;
-            }
-
-            IsSplitEditingAllowed = s == AppVpnState.Disconnected;
-            AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
 #endif
         });
 
@@ -351,14 +340,55 @@ public sealed partial class SplitView : IAdaptivePage
         _ = HideSplitToastAsync();
     }
 
-    private void UpdateRestartWarningVisibility(AppVpnState s)
+    //единая блокировка редактирования правил раздельного туннелирования во время работы vpn (windows + android)
+    private void ApplySplitLockState(AppVpnState state)
     {
+        var editable = state is AppVpnState.Disconnected or AppVpnState.Error;
+        IsSplitEditingAllowed = editable;
+        VpnLockWarningBanner.IsVisible = !editable;
+
+        var lockTip = editable ? null : "Отключите VPN для изменения";
+        SplitAppsCollectionView.Opacity = editable ? 1.0 : 0.72;
+        ChipResetAll.Opacity = editable ? 1.0 : 0.5;
+        SetElementTooltip(ChipResetAll, lockTip);
+        ChipAddExe.Opacity = editable ? 1.0 : 0.5;
+        SetElementTooltip(ChipAddExe, lockTip);
+
 #if WINDOWS
-        _ = s;
-        SplitRestartWarningCard.IsVisible = false;
-#else
-        SplitRestartWarningCard.IsVisible = s == AppVpnState.Connected;
+        var siteOpacity = editable ? 1.0 : 0.58;
+        PresetGovSwitch.IsEnabled = editable;
+        PresetBanksSwitch.IsEnabled = editable;
+        PresetMediaSwitch.IsEnabled = editable;
+        PresetMarketSwitch.IsEnabled = editable;
+        PresetRuTldsSwitch.IsEnabled = editable;
+        CustomRuleEntry.IsEnabled = editable;
+
+        PresetGovCard.Opacity = siteOpacity;
+        PresetBanksCard.Opacity = siteOpacity;
+        PresetMediaCard.Opacity = siteOpacity;
+        PresetMarketCard.Opacity = siteOpacity;
+        PresetRuTldsCard.Opacity = siteOpacity;
+        CustomRulesCard.Opacity = siteOpacity;
+
+        SetElementTooltip(PresetGovCard, lockTip);
+        SetElementTooltip(PresetBanksCard, lockTip);
+        SetElementTooltip(PresetMediaCard, lockTip);
+        SetElementTooltip(PresetMarketCard, lockTip);
+        SetElementTooltip(PresetRuTldsCard, lockTip);
+        SetElementTooltip(CustomRulesCard, lockTip);
 #endif
+    }
+
+    private static void SetElementTooltip(BindableObject element, string? tooltip)
+    {
+        if (tooltip is null)
+        {
+            element.ClearValue(ToolTipProperties.TextProperty);
+        }
+        else
+        {
+            ToolTipProperties.SetText(element, tooltip);
+        }
     }
 #if WINDOWS
     private bool _isUpdatingInternally;

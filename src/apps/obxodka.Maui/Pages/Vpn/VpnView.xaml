@@ -137,7 +137,7 @@
                                             FontFamily="{DynamicResource AppFontMedium}"
                                             FontSize="11.5"
                                             LineBreakMode="TailTruncation"
-                                            MaximumWidthRequest="140"
+                                            MaximumWidthRequest="168"
                                             Text="Нет подключения"
                                             TextColor="{DynamicResource TextSecondary}"
                                             VerticalOptions="Center" />

@@ -759,40 +759,24 @@
                     </Grid>
 
                     <Border
-                        x:Name="SplitRestartWarningCard"
+                        x:Name="VpnLockWarningBanner"
                         Padding="12,8"
-                        BackgroundColor="{DynamicResource BgElevated}"
                         IsVisible="False"
-                        Stroke="{DynamicResource Warning}"
-                        StrokeShape="RoundRectangle 8"
-                        StrokeThickness="1">
-                        <Grid
-                            ColumnDefinitions="Auto, *"
-                            ColumnSpacing="8"
-                            VerticalOptions="Center">
+                        Style="{StaticResource WarningBanner}">
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" VerticalOptions="Center">
                             <mi:MauiIcon
                                 Grid.Column="0"
                                 Icon="{mi:Fluent Icon=Info20}"
-                                IconColor="{DynamicResource Warning}"
-                                IconSize="18"
+                                IconColor="{DynamicResource Error}"
+                                IconSize="16"
                                 VerticalOptions="Center" />
-                            <VerticalStackLayout
+                            <Label
                                 Grid.Column="1"
-                                Spacing="1"
-                                VerticalOptions="Center">
-                                <Label
-                                    FontFamily="{DynamicResource AppFontBold}"
-                                    FontSize="{OnIdiom Desktop=11,
-                                                       Default=12}"
-                                    Text="Перезапуск VPN для применения"
-                                    TextColor="{DynamicResource Warning}" />
-                                <Label
-                                    FontFamily="{DynamicResource AppFontRegular}"
-                                    FontSize="{OnIdiom Desktop=10,
-                                                       Default=11}"
-                                    Text="Все изменения правил разделения трафика вступают в силу после отключения и повторного подключения VPN."
-                                    TextColor="{DynamicResource TextSecondary}" />
-                            </VerticalStackLayout>
+                                FontSize="11.5"
+                                LineBreakMode="WordWrap"
+                                Text="VPN активен — отключите его для изменения правил раздельного туннелирования."
+                                TextColor="{DynamicResource Error}"
+                                VerticalOptions="Center" />
                         </Grid>
                     </Border>
 
@@ -975,27 +959,6 @@
                                     VerticalOptions="Center" />
                             </ScrollView>
                         </VerticalStackLayout>
-
-                        <Border
-                            x:Name="AndroidWarningBanner"
-                            Margin="0,2,0,0"
-                            IsVisible="False"
-                            Style="{StaticResource WarningBanner}">
-                            <Label
-                                FontSize="11"
-                                HorizontalTextAlignment="Center"
-                                Text="Изменение списка возможно только при выключенном VPN."
-                                TextColor="{DynamicResource Error}"
-                                VerticalTextAlignment="Center" />
-                            <Border.Triggers>
-                                <DataTrigger
-                                    Binding="{Binding IsSplitEditingAllowed, Source={x:Reference ThisView}, x:DataType=settings:SplitView}"
-                                    TargetType="Border"
-                                    Value="True">
-                                    <Setter Property="IsVisible" Value="False" />
-                                </DataTrigger>
-                            </Border.Triggers>
-                        </Border>
                     </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>

@@ -241,13 +241,16 @@ public sealed partial class MainPage
                 }
             }
 
-            _tabContentVpn?.OnWindowFocusChanged(true);
+            _tabContentVpn?.OnWindowVisibilityChanged(true);
             if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
             {
                 _ = SyncBalanceFromServerAsync();
             }
         });
     }
+
+    private void OnWindowVisibilityChanged(bool isVisible) =>
+        MainThread.BeginInvokeOnMainThread(() => _tabContentVpn?.OnWindowVisibilityChanged(isVisible));
 
     private void OnWindowDeactivated()
     {
@@ -283,8 +286,6 @@ public sealed partial class MainPage
                     // ignored
                 }
             }
-
-            _tabContentVpn?.OnWindowFocusChanged(false);
         });
     }
 }

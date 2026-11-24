@@ -561,7 +561,7 @@ public sealed partial class VpnView
             ];
 
             _ = SniEngine.ConfigureServerSecurity(newServer, out _);
-            UpdateActiveNode(newServer.Ip);
+            UpdateActiveNode();
 
             AppLogger.Log($"[HOT-SWAP] Seamlessly switching to server: {newServer.Location} ({newServer.Ip}:{newServer.Port})");
             await Task.Run(async () => await _vpnService.StartVpnAsync(newServer.Ip, newServer.Port, orderedCandidates));

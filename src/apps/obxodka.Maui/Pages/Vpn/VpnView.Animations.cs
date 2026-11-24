@@ -6,7 +6,7 @@ public sealed partial class VpnView
     //обработка одного кадра анимации лоадера и ауры
     private void StepLoaderFrame()
     {
-        if (_disposed || !_isTabVisible || !_isWindowFocused)
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
         {
             return;
         }
@@ -27,10 +27,10 @@ public sealed partial class VpnView
         SyncAnimationLoops();
     }
 
-    //синхронизация всех циклов рендеринга с видимостью вкладки и фокусом окна
+    //синхронизация всех циклов рендеринга с видимостью вкладки и окна
     private void SyncAnimationLoops()
     {
-        var canRender = !_disposed && _isTabVisible && _isWindowFocused;
+        var canRender = !_disposed && _isTabVisible && _isWindowVisible;
         if (!canRender)
         {
             StopLoaderLoop();
@@ -82,7 +82,7 @@ public sealed partial class VpnView
     //запуск цикла перерисовки единого холста кнопки
     private void EnsureLoaderLoopRunning()
     {
-        if (_disposed || !_isTabVisible || !_isWindowFocused)
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
         {
             return;
         }

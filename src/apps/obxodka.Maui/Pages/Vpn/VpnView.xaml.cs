@@ -35,7 +35,6 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
     private bool _isBusy;
     private bool _isErrorState;
     private bool _showIpV6;
-    private string? _activeConnectedNode;
     private string? _lastErrorMessage;
     private VpnServerDto? _selectedServer;
     private List<VpnServerDto> _cachedServers = [];
@@ -227,11 +226,12 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
     private IDispatcherTimer? _buttonAnimationTimer;
 #endif
     private CancellationTokenSource? _buttonAnimCts;
-    private bool _isWindowFocused = true;
+    private bool _isWindowVisible = true;
 
     public VpnView()
     {
         InitializeComponent();
+        Loaded += (_, _) => OnTabVisibilityChanged(IsVisible);
         Unloaded += (_, _) => OnTabVisibilityChanged(false);
     }
 

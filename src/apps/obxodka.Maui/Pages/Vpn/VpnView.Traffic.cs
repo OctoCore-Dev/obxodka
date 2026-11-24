@@ -6,7 +6,7 @@ public sealed partial class VpnView
     //обработка одного кадра интерполяции и перерисовки графика скорости
     private void StepGraphFrame()
     {
-        if (_disposed || !_isTabVisible || !_isWindowFocused || !IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
+        if (_disposed || !_isTabVisible || !_isWindowVisible || !IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
         {
             return;
         }
@@ -99,7 +99,7 @@ public sealed partial class VpnView
     //возобновление цикла отрисовки графика при возврате на вкладку
     private void ResumeGraphLoop()
     {
-        if (_disposed || !_isTabVisible || !_isWindowFocused)
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
         {
             return;
         }
@@ -140,8 +140,11 @@ public sealed partial class VpnView
 
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;
+        _lastBytesSent = OctopusEngine.Current.TotalBytesSent;
+        _lastBytesReceived = OctopusEngine.Current.TotalBytesReceived;
+        _lastTrafficUpdate = DateTime.Now;
         _targetSpeedUp = _smoothSpeedUp = 0;
-        _smoothSpeedDown = 0;
+        _targetSpeedDown = _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
 
         ResumeGraphLoop();
@@ -201,6 +204,14 @@ public sealed partial class VpnView
             return;
         }
 
+        if (bytesSent < _lastBytesSent || bytesReceived < _lastBytesReceived)
+        {
+            _lastBytesSent = bytesSent;
+            _lastBytesReceived = bytesReceived;
+            _lastTrafficUpdate = now;
+            return;
+        }
+
         var sentSpeed = Math.Max(0, (bytesSent - _lastBytesSent) / elapsed);
         var recvSpeed = Math.Max(0, (bytesReceived - _lastBytesReceived) / elapsed);
 
@@ -211,7 +222,35 @@ public sealed partial class VpnView
         _targetSpeedUp = sentSpeed;
         _targetSpeedDown = recvSpeed;
 
-        PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(200), () =>
+        //даже когда вкладка или окно скрыты, фиксируем точки в истории чтобы при возврате график сразу показывал реальный трафик
+        if (_graphStopwatch.IsRunning && (!_isTabVisible || !_isWindowVisible))
+        {
+            var sampleTime = (float)_graphStopwatch.Elapsed.TotalSeconds;
+            lock (_graphSamples)
+            {
+                _graphSamples.Add(new GraphSample(sampleTime, (float)sentSpeed, (float)recvSpeed));
+                _lastSampleTime = sampleTime;
+                var cutoff = sampleTime - (TimeWindowSeconds + 1.0f);
+                var removeCount = 0;
+                while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
+                {
+                    removeCount++;
+                }
+
+                if (removeCount > 0)
+                {
+                    _graphSamples.RemoveRange(0, removeCount);
+                }
+
+                var samplePeak = Math.Max(sentSpeed, recvSpeed);
+                if (samplePeak > _smoothMaxSpeed)
+                {
+                    _smoothMaxSpeed = samplePeak;
+                }
+            }
+        }
+
+        PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(120), () =>
         {
             if (_vpnService.CurrentState != AppVpnState.Connected)
             {
@@ -317,12 +356,15 @@ public sealed partial class VpnView
             }
 
             _graphStrokeBuilder.Reset();
+            _graphFillBuilder.Reset();
             _graphStrokeBuilder.MoveTo(_graphPointsBuffer[0]);
+            _graphFillBuilder.MoveTo(_graphPointsBuffer[0]);
             if (graphStyle == "pulse_line")
             {
                 for (var i = 1; i < _graphPointsBuffer.Count; i++)
                 {
                     _graphStrokeBuilder.LineTo(_graphPointsBuffer[i]);
+                    _graphFillBuilder.LineTo(_graphPointsBuffer[i]);
                 }
             }
             else
@@ -333,13 +375,12 @@ public sealed partial class VpnView
                     var p1 = _graphPointsBuffer[i + 1];
                     var midX = (p0.X + p1.X) / 2f;
                     _graphStrokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
+                    _graphFillBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
                 }
             }
 
             using var strokePath = _graphStrokeBuilder.Detach();
 
-            _graphFillBuilder.Reset();
-            _graphFillBuilder.AddPath(strokePath);
             _graphFillBuilder.LineTo(_graphPointsBuffer[^1].X, h);
             _graphFillBuilder.LineTo(_graphPointsBuffer[0].X, h);
             _graphFillBuilder.Close();

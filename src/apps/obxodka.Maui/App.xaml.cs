@@ -17,6 +17,13 @@ internal sealed partial class App
     public App()
     {
         InitializeComponent();
+#if WINDOWS
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            //аварийное восстановление родного часового пояса пользователя если приложение ранее закрылось некорректно
+            WindowsTimeZoneService.RestoreOriginalIfNeeded("запуск приложения после предыдущей сессии");
+        }
+#endif
         DnsAdBlocker.IsAdBlockEnabled = Preferences.Default.Get(AppPreferenceKeys.UseAdblockDns, true);
         _ = Task.Run(async () => await TelemetryService.Instance.FlushPreviousSessionCrashLogAsync().ConfigureAwait(false));
         _ = Task.Run(async () =>
@@ -53,6 +60,7 @@ internal sealed partial class App
     public static event Action? AppResumed;
     public static event Action? WindowActivated;
     public static event Action? WindowDeactivated;
+    public static event Action<bool>? WindowVisibilityChanged;
     public static event Action<string, string>? DeepLinkLoginReceived;
 
     public static bool TryParseDeepLinkLogin(string? rawUri, out string email, out string code)
@@ -204,10 +212,18 @@ internal sealed partial class App
         {
             TitleBar = null
         };
-        window.Resumed += (_, _) => AppResumed?.Invoke();
+        window.Resumed += (_, _) =>
+        {
+            WindowVisibilityChanged?.Invoke(true);
+            AppResumed?.Invoke();
+        };
         window.Activated += (_, _) => WindowActivated?.Invoke();
         window.Deactivated += (_, _) => WindowDeactivated?.Invoke();
-        window.Stopped += (_, _) => WindowDeactivated?.Invoke();
+        window.Stopped += (_, _) =>
+        {
+            WindowVisibilityChanged?.Invoke(false);
+            WindowDeactivated?.Invoke();
+        };
 
 #if WINDOWS
         window.HandlerChanged += (_, _) =>
@@ -230,6 +246,7 @@ internal sealed partial class App
             };
             winUiWindow.VisibilityChanged += (_, args) =>
             {
+                WindowVisibilityChanged?.Invoke(args.Visible);
                 if (!args.Visible)
                 {
                     WindowDeactivated?.Invoke();
