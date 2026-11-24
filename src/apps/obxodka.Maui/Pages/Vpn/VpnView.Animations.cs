@@ -3,16 +3,59 @@ namespace obxodka.Pages.Vpn;
 //процедурные шейдеры skia, анимации лоадера, реактора, кристаллов и ауры
 public sealed partial class VpnView
 {
-    //обработка одного кадра анимации лоадера
+    //обработка одного кадра анимации лоадера и ауры
     private void StepLoaderFrame()
     {
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
+        {
+            return;
+        }
+
         _loaderAngle += 1.6f;
         if (CustomButtonRingImage is { IsVisible: true })
         {
             CustomButtonRingImage.Rotation = _loaderAngle * 0.45f % 360f;
         }
 
-        LoaderCanvas?.InvalidateSurface();
+        ButtonEffectsCanvas?.InvalidateSurface();
+    }
+
+    //управление паузой и возобновлением всех vsync-циклов вкладки vpn
+    public void OnTabVisibilityChanged(bool isVisible)
+    {
+        _isTabVisible = isVisible;
+        SyncAnimationLoops();
+    }
+
+    //синхронизация всех циклов рендеринга с видимостью вкладки и окна
+    private void SyncAnimationLoops()
+    {
+        var canRender = !_disposed && _isTabVisible && _isWindowVisible;
+        if (!canRender)
+        {
+            StopLoaderLoop();
+            PauseGraphLoop();
+            StopButtonAnimation();
+            return;
+        }
+
+        if (_loaderShouldRun || _auraPulseActive)
+        {
+            EnsureLoaderLoopRunning();
+        }
+
+        if (_vpnService?.CurrentState == AppVpnState.Connected)
+        {
+            ResumeGraphLoop();
+        }
+
+        if (CustomButtonAnimatedCanvas.IsVisible && _buttonAnimatedCurrent is not null)
+        {
+            StartButtonAnimation();
+        }
+
+        ButtonEffectsCanvas?.InvalidateSurface();
+        TrafficGraphCanvas?.InvalidateSurface();
     }
 
     //получение цвета темы для графики skia
@@ -22,7 +65,7 @@ public sealed partial class VpnView
             : fallback;
 
 #if WINDOWS
-    //аппаратная синхронизация кадров лоадера через vsync экрана
+    //аппаратная синхронизация кадров лоадера и ауры через vsync экрана
     private void OnLoaderVsyncRendering(object? sender, object e)
     {
         var nowTicks = Environment.TickCount64;
@@ -36,25 +79,19 @@ public sealed partial class VpnView
     }
 #endif
 
-    //остановка цикла перерисовки лоадера
-    private void StopLoaderLoop()
+    //запуск цикла перерисовки единого холста кнопки
+    private void EnsureLoaderLoopRunning()
     {
-#if WINDOWS
-        if (_loaderVsyncActive)
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
         {
-            _loaderVsyncActive = false;
-            Platforms.Windows.WinUiVsync.Unsubscribe(OnLoaderVsyncRendering);
+            return;
         }
-#else
-        _loaderTimer?.Stop();
-        _loaderTimer = null;
-#endif
-    }
 
-    //запуск анимации лоадера и таймера частиц
-    private void StartLoaderAnimation(bool animateEntrance = true)
-    {
-        _loaderStopwatch.Restart();
+        if (!_loaderStopwatch.IsRunning)
+        {
+            _loaderStopwatch.Start();
+        }
+
 #if WINDOWS
         if (!_loaderVsyncActive)
         {
@@ -71,69 +108,221 @@ public sealed partial class VpnView
             _loaderTimer.Start();
         }
 #endif
+    }
 
-        LoaderCanvas.IsVisible = true;
-
-        if (animateEntrance)
+    //остановка цикла перерисовки лоадера
+    private void StopLoaderLoop()
+    {
+#if WINDOWS
+        if (_loaderVsyncActive)
         {
+            _loaderVsyncActive = false;
+            Platforms.Windows.WinUiVsync.Unsubscribe(OnLoaderVsyncRendering);
+        }
+#else
+        _loaderTimer?.Stop();
+        _loaderTimer = null;
+#endif
+    }
+
+    //плавное управление радиальной аурой на едином холсте
+    private void SetAuraActive(bool active, bool animate = true)
+    {
+        _auraPulseActive = active;
+        var target = active ? 1f : 0f;
+
+        if (active)
+        {
+            EnsureLoaderLoopRunning();
+        }
+
+        if (!animate || _disposed)
+        {
+            _ = this.AbortAnimation("AuraFade");
+            _auraOpacity = target;
+            if (!active && !_loaderShouldRun)
+            {
+                StopLoaderLoop();
+            }
+
+            ButtonEffectsCanvas?.InvalidateSurface();
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
             try
             {
-                _ = LoaderCanvas.AbortAnimation("ScaleTo");
-                _ = LoaderCanvas.AbortAnimation("FadeTo");
+                _ = this.AbortAnimation("AuraFade");
+                var start = _auraOpacity;
+                var duration = active ? 400u : 280u;
+                var anim = new Animation(v =>
+                {
+                    _auraOpacity = (float)v;
+                    ButtonEffectsCanvas?.InvalidateSurface();
+                }, start, target, Easing.CubicOut);
+                anim.Commit(this, "AuraFade", 16, duration, Easing.CubicOut, (_, _) =>
+                {
+                    _auraOpacity = target;
+                    if (!_auraPulseActive && !_loaderShouldRun && _loaderOpacity <= 0.005f)
+                    {
+                        StopLoaderLoop();
+                    }
+
+                    ButtonEffectsCanvas?.InvalidateSurface();
+                });
             }
             catch
             {
-                // ignored
+                _auraOpacity = target;
+                ButtonEffectsCanvas?.InvalidateSurface();
+            }
+        });
+    }
+
+    //плавное масштабирование слоя лоадера внутри единого холста
+    private void AnimateLoaderScale(float target, uint duration = 450, Easing? easing = null)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_disposed)
+            {
+                return;
             }
 
-            LoaderCanvas.Scale = 0.25;
-            LoaderCanvas.Opacity = 0.0;
-            SafeScaleTo(LoaderCanvas, 1.0, 450, Easing.CubicOut);
-            SafeFadeTo(LoaderCanvas, 1.0, 350, Easing.CubicOut);
+            try
+            {
+                _ = this.AbortAnimation("LoaderScale");
+                var start = _loaderScale;
+                var usedEasing = easing ?? Easing.CubicOut;
+                var anim = new Animation(v =>
+                {
+                    _loaderScale = (float)v;
+                    ButtonEffectsCanvas?.InvalidateSurface();
+                }, start, target, usedEasing);
+                anim.Commit(this, "LoaderScale", 16, duration, usedEasing);
+            }
+            catch
+            {
+                _loaderScale = target;
+                ButtonEffectsCanvas?.InvalidateSurface();
+            }
+        });
+    }
+
+    //плавное изменение прозрачности слоя лоадера внутри единого холста
+    private void AnimateLoaderFade(float target, uint duration = 350, Easing? easing = null, Action? onFinished = null)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_disposed)
+            {
+                onFinished?.Invoke();
+                return;
+            }
+
+            try
+            {
+                _ = this.AbortAnimation("LoaderFade");
+                var start = _loaderOpacity;
+                var usedEasing = easing ?? Easing.CubicOut;
+                var anim = new Animation(v =>
+                {
+                    _loaderOpacity = (float)v;
+                    ButtonEffectsCanvas?.InvalidateSurface();
+                }, start, target, usedEasing);
+                anim.Commit(this, "LoaderFade", 16, duration, usedEasing, (_, _) =>
+                {
+                    _loaderOpacity = target;
+                    onFinished?.Invoke();
+                    ButtonEffectsCanvas?.InvalidateSurface();
+                });
+            }
+            catch
+            {
+                _loaderOpacity = target;
+                onFinished?.Invoke();
+                ButtonEffectsCanvas?.InvalidateSurface();
+            }
+        });
+    }
+
+    //запуск анимации лоадера и таймера частиц
+    private void StartLoaderAnimation(bool animateEntrance = true)
+    {
+        _loaderShouldRun = true;
+        _loaderStopwatch.Restart();
+        EnsureLoaderLoopRunning();
+
+        if (animateEntrance)
+        {
+            _ = this.AbortAnimation("LoaderScale");
+            _ = this.AbortAnimation("LoaderFade");
+            _loaderScale = 0.25f;
+            _loaderOpacity = 0f;
+            AnimateLoaderScale(1.0f, 450, Easing.CubicOut);
+            AnimateLoaderFade(1.0f, 350, Easing.CubicOut);
         }
         else
         {
-            LoaderCanvas.Opacity = 1;
+            _ = this.AbortAnimation("LoaderFade");
+            _loaderOpacity = 1f;
+            ButtonEffectsCanvas?.InvalidateSurface();
         }
     }
 
     //остановка лоадера соединения
     private void StopLoaderAnimation(bool animateExit = true)
     {
-        if (LoaderCanvas is null)
+        _loaderShouldRun = false;
+        if (ButtonEffectsCanvas is null || _disposed)
         {
-            StopLoaderLoop();
-            _loaderStopwatch.Reset();
+            if (!_auraPulseActive)
+            {
+                StopLoaderLoop();
+                _loaderStopwatch.Reset();
+            }
+
+            _loaderOpacity = 0f;
+            _loaderScale = 1f;
             return;
         }
 
-        if (animateExit && LoaderCanvas.IsVisible && LoaderCanvas.Opacity > 0.05)
+        if (animateExit && _loaderOpacity > 0.05f)
         {
-            try
+            AnimateLoaderScale(0.25f, 350, Easing.CubicIn);
+            AnimateLoaderFade(0.0f, 300, Easing.CubicIn, () =>
             {
-                _ = LoaderCanvas.AbortAnimation("ScaleTo");
-                _ = LoaderCanvas.AbortAnimation("FadeTo");
-            }
-            catch
-            {
-                //ignored
-            }
+                if (!_loaderShouldRun && !_auraPulseActive)
+                {
+                    StopLoaderLoop();
+                    _loaderStopwatch.Reset();
+                }
 
-            SafeScaleTo(LoaderCanvas, 0.25, 350, Easing.CubicIn);
-            SafeFadeTo(LoaderCanvas, 0.0, 300, Easing.CubicIn, () =>
-            {
-                LoaderCanvas.IsVisible = false;
-                StopLoaderLoop();
-                _loaderStopwatch.Reset();
+                if (!_loaderShouldRun)
+                {
+                    _loaderScale = 1.0f;
+                }
             });
         }
         else
         {
-            StopLoaderLoop();
-            _loaderStopwatch.Reset();
-            LoaderCanvas.IsVisible = false;
-            LoaderCanvas.Opacity = 0;
-            LoaderCanvas.Scale = 1.0;
+            _ = this.AbortAnimation("LoaderScale");
+            _ = this.AbortAnimation("LoaderFade");
+            _loaderOpacity = 0f;
+            _loaderScale = 1.0f;
+            if (!_auraPulseActive)
+            {
+                StopLoaderLoop();
+                _loaderStopwatch.Reset();
+            }
+
+            ButtonEffectsCanvas?.InvalidateSurface();
         }
     }
 
@@ -142,6 +331,11 @@ public sealed partial class VpnView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             try
             {
                 _ = this.AbortAnimation("ReactorMorph");
@@ -149,7 +343,7 @@ public sealed partial class VpnView
                 var anim = new Animation(v =>
                 {
                     _reactorTransitionFactor = (float)v;
-                    LoaderCanvas?.InvalidateSurface();
+                    ButtonEffectsCanvas?.InvalidateSurface();
                 }, start, target, Easing.CubicInOut);
                 anim.Commit(this, "ReactorMorph", 16, duration, Easing.CubicInOut);
             }
@@ -166,6 +360,11 @@ public sealed partial class VpnView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             try
             {
                 _ = this.AbortAnimation("ErrorMorph");
@@ -173,8 +372,7 @@ public sealed partial class VpnView
                 var anim = new Animation(v =>
                 {
                     _errorTransitionFactor = (float)v;
-                    LoaderCanvas?.InvalidateSurface();
-                    OuterAura?.InvalidateSurface();
+                    ButtonEffectsCanvas?.InvalidateSurface();
                 }, start, target, Easing.CubicOut);
                 anim.Commit(this, "ErrorMorph", 16, duration, Easing.CubicOut);
             }
@@ -197,80 +395,16 @@ public sealed partial class VpnView
         return new SKColor(r, g, b, a);
     }
 
-    //безопасное масштабирование элемента интерфейса
-    private static void SafeScaleTo(VisualElement? element, double scale, uint length = 250, Easing? easing = null)
-    {
-        if (element is null)
-        {
-            return;
-        }
-
-        try
-        {
-            if (element.Handler is not null && element is { IsLoaded: true, Window: not null })
-            {
-                _ = element.ScaleToAsync(scale, length, easing ?? Easing.Linear);
-            }
-            else
-            {
-                element.Scale = scale;
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"[SafeScaleTo] Предотвращена анимация удаленного элемента: {ex.Message}");
-        }
-    }
-
-    private static void SafeFadeTo(VisualElement? element, double opacity, uint length = 250, Easing? easing = null,
-        Action? onCompleted = null)
-    {
-        if (element is null)
-        {
-            onCompleted?.Invoke();
-            return;
-        }
-
-        try
-        {
-            if (element.Handler is not null && element is { IsLoaded: true, Window: not null })
-            {
-                _ = element.FadeToAsync(opacity, length, easing ?? Easing.Linear).ContinueWith(_ =>
-                {
-                    if (onCompleted is not null)
-                    {
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            try
-                            {
-                                onCompleted();
-                            }
-                            catch
-                            {
-                                // ignored
-                            }
-                        });
-                    }
-                }, TaskScheduler.Default);
-            }
-            else
-            {
-                element.Opacity = opacity;
-                onCompleted?.Invoke();
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"[SafeFadeTo] Предотвращена анимация удаленного элемента: {ex.Message}");
-            onCompleted?.Invoke();
-        }
-    }
-
     //запуск кольцевой ударной волны вокруг кнопки
     private void TriggerShockwave(bool isConnect)
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             try
             {
                 _ = this.AbortAnimation("ButtonShockwave");
@@ -279,12 +413,12 @@ public sealed partial class VpnView
                 var anim = new Animation(d =>
                 {
                     _shockwaveProgress = (float)d;
-                    OuterAura?.InvalidateSurface();
+                    ButtonEffectsCanvas?.InvalidateSurface();
                 }, 0f, 1f, Easing.CubicOut);
                 anim.Commit(this, "ButtonShockwave", 16, 650, Easing.CubicOut, (_, _) =>
                 {
                     _shockwaveProgress = -1f;
-                    OuterAura?.InvalidateSurface();
+                    ButtonEffectsCanvas?.InvalidateSurface();
                 });
             }
             catch (Exception ex)
@@ -295,15 +429,15 @@ public sealed partial class VpnView
         });
     }
 
-    //построение контура правильного многоугольника
-    private static SKPath MakePolygon(float cx, float cy, float r, int sides)
+    //построение центрированного правильного многоугольника через skpathbuilder
+    private static SKPath CreateCenteredPolygon(float r, int sides)
     {
         using var builder = new SKPathBuilder();
         for (var i = 0; i < sides; i++)
         {
             var a = (float)(i * 2 * Math.PI / sides - Math.PI / 2);
-            var x = cx + r * MathF.Cos(a);
-            var y = cy + r * MathF.Sin(a);
+            var x = r * MathF.Cos(a);
+            var y = r * MathF.Sin(a);
             if (i == 0)
             {
                 builder.MoveTo(x, y);
@@ -318,32 +452,75 @@ public sealed partial class VpnView
         return builder.Detach();
     }
 
-    //отрисовка процедурного лоадера на холсте skia
-    private void OnPaintLoaderSurface(object? sender, SKPaintSurfaceEventArgs e)
+    //кэширование многоугольников под текущий радиус кнопки без аллокаций в каждом кадре
+    private void EnsurePolygonCache(float r)
     {
-        var canvas = e.Surface.Canvas;
-        canvas.Clear(SKColors.Transparent);
-#if WINDOWS
-        var isLoaderLoopRunning = _loaderVsyncActive;
-#else
-        var isLoaderLoopRunning = _loaderTimer is not null;
-#endif
-        if (!isLoaderLoopRunning && _vpnService.CurrentState != AppVpnState.Connected)
+        if (Math.Abs(_cachedPolyRadius - r) <= 0.5f && _cachedRuneHexPoly is not null)
         {
             return;
         }
 
-        var vfx = ThemeManager.Instance?.ActiveTheme?.Vfx;
-        var loaderStyle = vfx?.ButtonLoaderStyle.Trim().ToLowerInvariant() ?? string.Empty;
-        if (loaderStyle == "none")
+        DisposePolygonCache();
+        _cachedPolyRadius = r;
+        for (var i = 0; i < s_polyConfigs.Length; i++)
+        {
+            var (_, _, _, _, size, sides) = s_polyConfigs[i];
+            _cachedCrystalPolys[i] = CreateCenteredPolygon(r * size, sides);
+        }
+
+        var ringR = r * 0.82f;
+        _cachedRuneHexPoly = CreateCenteredPolygon(ringR * 0.86f, 6);
+        _cachedRuneTriPoly = CreateCenteredPolygon(ringR * 0.68f, 3);
+    }
+
+    //освобождение кэшированных многоугольников
+    private void DisposePolygonCache()
+    {
+        for (var i = 0; i < _cachedCrystalPolys.Length; i++)
+        {
+            _cachedCrystalPolys[i]?.Dispose();
+            _cachedCrystalPolys[i] = null;
+        }
+
+        _cachedRuneHexPoly?.Dispose();
+        _cachedRuneHexPoly = null;
+        _cachedRuneTriPoly?.Dispose();
+        _cachedRuneTriPoly = null;
+        _cachedPolyRadius = -1f;
+    }
+
+    //единая отрисовка радиальной ауры, ударной волны и процедурного лоадера на одном холсте
+    private void OnPaintButtonEffectsSurface(object? sender, SKPaintSurfaceEventArgs e)
+    {
+        if (_disposed)
         {
             return;
         }
+
+        var canvas = e.Surface.Canvas;
+        canvas.Clear(SKColors.Transparent);
 
         var cx = e.Info.Width / 2f;
         var cy = e.Info.Height / 2f;
-        var r = Math.Min(cx, cy) - 6f;
-        if (r <= 12f)
+        var auraR = Math.Min(cx, cy) - 2f;
+        if (auraR > 5f)
+        {
+            DrawOuterAuraLayer(canvas, cx, cy, auraR);
+        }
+
+        var loaderR = Math.Min(cx, cy) - 6f;
+        if (loaderR > 12f && _loaderOpacity > 0.005f)
+        {
+            DrawLoaderLayer(canvas, cx, cy, loaderR);
+        }
+    }
+
+    //отрисовка слоя процедурного лоадера на едином холсте
+    private void DrawLoaderLayer(SKCanvas canvas, float cx, float cy, float r)
+    {
+        var vfx = ThemeManager.Instance?.ActiveTheme?.Vfx;
+        var loaderStyle = vfx?.ButtonLoaderStyle.Trim().ToLowerInvariant() ?? string.Empty;
+        if (loaderStyle == "none")
         {
             return;
         }
@@ -366,16 +543,26 @@ public sealed partial class VpnView
             glowMult *= (float)vfx.Glow.Intensity;
         }
 
+        var baseAlpha = Math.Clamp(_loaderOpacity, 0f, 1f);
+        _ = canvas.Save();
+        if (Math.Abs(_loaderScale - 1f) > 0.001f)
+        {
+            canvas.Scale(_loaderScale, _loaderScale, cx, cy);
+        }
+
         switch (loaderStyle)
         {
             case "dual_arc":
-                DrawDualArcLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                DrawDualArcLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, baseAlpha);
+                canvas.Restore();
                 return;
             case "runes":
-                DrawRunesLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                DrawRunesLoader(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, baseAlpha);
+                canvas.Restore();
                 return;
             case "reactor":
-                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, baseAlpha);
+                canvas.Restore();
                 return;
         }
 
@@ -384,16 +571,18 @@ public sealed partial class VpnView
         switch (factor)
         {
             case <= 0.001f:
-                DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, baseAlpha);
                 break;
             case >= 0.999f:
-                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f);
+                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, baseAlpha);
                 break;
             default:
-                DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, 1f - factor);
-                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, factor);
+                DrawQuantumHyperCrystal(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, (1f - factor) * baseAlpha);
+                DrawLivingReactor(canvas, cx, cy, r, colorPrimary, colorAccent, glowMult, factor * baseAlpha);
                 break;
         }
+
+        canvas.Restore();
     }
 
     private void DrawDualArcLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult,
@@ -425,6 +614,7 @@ public sealed partial class VpnView
     private void DrawRunesLoader(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent, float glowMult,
         float alphaMultiplier)
     {
+        EnsurePolygonCache(r);
         var ringR = r * 0.82f;
         var glowAlpha = (byte)Math.Clamp(95 * glowMult * alphaMultiplier, 0, 255);
         var coreAlpha = (byte)Math.Clamp(195 * alphaMultiplier, 0, 255);
@@ -433,23 +623,29 @@ public sealed partial class VpnView
         canvas.DrawCircle(cx, cy, ringR, _reactorTrackPaint);
         canvas.DrawCircle(cx, cy, ringR * 0.86f, _reactorTrackPaint);
 
-        _ = canvas.Save();
-        canvas.RotateDegrees(_loaderAngle * 0.65f, cx, cy);
-        using var hexPath = MakePolygon(cx, cy, ringR * 0.86f, 6);
-        _polyGlowPaint.Color = colorAccent.WithAlpha(glowAlpha);
-        _polyCorePaint.Color = colorAccent.WithAlpha(coreAlpha);
-        canvas.DrawPath(hexPath, _polyGlowPaint);
-        canvas.DrawPath(hexPath, _polyCorePaint);
-        canvas.Restore();
+        if (_cachedRuneHexPoly is not null)
+        {
+            _ = canvas.Save();
+            canvas.Translate(cx, cy);
+            canvas.RotateDegrees(_loaderAngle * 0.65f);
+            _polyGlowPaint.Color = colorAccent.WithAlpha(glowAlpha);
+            _polyCorePaint.Color = colorAccent.WithAlpha(coreAlpha);
+            canvas.DrawPath(_cachedRuneHexPoly, _polyGlowPaint);
+            canvas.DrawPath(_cachedRuneHexPoly, _polyCorePaint);
+            canvas.Restore();
+        }
 
-        _ = canvas.Save();
-        canvas.RotateDegrees(-_loaderAngle * 0.95f, cx, cy);
-        using var triPath1 = MakePolygon(cx, cy, ringR * 0.68f, 3);
-        _polyCorePaint.Color = colorPrimary.WithAlpha(coreAlpha);
-        canvas.DrawPath(triPath1, _polyCorePaint);
-        canvas.RotateDegrees(60f, cx, cy);
-        canvas.DrawPath(triPath1, _polyCorePaint);
-        canvas.Restore();
+        if (_cachedRuneTriPoly is not null)
+        {
+            _ = canvas.Save();
+            canvas.Translate(cx, cy);
+            canvas.RotateDegrees(-_loaderAngle * 0.95f);
+            _polyCorePaint.Color = colorPrimary.WithAlpha(coreAlpha);
+            canvas.DrawPath(_cachedRuneTriPoly, _polyCorePaint);
+            canvas.RotateDegrees(60f);
+            canvas.DrawPath(_cachedRuneTriPoly, _polyCorePaint);
+            canvas.Restore();
+        }
     }
 
     private void DrawQuantumHyperCrystal(SKCanvas canvas, float cx, float cy, float r, SKColor colorPrimary, SKColor colorAccent,
@@ -460,6 +656,7 @@ public sealed partial class VpnView
             return;
         }
 
+        EnsurePolygonCache(r);
         var ambientAlpha = (byte)Math.Clamp(55 * glowMult * alphaMultiplier, 0, 255);
         if (ambientAlpha > 0)
         {
@@ -469,7 +666,13 @@ public sealed partial class VpnView
 
         for (var i = 0; i < s_polyConfigs.Length; i++)
         {
-            var (speed, delay, ox, oy, size, sides) = s_polyConfigs[i];
+            var path = _cachedCrystalPolys[i];
+            if (path is null)
+            {
+                continue;
+            }
+
+            var (speed, delay, ox, oy, _, _) = s_polyConfigs[i];
             var rot = _loaderAngle * speed + delay;
             var baseAlpha = 80 + i * 20;
             var glowAlpha = (byte)Math.Clamp(baseAlpha * glowMult * alphaMultiplier, 0, 255);
@@ -481,9 +684,8 @@ public sealed partial class VpnView
             var pivotY = cy + (oy - 0.5f) * r;
 
             _ = canvas.Save();
-            canvas.RotateDegrees(rot, pivotX, pivotY);
-
-            using var path = MakePolygon(pivotX, pivotY, r * size, sides);
+            canvas.Translate(pivotX, pivotY);
+            canvas.RotateDegrees(rot);
 
             if (glowAlpha > 0)
             {
@@ -557,16 +759,10 @@ public sealed partial class VpnView
         }
     }
 
-    //отрисовка радиальной неоновой ауры вокруг кнопки
-    private void OnPaintOuterAuraSurface(object? sender, SKPaintSurfaceEventArgs e)
+    //отрисовка слоя радиальной неоновой ауры и ударной волны на едином холсте
+    private void DrawOuterAuraLayer(SKCanvas canvas, float cx, float cy, float r)
     {
-        var canvas = e.Surface.Canvas;
-        canvas.Clear(SKColors.Transparent);
-
-        var cx = e.Info.Width / 2f;
-        var cy = e.Info.Height / 2f;
-        var r = Math.Min(cx, cy) - 2f;
-        if (r <= 5f)
+        if (_auraOpacity <= 0.005f && _shockwaveProgress < 0f)
         {
             return;
         }
@@ -613,44 +809,63 @@ public sealed partial class VpnView
             glowMult *= (float)vfx.Glow.Intensity;
         }
 
-        var baseAlpha = (byte)(isConnected ? 95 : 65);
-        var midAlpha = (byte)(isConnected ? 35 : 20);
-
-        if (_cachedAuraShader == null ||
-            Math.Abs(_lastAuraCx - cx) > 0.5f ||
-            Math.Abs(_lastAuraCy - cy) > 0.5f ||
-            Math.Abs(_lastAuraR - r) > 0.5f ||
-            Math.Abs(_lastAuraGlow - glowMult) > 0.01f ||
-            _lastAuraColor != color ||
-            _lastAuraBloomColor != bloomColor ||
-            _lastAuraBaseAlpha != baseAlpha ||
-            _lastAuraMidAlpha != midAlpha)
+        if (_auraOpacity > 0.005f)
         {
-            _cachedAuraShader?.Dispose();
-            _lastAuraCx = cx;
-            _lastAuraCy = cy;
-            _lastAuraR = r;
-            _lastAuraGlow = glowMult;
-            _lastAuraColor = color;
-            _lastAuraBloomColor = bloomColor;
-            _lastAuraBaseAlpha = baseAlpha;
-            _lastAuraMidAlpha = midAlpha;
+            var baseAlpha = (byte)(isConnected ? 95 : 65);
+            var midAlpha = (byte)(isConnected ? 35 : 20);
 
-            _cachedAuraShader = SKShader.CreateRadialGradient(
-                new SKPoint(cx, cy),
-                r,
-                [
-                    color.WithAlpha((byte)Math.Clamp(baseAlpha * glowMult, 0, 255)),
-                    bloomColor.WithAlpha((byte)Math.Clamp(midAlpha * glowMult, 0, 255)),
-                    SKColors.Transparent
-                ],
-                [0f, 0.65f, 1f],
-                SKShaderTileMode.Clamp);
+            if (_cachedAuraShader == null ||
+                Math.Abs(_lastAuraCx - cx) > 0.5f ||
+                Math.Abs(_lastAuraCy - cy) > 0.5f ||
+                Math.Abs(_lastAuraR - r) > 0.5f ||
+                Math.Abs(_lastAuraGlow - glowMult) > 0.01f ||
+                _lastAuraColor != color ||
+                _lastAuraBloomColor != bloomColor ||
+                _lastAuraBaseAlpha != baseAlpha ||
+                _lastAuraMidAlpha != midAlpha)
+            {
+                _cachedAuraShader?.Dispose();
+                _lastAuraCx = cx;
+                _lastAuraCy = cy;
+                _lastAuraR = r;
+                _lastAuraGlow = glowMult;
+                _lastAuraColor = color;
+                _lastAuraBloomColor = bloomColor;
+                _lastAuraBaseAlpha = baseAlpha;
+                _lastAuraMidAlpha = midAlpha;
+
+                _cachedAuraShader = SKShader.CreateRadialGradient(
+                    new SKPoint(cx, cy),
+                    r,
+                    [
+                        color.WithAlpha((byte)Math.Clamp(baseAlpha * glowMult, 0, 255)),
+                        bloomColor.WithAlpha((byte)Math.Clamp(midAlpha * glowMult, 0, 255)),
+                        SKColors.Transparent
+                    ],
+                    [0f, 0.65f, 1f],
+                    SKShaderTileMode.Clamp);
+            }
+
+            var pulseWave = _auraPulseActive
+                ? 0.5f + 0.5f * MathF.Sin((float)_loaderStopwatch.Elapsed.TotalSeconds * (MathF.PI * 2f / 2.5f))
+                : 0f;
+            var maxScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.05f : 1.15f;
+            var auraScale = 1f + (maxScale - 1f) * pulseWave;
+            var finalAuraAlpha = (byte)Math.Clamp(_auraOpacity * (0.65f + 0.20f * pulseWave) * 255f, 0f, 255f);
+
+            _ = canvas.Save();
+            if (Math.Abs(auraScale - 1f) > 0.001f)
+            {
+                canvas.Scale(auraScale, auraScale, cx, cy);
+            }
+
+            _auraPaint.Color = SKColors.White.WithAlpha(finalAuraAlpha);
+            _auraPaint.Shader = _cachedAuraShader;
+            canvas.DrawCircle(cx, cy, r, _auraPaint);
+            _auraPaint.Shader = null;
+            _auraPaint.Color = SKColors.White;
+            canvas.Restore();
         }
-
-        _auraPaint.Shader = _cachedAuraShader;
-        canvas.DrawCircle(cx, cy, r, _auraPaint);
-        _auraPaint.Shader = null;
 
         if (!(_shockwaveProgress >= 0f))
         {

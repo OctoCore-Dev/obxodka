@@ -3,6 +3,7 @@ namespace obxodka.Pages;
 public sealed partial class MainPage : IDisposable
 {
     private static readonly string[] s_mainMobileTabs = ["vpn", "profile", "devices", "split", "configuration"];
+    private static int s_memoryTrimScheduled;
 
     private readonly ApiService _apiService;
     private readonly IAppManager _appManager;
@@ -45,6 +46,10 @@ public sealed partial class MainPage : IDisposable
     private ProfileView? _tabContentProfile;
     private SplitView? _tabContentSplit;
     private ThemeStoreView? _tabContentThemeStore;
+    private string _lastThemeStoreTab = "community";
+    private string _lastThemeStoreFilter = "all";
+    private string _lastThemeStoreSearch = string.Empty;
+    private double _lastThemeStoreScrollY;
     private VpnView? _tabContentVpn;
     private CancellationTokenSource? _vpnCts;
 
@@ -68,6 +73,7 @@ public sealed partial class MainPage : IDisposable
         BindingContext = this;
         DesktopSidebar.Initialize(_appUpdaterService);
 
+        _themeManager.OnThemeTransitionStarting += ShowThemeTransitionAsync;
         _themeManager.OnThemeApplied += HandleThemeApplied;
         _themeManager.OnThemeReset += HandleThemeReset;
         _themeManager.OnSystemThemeSynced += HandleSystemThemeSynced;
@@ -129,6 +135,8 @@ public sealed partial class MainPage : IDisposable
         App.WindowActivated += OnWindowActivated;
         App.WindowDeactivated -= OnWindowDeactivated;
         App.WindowDeactivated += OnWindowDeactivated;
+        App.WindowVisibilityChanged -= OnWindowVisibilityChanged;
+        App.WindowVisibilityChanged += OnWindowVisibilityChanged;
 
         Connectivity.Current.ConnectivityChanged -= OnConnectivityChanged;
         Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
@@ -192,6 +200,33 @@ public sealed partial class MainPage : IDisposable
     public long RemainingSeconds { get; private set; }
     public IVpnService VpnService { get; }
 
+    //отложенное уплотнение кучи после выгрузки тяжелых ресурсов темы или временных вкладок
+    internal static void ScheduleMemoryTrim()
+    {
+        if (Interlocked.Exchange(ref s_memoryTrimScheduled, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(350).ConfigureAwait(false);
+                System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(2, GCCollectionMode.Optimized, false);
+            }
+            catch
+            {
+                //игнорируем ошибки фонового уплотнения памяти
+            }
+            finally
+            {
+                _ = Interlocked.Exchange(ref s_memoryTrimScheduled, 0);
+            }
+        });
+    }
+
     public void Dispose()
     {
         _vpnCts?.Cancel();
@@ -200,6 +235,7 @@ public sealed partial class MainPage : IDisposable
 
         App.WindowActivated -= OnWindowActivated;
         App.WindowDeactivated -= OnWindowDeactivated;
+        App.WindowVisibilityChanged -= OnWindowVisibilityChanged;
         App.DeepLinkLoginReceived -= OnDeepLinkLoginReceived;
 
         _tabContentVpn?.UnsubscribeEvents();
@@ -210,6 +246,7 @@ public sealed partial class MainPage : IDisposable
         App.AppResumed -= OnAppResumed;
         Connectivity.Current.ConnectivityChanged -= OnConnectivityChanged;
 
+        _themeManager.OnThemeTransitionStarting -= ShowThemeTransitionAsync;
         _themeManager.OnThemeApplied -= HandleThemeApplied;
         _themeManager.OnThemeReset -= HandleThemeReset;
         _themeManager.OnSystemThemeSynced -= HandleSystemThemeSynced;
@@ -227,8 +264,15 @@ public sealed partial class MainPage : IDisposable
             _tabContentConfiguration.Dispose();
         }
 
-        _tabContentThemeStore?.BackRequested -= OnThemeStoreBackRequested;
+        if (_tabContentThemeStore is not null)
+        {
+            _tabContentThemeStore.BackRequested -= OnThemeStoreBackRequested;
+            _tabContentThemeStore.Cleanup();
+        }
+
         _tabContentVpn?.Dispose();
+        ThemeParticles?.Dispose();
+        ThemeAudioService.ReleaseMediaResources();
         if (_tabContentDelete is not null)
         {
             _tabContentDelete.CancelRequested -= OnDeleteCancelRequested;

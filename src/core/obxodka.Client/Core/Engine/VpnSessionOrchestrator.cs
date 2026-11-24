@@ -397,6 +397,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
             _adapter.StartPacketPump(ct);
 
+            UpdateActiveServerMetadata(activeStep.Host, activeStep.ServerLabel, activeStep.IsShield);
             var ipsSnapshot = GetRoutedIpsSnapshot();
             await _adapter.ActivateRoutingAndLeakGuardAsync(ipsSnapshot, _currentAssignedIp, _currentAssignedIpV6, ct)
                 .ConfigureAwait(false);
@@ -945,6 +946,8 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             return;
         }
 
+        UpdateActiveServerMetadata(_engine.ConnectedServerIp, null, false);
+
         var newIpv4 = _engine.AssignedIp;
         var newIpv6 = ValidateIpv6(_engine.AssignedIpV6);
         if (string.IsNullOrWhiteSpace(newIpv4) || !IPAddress.TryParse(newIpv4, out _))
@@ -969,6 +972,39 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
     private void SyncPipelinePreferences() =>
         _engine.Pipeline.BlockIpv6Traffic = PlatformServices.Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+
+    //разрешение реальной локации и флага активного узла vpn для синхронизации часового пояса
+    private void UpdateActiveServerMetadata(string? activeHost, string? stepLabel, bool isShield)
+    {
+        var servers = _fallbackServers;
+        VpnServerDto? matched = null;
+
+        if (!string.IsNullOrWhiteSpace(activeHost))
+        {
+            matched = servers.Find(s => string.Equals(s.Ip, activeHost, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (matched is not null && (!string.IsNullOrWhiteSpace(matched.Location) || !string.IsNullOrWhiteSpace(matched.Flag)))
+        {
+            _engine.SetActiveServerLocation(matched.Location, matched.Flag);
+            return;
+        }
+
+        if (!isShield &&
+            !string.IsNullOrWhiteSpace(stepLabel) &&
+            !stepLabel.StartsWith("Cloudflare", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(stepLabel, "Direct Origin", StringComparison.OrdinalIgnoreCase))
+        {
+            _engine.SetActiveServerLocation(stepLabel, matched?.Flag);
+            return;
+        }
+
+        var primary = servers.Find(s => !string.IsNullOrWhiteSpace(s.Location) || !string.IsNullOrWhiteSpace(s.Flag));
+        if (primary is not null)
+        {
+            _engine.SetActiveServerLocation(primary.Location, primary.Flag);
+        }
+    }
 
     private bool IsSessionStale(long epoch) =>
         Volatile.Read(ref _isExplicitlyStopped) != 0 ||

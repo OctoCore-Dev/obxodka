@@ -29,7 +29,7 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         var intent = VpnService.Prepare(Platform.AppContext);
         if (intent is not null)
         {
-            var granted = await MainActivity.RequestVpnPermissionAsync(intent).ConfigureAwait(false);
+            var granted = await MainActivity.RequestVpnPermissionAsync(intent, ct).ConfigureAwait(false);
             if (!granted)
             {
                 return false;
@@ -37,7 +37,7 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         }
 
         MainActivity.StartVpnService();
-        _ = await OctopusVpnService.WaitForServiceReadyAsync().ConfigureAwait(false)
+        _ = await OctopusVpnService.WaitForServiceReadyAsync(4000, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Не удалось запустить системную службу VPN.");
         return true;
     }
@@ -68,8 +68,8 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var svc = OctopusVpnService.Instance ?? await OctopusVpnService.WaitForServiceReadyAsync(2000).ConfigureAwait(false);
-        var tunOk = svc?.EstablishTun() ?? false;
+        var svc = OctopusVpnService.Instance ?? await OctopusVpnService.WaitForServiceReadyAsync(2000, ct).ConfigureAwait(false);
+        var tunOk = svc?.EstablishTun(false, assignedIpv4, assignedIpv6, mtu) ?? false;
         if (!tunOk)
         {
             var err = OctopusVpnService.LastEstablishError ?? "Не удалось инициализировать TUN интерфейс.";
@@ -93,7 +93,7 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        _ = OctopusVpnService.Instance?.EstablishTun();
+        _ = OctopusVpnService.Instance?.EstablishTun(false, assignedIpv4, assignedIpv6, mtu);
         return Task.CompletedTask;
     }
 

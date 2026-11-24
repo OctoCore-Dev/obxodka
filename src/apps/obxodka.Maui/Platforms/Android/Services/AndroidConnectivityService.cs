@@ -50,7 +50,9 @@ public sealed class AndroidConnectivityService : IConnectivityService
             return capabilities is null
                 ? AppNetworkAccess.Unknown
                 : capabilities.HasCapability(NetCapability.NotVpn) &&
-                  (capabilities.HasCapability(NetCapability.Internet) ||
+                  !capabilities.HasCapability(NetCapability.CaptivePortal) &&
+                  (capabilities.HasCapability(NetCapability.Validated) ||
+                   capabilities.HasCapability(NetCapability.Internet) ||
                    capabilities.HasTransport(TransportType.Wifi) ||
                    capabilities.HasTransport(TransportType.Cellular) ||
                    capabilities.HasTransport(TransportType.Ethernet))

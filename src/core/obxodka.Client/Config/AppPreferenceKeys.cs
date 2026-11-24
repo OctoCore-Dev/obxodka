@@ -9,6 +9,8 @@ public static class AppPreferenceKeys
     public const string ForceWebSocket = "ForceWebSocket";
     public const string BlockIpv6 = "BlockIpv6";
     public const string BypassRuSites = "obxodka_win_preset_rutlds";
+    public const string SyncTimeZoneWithServer = "sync_timezone_with_server";
+    public const string OriginalUserTimeZoneId = "original_user_timezone_id";
 
     //настройки приложения, DNS-фильтра и телеметрии
     public const string RunOnStartup = "RunOnStartup";

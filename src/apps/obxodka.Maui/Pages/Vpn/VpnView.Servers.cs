@@ -547,7 +547,7 @@ public sealed partial class VpnView
             ConnectButtonCore.IsEnabled = false;
             var accent = GetAppColor("Accent", s_cyanAccent);
             UpdateIpStatusDisplay("Переключение...", accent, accent);
-            await SetNeonStateAsync(
+            SetNeonState(
                 GetStatusTextForState(AppVpnState.Connecting, "Смена сервера..."),
                 GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
                 AppVpnState.Connecting);
@@ -561,7 +561,7 @@ public sealed partial class VpnView
             ];
 
             _ = SniEngine.ConfigureServerSecurity(newServer, out _);
-            UpdateActiveNode(newServer.Ip);
+            UpdateActiveNode();
 
             AppLogger.Log($"[HOT-SWAP] Seamlessly switching to server: {newServer.Location} ({newServer.Ip}:{newServer.Port})");
             await Task.Run(async () => await _vpnService.StartVpnAsync(newServer.Ip, newServer.Port, orderedCandidates));
@@ -573,7 +573,7 @@ public sealed partial class VpnView
             ConnectButtonCore.IsEnabled = true;
             var muted = GetAppColor("TextMuted", s_grayText);
             UpdateIpStatusDisplay("Не назначен", muted, muted);
-            await SetNeonStateAsync(
+            SetNeonState(
                 GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
                 GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
                 AppVpnState.Disconnected);

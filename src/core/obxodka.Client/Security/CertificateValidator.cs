@@ -8,7 +8,8 @@ public static class CertificateValidator
         X509Certificate? certificate,
         X509Chain? chain = null,
         SslPolicyErrors errors = SslPolicyErrors.None,
-        string? dynamicPinningHash = null)
+        string? dynamicPinningHash = null,
+        string? expectedHost = null)
     {
         if (certificate is null)
         {
@@ -19,11 +20,11 @@ public static class CertificateValidator
         {
             if (certificate is X509Certificate2 cert2)
             {
-                return ValidateServerCertificateCore(cert2, chain, errors, dynamicPinningHash);
+                return ValidateServerCertificateCore(cert2, chain, errors, dynamicPinningHash, expectedHost);
             }
 
             using var ownedCert = new X509Certificate2(certificate);
-            return ValidateServerCertificateCore(ownedCert, chain, errors, dynamicPinningHash);
+            return ValidateServerCertificateCore(ownedCert, chain, errors, dynamicPinningHash, expectedHost);
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NotSupportedException
                                        or ObjectDisposedException or InvalidOperationException)
@@ -38,7 +39,8 @@ public static class CertificateValidator
         X509Certificate2 cert2,
         X509Chain? chain,
         SslPolicyErrors errors,
-        string? dynamicPinningHash)
+        string? dynamicPinningHash,
+        string? expectedHost)
     {
         //проверка срока действия сертификата с запасом 1 день на рассинхронизацию часов
         var nowUtc = DateTime.UtcNow;
@@ -110,8 +112,11 @@ public static class CertificateValidator
 
         //проверка принадлежности сертификата доверенным доменам обходки
         var isTrustedDomain = IsTrustedObxodkaCertificate(cert2);
+        var allowNameMismatch = string.IsNullOrWhiteSpace(expectedHost) ||
+                                IPAddress.TryParse(expectedHost, out _) ||
+                                IsTrustedHostName(expectedHost);
 
-        if (isTrustedDomain)
+        if (isTrustedDomain && (allowNameMismatch || !errors.HasFlag(SslPolicyErrors.RemoteCertificateNameMismatch)))
         {
             var nonNameErrors = errors & ~SslPolicyErrors.RemoteCertificateNameMismatch;
             if (nonNameErrors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors)
@@ -119,15 +124,9 @@ public static class CertificateValidator
                 using var verifyChain = new X509Chain();
                 verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                 verifyChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested;
-                if (chain is not null)
-                {
-                    foreach (var elem in chain.ChainElements)
-                    {
-                        _ = verifyChain.ChainPolicy.ExtraStore.Add(elem.Certificate);
-                    }
-                }
+                PopulateExtraStore(verifyChain, chain);
 
-                if (verifyChain.Build(cert2))
+                if (verifyChain.Build(cert2) || IsOnlyNonFatalRevocationStatus(verifyChain))
                 {
                     AppLogger.Log("[CERT OK] Trusted domain chain verified successfully.");
                     return true;
@@ -137,18 +136,9 @@ public static class CertificateValidator
                 {
                     chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                     chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested;
-                    if (chain.Build(cert2))
+                    if (chain.Build(cert2) || IsOnlyNonFatalRevocationStatus(chain))
                     {
                         AppLogger.Log("[CERT OK] Trusted domain passed via outer chain.");
-                        return true;
-                    }
-
-                    //толерантность к устаревшим кросс-подписанным корням на мобильных платформах допускается только без критических ошибок цепочки
-                    var onlyLegacyRootStatus = chain.ChainStatus.Length > 0 &&
-                                               chain.ChainStatus.All(s => s.Status is X509ChainStatusFlags.NoError);
-                    if (onlyLegacyRootStatus && chain.ChainElements.Count > 1)
-                    {
-                        AppLogger.Log("[CERT OK] Trusted domain passed with strict chain validation.");
                         return true;
                     }
                 }
@@ -160,7 +150,8 @@ public static class CertificateValidator
         {
             using var verifyChain = new X509Chain();
             verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-            if (verifyChain.Build(cert2))
+            PopulateExtraStore(verifyChain, chain);
+            if (verifyChain.Build(cert2) || IsOnlyNonFatalRevocationStatus(verifyChain))
             {
                 AppLogger.Log("[CERT OK] Default system root CA chain verified.");
                 return true;
@@ -168,8 +159,8 @@ public static class CertificateValidator
 
             if (chain is not null)
             {
-                chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
-                if (chain.Build(cert2))
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                if (chain.Build(cert2) || IsOnlyNonFatalRevocationStatus(chain))
                 {
                     AppLogger.Log("[CERT OK] Default outer chain verified.");
                     return true;
@@ -177,21 +168,102 @@ public static class CertificateValidator
             }
         }
 
-        AppLogger.LogError($"[CERT REJECTED] Server certificate did not match trusted pins or trusted root CA. Errors: '{errors}'");
+        var chainFlags = chain is { ChainStatus.Length: > 0 }
+            ? string.Join(",", chain.ChainStatus.Select(s => s.Status))
+            : "none";
+        AppLogger.LogError(
+            $"[CERT REJECTED] Server certificate did not match trusted pins or trusted root CA. Errors: '{errors}', ChainStatus: '{chainFlags}', Subject: '{cert2.Subject}', Issuer: '{cert2.Issuer}', PubKeyHash: '{hash}', TrustedDomain: {isTrustedDomain}");
         return false;
     }
 
+    //перенос промежуточных сертификатов из элементов цепочки и extrastore исходного рукопожатия
+    internal static void PopulateExtraStore(X509Chain target, X509Chain? source)
+    {
+        if (source is null)
+        {
+            return;
+        }
+
+        foreach (var elem in source.ChainElements)
+        {
+            _ = target.ChainPolicy.ExtraStore.Add(elem.Certificate);
+        }
+
+        foreach (var extra in source.ChainPolicy.ExtraStore)
+        {
+            _ = target.ChainPolicy.ExtraStore.Add(extra);
+        }
+    }
+
+    //проверка что цепочка доверия не содержит критических ошибок кроме недоступности ocsp/crl
+    private static bool IsOnlyNonFatalRevocationStatus(X509Chain chain) =>
+        chain.ChainElements.Count > 1 &&
+        chain.ChainStatus.Length > 0 &&
+        chain.ChainStatus.All(s => s.Status is X509ChainStatusFlags.NoError
+            or X509ChainStatusFlags.RevocationStatusUnknown
+            or X509ChainStatusFlags.OfflineRevocation);
+
     //проверка наличия доменов обходки в san сертификата
-    private static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
+    internal static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
     {
         if (cert2.Extensions.OfType<X509SubjectAlternativeNameExtension>().SelectMany(sanExt => sanExt.EnumerateDnsNames())
-            .Any(IsTrustedHostName))
+            .Any(IsTrustedCertificateName))
         {
             return true;
         }
 
         var simpleName = cert2.GetNameInfo(X509NameType.SimpleName, false);
-        return !string.IsNullOrWhiteSpace(simpleName) && IsTrustedHostName(simpleName.Trim());
+        return !string.IsNullOrWhiteSpace(simpleName) && IsTrustedCertificateName(simpleName.Trim());
+    }
+
+    //проверка имени из сертификата включая wildcard-записи вида *.octocore.dev для поддоменов зеркал
+    private static bool IsTrustedCertificateName(string certDnsName)
+    {
+        var trimmed = certDnsName.Trim();
+        if (IsTrustedHostName(trimmed))
+        {
+            return true;
+        }
+
+        if (!trimmed.StartsWith("*.", StringComparison.Ordinal) || trimmed.Length <= 2)
+        {
+            return false;
+        }
+
+        var suffix = trimmed.AsSpan(1);
+        if (MatchesWildcardSuffix(AppConfig.PrimaryDomain, suffix) ||
+            MatchesWildcardSuffix(AppConfig.MirrorDomain, suffix))
+        {
+            return true;
+        }
+
+        foreach (var mirror in BootstrapConfig.Mirrors)
+        {
+            if (MatchesWildcardSuffix(mirror, suffix))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    //проверка одноуровневого wildcard-совпадения по rfc 6125
+    private static bool MatchesWildcardSuffix(string? host, ReadOnlySpan<char> wildcardSuffix)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        var hostSpan = host.AsSpan().Trim();
+        if (hostSpan.Length <= wildcardSuffix.Length || !hostSpan.EndsWith(wildcardSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var prefix = hostSpan[..^wildcardSuffix.Length];
+        return prefix.Length > 0 && !prefix.Contains('.');
     }
 
     //проверка совпадения хоста с основным или зеркальным доменом

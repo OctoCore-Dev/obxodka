@@ -1,5 +1,6 @@
 namespace obxodka.Client.Tests;
 
+[Collection("GlobalStaticState")]
 public class WebSocketTransportTests
 {
     [Fact]

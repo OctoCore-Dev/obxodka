@@ -26,6 +26,10 @@ public sealed class PacketPipeline(OctopusEngine engine)
     public bool ShouldDropIpv6Packet(ReadOnlySpan<byte> packet) =>
         BlockIpv6Traffic && packet.Length > 0 && packet[0] >> 4 == 6;
 
+    //проверка является ли пакет webrtc stun/turn запросом, который нельзя пускать мимо vpn по гео-обходу
+    public static bool IsStunPacket(ReadOnlySpan<byte> packet) =>
+        StunPacketInspector.IsStunPacket(packet);
+
     //проверка отбрасывания мультикаста и пакетов от старых сокетов с чужим локальным ip до туннеля
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool ShouldDropOutgoingIpv4Noise(ReadOnlySpan<byte> packet)

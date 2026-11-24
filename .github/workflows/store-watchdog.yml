@@ -23,6 +23,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: obxodka-store-release
+  cancel-in-progress: false
+
 env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
@@ -110,9 +114,20 @@ jobs:
           } else {
             Write-Host "[FREE] Microsoft Store has no pending submissions. Ready for release!" -ForegroundColor Green
             $targetTag = "${{ steps.gh-release.outputs.latest_tag }}"
+            $targetVer = if ($targetTag -match 'v?([\d\.]+)') { $matches[1] } else { $targetTag }
             $msixName = "${{ steps.gh-release.outputs.msix_name }}"
+            $alreadyDeployed = $false
+            if ("${{ inputs.force_deploy }}" -ne "true" -and (Test-Path ".github/badges/mstore.json")) {
+              try {
+                $badge = Get-Content ".github/badges/mstore.json" -Raw | ConvertFrom-Json
+                if ($badge.message -eq "Deployed v$targetVer") { $alreadyDeployed = $true }
+              } catch { }
+            }
 
-            if ($msixName) {
+            if ($alreadyDeployed) {
+              Write-Host "[SKIP] Microsoft Store already has v$targetVer deployed. Skipping duplicate upload." -ForegroundColor Gray
+              $mstoreState = "idle"
+            } elseif ($msixName) {
               Write-Host "Downloading $msixName from GitHub release $targetTag..." -ForegroundColor Cyan
               New-Item -ItemType Directory -Force -Path "./downloads/windows" | Out-Null
               gh release download $targetTag --repo OctoCore-Dev/obxodka --pattern "$msixName" --dir "./downloads/windows" --clobber
@@ -188,9 +203,20 @@ jobs:
           } else {
             Write-Host "[FREE] Google Play Console is open for new releases!" -ForegroundColor Green
             $targetTag = "${{ steps.gh-release.outputs.latest_tag }}"
+            $targetVer = if ($targetTag -match 'v?([\d\.]+)') { $matches[1] } else { $targetTag }
             $aabName = "${{ steps.gh-release.outputs.aab_name }}"
+            $alreadyDeployedPlay = $false
+            if ("${{ inputs.force_deploy }}" -ne "true" -and (Test-Path ".github/badges/playstore.json")) {
+              try {
+                $badge = Get-Content ".github/badges/playstore.json" -Raw | ConvertFrom-Json
+                if ($badge.message -eq "Deployed v$targetVer") { $alreadyDeployedPlay = $true }
+              } catch { }
+            }
 
-            if ($aabName) {
+            if ($alreadyDeployedPlay) {
+              Write-Host "[SKIP] Google Play already has v$targetVer deployed. Skipping duplicate upload." -ForegroundColor Gray
+              $playState = "idle"
+            } elseif ($aabName) {
               Write-Host "Downloading $aabName from GitHub release $targetTag..." -ForegroundColor Cyan
               New-Item -ItemType Directory -Force -Path "./downloads/android" | Out-Null
               gh release download $targetTag --repo OctoCore-Dev/obxodka --pattern "*.aab" --dir "./downloads/android" --clobber

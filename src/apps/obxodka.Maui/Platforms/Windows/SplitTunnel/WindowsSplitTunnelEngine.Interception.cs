@@ -218,7 +218,9 @@ internal static partial class WindowsSplitTunnelEngine
                         }
                     }
 
-                    if (policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
+                    //webrtc stun/turn запросы (порты 3478/5349/19302 или rfc 5389 magic cookie) запрещено пускать в гео-обход рф
+                    var isStunUdp = StunPacketInspector.IsStunUdpPacket(srcPort, dstPort, packet[(ihl + 8)..]);
+                    if (!isStunUdp && policy.BypassAllRuTlds && RuSubnetRegistry.IsRuIpv4(packet.Slice(16, 4)))
                     {
                         PinPhysicalHostRoute(dstIpUint, "Auto-Bypass RU (IP Range)");
                         return true;

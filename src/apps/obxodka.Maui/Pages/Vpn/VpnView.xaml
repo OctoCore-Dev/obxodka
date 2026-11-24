@@ -53,11 +53,11 @@
                                 JustifyContent="Center"
                                 Wrap="Wrap">
                                 <Border
-                                    Margin="3,2"
-                                    Padding="9,4"
+                                    Margin="4,3"
+                                    Padding="10,5"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 999"
+                                    StrokeShape="RoundRectangle 14"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
@@ -119,11 +119,11 @@
                                 </Border>
 
                                 <Border
-                                    Margin="3,2"
-                                    Padding="9,4"
+                                    Margin="4,3"
+                                    Padding="10,5"
                                     BackgroundColor="{DynamicResource BgElevated}"
                                     Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 999"
+                                    StrokeShape="RoundRectangle 14"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
@@ -137,7 +137,7 @@
                                             FontFamily="{DynamicResource AppFontMedium}"
                                             FontSize="11.5"
                                             LineBreakMode="TailTruncation"
-                                            MaximumWidthRequest="140"
+                                            MaximumWidthRequest="168"
                                             Text="Нет подключения"
                                             TextColor="{DynamicResource TextSecondary}"
                                             VerticalOptions="Center" />
@@ -146,11 +146,11 @@
 
                                 <Border
                                     x:Name="PingBadge"
-                                    Margin="3,2"
-                                    Padding="9,4"
+                                    Margin="4,3"
+                                    Padding="10,5"
                                     BackgroundColor="{DynamicResource SuccessDim}"
                                     Stroke="{DynamicResource Success}"
-                                    StrokeShape="RoundRectangle 999"
+                                    StrokeShape="RoundRectangle 14"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
@@ -502,19 +502,11 @@
                                                        Default=340}">
 
                                 <skia:SKCanvasView
-                                    x:Name="OuterAura"
+                                    x:Name="ButtonEffectsCanvas"
                                     HorizontalOptions="Fill"
                                     IgnorePixelScaling="True"
-                                    Opacity="0"
-                                    PaintSurface="OnPaintOuterAuraSurface"
-                                    VerticalOptions="Fill" />
-
-                                <skia:SKCanvasView
-                                    x:Name="LoaderCanvas"
-                                    HorizontalOptions="Fill"
-                                    IgnorePixelScaling="True"
-                                    Opacity="0"
-                                    PaintSurface="OnPaintLoaderSurface"
+                                    InputTransparent="True"
+                                    PaintSurface="OnPaintButtonEffectsSurface"
                                     VerticalOptions="Fill" />
 
                                 <Image

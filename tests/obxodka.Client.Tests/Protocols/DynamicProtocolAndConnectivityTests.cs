@@ -1,5 +1,6 @@
 namespace obxodka.Client.Tests.Protocols;
 
+[Collection("GlobalStaticState")]
 [Trait("Category", "Protocols")]
 [Trait("Category", "Resilience")]
 public sealed class DynamicProtocolAndConnectivityTests

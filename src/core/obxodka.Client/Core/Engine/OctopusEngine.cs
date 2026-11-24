@@ -68,7 +68,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public Func<string[], CancellationToken, Task>? EnsureExternalHostRoutesAsync { get; set; }
 
     //число активных лучей туннеля
-    public int ActiveRays { get; private set; } = 2;
+    public int ActiveRays
+    {
+        get => (_transport as ObxodkaStreamTransport)?.ActiveRayCount ?? field;
+        private set;
+    } = 2;
 
     //флаг активности соединения
     public bool IsConnected => _transport is { IsConnected: true };
@@ -119,6 +123,19 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
 
     //активный порт подключенного сервера (ssot)
     public int ConnectedServerPort { get; private set; }
+
+    //активная локация подключенного сервера для синхронизации часового пояса и ui (ssot)
+    public string? ActiveServerLocation { get; private set; }
+
+    //эмодзи флага активного сервера (ssot)
+    public string? ActiveServerFlag { get; private set; }
+
+    //обновление метаданных локации активного сервера из оркестратора
+    public void SetActiveServerLocation(string? location, string? flag = null)
+    {
+        ActiveServerLocation = string.IsNullOrWhiteSpace(location) ? null : location.Trim();
+        ActiveServerFlag = string.IsNullOrWhiteSpace(flag) ? null : flag.Trim();
+    }
 
     //активный целевой sni для маскировки tls
     private string? ActiveTargetSni { get; set; }

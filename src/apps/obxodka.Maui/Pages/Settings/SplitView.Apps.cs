@@ -2,87 +2,104 @@ namespace obxodka.Pages.Settings;
 
 public sealed partial class SplitView
 {
-    public async Task LoadSplitAppsAsync()
+    public async Task LoadSplitAppsAsync(bool forceReload = false)
     {
-        UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
+        ApplySplitLockState(_parent.VpnService.CurrentState);
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();
 #endif
-        if (_allApps.Count > 0)
+        if (Interlocked.CompareExchange(ref _isLoadingApps, 1, 0) != 0)
         {
-            var bypassed = _appManager.GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var app in _allApps)
-            {
-                app.IsBypassed = bypassed.Contains(app.PackageName);
-            }
-
-            _allApps =
-            [
-                .. _allApps
-                    .Where(a => !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
-                                !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
-                    .OrderByDescending(a => a.IsBypassed)
-                    .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-            ];
-
-            UpdateFilterChipStyles();
-            RebuildAllBypassedChips();
-            UpdateCountersOnly();
-            ApplyFilterAndRenderList();
-#if WINDOWS
-            IsSplitEditingAllowed = true;
-#else
-            IsSplitEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
-            AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
-#endif
             return;
         }
 
-        SplitLoadingOverlay.IsVisible = true;
-        if (!_isSitesTabActive)
-        {
-            SplitAppsScrollView.IsVisible = false;
-        }
-
-        _ = HideSplitToastAsync();
-
         try
         {
-            var apps = await _appManager.GetInstalledAppsAsync();
-            _allApps =
-            [
-                .. apps
-                    .Where(a => !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
-                                !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
-                    .OrderByDescending(a => a.IsBypassed)
-                    .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-            ];
-            UpdateFilterChipStyles();
-            RebuildAllBypassedChips();
-            UpdateCountersOnly();
-            ApplyFilterAndRenderList();
-#if WINDOWS
-            IsSplitEditingAllowed = true;
-#else
-            IsSplitEditingAllowed = _parent.VpnService.CurrentState == AppVpnState.Disconnected;
-            AndroidWarningBanner.IsVisible = !IsSplitEditingAllowed;
-#endif
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogError($"[SPLIT ERROR] {ex.Message}", ex);
-            await ShowSplitErrorAsync(SettingsMessages.LoadAppsFailed);
-#if !WINDOWS
-            IsSplitEditingAllowed = false;
-#endif
+            List<AppInfoItem> existingSnapshot;
+            lock (_appsLock)
+            {
+                existingSnapshot = [.. _allApps];
+            }
+
+            if (!forceReload && existingSnapshot.Count > 0)
+            {
+                var updated = await Task.Run(() =>
+                {
+                    var bypassed = _appManager.GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var app in existingSnapshot)
+                    {
+                        app.IsBypassed = bypassed.Contains(app.PackageName);
+                    }
+
+                    return existingSnapshot
+                        .Where(a => !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
+                                    !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                        .OrderByDescending(a => a.IsBypassed)
+                        .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList();
+                });
+
+                lock (_appsLock)
+                {
+                    _allApps = updated;
+                }
+
+                UpdateFilterChipStyles();
+                RebuildAllBypassedChips();
+                UpdateCountersOnly();
+                ApplyFilterAndRenderList();
+                ApplySplitLockState(_parent.VpnService.CurrentState);
+                return;
+            }
+
+            SplitLoadingOverlay.IsVisible = true;
+            if (!_isSitesTabActive)
+            {
+                SplitAppsCollectionView.IsVisible = false;
+            }
+
+            _ = HideSplitToastAsync();
+
+            try
+            {
+                var apps = await _appManager.GetInstalledAppsAsync();
+                var sorted = await Task.Run(() =>
+                    apps
+                        .Where(a => !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.Name) &&
+                                    !SplitTunnelPolicy.IsProtectedObxodkaEntry(a.PackageName))
+                        .OrderByDescending(a => a.IsBypassed)
+                        .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList());
+
+                lock (_appsLock)
+                {
+                    _allApps = sorted;
+                }
+
+                UpdateFilterChipStyles();
+                RebuildAllBypassedChips();
+                UpdateCountersOnly();
+                ApplyFilterAndRenderList();
+                ApplySplitLockState(_parent.VpnService.CurrentState);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogError($"[SPLIT ERROR] {ex.Message}", ex);
+                await ShowSplitErrorAsync(SettingsMessages.LoadAppsFailed);
+                ApplySplitLockState(_parent.VpnService.CurrentState);
+            }
+            finally
+            {
+                SplitLoadingOverlay.IsVisible = false;
+                if (!_isSitesTabActive)
+                {
+                    SplitAppsCollectionView.IsVisible = true;
+                }
+            }
         }
         finally
         {
-            SplitLoadingOverlay.IsVisible = false;
-            if (!_isSitesTabActive)
-            {
-                SplitAppsScrollView.IsVisible = true;
-            }
+            _ = Interlocked.Exchange(ref _isLoadingApps, 0);
         }
     }
 
@@ -90,13 +107,18 @@ public sealed partial class SplitView
     {
         try
         {
+            if (Volatile.Read(ref _isLoadingApps) != 0)
+            {
+                return;
+            }
+
             ThemeAudioService.PlayClick();
             _ = ChipRefreshApps.BounceClickAsync();
-            _allApps.Clear();
+            _ = Interlocked.Increment(ref _filterGeneration);
             _activeChipBorders.Clear();
             ActiveBypassedChipsLayout.Children.Clear();
-            BindableLayout.SetItemsSource(SplitAppsItemsStack, null);
-            await LoadSplitAppsAsync();
+            SplitAppsCollectionView.ItemsSource = null;
+            await LoadSplitAppsAsync(forceReload: true);
         }
         catch (Exception ex)
         {
@@ -110,6 +132,13 @@ public sealed partial class SplitView
         try
         {
 #if WINDOWS
+            if (!IsSplitEditingAllowed)
+            {
+                await _parent.DisplayAlertAsync(AccountMessages.AttentionTitle, SettingsMessages.VpnDisconnectRequired,
+                    AccountMessages.ButtonOk);
+                return;
+            }
+
             ThemeAudioService.PlayClick();
             var pickedPath = AppManager.PickExecutableFile();
             if (string.IsNullOrWhiteSpace(pickedPath))
@@ -134,8 +163,16 @@ public sealed partial class SplitView
                 return;
             }
 
-            var existing =
-                _allApps.FirstOrDefault(a => a.PackageName.Equals(addedItem.PackageName, StringComparison.OrdinalIgnoreCase));
+            AppInfoItem? existing;
+            lock (_appsLock)
+            {
+                existing = _allApps.FirstOrDefault(a => a.PackageName.Equals(addedItem.PackageName, StringComparison.OrdinalIgnoreCase));
+                if (existing is null)
+                {
+                    _allApps.Insert(0, addedItem);
+                }
+            }
+
             if (existing is not null)
             {
                 existing.IsBypassed = true;
@@ -148,7 +185,6 @@ public sealed partial class SplitView
             }
             else
             {
-                _allApps.Insert(0, addedItem);
                 SyncSingleAppChip(addedItem);
             }
 
@@ -166,31 +202,93 @@ public sealed partial class SplitView
         }
     }
 
-    private void ApplyFilterAndRenderList()
+    //виртуализированная фильтрация списка приложений в фоне без блокировки ui-потока
+    private void ApplyFilterAndRenderList(bool resort = false)
     {
         var q = SplitSearchEntry.Text?.Trim() ?? string.Empty;
         ClearSearchBtn.IsVisible = !string.IsNullOrEmpty(q);
 
-        IEnumerable<AppInfoItem> filtered = _allApps;
-        if (_showOnlyBypassed)
+        List<AppInfoItem> snapshot;
+        lock (_appsLock)
+        {
+            snapshot = [.. _allApps];
+        }
+
+        var onlyBypassed = _showOnlyBypassed;
+        var generation = Interlocked.Increment(ref _filterGeneration);
+
+        if (snapshot.Count <= 30 && !resort)
+        {
+            SplitAppsCollectionView.ItemsSource = FilterAppsSnapshot(snapshot, onlyBypassed, q, false);
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            var result = FilterAppsSnapshot(snapshot, onlyBypassed, q, resort);
+            if (resort)
+            {
+                lock (_appsLock)
+                {
+                    if (_allApps.Count == snapshot.Count)
+                    {
+                        _allApps = [.. snapshot
+                            .OrderByDescending(a => a.IsBypassed)
+                            .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
+                    }
+                }
+            }
+
+            if (generation != Volatile.Read(ref _filterGeneration))
+            {
+                return;
+            }
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (generation == Volatile.Read(ref _filterGeneration))
+                {
+                    SplitAppsCollectionView.ItemsSource = result;
+                }
+            });
+        });
+    }
+
+    private static List<AppInfoItem> FilterAppsSnapshot(List<AppInfoItem> source, bool onlyBypassed, string query, bool resort)
+    {
+        IEnumerable<AppInfoItem> filtered = source;
+        if (onlyBypassed)
         {
             filtered = filtered.Where(a => a.IsBypassed);
         }
 
-        if (!string.IsNullOrEmpty(q))
+        if (!string.IsNullOrEmpty(query))
         {
-            filtered = filtered.Where(a => a.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                                           a.PackageName.Contains(q, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(a => a.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                           a.PackageName.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        BindableLayout.SetItemsSource(SplitAppsItemsStack, filtered.ToList());
+        if (resort)
+        {
+            filtered = filtered
+                .OrderByDescending(a => a.IsBypassed)
+                .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        return [.. filtered];
     }
 
     private void UpdateCountersOnly()
     {
-        var bypassedCount = _allApps.Count(t => t.IsBypassed);
+        int totalCount;
+        int bypassedCount;
+        lock (_appsLock)
+        {
+            totalCount = _allApps.Count;
+            bypassedCount = _allApps.Count(t => t.IsBypassed);
+        }
 
-        FilterAllLabel.Text = $"Все ({_allApps.Count})";
+        FilterAllLabel.Text = $"Все ({totalCount})";
         FilterBypassedLabel.Text = $"В обходе ({bypassedCount})";
 
         if (bypassedCount == 0)
@@ -209,13 +307,14 @@ public sealed partial class SplitView
         _activeChipBorders.Clear();
         ActiveBypassedChipsLayout.Children.Clear();
 
-        foreach (var app in _allApps)
+        List<AppInfoItem> bypassedItems;
+        lock (_appsLock)
         {
-            if (!app.IsBypassed)
-            {
-                continue;
-            }
+            bypassedItems = [.. _allApps.Where(a => a.IsBypassed)];
+        }
 
+        foreach (var app in bypassedItems)
+        {
             var chip = CreateAppChipBorder(app);
             _activeChipBorders[app.PackageName] = chip;
             ActiveBypassedChipsLayout.Children.Add(chip);
@@ -330,10 +429,7 @@ public sealed partial class SplitView
 
     private void ScheduleSaveBypassedState()
     {
-        _saveDebounceCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _saveDebounceCts = cts;
-        var token = cts.Token;
+        var token = ReplaceCtsToken(ref _saveDebounceCts);
 
         _ = Task.Run(async () =>
         {
@@ -345,7 +441,12 @@ public sealed partial class SplitView
                     return;
                 }
 
-                var bypassed = _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName).ToList();
+                List<string> bypassed;
+                lock (_appsLock)
+                {
+                    bypassed = [.. _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName)];
+                }
+
                 _appManager.SaveBypassedPackages(bypassed);
 #if WINDOWS
                 MainThread.BeginInvokeOnMainThread(UpdateWindowsDynamicRouteCounter);
@@ -361,19 +462,16 @@ public sealed partial class SplitView
     private void OnSplitSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
         ClearSearchBtn.IsVisible = !string.IsNullOrEmpty(e.NewTextValue);
-        _searchDebounceCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _searchDebounceCts = cts;
-        var token = cts.Token;
+        var token = ReplaceCtsToken(ref _searchDebounceCts);
 
         _ = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(110, token).ConfigureAwait(false);
+                await Task.Delay(120, token).ConfigureAwait(false);
                 if (!token.IsCancellationRequested)
                 {
-                    MainThread.BeginInvokeOnMainThread(ApplyFilterAndRenderList);
+                    MainThread.BeginInvokeOnMainThread(() => ApplyFilterAndRenderList());
                 }
             }
             catch
@@ -385,41 +483,37 @@ public sealed partial class SplitView
 
     private void OnClearSearchClicked(object? sender, EventArgs e)
     {
-        _searchDebounceCts?.Cancel();
+        CancelAndDisposeCts(ref _searchDebounceCts);
         SplitSearchEntry.Text = string.Empty;
         ApplyFilterAndRenderList();
     }
 
     private void OnFilterAllClicked(object? sender, EventArgs e)
     {
+        if (!_showOnlyBypassed)
+        {
+            return;
+        }
+
         ThemeAudioService.PlayClick();
         _ = ChipFilterAll.BounceClickAsync();
         _showOnlyBypassed = false;
-        _allApps =
-        [
-            .. _allApps
-                .OrderByDescending(a => a.IsBypassed)
-                .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-        ];
         UpdateFilterChipStyles();
-        ApplyFilterAndRenderList();
-        SplitAppsScrollView.Opacity = 0.35;
-        SplitAppsScrollView.TranslationY = 10;
-        _ = SplitAppsScrollView.FadeToAsync(1.0, 160, Easing.CubicOut);
-        _ = SplitAppsScrollView.TranslateToAsync(0, 0, 160, Easing.CubicOut);
+        ApplyFilterAndRenderList(resort: true);
     }
 
     private void OnFilterBypassedClicked(object? sender, EventArgs e)
     {
+        if (_showOnlyBypassed)
+        {
+            return;
+        }
+
         ThemeAudioService.PlayClick();
         _ = ChipFilterBypassed.BounceClickAsync();
         _showOnlyBypassed = true;
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
-        SplitAppsScrollView.Opacity = 0.35;
-        SplitAppsScrollView.TranslationY = 10;
-        _ = SplitAppsScrollView.FadeToAsync(1.0, 160, Easing.CubicOut);
-        _ = SplitAppsScrollView.TranslateToAsync(0, 0, 160, Easing.CubicOut);
     }
 
     private void UpdateFilterChipStyles()
@@ -466,9 +560,12 @@ public sealed partial class SplitView
             }
 
             ThemeAudioService.PlayClick();
-            foreach (var app in _allApps)
+            lock (_appsLock)
             {
-                app.IsBypassed = false;
+                foreach (var app in _allApps)
+                {
+                    app.IsBypassed = false;
+                }
             }
 
             _activeChipBorders.Clear();

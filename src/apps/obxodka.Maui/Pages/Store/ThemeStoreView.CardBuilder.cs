@@ -1,19 +1,38 @@
+using Microsoft.Maui.Layouts;
+
 namespace obxodka.Pages.Store;
 
 public sealed partial class ThemeStoreView
 {
-    private (Border CardBorder, HorizontalStackLayout ActionLayout) CreateThemeCard(ThemeCardModel model)
+    private static ImageSource ResolveCardIconSource(ThemeCardModel model) =>
+        !string.IsNullOrEmpty(model.LocalIconPath) && File.Exists(model.LocalIconPath)
+            ? LoadLocalImage(model.LocalIconPath)
+            : !string.IsNullOrEmpty(model.RemoteIconUrl) &&
+              Uri.TryCreate(ThemeManager.ToMirrorUrl(model.RemoteIconUrl), UriKind.Absolute, out var uri)
+                ? new UriImageSource
+                {
+                    Uri = uri,
+                    CachingEnabled = true,
+                    CacheValidity = TimeSpan.FromDays(14)
+                }
+                : "splash_logo.png";
+
+    private (Border CardBorder, FlexLayout ActionLayout, Image IconImage) CreateThemeCard(ThemeCardModel model, bool loadIconImmediately = true)
     {
         var cornerRadius = Application.Current?.Resources.TryGetValue("CardCornerRadius", out var cr) == true &&
                            cr is CornerRadius themeRadius
             ? themeRadius
-            : new CornerRadius(16);
+            : new CornerRadius(12);
+        var borderThickness = Application.Current?.Resources.TryGetValue("CardBorderThickness", out var bt) == true &&
+                              bt is double t
+            ? t
+            : 1.0;
 
         var cardBorder = new Border
         {
             HorizontalOptions = LayoutOptions.Fill,
             Padding = new Thickness(16),
-            StrokeThickness = model.IsActive ? 2.0 : 1.0,
+            StrokeThickness = model.IsActive ? Math.Max(2.0, borderThickness) : borderThickness,
             StrokeShape = new RoundRectangle
             {
                 CornerRadius = cornerRadius
@@ -32,17 +51,6 @@ public sealed partial class ThemeStoreView
             ColumnSpacing = 14
         };
 
-        var iconSource = !string.IsNullOrEmpty(model.LocalIconPath) && File.Exists(model.LocalIconPath)
-            ? LoadLocalImage(model.LocalIconPath)
-            : !string.IsNullOrEmpty(model.RemoteIconUrl)
-                ? new UriImageSource
-                {
-                    Uri = new Uri(ThemeManager.ToMirrorUrl(model.RemoteIconUrl)),
-                    CachingEnabled = true,
-                    CacheValidity = TimeSpan.FromDays(14)
-                }
-                : (ImageSource)"splash_logo.png";
-
         var iconImage = new Image
         {
             WidthRequest = 56,
@@ -53,7 +61,7 @@ public sealed partial class ThemeStoreView
                 CornerRadius = new CornerRadius(12),
                 Rect = new Rect(0, 0, 56, 56)
             },
-            Source = iconSource
+            Source = loadIconImmediately ? ResolveCardIconSource(model) : null
         };
         var tapPreviewIcon = new TapGestureRecognizer();
         tapPreviewIcon.Tapped += (_, _) => OpenThemePreviewModal(model);
@@ -65,15 +73,20 @@ public sealed partial class ThemeStoreView
             Spacing = 5
         };
 
-        var headerLayout = new HorizontalStackLayout
+        var headerLayout = new FlexLayout
         {
-            Spacing = 8
+            Direction = FlexDirection.Row,
+            Wrap = FlexWrap.Wrap,
+            AlignItems = FlexAlignItems.Center,
+            JustifyContent = FlexJustify.Start
         };
         var titleLabel = new Label
         {
             Text = model.Name,
             FontAttributes = FontAttributes.Bold,
-            FontSize = 15
+            FontSize = 15,
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalTextAlignment = TextAlignment.Center
         };
         titleLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
         titleLabel.SetDynamicResource(Label.TextColorProperty, "TextPrimary");
@@ -83,7 +96,8 @@ public sealed partial class ThemeStoreView
         {
             Text = $"v{model.DisplayVersion}",
             FontSize = 11,
-            VerticalOptions = LayoutOptions.Center
+            VerticalOptions = LayoutOptions.Center,
+            VerticalTextAlignment = TextAlignment.Center
         };
         versionLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontMedium");
         versionLabel.SetDynamicResource(Label.TextColorProperty, "TextMuted");
@@ -105,10 +119,13 @@ public sealed partial class ThemeStoreView
             contentStack.Add(descLabel);
         }
 
-        var badgesLayout = new HorizontalStackLayout
+        var badgesLayout = new FlexLayout
         {
-            Spacing = 6,
-            Margin = new Thickness(0, 2, 0, 6)
+            Direction = FlexDirection.Row,
+            Wrap = FlexWrap.Wrap,
+            AlignItems = FlexAlignItems.Center,
+            JustifyContent = FlexJustify.Start,
+            Margin = new Thickness(0, 2, 0, 0)
         };
         if (model.HasVideoBackground)
         {
@@ -145,9 +162,12 @@ public sealed partial class ThemeStoreView
             contentStack.Add(badgesLayout);
         }
 
-        var actionLayout = new HorizontalStackLayout
+        var actionLayout = new FlexLayout
         {
-            Spacing = 8,
+            Direction = FlexDirection.Row,
+            Wrap = FlexWrap.Wrap,
+            AlignItems = FlexAlignItems.Center,
+            JustifyContent = FlexJustify.Start,
             Margin = new Thickness(0, 4, 0, 0)
         };
         PopulateActionLayout(actionLayout, model);
@@ -155,10 +175,10 @@ public sealed partial class ThemeStoreView
         mainLayout.Add(contentStack, 1);
         cardBorder.Content = mainLayout;
 
-        return (cardBorder, actionLayout);
+        return (cardBorder, actionLayout, iconImage);
     }
 
-    private void PopulateActionLayout(HorizontalStackLayout actionLayout, ThemeCardModel model)
+    private void PopulateActionLayout(FlexLayout actionLayout, ThemeCardModel model)
     {
         if (model.IsActive)
         {
@@ -192,13 +212,16 @@ public sealed partial class ThemeStoreView
             AttachTapAction(btnApply, async () =>
             {
                 ThemeAudioService.PlayClick();
-                await btnApply.BounceClickAsync();
-                var list = _themeManager?.GetInstalledThemes() ?? [];
-                var match = list.FirstOrDefault(t => t.Id == model.Id);
-                if (match is not null && _themeManager is not null)
+                _ = btnApply.BounceClickAsync();
+                if (_themeManager is null)
                 {
-                    _ = await _themeManager.ApplyThemeAsync(match);
+                    return;
                 }
+
+                var cachedMatch = _cachedInstalledThemes.FirstOrDefault(t => string.Equals(t.Id, model.Id, StringComparison.OrdinalIgnoreCase));
+                _ = cachedMatch is not null
+                    ? await _themeManager.ApplyThemeAsync(cachedMatch)
+                    : await _themeManager.ApplyThemeByIdAsync(model.Id);
             });
             actionLayout.Add(btnApply);
 
@@ -308,6 +331,7 @@ public sealed partial class ThemeStoreView
                     await NeoAlert.ShowAsync("Ошибка", "Не удалось удалить тему.");
                 }
 
+                await RefreshInstalledThemesCacheAsync();
                 UpdateTabButtons();
                 RenderThemes(false);
             });
@@ -350,6 +374,7 @@ public sealed partial class ThemeStoreView
         var border = new Border
         {
             HeightRequest = 36,
+            Margin = new Thickness(0, 0, 8, 6),
             Padding = new Thickness(paddingX, 0),
             StrokeShape = new RoundRectangle
             {
@@ -402,6 +427,7 @@ public sealed partial class ThemeStoreView
         {
             HeightRequest = 36,
             WidthRequest = 36,
+            Margin = new Thickness(0, 0, 8, 6),
             StrokeShape = new RoundRectangle
             {
                 CornerRadius = new CornerRadius(10)
@@ -526,18 +552,21 @@ public sealed partial class ThemeStoreView
             Text = text,
             FontSize = 10.5,
             TextColor = fgColor,
+            LineBreakMode = LineBreakMode.NoWrap,
             VerticalOptions = LayoutOptions.Center
         };
         badgeLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
 
         return new Border
         {
-            Padding = new Thickness(8, 3),
+            Margin = new Thickness(0, 0, 6, 6),
+            Padding = new Thickness(8, 4),
             StrokeShape = new RoundRectangle
             {
                 CornerRadius = new CornerRadius(6)
             },
-            StrokeThickness = 0,
+            Stroke = fgColor.WithAlpha(0.28f),
+            StrokeThickness = 1,
             BackgroundColor = bgColor,
             VerticalOptions = LayoutOptions.Center,
             Content = new HorizontalStackLayout

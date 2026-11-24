@@ -2,26 +2,55 @@ namespace obxodka.Pages.Settings;
 
 public sealed partial class SplitView
 {
-    private void OnPresetGovCardTapped(object? sender, EventArgs e) =>
-        PresetGovSwitch.IsToggled = !PresetGovSwitch.IsToggled;
+    private void OnPresetGovCardTapped(object? sender, EventArgs e)
+    {
+        if (IsSplitEditingAllowed)
+        {
+            PresetGovSwitch.IsToggled = !PresetGovSwitch.IsToggled;
+        }
+    }
 
-    private void OnPresetBanksCardTapped(object? sender, EventArgs e) =>
-        PresetBanksSwitch.IsToggled = !PresetBanksSwitch.IsToggled;
+    private void OnPresetBanksCardTapped(object? sender, EventArgs e)
+    {
+        if (IsSplitEditingAllowed)
+        {
+            PresetBanksSwitch.IsToggled = !PresetBanksSwitch.IsToggled;
+        }
+    }
 
-    private void OnPresetMediaCardTapped(object? sender, EventArgs e) =>
-        PresetMediaSwitch.IsToggled = !PresetMediaSwitch.IsToggled;
+    private void OnPresetMediaCardTapped(object? sender, EventArgs e)
+    {
+        if (IsSplitEditingAllowed)
+        {
+            PresetMediaSwitch.IsToggled = !PresetMediaSwitch.IsToggled;
+        }
+    }
 
-    private void OnPresetMarketCardTapped(object? sender, EventArgs e) =>
-        PresetMarketSwitch.IsToggled = !PresetMarketSwitch.IsToggled;
+    private void OnPresetMarketCardTapped(object? sender, EventArgs e)
+    {
+        if (IsSplitEditingAllowed)
+        {
+            PresetMarketSwitch.IsToggled = !PresetMarketSwitch.IsToggled;
+        }
+    }
 
-    private void OnPresetRuTldsCardTapped(object? sender, EventArgs e) =>
-        PresetRuTldsSwitch.IsToggled = !PresetRuTldsSwitch.IsToggled;
+    private void OnPresetRuTldsCardTapped(object? sender, EventArgs e)
+    {
+        if (IsSplitEditingAllowed)
+        {
+            PresetRuTldsSwitch.IsToggled = !PresetRuTldsSwitch.IsToggled;
+        }
+    }
 
     private void OnRefreshSplitRoutesClicked(object? sender, EventArgs e)
     {
 #if WINDOWS
         ThemeAudioService.PlayClick();
-        AppManager.SyncPolicyFromPreferences();
+        if (IsSplitEditingAllowed)
+        {
+            AppManager.SyncPolicyFromPreferences();
+        }
+
         UpdateWindowsDynamicRouteCounter();
 #endif
     }
@@ -29,7 +58,7 @@ public sealed partial class SplitView
     private void OnPresetSwitchToggled(object? sender, ToggledEventArgs e)
     {
 #if WINDOWS
-        if (_isUpdatingInternally)
+        if (_isUpdatingInternally || !IsSplitEditingAllowed)
         {
             return;
         }
@@ -48,6 +77,13 @@ public sealed partial class SplitView
     private void OnAddCustomRuleClicked(object? sender, EventArgs e)
     {
 #if WINDOWS
+        if (!IsSplitEditingAllowed)
+        {
+            _ = _parent.DisplayAlertAsync(AccountMessages.AttentionTitle, SettingsMessages.VpnDisconnectRequired,
+                AccountMessages.ButtonOk);
+            return;
+        }
+
         var raw = CustomRuleEntry.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -90,10 +126,7 @@ public sealed partial class SplitView
 #if WINDOWS
     private void OnWindowsRoutesUpdated()
     {
-        _routesDebounceCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _routesDebounceCts = cts;
-        var token = cts.Token;
+        var token = ReplaceCtsToken(ref _routesDebounceCts);
 
         _ = Task.Run(async () =>
         {
@@ -335,6 +368,13 @@ public sealed partial class SplitView
             {
                 Command = new Command(() =>
                 {
+                    if (!IsSplitEditingAllowed)
+                    {
+                        _ = _parent.DisplayAlertAsync(AccountMessages.AttentionTitle, SettingsMessages.VpnDisconnectRequired,
+                            AccountMessages.ButtonOk);
+                        return;
+                    }
+
                     ThemeAudioService.PlayClick();
                     var list = AppManager.GetCustomRules();
                     _ = list.RemoveAll(r => r.Equals(targetRule, StringComparison.OrdinalIgnoreCase));

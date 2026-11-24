@@ -20,7 +20,7 @@
                 x:Name="MainContentGrid"
                 Padding="0,24,0,28"
                 HorizontalOptions="Fill"
-                RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto"
+                RowDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto"
                 RowSpacing="14">
 
                 <FlexLayout
@@ -40,21 +40,19 @@
                             x:Name="CurrentSelectionLabel"
                             FontFamily="{DynamicResource AppFontBold}"
                             FontSize="12"
-                            Text="obxodka Stream • HTTP/2"
+                            Text="Obxodka Stream • HTTP/2 TLS 443"
                             TextColor="{DynamicResource Accent}"
                             VerticalOptions="Center" />
                     </Border>
                 </FlexLayout>
 
                 <Label
+                    x:Name="ProtocolSubtitleLabel"
                     Grid.Row="1"
                     FontSize="13"
                     LineBreakMode="WordWrap"
-                    Style="{StaticResource LabelMuted}">
-                    <Label.Text>
-                        Оптимизированный транспорт: obxodka Stream через HTTP/2 на 443 порту с обфускацией и защитой от цензуры.
-                    </Label.Text>
-                </Label>
+                    Style="{StaticResource LabelMuted}"
+                    Text="Автоматический круговой конвейер транспортов с обфускацией и защитой от блокировок." />
 
                 <Grid
                     x:Name="ProtocolHeaderGrid"
@@ -71,54 +69,68 @@
                     Grid.Row="3"
                     Padding="16,14"
                     Style="{StaticResource NeoCard}">
-                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
-                        <Border
-                            Grid.Column="0"
-                            BackgroundColor="{DynamicResource AccentDim}"
-                            HeightRequest="44"
-                            Stroke="{DynamicResource Accent}"
-                            StrokeShape="RoundRectangle 12"
-                            StrokeThickness="1"
-                            VerticalOptions="Center"
-                            WidthRequest="44">
-                            <mi:MauiIcon
-                                HorizontalOptions="Center"
-                                Icon="{mi:Fluent Icon=ShieldCheckmark24}"
-                                IconColor="{DynamicResource Accent}"
-                                IconSize="24"
-                                VerticalOptions="Center" />
-                        </Border>
-                        <VerticalStackLayout
-                            Grid.Column="1"
-                            Spacing="2"
-                            VerticalOptions="Center">
-                            <Label
-                                FontFamily="{DynamicResource AppFontBold}"
-                                FontSize="{OnIdiom Desktop=14,
-                                                   Default=15}"
-                                Text="obxodka Stream (HTTP/2 TLS 443)" />
-                            <Label
-                                FontSize="{OnIdiom Desktop=11,
-                                                   Default=12}"
-                                LineBreakMode="WordWrap"
-                                Style="{StaticResource LabelMuted}"
-                                Text="Сверхбыстрый защищённый дуплексный поток с нулевой задержкой и динамической маскировкой" />
-                        </VerticalStackLayout>
-                        <Border
-                            Grid.Column="2"
-                            Padding="8,4"
-                            BackgroundColor="{DynamicResource SuccessDim}"
-                            Stroke="{DynamicResource Success}"
-                            StrokeShape="RoundRectangle 8"
-                            StrokeThickness="1"
-                            VerticalOptions="Center">
-                            <Label
-                                FontFamily="{DynamicResource AppFontBold}"
-                                FontSize="10"
-                                Text="АКТИВЕН"
-                                TextColor="{DynamicResource Success}" />
-                        </Border>
-                    </Grid>
+                    <VerticalStackLayout Spacing="0">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <Border
+                                Grid.Column="0"
+                                BackgroundColor="{DynamicResource AccentDim}"
+                                HeightRequest="44"
+                                Stroke="{DynamicResource Accent}"
+                                StrokeShape="RoundRectangle 12"
+                                StrokeThickness="1"
+                                VerticalOptions="Center"
+                                WidthRequest="44">
+                                <mi:MauiIcon
+                                    HorizontalOptions="Center"
+                                    Icon="{mi:Fluent Icon=ShieldCheckmark24}"
+                                    IconColor="{DynamicResource Accent}"
+                                    IconSize="24"
+                                    VerticalOptions="Center" />
+                            </Border>
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    x:Name="ActiveProtocolTitleLabel"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=14,
+                                                       Default=15}"
+                                    Text="Obxodka Stream (HTTP/2 TLS 443)" />
+                                <Label
+                                    x:Name="ActiveProtocolDescLabel"
+                                    FontSize="{OnIdiom Desktop=11,
+                                                       Default=12}"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Многолучевой защищённый дуплексный поток с минимальной задержкой и обходом DPI." />
+                            </VerticalStackLayout>
+                            <Border
+                                x:Name="ActiveProtocolBadgeBorder"
+                                Grid.Column="2"
+                                Padding="8,4"
+                                BackgroundColor="{DynamicResource SuccessDim}"
+                                Stroke="{DynamicResource Success}"
+                                StrokeShape="RoundRectangle 8"
+                                StrokeThickness="1"
+                                VerticalOptions="Center">
+                                <Label
+                                    x:Name="ActiveProtocolBadgeLabel"
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="10"
+                                    Text="АВТО"
+                                    TextColor="{DynamicResource Success}" />
+                            </Border>
+                        </Grid>
+
+                        <FlexLayout
+                            x:Name="RegisteredProtocolsLayout"
+                            Margin="0,12,0,0"
+                            AlignItems="Center"
+                            Direction="Row"
+                            JustifyContent="Start"
+                            Wrap="Wrap" />
+                    </VerticalStackLayout>
                 </Border>
 
                 <Grid
@@ -131,13 +143,37 @@
                         Text="НАДЁЖНОСТЬ И БЕЗОПАСНОСТЬ" />
                 </Grid>
 
+                <Border
+                    x:Name="VpnActiveLockBanner"
+                    Grid.Row="5"
+                    Padding="12,8"
+                    IsVisible="False"
+                    Style="{StaticResource WarningBanner}">
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" VerticalOptions="Center">
+                        <mi:MauiIcon
+                            Grid.Column="0"
+                            Icon="{mi:Fluent Icon=Info20}"
+                            IconColor="{DynamicResource Error}"
+                            IconSize="16"
+                            VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            FontSize="12"
+                            LineBreakMode="WordWrap"
+                            Text="VPN активен — отключите его для изменения сетевых параметров."
+                            TextColor="{DynamicResource Error}"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
                 <Grid
                     x:Name="SecuritySettingsGrid"
-                    Grid.Row="5"
+                    Grid.Row="6"
                     ColumnDefinitions="*"
                     ColumnSpacing="0"
                     RowSpacing="12">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -353,8 +389,50 @@
                     </Border>
 
                     <Border
-                        x:Name="RunOnStartupCard"
+                        x:Name="SyncTimeZoneCard"
                         Grid.Row="5"
+                        Grid.Column="0"
+                        Padding="16,14"
+                        IsVisible="{OnPlatform WinUI=True,
+                                               Default=False}"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Clock24}"
+                                IconColor="{DynamicResource Accent}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <VerticalStackLayout
+                                Grid.Column="1"
+                                Spacing="2"
+                                VerticalOptions="Center">
+                                <Label
+                                    FontFamily="{DynamicResource AppFontBold}"
+                                    FontSize="{OnIdiom Desktop=13.5,
+                                                       Default=15}"
+                                    LineBreakMode="TailTruncation"
+                                    Text="Часовой пояс сервера" />
+                                <Label
+                                    FontSize="{OnIdiom Desktop=11.5,
+                                                       Default=12}"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMuted}"
+                                    Text="Подстраивает пояс Windows под страну VPN и возвращает при отключении." />
+                            </VerticalStackLayout>
+                            <Switch
+                                x:Name="SyncTimeZoneToggle"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                Toggled="OnSyncTimeZoneToggled"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        x:Name="RunOnStartupCard"
+                        Grid.Row="6"
                         Grid.Column="0"
                         Padding="16,14"
                         IsVisible="{OnPlatform WinUI=True,
@@ -396,7 +474,7 @@
 
                     <Border
                         x:Name="SpeedTestCard"
-                        Grid.Row="6"
+                        Grid.Row="7"
                         Grid.Column="0"
                         Padding="16,14"
                         MinimumHeightRequest="66"
@@ -452,7 +530,7 @@
 
                     <Border
                         x:Name="ThemesSettingsCard"
-                        Grid.Row="7"
+                        Grid.Row="8"
                         Grid.Column="0"
                         Padding="16,14"
                         MinimumHeightRequest="66"

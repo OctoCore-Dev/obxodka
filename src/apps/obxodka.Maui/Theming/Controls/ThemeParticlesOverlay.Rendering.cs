@@ -23,10 +23,11 @@ public sealed partial class ThemeParticlesOverlay
         {
             _lastWidth = logicalW;
             _lastHeight = logicalH;
-            foreach (var p in _particles)
+            var initSpan = CollectionsMarshal.AsSpan(_particles);
+            for (var i = 0; i < initSpan.Length; i++)
             {
-                p.X = (float)(_random.NextDouble() * logicalW);
-                p.Y = (float)(_random.NextDouble() * logicalH);
+                initSpan[i].X = (float)(_random.NextDouble() * logicalW);
+                initSpan[i].Y = (float)(_random.NextDouble() * logicalH);
             }
         }
 
@@ -53,12 +54,67 @@ public sealed partial class ThemeParticlesOverlay
         }
 
         canvas.Restore();
+
+        //отрисовка декоративной 9-patch рамки экрана на этом же холсте (single canvas)
+        DrawScreenFrame(canvas, e.Info);
+    }
+
+    //отрисовка рамки экрана в физических координатах единого холста
+    private void DrawScreenFrame(SKCanvas canvas, SKImageInfo info)
+    {
+        if (!_hasScreenFrame || _screenFrameOpacity <= 0.01f)
+        {
+            return;
+        }
+
+        var dst = new SKRect(0, 0, info.Width, info.Height);
+        var alpha = (byte)Math.Clamp(_screenFrameOpacity * 255f, 0f, 255f);
+
+        lock (_frameLock)
+        {
+            if (_frameImage is null)
+            {
+                return;
+            }
+
+            _framePaint.Color = SKColors.White.WithAlpha(alpha);
+            if (_frameUseNinePatch)
+            {
+                canvas.DrawImageNinePatch(_frameImage, _frameCachedCenter, dst, _framePaint);
+                return;
+            }
+
+            canvas.DrawImage(_frameImage, dst, s_samplingOptions, _framePaint);
+        }
+    }
+
+    //получение кэшированного цветового фильтра по квантованной альфе без per-frame аллокаций
+    private SKColorFilter GetCachedTintFilter(byte alphaByte)
+    {
+        if (_lastTintFilterColor != _customTintColor)
+        {
+            ClearTintFilterCache();
+            _lastTintFilterColor = _customTintColor;
+        }
+
+        var bucket = alphaByte >> 3;
+        var cached = _tintFilterCache[bucket];
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        var quantizedAlpha = (byte)Math.Min(255, (bucket << 3) + 7);
+        var created = SKColorFilter.CreateBlendMode(_customTintColor.WithAlpha(quantizedAlpha), SKBlendMode.Modulate);
+        _tintFilterCache[bucket] = created;
+        return created;
     }
 
     //отрисовка частиц созвездий всплесков и спрайтов
     private void DrawParticles(SKCanvas canvas)
     {
-        var connectConstellations = _particles.Count >= 2 &&
+        var particlesSpan = CollectionsMarshal.AsSpan(_particles);
+        var connectConstellations = particlesSpan.Length >= 2 &&
                                     (_connectLines || _screenOverlay is "cyber_hud");
 
         if (connectConstellations)
@@ -67,13 +123,13 @@ public sealed partial class ThemeParticlesOverlay
             const float maxDistSq = maxDist * maxDist;
             var lineBaseColor = _accentSkColor;
 
-            for (var i = 0; i < _particles.Count; i++)
+            for (var i = 0; i < particlesSpan.Length; i++)
             {
-                var p1 = _particles[i];
+                ref readonly var p1 = ref particlesSpan[i];
                 var connections = 0;
-                for (var j = i + 1; j < _particles.Count && connections < 2; j++)
+                for (var j = i + 1; j < particlesSpan.Length && connections < 2; j++)
                 {
-                    var p2 = _particles[j];
+                    ref readonly var p2 = ref particlesSpan[j];
                     var dx = p1.X - p2.X;
                     var dy = p1.Y - p2.Y;
                     var distSq = dx * dx + dy * dy;
@@ -98,8 +154,9 @@ public sealed partial class ThemeParticlesOverlay
         {
             var hasSprites = _spriteBitmaps.Count > 0;
 
-            foreach (var p in _particles)
+            for (var idx = 0; idx < particlesSpan.Length; idx++)
             {
+                ref readonly var p = ref particlesSpan[idx];
                 _ = canvas.Save();
                 canvas.Translate(p.X, p.Y);
                 canvas.RotateDegrees(p.Rotation);
@@ -114,9 +171,7 @@ public sealed partial class ThemeParticlesOverlay
 
                     if (_hasCustomTint)
                     {
-                        var tint = _customTintColor.WithAlpha(alphaByte);
-                        using var cf = SKColorFilter.CreateBlendMode(tint, SKBlendMode.Modulate);
-                        _bitmapPaint.ColorFilter = cf;
+                        _bitmapPaint.ColorFilter = GetCachedTintFilter(alphaByte);
                         _bitmapPaint.Color = SKColors.White;
                         canvas.DrawBitmap(bmp, destRect, s_samplingOptions, _bitmapPaint);
                         _bitmapPaint.ColorFilter = null;
@@ -204,8 +259,10 @@ public sealed partial class ThemeParticlesOverlay
             }
         }
 
-        foreach (var bp in _burstParticles)
+        var burstSpan = CollectionsMarshal.AsSpan(_burstParticles);
+        for (var i = 0; i < burstSpan.Length; i++)
         {
+            ref readonly var bp = ref burstSpan[i];
             var alphaByte = (byte)Math.Clamp(bp.Alpha * 255f, 0f, 255f);
             if (alphaByte == 0)
             {

@@ -364,70 +364,72 @@
                 </Border>
 
                 <Label
-                    Margin="0,6,0,0"
+                    Margin="0,4,0,0"
                     Style="{StaticResource SectionTitle}"
                     Text="УПРАВЛЕНИЕ АККАУНТОМ" />
 
-                <Border
-                    x:Name="CardLogout"
-                    Padding="16,14"
-                    IsVisible="False"
-                    Style="{StaticResource SettingsRowCard}">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnLogoutClicked" />
-                    </Border.GestureRecognizers>
-                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
-                        <mi:MauiIcon
-                            Grid.Column="0"
-                            Icon="{mi:Fluent Icon=SignOut24}"
-                            IconColor="{DynamicResource Error}"
-                            IconSize="22"
-                            VerticalOptions="Center" />
-                        <Label
-                            Grid.Column="1"
-                            FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="15"
-                            Text="Выйти из аккаунта"
-                            TextColor="{DynamicResource Error}"
-                            VerticalOptions="Center" />
-                        <mi:MauiIcon
-                            Grid.Column="2"
-                            Icon="{mi:Fluent Icon=ChevronRight24}"
-                            IconColor="{DynamicResource TextMuted}"
-                            IconSize="18"
-                            VerticalOptions="Center" />
-                    </Grid>
-                </Border>
+                <VerticalStackLayout Spacing="0">
+                    <Border
+                        x:Name="CardLogout"
+                        Padding="16,14"
+                        IsVisible="False"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnLogoutClicked" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=SignOut24}"
+                                IconColor="{DynamicResource Error}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <Label
+                                Grid.Column="1"
+                                FontFamily="{DynamicResource AppFontMedium}"
+                                FontSize="15"
+                                Text="Выйти из аккаунта"
+                                TextColor="{DynamicResource Error}"
+                                VerticalOptions="Center" />
+                            <mi:MauiIcon
+                                Grid.Column="2"
+                                Icon="{mi:Fluent Icon=ChevronRight24}"
+                                IconColor="{DynamicResource TextMuted}"
+                                IconSize="18"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
 
-                <Border
-                    x:Name="CardDeleteAccount"
-                    Padding="16,14"
-                    Style="{StaticResource SettingsRowCard}">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnDeleteAccountClicked" />
-                    </Border.GestureRecognizers>
-                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
-                        <mi:MauiIcon
-                            Grid.Column="0"
-                            Icon="{mi:Fluent Icon=Delete24}"
-                            IconColor="{DynamicResource Error}"
-                            IconSize="22"
-                            VerticalOptions="Center" />
-                        <Label
-                            Grid.Column="1"
-                            FontFamily="{DynamicResource AppFontMedium}"
-                            FontSize="15"
-                            Text="Удалить аккаунт"
-                            TextColor="{DynamicResource Error}"
-                            VerticalOptions="Center" />
-                        <mi:MauiIcon
-                            Grid.Column="2"
-                            Icon="{mi:Fluent Icon=ChevronRight24}"
-                            IconColor="{DynamicResource TextMuted}"
-                            IconSize="18"
-                            VerticalOptions="Center" />
-                    </Grid>
-                </Border>
+                    <Border
+                        x:Name="CardDeleteAccount"
+                        Padding="16,14"
+                        Style="{StaticResource SettingsRowCard}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnDeleteAccountClicked" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                            <mi:MauiIcon
+                                Grid.Column="0"
+                                Icon="{mi:Fluent Icon=Delete24}"
+                                IconColor="{DynamicResource Error}"
+                                IconSize="22"
+                                VerticalOptions="Center" />
+                            <Label
+                                Grid.Column="1"
+                                FontFamily="{DynamicResource AppFontMedium}"
+                                FontSize="15"
+                                Text="Удалить аккаунт"
+                                TextColor="{DynamicResource Error}"
+                                VerticalOptions="Center" />
+                            <mi:MauiIcon
+                                Grid.Column="2"
+                                Icon="{mi:Fluent Icon=ChevronRight24}"
+                                IconColor="{DynamicResource TextMuted}"
+                                IconSize="18"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
 
             </VerticalStackLayout>
         </ScrollView>

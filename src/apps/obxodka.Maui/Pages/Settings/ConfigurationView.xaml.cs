@@ -7,6 +7,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
     private readonly Action? _windowActivatedHandler;
 #endif
 
+    private IVpnService? _vpnService;
+    private bool _isProtocolSubscribed;
     private bool? _isWideSettingsGrid;
     private bool _isUpdating;
 
@@ -28,8 +30,27 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 #else
         RunOnStartupCard.IsVisible = false;
         RuAutoBypassCard.IsVisible = false;
+        SyncTimeZoneCard.IsVisible = false;
 #endif
 
+        UpdateSelectionUi();
+    }
+
+    //привязка к оркестратору vpn для живой синхронизации протоколов и блокировки сетевых настроек
+    public void Initialize(IVpnService vpnService)
+    {
+        _vpnService?.OnStateChanged -= OnVpnStateChanged;
+
+        _vpnService = vpnService;
+        _vpnService.OnStateChanged += OnVpnStateChanged;
+
+        if (!_isProtocolSubscribed)
+        {
+            OctopusEngine.Current.OnProtocolChanged += OnProtocolChanged;
+            _isProtocolSubscribed = true;
+        }
+
+        ApplyVpnLockState(_vpnService.CurrentState);
         UpdateSelectionUi();
     }
 
@@ -48,6 +69,15 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
     //освобождение ресурсов
     public void Dispose()
     {
+        _vpnService?.OnStateChanged -= OnVpnStateChanged;
+        _vpnService = null;
+
+        if (_isProtocolSubscribed)
+        {
+            OctopusEngine.Current.OnProtocolChanged -= OnProtocolChanged;
+            _isProtocolSubscribed = false;
+        }
+
 #if WINDOWS
         if (_windowActivatedHandler is not null)
         {
@@ -73,10 +103,10 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
         var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
             ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
-            : isCompact ? 14.0 : 20.0;
+            : isCompact ? 12.0 : 16.0;
         var bottomPad = !viewport.UseSidebar
-            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
-            : Math.Max(28.0, viewport.SafeBottom + 16.0);
+            ? Math.Max(116.0, viewport.SafeBottom + 98.0)
+            : Math.Max(32.0, viewport.SafeBottom + 20.0);
 
         RootLayoutGrid.Padding = new Thickness(sidePad, 0, sidePad, 0);
         MainContentGrid.HorizontalOptions = LayoutOptions.Fill;
@@ -120,7 +150,11 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 
             Grid.SetRow(RuAutoBypassCard, 2);
             Grid.SetColumn(RuAutoBypassCard, 0);
-            Grid.SetColumnSpan(RuAutoBypassCard, 2);
+            Grid.SetColumnSpan(RuAutoBypassCard, 1);
+
+            Grid.SetRow(SyncTimeZoneCard, 2);
+            Grid.SetColumn(SyncTimeZoneCard, 1);
+            Grid.SetColumnSpan(SyncTimeZoneCard, 1);
 
             Grid.SetRow(RunOnStartupCard, 3);
             Grid.SetColumn(RunOnStartupCard, 0);
@@ -147,6 +181,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
                 ForceCloudflareCard,
                 BlockIpv6Card,
                 RuAutoBypassCard,
+                SyncTimeZoneCard,
                 RunOnStartupCard,
                 SpeedTestCard,
                 ThemesSettingsCard
@@ -176,6 +211,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 #if WINDOWS
             RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
             RuAutoBypassToggle.IsToggled = Preferences.Get(AppPreferenceKeys.BypassRuSites, true);
+            SyncTimeZoneToggle.IsToggled = Preferences.Get(AppPreferenceKeys.SyncTimeZoneWithServer, false);
 #endif
         }
         finally
@@ -257,6 +293,78 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 #endif
     }
 
+    //переключение синхронизации системного часового пояса со страной активного vpn-сервера
+    private void OnSyncTimeZoneToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.SyncTimeZoneWithServer, e.Value);
+#if WINDOWS
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            return;
+        }
+
+        if (e.Value)
+        {
+            if (_vpnService?.CurrentState == AppVpnState.Connected)
+            {
+                WindowsTimeZoneService.SyncToServerLocation(
+                    OctopusEngine.Current.ActiveServerLocation,
+                    OctopusEngine.Current.ActiveServerFlag);
+            }
+        }
+        else
+        {
+            WindowsTimeZoneService.RestoreOriginalIfNeeded("отключение настройки пользователем");
+        }
+#endif
+    }
+
+    //реакция на смену состояния vpn-сессии
+    private void OnVpnStateChanged(AppVpnState state) =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ApplyVpnLockState(state);
+            UpdateSelectionUi();
+        });
+
+    //реакция на бесшовную смену активного транспортного протокола в ядре
+    private void OnProtocolChanged() =>
+        MainThread.BeginInvokeOnMainThread(UpdateSelectionUi);
+
+    //блокировка сетевых переключателей, требующих пересоздания маршрутов или туннеля во время работы vpn
+    private void ApplyVpnLockState(AppVpnState state)
+    {
+        var isLocked = state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting;
+        VpnActiveLockBanner.IsVisible = isLocked;
+        var lockTip = isLocked ? "Отключите VPN для изменения" : null;
+
+        SetLockedSettingRow(ForceCloudflareCard, ForceCloudflareToggle, isLocked, lockTip);
+        SetLockedSettingRow(BlockIpv6Card, BlockIpv6Toggle, isLocked, lockTip);
+#if WINDOWS
+        SetLockedSettingRow(KillSwitchCard, KillSwitchToggle, isLocked, lockTip);
+        SetLockedSettingRow(RuAutoBypassCard, RuAutoBypassToggle, isLocked, lockTip);
+#endif
+    }
+
+    private static void SetLockedSettingRow(Border card, Microsoft.Maui.Controls.Switch toggle, bool isLocked, string? tooltip)
+    {
+        toggle.IsEnabled = !isLocked;
+        card.Opacity = isLocked ? 0.58 : 1.0;
+        if (tooltip is null)
+        {
+            card.ClearValue(ToolTipProperties.TextProperty);
+        }
+        else
+        {
+            ToolTipProperties.SetText(card, tooltip);
+        }
+    }
+
     //актуализация настроек при показе страницы
     public void OnAppearing()
     {
@@ -264,6 +372,11 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 #if WINDOWS
         _ = SyncWindowsStartupStateAsync();
 #endif
+        if (_vpnService is not null)
+        {
+            ApplyVpnLockState(_vpnService.CurrentState);
+        }
+
         UpdateSelectionUi();
     }
 
@@ -276,17 +389,141 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         await this.PlayCardsEntranceAsync(30, 240);
     }
 
-    //отображение активного сетевого протокола и режима стека ip
+    //динамическая синхронизация карточки и чипов протоколов с реестром ядра ProtocolPipelineRegistry
     private void UpdateSelectionUi()
     {
+        var factories = ProtocolPipelineRegistry.GetRegisteredFactories();
         var forceWs = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
         var blockV6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
-        var proto = forceWs
-            ? "Cloudflare WebSocket • 443"
-            : OctopusEngine.Current.IsConnected
-                ? OctopusEngine.Current.ActiveProtocolDisplayName
-                : "obxodka Stream • HTTP/2";
-        CurrentSelectionLabel.Text = blockV6 ? $"{proto} • IPv4 Only" : proto;
+        var engine = OctopusEngine.Current;
+        var vpnState = _vpnService?.CurrentState ?? (engine.IsConnected ? AppVpnState.Connected : AppVpnState.Disconnected);
+        var isConnected = vpnState == AppVpnState.Connected || engine.IsConnected;
+        var isNegotiating = vpnState is AppVpnState.Connecting or AppVpnState.Reconnecting;
+
+        ITransportProtocolFactory? highlightedFactory = null;
+        if ((isConnected || isNegotiating) &&
+            ProtocolPipelineRegistry.TryFindFactoryByProtocolName(engine.ActiveProtocol, out var liveFactory))
+        {
+            highlightedFactory = liveFactory;
+        }
+        else if (forceWs && ProtocolPipelineRegistry.TryGetFactory(TransportProtocolKind.ObxodkaWebSocket, out var wsFactory))
+        {
+            highlightedFactory = wsFactory;
+        }
+        else if (factories.Count > 0)
+        {
+            highlightedFactory = factories[0];
+        }
+
+        var liveBadge = isConnected
+            ? ProtocolPipelineRegistry.FormatLiveStatusBadge(engine.ActiveProtocol, engine.ActiveRays)
+            : highlightedFactory is not null
+                ? $"{highlightedFactory.FriendlyName} • {highlightedFactory.TransportSummary}"
+                : "Obxodka Stream • HTTP/2";
+
+        CurrentSelectionLabel.Text = blockV6 ? $"{liveBadge} • IPv4 Only" : liveBadge;
+
+        var chainNames = string.Join(" → ", factories.Select(f => f.ShortTag));
+        ProtocolSubtitleLabel.Text = forceWs
+            ? $"Принудительный облачный режим через WebSocket CDN. Доступные транспорты ядра: {chainNames}."
+            : $"Автоматический круговой конвейер транспортов: {chainNames}.";
+
+        if (highlightedFactory is not null)
+        {
+            ActiveProtocolTitleLabel.Text = isConnected && highlightedFactory.Kind == TransportProtocolKind.ObxodkaStream
+                ? $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary} • {Math.Max(1, engine.ActiveRays)}L)"
+                : $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary})";
+            ActiveProtocolDescLabel.Text = highlightedFactory.Description;
+        }
+
+        var successColor = EmeraldColor;
+        var accentColor = CyanColor;
+        var successDim = Application.Current?.Resources.TryGetValue("SuccessDim", out var sd) == true && sd is Color sdc
+            ? sdc
+            : successColor.WithAlpha(0.14f);
+        var accentDim = Application.Current?.Resources.TryGetValue("AccentDim", out var ad) == true && ad is Color adc
+            ? adc
+            : accentColor.WithAlpha(0.14f);
+
+        if (isConnected)
+        {
+            ActiveProtocolBadgeLabel.Text = "АКТИВЕН";
+            ActiveProtocolBadgeLabel.TextColor = successColor;
+            ActiveProtocolBadgeBorder.BackgroundColor = successDim;
+            ActiveProtocolBadgeBorder.Stroke = successColor;
+        }
+        else if (isNegotiating)
+        {
+            ActiveProtocolBadgeLabel.Text = "ПОДБОР";
+            ActiveProtocolBadgeLabel.TextColor = accentColor;
+            ActiveProtocolBadgeBorder.BackgroundColor = accentDim;
+            ActiveProtocolBadgeBorder.Stroke = accentColor;
+        }
+        else
+        {
+            ActiveProtocolBadgeLabel.Text = forceWs ? "ПРИНУДИТ." : "АВТО";
+            ActiveProtocolBadgeLabel.TextColor = accentColor;
+            ActiveProtocolBadgeBorder.BackgroundColor = accentDim;
+            ActiveProtocolBadgeBorder.Stroke = accentColor;
+        }
+
+        RenderRegisteredProtocolPills(factories, highlightedFactory, isConnected);
+    }
+
+    //динамическая отрисовка списка всех зарегистрированных в ядре транспортов без фиксированной высоты (winui 3 safe)
+    private void RenderRegisteredProtocolPills(
+        IReadOnlyList<ITransportProtocolFactory> factories,
+        ITransportProtocolFactory? highlightedFactory,
+        bool isConnected)
+    {
+        if (RegisteredProtocolsLayout is null)
+        {
+            return;
+        }
+
+        RegisteredProtocolsLayout.Children.Clear();
+        var bgElevated = Application.Current?.Resources.TryGetValue("BgElevated", out var bg) == true && bg is Color bgc
+            ? bgc
+            : Color.FromArgb("#202030");
+        var borderSubtle = Application.Current?.Resources.TryGetValue("BorderSubtle", out var bs) == true && bs is Color bsc
+            ? bsc
+            : Color.FromArgb("#282838");
+        var textMuted = Application.Current?.Resources.TryGetValue("TextMuted", out var tm) == true && tm is Color tmc
+            ? tmc
+            : Color.FromArgb("#9CA3AF");
+        var accent = isConnected ? EmeraldColor : CyanColor;
+        var accentBg = accent.WithAlpha(0.16f);
+
+        foreach (var factory in factories)
+        {
+            var isSelected = highlightedFactory is not null && factory.Kind == highlightedFactory.Kind;
+            var labelText = isSelected && isConnected && factory.Kind == TransportProtocolKind.ObxodkaStream
+                ? $"{factory.ShortTag} • {Math.Max(1, OctopusEngine.Current.ActiveRays)}L"
+                : factory.ShortTag;
+
+            var pillLabel = new Label
+            {
+                Text = labelText,
+                FontSize = 11,
+                TextColor = isSelected ? accent : textMuted,
+                VerticalOptions = LayoutOptions.Center
+            };
+            pillLabel.SetDynamicResource(Label.FontFamilyProperty, isSelected ? "AppFontBold" : "AppFontMedium");
+
+            var pill = new Border
+            {
+                Margin = new Thickness(0, 0, 6, 4),
+                Padding = new Thickness(9, 4),
+                BackgroundColor = isSelected ? accentBg : bgElevated,
+                Stroke = isSelected ? accent : borderSubtle,
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(8) },
+                VerticalOptions = LayoutOptions.Center,
+                Content = pillLabel
+            };
+            ToolTipProperties.SetText(pill, $"{factory.FriendlyName} ({factory.TransportSummary}) — {factory.Description}");
+            RegisteredProtocolsLayout.Children.Add(pill);
+        }
     }
 
     //применение цветов фона и границ карточек настроек
@@ -311,6 +548,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         BlockIpv6Card.Stroke = borderSubtle;
         RuAutoBypassCard.BackgroundColor = bgSurface;
         RuAutoBypassCard.Stroke = borderSubtle;
+        SyncTimeZoneCard.BackgroundColor = bgSurface;
+        SyncTimeZoneCard.Stroke = borderSubtle;
         RunOnStartupCard.BackgroundColor = bgSurface;
         RunOnStartupCard.Stroke = borderSubtle;
         SpeedTestCard.BackgroundColor = bgSurface;

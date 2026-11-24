@@ -1,5 +1,4 @@
-- RuSubnetRegistry: zero-allocation auto-bypass for all 11,467 Russian subnets (domestic services bypass VPN seamlessly).
-- Fixed potential buffer overflow in port mapping tables (eliminated AccessViolationException).
-- Smart MTU clamping and zero-loss packet fragmentation for gaming and voice calls.
-- Resilient Uplink Guard and seamless Cloudflare Anycast shield failover against DPI filtering.
-- Refined NeoDialog popups and always-interactive tunnel controls.
+- Fixed Microsoft Store installation error (0x80073CF6) and Windows GUI launch without terminal window.
+- Fixed Android TLS chain & wildcard SAN validation plus XHTTP/WS failover stability against DPI blocks.
+- Major UI performance upgrade: Single Canvas rendering, GPU sidebar, virtualized Split Tunneling, and live traffic graph.
+- Added server timezone sync, WebRTC STUN leak protection, live active protocol indicator, and settings lock while VPN is active.

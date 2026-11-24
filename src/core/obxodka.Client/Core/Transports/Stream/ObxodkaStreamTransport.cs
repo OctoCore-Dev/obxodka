@@ -97,6 +97,9 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
     //эффективный рабочий порт сервера
     public int EffectivePort { get; private set; } = serverPort;
 
+    //текущее число активных лучей многолучевого транспорта
+    public int ActiveRayCount => Volatile.Read(ref _activeRays);
+
     //глобальный хук создания сокета
     public static Action<Socket>? OnSocketCreated { get; set; }
 

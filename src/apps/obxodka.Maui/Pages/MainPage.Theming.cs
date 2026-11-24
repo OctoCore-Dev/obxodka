@@ -62,8 +62,22 @@ public sealed partial class MainPage
     public void NotifyVpnDisconnected()
     {
         DesktopSidebar.UpdateVpnStatus(false);
-        _vpnCts?.Cancel();
-        _vpnCts = null;
+        var prevCts = Interlocked.Exchange(ref _vpnCts, null);
+        if (prevCts is not null)
+        {
+            try
+            {
+                prevCts.Cancel();
+            }
+            catch
+            {
+                // ignored
+            }
+            finally
+            {
+                prevCts.Dispose();
+            }
+        }
 
         ThemeParticles?.TriggerVpnStateEffect(AppVpnState.Disconnected);
         ThemeParticles?.SetTrafficSpeedMbps(0);
@@ -84,8 +98,8 @@ public sealed partial class MainPage
 
         try
         {
-            var bytes = File.ReadAllBytes(path);
-            return ImageSource.FromStream(() => new MemoryStream(bytes));
+            //не удерживаем сырой byte[] в замыкании лямбды — читаем с диска по требованию и отпускаем память после декодирования
+            return ImageSource.FromStream(() => new MemoryStream(File.ReadAllBytes(path), false));
         }
         catch (Exception ex)
         {
@@ -158,9 +172,14 @@ public sealed partial class MainPage
         {
             ThemeTransitionTitle.Text = title;
             ThemeTransitionSubtitle.Text = subtitle ?? "Настройка визуального оформления";
+            ThemeTransitionSpinner.IsRunning = true;
+            if (ThemeTransitionOverlay.IsVisible && ThemeTransitionOverlay.Opacity >= 0.9)
+            {
+                return;
+            }
+
             ThemeTransitionOverlay.Opacity = 0;
             ThemeTransitionOverlay.IsVisible = true;
-            ThemeTransitionSpinner.IsRunning = true;
             _ = await ThemeTransitionOverlay.FadeToAsync(1.0, 140, Easing.CubicOut);
         }
         catch
@@ -241,11 +260,11 @@ public sealed partial class MainPage
                 var hasScreenFrame = !string.IsNullOrEmpty(e.ScreenFramePath) && File.Exists(e.ScreenFramePath);
                 if (framesEnabled && hasScreenFrame)
                 {
-                    ThemeScreenFrameOverlay.SetFrame(e.ScreenFramePath, e.FrameSlice);
+                    ThemeParticles.SetScreenFrame(e.ScreenFramePath, e.FrameSlice);
                 }
                 else
                 {
-                    ThemeScreenFrameOverlay.Clear();
+                    ThemeParticles.ClearScreenFrame();
                 }
 
                 var hasTopDecorations = false;
@@ -258,8 +277,7 @@ public sealed partial class MainPage
 
                 var hasDecorations = hasTopDecorations || hasBottomDecorations;
                 _hasThemeCornerDecorations = hasDecorations;
-                ThemeScreenFrameOverlay.IsVisible = framesEnabled && hasScreenFrame;
-                ThemeDecorationsContainer.IsVisible = framesEnabled && (hasScreenFrame || hasDecorations);
+                ThemeDecorationsContainer.IsVisible = framesEnabled && hasDecorations;
                 ThemeDecorationsContainer.Opacity = 1.0;
                 ThemeDecorationsContainer.TranslationX = 0;
                 ThemeDecorationsContainer.TranslationY = 0;
@@ -420,10 +438,11 @@ public sealed partial class MainPage
                 ThemeBackgroundMover.TranslationX = 0;
                 ThemeBackgroundMover.TranslationY = 0;
                 ClearImageElement(ThemeBackgroundImage);
+                ThemeBackgroundImage.Opacity = 1.0;
                 ThemeBackgroundImage.Scale = 1.0;
                 ThemeBackgroundImage.TranslationX = 0;
                 ThemeBackgroundImage.TranslationY = 0;
-                ThemeScreenFrameOverlay.Clear();
+                ThemeParticles.ClearScreenFrame();
                 ClearImageElement(ThemeCornerTopLeft);
                 ClearImageElement(ThemeCornerTopRight);
                 ClearImageElement(ThemeCornerBottomLeft);
@@ -441,6 +460,10 @@ public sealed partial class MainPage
                 _hasThemeCornerDecorations = false;
                 _activeParticleSpritePaths = null;
                 _activeVfx = null;
+                _activeParticlePrimary = Colors.Transparent;
+                _activeParticleAccent = Colors.Transparent;
+
+                ThemeAudioService.ReleaseMediaResources();
 
 #if WINDOWS
                 WinUiMainPageHelper.StopVideoPlayer(ThemeBackgroundVideo);
@@ -458,9 +481,12 @@ public sealed partial class MainPage
                 ThemeBackgroundVideo.IsVisible = false;
                 ThemeBackgroundVideo.Source = null;
                 ThemeBackgroundVideoDimmer.IsVisible = false;
+                ThemeBackgroundVideoDimmer.Color = Colors.Transparent;
+                ThemeBackgroundVideoDimmer.Opacity = 0;
 
                 _tabContentVpn?.ResetThemeButton();
                 NotifyViewsThemeChanged();
+                ScheduleMemoryTrim();
             }
             catch (Exception ex)
             {
@@ -489,15 +515,14 @@ public sealed partial class MainPage
             var hasFrame = !string.IsNullOrEmpty(_activeThemeScreenFramePath) && File.Exists(_activeThemeScreenFramePath);
             if (enabled && hasFrame)
             {
-                ThemeScreenFrameOverlay.SetFrame(_activeThemeScreenFramePath, _activeThemeFrameSlice);
+                ThemeParticles.SetScreenFrame(_activeThemeScreenFramePath, _activeThemeFrameSlice);
             }
             else
             {
-                ThemeScreenFrameOverlay.Clear();
+                ThemeParticles.ClearScreenFrame();
             }
 
-            ThemeScreenFrameOverlay.IsVisible = enabled && hasFrame;
-            ThemeDecorationsContainer.IsVisible = enabled && (hasFrame || _hasThemeCornerDecorations);
+            ThemeDecorationsContainer.IsVisible = enabled && _hasThemeCornerDecorations;
             ThemeParticles.InvalidateSurface();
             _tabContentVpn?.SetCardFrameVisibility(enabled);
         });
@@ -566,7 +591,6 @@ public sealed partial class MainPage
                             }
                         }
 
-                        _tabContentVpn?.OnWindowFocusChanged(true);
                         break;
                     }
                 case false when !_isWindowActive:
@@ -595,7 +619,6 @@ public sealed partial class MainPage
                             }
                         }
 
-                        _tabContentVpn?.OnWindowFocusChanged(false);
                         break;
                     }
             }

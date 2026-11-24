@@ -121,7 +121,7 @@ internal static partial class Win32WfpLeakGuard
             var committed = false;
             try
             {
-                if (TryAddPermitIpv4RemoteSubnetUnsafe(netHost, maskHost, 12, "Obxodka Allow SplitV4", out var filterId))
+                if (TryAddPermitIpv4RemoteSubnetUnsafe(netHost, maskHost, 11, "Obxodka Allow SplitV4", out var filterId))
                 {
                     s_activeFilterIds.Add(filterId);
                 }
@@ -270,10 +270,10 @@ internal static partial class Win32WfpLeakGuard
                 AddPermitAppRulesUnsafe(Environment.ProcessPath, "Obxodka Allow Self", newIds);
             }
 
-            //приоритет 13: жестко блокировать прямой dns (порт 53) мимо туннеля и loopback
+            //приоритет 14: жестко блокировать прямой dns (порт 53) мимо туннеля и loopback
             AddBlockDnsPortRulesUnsafe(newIds);
 
-            //приоритет 12: разрешить ip vpn-серверов на физическом адаптере
+            //приоритет 13: разрешить ip vpn-серверов на физическом адаптере
             foreach (var serverIp in s_serverIps)
             {
                 if (!IPAddress.TryParse(serverIp, out var parsed))
@@ -284,7 +284,7 @@ internal static partial class Win32WfpLeakGuard
                 if (parsed.AddressFamily == AddressFamily.InterNetwork)
                 {
                     var hostIp = ReadIpv4HostOrder(parsed);
-                    if (TryAddPermitIpv4RemoteSubnetUnsafe(hostIp, 0xFFFFFFFFu, 12, "Obxodka Allow ServerV4", out var id))
+                    if (TryAddPermitIpv4RemoteSubnetUnsafe(hostIp, 0xFFFFFFFFu, 13, "Obxodka Allow ServerV4", out var id))
                     {
                         newIds.Add(id);
                     }
@@ -296,10 +296,13 @@ internal static partial class Win32WfpLeakGuard
                 }
             }
 
-            //приоритет 12: разрешить локальную сеть (lan / link-local / dhcp / multicast link)
+            //приоритет 13: разрешить локальную сеть (lan / link-local / dhcp / multicast link)
             AddPermitLanRulesUnsafe(newIds);
 
-            //приоритет 12: разрешить правила активного split tunnel только при активном туннеле (не в режиме kill-switch обрыва)
+            //приоритет 12: блокировать прямой webrtc stun/turn (3478, 5349, 19302) мимо туннеля поверх ру-суперсетей
+            AddBlockDirectStunPortRulesUnsafe(newIds);
+
+            //приоритет 13 (приложения) / 11 (подсети): разрешить правила активного split tunnel только при активном туннеле
             if (s_splitEnabled && s_tunLuid != 0)
             {
                 AddSplitTunnelPermitRulesUnsafe(newIds);
@@ -444,14 +447,41 @@ internal static partial class Win32WfpLeakGuard
                 ConditionValue = new FwpConditionValue0 { Type = FwpUint16, Uint16 = 53 }
             };
 
-            if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV4, FwpActionBlock, 13, "Obxodka Block DnsV4", (IntPtr)(&cond), 1, out var id4))
+            if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV4, FwpActionBlock, 14, "Obxodka Block DnsV4", (IntPtr)(&cond), 1, out var id4))
             {
                 outIds.Add(id4);
             }
 
-            if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionBlock, 13, "Obxodka Block DnsV6", (IntPtr)(&cond), 1, out var id6))
+            if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionBlock, 14, "Obxodka Block DnsV6", (IntPtr)(&cond), 1, out var id6))
             {
                 outIds.Add(id6);
+            }
+        }
+    }
+
+    //блокировка прямого webrtc stun/turn трафика (3478, 5349, 19302) в обход туннеля для защиты от утечки ip через ру-суперсети
+    private static void AddBlockDirectStunPortRulesUnsafe(List<ulong> outIds)
+    {
+        unsafe
+        {
+            foreach (var port in StunPacketInspector.StandardStunPorts)
+            {
+                var cond = new FwpmFilterCondition0
+                {
+                    FieldKey = s_condIpRemotePort,
+                    MatchType = FwpMatchEqual,
+                    ConditionValue = new FwpConditionValue0 { Type = FwpUint16, Uint16 = port }
+                };
+
+                if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV4, FwpActionBlock, 12, $"Obxodka Block StunV4 {port}", (IntPtr)(&cond), 1, out var id4))
+                {
+                    outIds.Add(id4);
+                }
+
+                if (TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionBlock, 12, $"Obxodka Block StunV6 {port}", (IntPtr)(&cond), 1, out var id6))
+                {
+                    outIds.Add(id6);
+                }
             }
         }
     }
@@ -470,7 +500,7 @@ internal static partial class Win32WfpLeakGuard
 
         foreach (var (net, mask) in v4Lan)
         {
-            if (TryAddPermitIpv4RemoteSubnetUnsafe(net, mask, 12, "Obxodka Allow LanV4", out var id4))
+            if (TryAddPermitIpv4RemoteSubnetUnsafe(net, mask, 13, "Obxodka Allow LanV4", out var id4))
             {
                 outIds.Add(id4);
             }
@@ -530,7 +560,7 @@ internal static partial class Win32WfpLeakGuard
 
         foreach (var path in allowedPaths)
         {
-            AddPermitAppRulesUnsafe(path, "Obxodka Allow SplitApp", outIds, 12);
+            AddPermitAppRulesUnsafe(path, "Obxodka Allow SplitApp", outIds, 13);
         }
 
         foreach (var (netNetOrder, maskNetOrder) in s_splitPinnedRoutes)
@@ -542,7 +572,7 @@ internal static partial class Win32WfpLeakGuard
                 continue;
             }
 
-            if (TryAddPermitIpv4RemoteSubnetUnsafe(netHost, maskHost, 12, "Obxodka Allow SplitV4", out var id4))
+            if (TryAddPermitIpv4RemoteSubnetUnsafe(netHost, maskHost, 11, "Obxodka Allow SplitV4", out var id4))
             {
                 outIds.Add(id4);
             }
@@ -595,7 +625,7 @@ internal static partial class Win32WfpLeakGuard
                 ConditionValue = new FwpConditionValue0 { Type = FwpV6AddrMask, Ptr = (IntPtr)(&v6Mask) }
             };
 
-            return TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionPermit, 12, name, (IntPtr)(&cond), 1, out filterId);
+            return TryAddSimpleFilterUnsafe(s_layerAleAuthConnectV6, FwpActionPermit, 13, name, (IntPtr)(&cond), 1, out filterId);
         }
     }
 

@@ -25,6 +25,7 @@ global using obxodka.Client.Platforms;
 global using obxodka.Client.Telemetry;
 global using obxodka.Config;
 global using obxodka.Core;
+global using obxodka.Core.Pipeline;
 global using obxodka.Core.Transports;
 global using obxodka.Controls.Dialogs;
 global using obxodka.Controls.Ui;

@@ -112,12 +112,14 @@ public sealed partial class MainPage
             }
 
             _isDecorationsFaded = true;
+            ThemeParticles?.SetScreenFrameOpacity(0f);
             ThemeDecorationsContainer.CancelAnimations();
             _ = ThemeDecorationsContainer.FadeToAsync(0.0, 120, Easing.CubicOut);
         }
         else if (_isDecorationsFaded)
         {
             _isDecorationsFaded = false;
+            ThemeParticles?.SetScreenFrameOpacity(1f);
             ThemeDecorationsContainer.CancelAnimations();
             _ = ThemeDecorationsContainer.FadeToAsync(1.0, 180, Easing.CubicIn);
         }
@@ -146,6 +148,7 @@ public sealed partial class MainPage
         }
 
         _isDecorationsFaded = false;
+        ThemeParticles?.SetScreenFrameOpacity(1f);
         ThemeDecorationsContainer.CancelAnimations();
         _ = ThemeDecorationsContainer.FadeToAsync(1.0, 180, Easing.CubicIn);
     }
@@ -238,13 +241,16 @@ public sealed partial class MainPage
                 }
             }
 
-            _tabContentVpn?.OnWindowFocusChanged(true);
+            _tabContentVpn?.OnWindowVisibilityChanged(true);
             if (!string.IsNullOrEmpty(_activeTab) && _activeTab != "auth")
             {
                 _ = SyncBalanceFromServerAsync();
             }
         });
     }
+
+    private void OnWindowVisibilityChanged(bool isVisible) =>
+        MainThread.BeginInvokeOnMainThread(() => _tabContentVpn?.OnWindowVisibilityChanged(isVisible));
 
     private void OnWindowDeactivated()
     {
@@ -280,8 +286,6 @@ public sealed partial class MainPage
                     // ignored
                 }
             }
-
-            _tabContentVpn?.OnWindowFocusChanged(false);
         });
     }
 }

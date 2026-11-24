@@ -39,21 +39,11 @@ public sealed partial class VpnView
         canvas.DrawBitmap(bmp, new SKRect(0, 0, bmp.Width, bmp.Height), dst, sampling, _customButtonBitmapPaint);
     }
 
-    //приостановка анимации кнопки при сворачивании окна
-    public void OnWindowFocusChanged(bool isFocused)
+    //приостановка анимаций вкладки только при реальном скрытии или сворачивании окна (но не при потере фокуса на рабочем столе)
+    public void OnWindowVisibilityChanged(bool isVisible)
     {
-        _isWindowFocused = isFocused;
-        if (!isFocused)
-        {
-            StopButtonAnimation();
-        }
-        else
-        {
-            if (CustomButtonAnimatedCanvas.IsVisible && _buttonAnimatedCurrent is not null)
-            {
-                StartButtonAnimation();
-            }
-        }
+        _isWindowVisible = isVisible;
+        SyncAnimationLoops();
     }
 
     //шаг обновления кадра кастомной анимированной кнопки темы
@@ -95,7 +85,7 @@ public sealed partial class VpnView
     //запуск цикла анимации кастомной кнопки темы
     private void StartButtonAnimation()
     {
-        if (!_isWindowFocused)
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
         {
             return;
         }
@@ -413,7 +403,7 @@ public sealed partial class VpnView
         _activeCardFramePath = null;
         DisposeAnimatedButtonResources();
 
-        MainThread.BeginInvokeOnMainThread(() =>
+        void ApplyResetOnMainThread()
         {
             CardFrameImage.IsVisible = false;
             CardFrameImage.Source = null;
@@ -421,7 +411,16 @@ public sealed partial class VpnView
             CustomButtonRingImage.Source = null;
             ResetCustomButtonStateOnly();
             OnThemeChanged();
-        });
+        }
+
+        if (MainThread.IsMainThread)
+        {
+            ApplyResetOnMainThread();
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(ApplyResetOnMainThread);
+        }
     }
 
     //управление видимостью декоративной рамки карточки

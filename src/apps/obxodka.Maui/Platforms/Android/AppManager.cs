@@ -13,6 +13,7 @@ public sealed class AppManager : IAppManager
     private const string BypassedAppsKey = "obxodka_bypassed_apps";
 
     private const string SplitInitializedKey = "obxodka_split_initialized";
+    private static readonly Lock s_cacheLock = new();
     private static List<AppInfoItem>? s_cachedApps;
 
     private static readonly HashSet<string> s_defaultCloakedPackages =
@@ -59,14 +60,17 @@ public sealed class AppManager : IAppManager
 
             var bypassed = GetBypassedPackages().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            if (s_cachedApps is not null && s_cachedApps.Count > 0)
+            lock (s_cacheLock)
             {
-                foreach (var app in s_cachedApps)
+                if (s_cachedApps is { Count: > 0 })
                 {
-                    app.IsBypassed = bypassed.Contains(app.PackageName);
-                }
+                    foreach (var app in s_cachedApps)
+                    {
+                        app.IsBypassed = bypassed.Contains(app.PackageName);
+                    }
 
-                return [.. s_cachedApps];
+                    return [.. s_cachedApps];
+                }
             }
 
             var cacheDir = FileSystem.Current.CacheDirectory;
@@ -153,11 +157,16 @@ public sealed class AppManager : IAppManager
                 }
             }
 
-            s_cachedApps = [.. apps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
+            List<AppInfoItem> sortedSnapshot;
+            lock (s_cacheLock)
+            {
+                s_cachedApps = [.. apps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)];
+                sortedSnapshot = [.. s_cachedApps];
+            }
 
             if (pendingIcons.Count <= 0)
             {
-                return [.. s_cachedApps];
+                return sortedSnapshot;
             }
 
             {
@@ -168,8 +177,8 @@ public sealed class AppManager : IAppManager
 
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(180).ConfigureAwait(false);
-                    var batch = new List<(AppInfoItem Target, string Path)>(35);
+                    await Task.Delay(120).ConfigureAwait(false);
+                    var batch = new List<(AppInfoItem Target, string Path)>(12);
                     foreach (var (appInfo, pkgName, iconPath) in orderedPending)
                     {
                         try
@@ -181,17 +190,19 @@ public sealed class AppManager : IAppManager
                                     batch.Add((existingTarget, iconPath));
                                 }
                             }
-                            else if (appInfo.LoadIcon(pm) is { } drawable)
+                            else
                             {
-                                var width = Math.Clamp(drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48, 32, 56);
-                                var height = Math.Clamp(drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48, 32, 56);
-                                using var bmp = Bitmap.CreateBitmap(
-                                    width,
-                                    height,
-                                    Bitmap.Config.Argb8888!);
-
+                                using var drawable = appInfo.LoadIcon(pm);
+                                if (drawable is not null)
                                 {
-                                    var canvas = new Canvas(bmp);
+                                    var width = Math.Clamp(drawable.IntrinsicWidth > 0 ? drawable.IntrinsicWidth : 48, 32, 56);
+                                    var height = Math.Clamp(drawable.IntrinsicHeight > 0 ? drawable.IntrinsicHeight : 48, 32, 56);
+                                    using var bmp = Bitmap.CreateBitmap(
+                                        width,
+                                        height,
+                                        Bitmap.Config.Argb8888!);
+
+                                    using var canvas = new Canvas(bmp);
                                     drawable.SetBounds(0, 0, canvas.Width, canvas.Height);
                                     drawable.Draw(canvas);
 
@@ -206,7 +217,7 @@ public sealed class AppManager : IAppManager
                                 }
                             }
 
-                            if (batch.Count < 35)
+                            if (batch.Count < 12)
                             {
                                 continue;
                             }
@@ -220,7 +231,7 @@ public sealed class AppManager : IAppManager
                                     target.IconPath = path;
                                 }
                             });
-                            await Task.Delay(45).ConfigureAwait(false);
+                            await Task.Delay(24).ConfigureAwait(false);
                         }
                         catch
                         {
@@ -243,7 +254,7 @@ public sealed class AppManager : IAppManager
                 });
             }
 
-            return [.. s_cachedApps];
+            return sortedSnapshot;
         });
 
     //получение списка пакетов приложений исключенных из маршрутизации vpn
@@ -319,10 +330,12 @@ public sealed class AppManager : IAppManager
                 .Distinct(StringComparer.OrdinalIgnoreCase)
         ];
 
-        //запись в постоянный json файл
+        //атомарная запись в постоянный json файл через временный файл
         try
         {
-            File.WriteAllText(PersistentFilePath, JsonSerializer.Serialize(cleaned));
+            var tmpPath = $"{PersistentFilePath}.tmp";
+            File.WriteAllText(tmpPath, JsonSerializer.Serialize(cleaned));
+            File.Move(tmpPath, PersistentFilePath, true);
         }
         catch
         {
@@ -334,15 +347,18 @@ public sealed class AppManager : IAppManager
         Preferences.Set(SplitInitializedKey, true);
 
         //обновление кэша в памяти
-        if (s_cachedApps is null)
+        lock (s_cacheLock)
         {
-            return;
-        }
+            if (s_cachedApps is null)
+            {
+                return;
+            }
 
-        var set = cleaned.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var app in s_cachedApps)
-        {
-            app.IsBypassed = set.Contains(app.PackageName);
+            var set = cleaned.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var app in s_cachedApps)
+            {
+                app.IsBypassed = set.Contains(app.PackageName);
+            }
         }
     }
 }

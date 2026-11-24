@@ -35,7 +35,6 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
     private bool _isBusy;
     private bool _isErrorState;
     private bool _showIpV6;
-    private string? _activeConnectedNode;
     private string? _lastErrorMessage;
     private VpnServerDto? _selectedServer;
     private List<VpnServerDto> _cachedServers = [];
@@ -119,8 +118,20 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
     private float _shockwaveProgress = -1f;
     private bool _shockwaveIsConnect;
     private float _loaderAngle;
+    private float _loaderScale = 1f;
+    private float _loaderOpacity;
+    private float _auraOpacity;
+    private bool _loaderShouldRun;
+    private bool _auraPulseActive;
+    private bool _isTabVisible = true;
+    private bool _disposed;
+    private int _vpnUiStateGeneration;
     private float _reactorTransitionFactor;
     private float _errorTransitionFactor;
+    private readonly SKPath?[] _cachedCrystalPolys = new SKPath?[5];
+    private SKPath? _cachedRuneHexPoly;
+    private SKPath? _cachedRuneTriPoly;
+    private float _cachedPolyRadius = -1f;
 
     private static readonly (float speed, float delay, float ox, float oy, float size, int sides)[] s_polyConfigs =
     [
@@ -215,12 +226,13 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
     private IDispatcherTimer? _buttonAnimationTimer;
 #endif
     private CancellationTokenSource? _buttonAnimCts;
-    private bool _isWindowFocused = true;
+    private bool _isWindowVisible = true;
 
     public VpnView()
     {
         InitializeComponent();
-        Unloaded += (_, _) => Dispose();
+        Loaded += (_, _) => OnTabVisibilityChanged(IsVisible);
+        Unloaded += (_, _) => OnTabVisibilityChanged(false);
     }
 
     //инициализация сервисов и подписка на события туннеля
@@ -272,17 +284,28 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
         PlatformServices.Notification.ReconnectRequested -= HandleNotificationReconnect;
 
         StopLoaderAnimation(false);
+        SetAuraActive(false, animate: false);
         StopGraphAnimation();
         DisposeAnimatedButtonResources();
         _ = this.AbortAnimation("ReactorMorph");
         _ = this.AbortAnimation("ErrorMorph");
         _ = this.AbortAnimation("ButtonShockwave");
+        _ = this.AbortAnimation("LoaderScale");
+        _ = this.AbortAnimation("LoaderFade");
+        _ = this.AbortAnimation("AuraFade");
     }
 
-    //освобождение битмапов покадровой анимации
+    //освобождение битмапов покадровой анимации и ресурсов skia
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         UnsubscribeEvents();
+        DisposePolygonCache();
         _polyGlowPaint.MaskFilter?.Dispose();
         _polyGlowPaint.Dispose();
         _polyCorePaint.Dispose();

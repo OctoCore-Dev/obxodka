@@ -150,7 +150,7 @@ public sealed class TelemetryService : ITelemetryService, IDisposable
         var email = PlatformServices.Preferences.Get(AppPreferenceKeys.UserEmail, string.Empty);
 
         var safeMsg = message.Length > 1024 ? message[..1024] : message;
-        var stack = ex?.ToString() ?? string.Empty;
+        var stack = ex is not null ? AppLogger.FormatExceptionDetails(ex) : string.Empty;
         var safeStack = stack.Length > 4096 ? stack[..4096] : stack;
 
         var dto = new TelemetryDto(hwid, appVersion, safeMsg, safeStack, string.IsNullOrWhiteSpace(email) ? null : email,

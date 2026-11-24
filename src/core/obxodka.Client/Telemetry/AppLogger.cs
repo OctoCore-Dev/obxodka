@@ -217,13 +217,40 @@ public static class AppLogger
         LogErrorInternal(message, ex, "ERROR");
 
     //запись фатального падения процесса в crash.log
+    //форматирование полного стека исключения с разворачиванием AggregateException
+    internal static string FormatExceptionDetails(Exception ex)
+    {
+        if (ex is AggregateException agg)
+        {
+            var flat = agg.Flatten();
+            if (flat.InnerExceptions.Count == 1)
+            {
+                return flat.InnerExceptions[0].ToString();
+            }
+
+            if (flat.InnerExceptions.Count > 1)
+            {
+                var sb = new StringBuilder();
+                _ = sb.Append(CultureInfo.InvariantCulture, $"AggregateException ({flat.InnerExceptions.Count} inner):");
+                for (var i = 0; i < flat.InnerExceptions.Count; i++)
+                {
+                    _ = sb.Append(CultureInfo.InvariantCulture, $"\n--- Inner[{i}] ---\n{flat.InnerExceptions[i]}");
+                }
+
+                return sb.ToString();
+            }
+        }
+
+        return ex.ToString();
+    }
+
     public static void LogCrash(string message, Exception? ex = null)
     {
         LogErrorInternal(message, ex, "FATAL");
         try
         {
             var fullMessage = ex != null
-                ? $"{message} | Exception: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}"
+                ? $"{message} | Exception: {FormatExceptionDetails(ex)}"
                 : message;
             var crashEntry = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff UTC}] [FATAL CRASH] {fullMessage}\n";
             File.AppendAllText(CrashLogFilePath, crashEntry);
@@ -243,7 +270,7 @@ public static class AppLogger
         }
 
         var fullMessage = ex != null
-            ? $"{message} | Exception: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}"
+            ? $"{message} | Exception: {FormatExceptionDetails(ex)}"
             : message;
 
         var item = new LogItem(DateTime.Now, "ERROR", fullMessage);
@@ -316,7 +343,12 @@ public static class AppLogger
             };
 
             TaskScheduler.UnobservedTaskException += (_, e) =>
-                LogCrash($"[UNOBSERVED TASK EXCEPTION] {e.Exception.Message}", e.Exception);
+            {
+                e.SetObserved();
+                var flat = e.Exception.Flatten();
+                var primary = flat.InnerExceptions.Count == 1 ? flat.InnerExceptions[0] : flat;
+                LogCrash($"[UNOBSERVED TASK EXCEPTION] {primary.GetType().Name}: {primary.Message}", primary);
+            };
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

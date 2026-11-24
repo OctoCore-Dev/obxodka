@@ -275,10 +275,21 @@ public sealed partial class VpnView
     //перерисовка канвасов и обновление стилей при смене темы
     public void OnThemeChanged()
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        void ApplyThemeVisuals()
         {
-            LoaderCanvas?.InvalidateSurface();
-            OuterAura?.InvalidateSurface();
+            if (_disposed)
+            {
+                return;
+            }
+
+            _cachedAuraShader?.Dispose();
+            _cachedAuraShader = null;
+            _cachedGraphUpFillShader?.Dispose();
+            _cachedGraphUpFillShader = null;
+            _cachedGraphDownFillShader?.Dispose();
+            _cachedGraphDownFillShader = null;
+
+            ButtonEffectsCanvas?.InvalidateSurface();
             TrafficGraphCanvas?.InvalidateSurface();
 
             UpdateCardOpacity();
@@ -293,6 +304,21 @@ public sealed partial class VpnView
             Card6.Stroke = borderSubtle;
             Card1Wrapper.Stroke = borderSubtle;
             ServerSelectorButton.Stroke = borderMedium;
+            ButtonOuterRing.SetDynamicResource(Border.StrokeProperty, "PrimaryGlow");
+            ButtonMiddleRing.SetDynamicResource(Border.StrokeProperty, "PrimaryDim");
+
+            var muted = GetAppColor("TextMuted", s_grayText);
+            var textPrimary = GetAppColor("TextPrimary", Colors.White);
+            var accent = GetAppColor("Accent", s_cyanAccent);
+            if (_vpnService.CurrentState == AppVpnState.Connected)
+            {
+                UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp, textPrimary, accent);
+            }
+            else if (_vpnService.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
+            {
+                UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
+                ResetPingIndicators();
+            }
 
             var currentState = _vpnService.CurrentState;
             switch (currentState)
@@ -331,7 +357,8 @@ public sealed partial class VpnView
             switch (currentState)
             {
                 case AppVpnState.Disconnected:
-                    _ = UiAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    UiAnimations.SetVpnDisconnectedColors(ConnectIcon, StatusLabel);
+                    SetAuraActive(false);
                     ConnectButtonCore.ClearValue(BackgroundColorProperty);
                     ConnectButtonCore.ClearValue(Border.StrokeProperty);
                     ConnectButtonCore.SetDynamicResource(BackgroundColorProperty, "BgElevated");
@@ -339,7 +366,8 @@ public sealed partial class VpnView
                     break;
                 case AppVpnState.Connected:
                     {
-                        _ = UiAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                        UiAnimations.SetVpnConnectedColors(ConnectIcon, StatusLabel);
+                        SetAuraActive(true);
                         var accentColor = GetAppColor("Accent", s_cyanAccent);
                         var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
                         if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
@@ -353,8 +381,29 @@ public sealed partial class VpnView
                         ConnectButtonCore.Stroke = accentColor;
                         break;
                     }
+                case AppVpnState.Error:
+                    {
+                        UiAnimations.SetVpnDisconnectedColors(ConnectIcon, StatusLabel);
+                        SetAuraActive(false);
+                        var errColor = GetAppColor("Error", s_redDot);
+                        var errDim = GetAppColor("ErrorDim", s_redBg);
+                        ConnectIcon.IconColor = errColor;
+                        StatusLabel.TextColor = errColor;
+                        ConnectButtonCore.BackgroundColor = errDim;
+                        ConnectButtonCore.Stroke = errColor;
+                        break;
+                    }
             }
-        });
+        }
+
+        if (MainThread.IsMainThread)
+        {
+            ApplyThemeVisuals();
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(ApplyThemeVisuals);
+        }
     }
 
     //получение цвета из ресурсов приложения с фоллбэком

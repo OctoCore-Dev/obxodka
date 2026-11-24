@@ -81,6 +81,7 @@ internal sealed partial class WindowsVpnService
         var (tunLuid, _) = ResolveAdapterIdentity(adapter);
         WindowsSplitTunnelEngine.SyncWfpLeakGuard();
         Win32WfpLeakGuard.Enable(tunLuid, serverIps);
+        WindowsTimeZoneService.SyncToServerLocation(OctopusEngine.Current.ActiveServerLocation, OctopusEngine.Current.ActiveServerFlag);
     }
 
     public async Task SyncTunnelIpAndRoutesAsync(IReadOnlyList<string> serverIps, string assignedIpv4, string? assignedIpv6, int mtu,
@@ -104,6 +105,7 @@ internal sealed partial class WindowsVpnService
         var (tunLuid, _) = ResolveAdapterIdentity(adapter);
         WindowsSplitTunnelEngine.SyncWfpLeakGuard();
         Win32WfpLeakGuard.Enable(tunLuid, serverIps);
+        WindowsTimeZoneService.SyncToServerLocation(OctopusEngine.Current.ActiveServerLocation, OctopusEngine.Current.ActiveServerFlag);
     }
 
     public void UpdateAdapterMtu(int mtu)
@@ -138,6 +140,7 @@ internal sealed partial class WindowsVpnService
 
         using var suppressScope = SuppressNetworkChanges();
         Win32WfpLeakGuard.Disable();
+        WindowsTimeZoneService.RestoreOriginalIfNeeded("отключение VPN");
         var adapter = _adapter;
 
         await DisableDnsLeakProtectionAsync().ConfigureAwait(false);

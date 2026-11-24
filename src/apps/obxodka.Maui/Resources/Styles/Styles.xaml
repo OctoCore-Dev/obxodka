@@ -215,6 +215,9 @@
     <Style x:Key="PageHeaderTitle" TargetType="Label">
         <Setter Property="FontFamily" Value="{DynamicResource AppFontTitle}" />
         <Setter Property="FontSize" Value="{OnIdiom Phone=24, Default=26}" />
+        <Setter Property="HorizontalOptions" Value="Start" />
+        <Setter Property="HorizontalTextAlignment" Value="Start" />
+        <Setter Property="LineHeight" Value="1.15" />
         <Setter Property="TextColor" Value="{DynamicResource TextPrimary}" />
     </Style>
 

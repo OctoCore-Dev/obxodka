@@ -72,23 +72,31 @@ public sealed partial class ThemeParticlesOverlay
         }
     }
 
-    //отрисовка киберпанк интерфейса с лучом сканера и угловыми прицелами
+    //отрисовка киберпанк интерфейса с лучом сканера и угловыми прицелами (zero-allocation shader)
     private void DrawCyberHudOverlay(SKCanvas canvas, float w, float h)
     {
         DrawScanlinesOverlay(canvas, w, h, 5f, 14);
 
-        var scanY = _shaderTime * 90f % (h + 120f) - 60f;
-        using (var beamShader = SKShader.CreateLinearGradient(
-                   new SKPoint(0, scanY - 35f),
-                   new SKPoint(0, scanY + 35f),
-                   [_accentSkColor.WithAlpha(0), _accentSkColor.WithAlpha(28), _accentSkColor.WithAlpha(0)],
-                   [0f, 0.5f, 1f],
-                   SKShaderTileMode.Clamp))
+        if (_cyberBeamShader is null || _lastCyberAccent != _accentSkColor)
         {
-            _shaderPaint.Shader = beamShader;
-            canvas.DrawRect(0, scanY - 35f, w, 70f, _shaderPaint);
-            _shaderPaint.Shader = null;
+            _cyberBeamShader?.Dispose();
+            _cyberBeamShader = SKShader.CreateLinearGradient(
+                new SKPoint(0, -35f),
+                new SKPoint(0, 35f),
+                [_accentSkColor.WithAlpha(0), _accentSkColor.WithAlpha(28), _accentSkColor.WithAlpha(0)],
+                [0f, 0.5f, 1f],
+                SKShaderTileMode.Clamp);
+            _lastCyberAccent = _accentSkColor;
         }
+
+        var scanY = _shaderTime * 90f % (h + 120f) - 60f;
+        _ = canvas.Save();
+        canvas.Translate(0, scanY);
+        _shaderPaint.Color = SKColors.White;
+        _shaderPaint.Shader = _cyberBeamShader;
+        canvas.DrawRect(0, -35f, w, 70f, _shaderPaint);
+        _shaderPaint.Shader = null;
+        canvas.Restore();
 
         const float margin = 16f;
         const float len = 26f;
@@ -108,7 +116,7 @@ public sealed partial class ThemeParticlesOverlay
         canvas.DrawLine(w - margin, h - margin, w - margin, h - margin - len, _strokePaint);
     }
 
-    //отрисовка северного сияния с волновым градиентом
+    //отрисовка северного сияния с волновым градиентом (zero-allocation path reuse)
     private void DrawAuroraOverlay(SKCanvas canvas, float w, float h)
     {
         var ribbonHeight = Math.Min(h * 0.38f, 260f);
@@ -137,6 +145,7 @@ public sealed partial class ThemeParticlesOverlay
             _lastAuroraPrimary = _primarySkColor;
         }
 
+        _shaderPaint.Color = SKColors.White;
         for (var layer = 0; layer < 2; layer++)
         {
             _wavePathBuilder.Reset();
@@ -156,40 +165,83 @@ public sealed partial class ThemeParticlesOverlay
             _wavePathBuilder.LineTo(w, 0);
             _wavePathBuilder.Close();
 
-            using var path = _wavePathBuilder.Detach();
+            using var wavePath = _wavePathBuilder.Detach();
             _shaderPaint.Shader = layer == 0 ? _auroraRibbonShader0 : _auroraRibbonShader1;
-            canvas.DrawPath(path, _shaderPaint);
+            canvas.DrawPath(wavePath, _shaderPaint);
             _shaderPaint.Shader = null;
         }
     }
 
-    //отрисовка динамической пульсирующей виньетки в цветах активной темы
+    //отрисовка динамической пульсирующей виньетки в цветах активной темы (zero-allocation cached shader)
     private void DrawVignetteOverlay(SKCanvas canvas, float w, float h, SKColor themeColor)
     {
+        if (_vignetteShader is null ||
+            Math.Abs(_lastVignetteW - w) > 1f ||
+            Math.Abs(_lastVignetteH - h) > 1f ||
+            _lastVignetteColor != themeColor)
+        {
+            _vignetteShader?.Dispose();
+            var center = new SKPoint(w * 0.5f, h * 0.5f);
+            var radius = MathF.Max(w, h) * 0.72f;
+            var opaqueTheme = themeColor.WithAlpha(255);
+            _vignetteShader = SKShader.CreateRadialGradient(
+                center,
+                radius,
+                [SKColors.Transparent, opaqueTheme.WithAlpha(89), opaqueTheme],
+                [0.45f, 0.80f, 1.0f],
+                SKShaderTileMode.Clamp);
+            _lastVignetteW = w;
+            _lastVignetteH = h;
+            _lastVignetteColor = themeColor;
+        }
+
         var pulse = 0.5f + 0.5f * MathF.Sin(_shaderTime * 2.2f);
         var boost = _vpnState == AppVpnState.Connected ? 1.35f : 1.0f;
         var edgeAlpha = (byte)Math.Clamp((40f + pulse * 26f) * boost, 0f, 140f);
-        var vignetteColor = themeColor.WithAlpha(edgeAlpha);
 
-        var center = new SKPoint(w * 0.5f, h * 0.5f);
-        var radius = MathF.Max(w, h) * 0.72f;
-        using var shader = SKShader.CreateRadialGradient(
-            center,
-            radius,
-            [SKColors.Transparent, vignetteColor.WithAlpha((byte)(edgeAlpha * 0.35f)), vignetteColor],
-            [0.45f, 0.80f, 1.0f],
-            SKShaderTileMode.Clamp);
-        _shaderPaint.Shader = shader;
+        _shaderPaint.Color = SKColors.White.WithAlpha(edgeAlpha);
+        _shaderPaint.Shader = _vignetteShader;
         canvas.DrawRect(0, 0, w, h, _shaderPaint);
         _shaderPaint.Shader = null;
+        _shaderPaint.Color = SKColors.White;
     }
 
-    //отрисовка стелющегося мистического тумана
+    //отрисовка стелющегося мистического тумана (zero-allocation cached shader + path)
     private void DrawMysticFogOverlay(SKCanvas canvas, float w, float h)
     {
         var fogHeight = Math.Min(h * 0.32f, 220f);
         var topY = h - fogHeight;
 
+        if (_fogShader0 is null ||
+            _fogShader1 is null ||
+            Math.Abs(_lastFogTopY - topY) > 1f ||
+            Math.Abs(_lastFogH - h) > 1f ||
+            _lastFogPrimary != _primarySkColor ||
+            _lastFogAccent != _accentSkColor)
+        {
+            _fogShader0?.Dispose();
+            _fogShader1?.Dispose();
+            var fogColor0 = _primarySkColor.WithAlpha(42);
+            var fogColor1 = _accentSkColor.WithAlpha(30);
+            _fogShader0 = SKShader.CreateLinearGradient(
+                new SKPoint(0, topY),
+                new SKPoint(0, h),
+                [fogColor0.WithAlpha(0), fogColor0],
+                [0f, 1f],
+                SKShaderTileMode.Clamp);
+            _fogShader1 = SKShader.CreateLinearGradient(
+                new SKPoint(0, topY),
+                new SKPoint(0, h),
+                [fogColor1.WithAlpha(0), fogColor1],
+                [0f, 1f],
+                SKShaderTileMode.Clamp);
+            _lastFogTopY = topY;
+            _lastFogH = h;
+            _lastFogPrimary = _primarySkColor;
+            _lastFogAccent = _accentSkColor;
+        }
+
+        _shaderPaint.Color = SKColors.White;
         for (var layer = 0; layer < 2; layer++)
         {
             _wavePathBuilder.Reset();
@@ -208,56 +260,63 @@ public sealed partial class ThemeParticlesOverlay
             _wavePathBuilder.LineTo(w, h);
             _wavePathBuilder.Close();
 
-            using var wavePath = _wavePathBuilder.Detach();
-            var fogColor = (layer == 0 ? _primarySkColor : _accentSkColor).WithAlpha((byte)(42 - layer * 12));
-            using var shader = SKShader.CreateLinearGradient(
-                new SKPoint(0, topY),
-                new SKPoint(0, h),
-                [fogColor.WithAlpha(0), fogColor],
-                [0f, 1f],
-                SKShaderTileMode.Clamp);
-            _shaderPaint.Shader = shader;
-            canvas.DrawPath(wavePath, _shaderPaint);
+            using var fogPath = _wavePathBuilder.Detach();
+            _shaderPaint.Shader = layer == 0 ? _fogShader0 : _fogShader1;
+            canvas.DrawPath(fogPath, _shaderPaint);
             _shaderPaint.Shader = null;
         }
     }
 
-    //отрисовка нисходящих лучей света в цветах активной темы
+    //отрисовка нисходящих лучей света в цветах активной темы с кэшированным контуром и шейдером
     private void DrawRaysOverlay(SKCanvas canvas, float w, float h, SKColor themeColor)
     {
-        var origin = new SKPoint(w * 0.5f, -30f);
+        var originX = w * 0.5f;
+        const float originY = -30f;
         var rayLength = MathF.Max(w, h) * 0.85f;
+        const float spread = 0.09f;
 
+        if (_rayUnitPath is null || Math.Abs(_lastRayLength - rayLength) > 1f)
+        {
+            _rayUnitPath?.Dispose();
+            using var builder = new SKPathBuilder();
+            builder.MoveTo(0f, 0f);
+            builder.LineTo(MathF.Cos(-spread) * rayLength, MathF.Sin(-spread) * rayLength);
+            builder.LineTo(MathF.Cos(spread) * rayLength, MathF.Sin(spread) * rayLength);
+            builder.Close();
+            _rayUnitPath = builder.Detach();
+        }
+
+        if (_rayShader is null ||
+            Math.Abs(_lastRayLength - rayLength) > 1f ||
+            _lastRayColor != themeColor)
+        {
+            _rayShader?.Dispose();
+            _rayShader = SKShader.CreateLinearGradient(
+                new SKPoint(0f, 0f),
+                new SKPoint(rayLength * 0.75f, 0f),
+                [themeColor.WithAlpha(255), themeColor.WithAlpha(0)],
+                [0f, 1f],
+                SKShaderTileMode.Clamp);
+            _lastRayLength = rayLength;
+            _lastRayColor = themeColor;
+        }
+
+        _shaderPaint.Shader = _rayShader;
         for (var i = -2; i <= 2; i++)
         {
             var baseAngle = MathF.PI * 0.5f + i * 0.22f + MathF.Sin(_shaderTime * 0.7f + i) * 0.05f;
-            const float spread = 0.09f;
-
-            var p1 = new SKPoint(
-                origin.X + MathF.Cos(baseAngle - spread) * rayLength,
-                origin.Y + MathF.Sin(baseAngle - spread) * rayLength);
-            var p2 = new SKPoint(
-                origin.X + MathF.Cos(baseAngle + spread) * rayLength,
-                origin.Y + MathF.Sin(baseAngle + spread) * rayLength);
-
-            _wavePathBuilder.Reset();
-            _wavePathBuilder.MoveTo(origin);
-            _wavePathBuilder.LineTo(p1);
-            _wavePathBuilder.LineTo(p2);
-            _wavePathBuilder.Close();
-
-            using var wavePath = _wavePathBuilder.Detach();
             var alpha = (byte)(26 - Math.Abs(i) * 4);
-            using var shader = SKShader.CreateLinearGradient(
-                origin,
-                new SKPoint(origin.X, rayLength * 0.75f),
-                [themeColor.WithAlpha(alpha), themeColor.WithAlpha(0)],
-                [0f, 1f],
-                SKShaderTileMode.Clamp);
-            _shaderPaint.Shader = shader;
-            canvas.DrawPath(wavePath, _shaderPaint);
-            _shaderPaint.Shader = null;
+            _shaderPaint.Color = SKColors.White.WithAlpha(alpha);
+
+            _ = canvas.Save();
+            canvas.Translate(originX, originY);
+            canvas.RotateRadians(baseAngle);
+            canvas.DrawPath(_rayUnitPath, _shaderPaint);
+            canvas.Restore();
         }
+
+        _shaderPaint.Shader = null;
+        _shaderPaint.Color = SKColors.White;
     }
 
 

@@ -6,7 +6,7 @@ public sealed partial class VpnView
     //обработка одного кадра интерполяции и перерисовки графика скорости
     private void StepGraphFrame()
     {
-        if (!IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
+        if (_disposed || !_isTabVisible || !_isWindowVisible || !IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
         {
             return;
         }
@@ -81,48 +81,8 @@ public sealed partial class VpnView
     }
 #endif
 
-    //запуск цикла интерполяции и отрисовки графика трафика
-    private void StartGraphAnimation()
-    {
-#if WINDOWS
-        if (_graphVsyncActive)
-        {
-            return;
-        }
-#else
-        if (_graphAnimTimer is not null)
-        {
-            return;
-        }
-#endif
-
-        _graphStopwatch.Restart();
-        lock (_graphSamples)
-        {
-            _graphSamples.Clear();
-            _graphSamples.Add(new GraphSample(0f, 0f, 0f));
-        }
-
-        _lastGraphTickTime = 0;
-        _lastSampleTime = 0;
-        _targetSpeedUp = _smoothSpeedUp = 0;
-        _smoothSpeedDown = 0;
-        _smoothMaxSpeed = 1024.0;
-
-#if WINDOWS
-        _graphLastVsyncTicks = 0;
-        _graphVsyncActive = true;
-        Platforms.Windows.WinUiVsync.Subscribe(OnGraphVsyncRendering);
-#else
-        _graphAnimTimer = Dispatcher.CreateTimer();
-        _graphAnimTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _graphAnimTimer.Tick += (_, _) => StepGraphFrame();
-        _graphAnimTimer.Start();
-#endif
-    }
-
-    //остановка анимации графика скорости
-    private void StopGraphAnimation()
+    //пауза цикла отрисовки графика без потери накопленных точек
+    private void PauseGraphLoop()
     {
 #if WINDOWS
         if (_graphVsyncActive)
@@ -134,6 +94,66 @@ public sealed partial class VpnView
         _graphAnimTimer?.Stop();
         _graphAnimTimer = null;
 #endif
+    }
+
+    //возобновление цикла отрисовки графика при возврате на вкладку
+    private void ResumeGraphLoop()
+    {
+        if (_disposed || !_isTabVisible || !_isWindowVisible)
+        {
+            return;
+        }
+
+        if (!_graphStopwatch.IsRunning)
+        {
+            _graphStopwatch.Start();
+        }
+
+        _lastGraphTickTime = (float)_graphStopwatch.Elapsed.TotalSeconds;
+#if WINDOWS
+        if (!_graphVsyncActive)
+        {
+            _graphLastVsyncTicks = 0;
+            _graphVsyncActive = true;
+            Platforms.Windows.WinUiVsync.Subscribe(OnGraphVsyncRendering);
+        }
+#else
+        if (_graphAnimTimer is null)
+        {
+            _graphAnimTimer = Dispatcher.CreateTimer();
+            _graphAnimTimer.Interval = TimeSpan.FromMilliseconds(16);
+            _graphAnimTimer.Tick += (_, _) => StepGraphFrame();
+            _graphAnimTimer.Start();
+        }
+#endif
+    }
+
+    //запуск цикла интерполяции и отрисовки графика трафика
+    private void StartGraphAnimation()
+    {
+        _graphStopwatch.Restart();
+        lock (_graphSamples)
+        {
+            _graphSamples.Clear();
+            _graphSamples.Add(new GraphSample(0f, 0f, 0f));
+        }
+
+        _lastGraphTickTime = 0;
+        _lastSampleTime = 0;
+        _lastBytesSent = OctopusEngine.Current.TotalBytesSent;
+        _lastBytesReceived = OctopusEngine.Current.TotalBytesReceived;
+        _lastTrafficUpdate = DateTime.Now;
+        _targetSpeedUp = _smoothSpeedUp = 0;
+        _targetSpeedDown = _smoothSpeedDown = 0;
+        _smoothMaxSpeed = 1024.0;
+
+        ResumeGraphLoop();
+    }
+
+    //остановка анимации графика скорости
+    private void StopGraphAnimation()
+    {
+        PauseGraphLoop();
         _graphStopwatch.Reset();
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;
@@ -184,6 +204,14 @@ public sealed partial class VpnView
             return;
         }
 
+        if (bytesSent < _lastBytesSent || bytesReceived < _lastBytesReceived)
+        {
+            _lastBytesSent = bytesSent;
+            _lastBytesReceived = bytesReceived;
+            _lastTrafficUpdate = now;
+            return;
+        }
+
         var sentSpeed = Math.Max(0, (bytesSent - _lastBytesSent) / elapsed);
         var recvSpeed = Math.Max(0, (bytesReceived - _lastBytesReceived) / elapsed);
 
@@ -194,7 +222,35 @@ public sealed partial class VpnView
         _targetSpeedUp = sentSpeed;
         _targetSpeedDown = recvSpeed;
 
-        PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(200), () =>
+        //даже когда вкладка или окно скрыты, фиксируем точки в истории чтобы при возврате график сразу показывал реальный трафик
+        if (_graphStopwatch.IsRunning && (!_isTabVisible || !_isWindowVisible))
+        {
+            var sampleTime = (float)_graphStopwatch.Elapsed.TotalSeconds;
+            lock (_graphSamples)
+            {
+                _graphSamples.Add(new GraphSample(sampleTime, (float)sentSpeed, (float)recvSpeed));
+                _lastSampleTime = sampleTime;
+                var cutoff = sampleTime - (TimeWindowSeconds + 1.0f);
+                var removeCount = 0;
+                while (removeCount < _graphSamples.Count && _graphSamples[removeCount].Time < cutoff)
+                {
+                    removeCount++;
+                }
+
+                if (removeCount > 0)
+                {
+                    _graphSamples.RemoveRange(0, removeCount);
+                }
+
+                var samplePeak = Math.Max(sentSpeed, recvSpeed);
+                if (samplePeak > _smoothMaxSpeed)
+                {
+                    _smoothMaxSpeed = samplePeak;
+                }
+            }
+        }
+
+        PlatformThrottler.Post("ui:traffic", TimeSpan.FromMilliseconds(120), () =>
         {
             if (_vpnService.CurrentState != AppVpnState.Connected)
             {
@@ -209,6 +265,11 @@ public sealed partial class VpnView
     //отрисовка сплайнового графика скорости на холсте skia
     private void OnPaintGraphSurface(object? sender, SKPaintSurfaceEventArgs e)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
@@ -295,12 +356,15 @@ public sealed partial class VpnView
             }
 
             _graphStrokeBuilder.Reset();
+            _graphFillBuilder.Reset();
             _graphStrokeBuilder.MoveTo(_graphPointsBuffer[0]);
+            _graphFillBuilder.MoveTo(_graphPointsBuffer[0]);
             if (graphStyle == "pulse_line")
             {
                 for (var i = 1; i < _graphPointsBuffer.Count; i++)
                 {
                     _graphStrokeBuilder.LineTo(_graphPointsBuffer[i]);
+                    _graphFillBuilder.LineTo(_graphPointsBuffer[i]);
                 }
             }
             else
@@ -311,13 +375,12 @@ public sealed partial class VpnView
                     var p1 = _graphPointsBuffer[i + 1];
                     var midX = (p0.X + p1.X) / 2f;
                     _graphStrokeBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
+                    _graphFillBuilder.CubicTo(midX, p0.Y, midX, p1.Y, p1.X, p1.Y);
                 }
             }
 
             using var strokePath = _graphStrokeBuilder.Detach();
 
-            _graphFillBuilder.Reset();
-            _graphFillBuilder.AddPath(strokePath);
             _graphFillBuilder.LineTo(_graphPointsBuffer[^1].X, h);
             _graphFillBuilder.LineTo(_graphPointsBuffer[0].X, h);
             _graphFillBuilder.Close();

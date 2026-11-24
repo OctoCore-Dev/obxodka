@@ -43,6 +43,8 @@ public sealed partial class OctopusEngine
         {
             await transport.DisposeAsync().ConfigureAwait(false);
         }
+
+        ResetActiveProtocolState();
     }
 
     //синхронное освобождение ресурсов движка
@@ -73,6 +75,22 @@ public sealed partial class OctopusEngine
         Interlocked.Exchange(ref _clientCert, null)?.Dispose();
 
         Interlocked.Exchange(ref _transport, null)?.Dispose();
+        ResetActiveProtocolState();
+    }
+
+    //сброс активного протокола и локации при отключении чтобы при следующем запуске не мигал прошлый протокол
+    private void ResetActiveProtocolState()
+    {
+        var changed = !string.Equals(ActiveProtocol, "AUTO", StringComparison.Ordinal);
+        ActiveProtocol = "AUTO";
+        ActiveProtocolDisplayName = "Obxodka";
+        ActiveRays = 0;
+        ActiveServerLocation = null;
+        ActiveServerFlag = null;
+        if (changed)
+        {
+            OnProtocolChanged?.Invoke();
+        }
     }
 
     //добавление уже известных ip адресов сервера в таблицу исключений без блокирующего dns

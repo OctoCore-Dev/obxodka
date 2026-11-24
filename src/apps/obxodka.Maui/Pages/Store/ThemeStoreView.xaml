@@ -267,8 +267,9 @@
                             Padding="14,7"
                             BackgroundColor="{DynamicResource Primary}"
                             Stroke="Transparent"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterAllClicked" />
                             </Border.GestureRecognizers>
@@ -286,8 +287,9 @@
                             Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterVideoClicked" />
                             </Border.GestureRecognizers>
@@ -305,8 +307,9 @@
                             Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterAnimClicked" />
                             </Border.GestureRecognizers>
@@ -324,8 +327,9 @@
                             Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterSoundClicked" />
                             </Border.GestureRecognizers>
@@ -343,8 +347,9 @@
                             Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterShadersClicked" />
                             </Border.GestureRecognizers>

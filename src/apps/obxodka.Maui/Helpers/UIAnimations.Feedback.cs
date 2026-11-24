@@ -203,82 +203,13 @@ public static partial class UiAnimations
         pill.IsVisible = false;
     }
 
-    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-        Justification = "MAUI Animation is managed and committed to visual element lifecycle")]
-    public static void StartAuraPulse(VisualElement? aura)
-    {
-        if (aura is null)
-        {
-            return;
-        }
-
-        _ = aura.AbortAnimation("AuraPulse");
-        aura.CancelAnimations();
-        aura.IsVisible = true;
-
-        var parentAnimation = new Animation();
-        var maxScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.05 : 1.15;
-        var scaleUp = new Animation(v => aura.Scale = v, 1.0, maxScale, Easing.SinInOut);
-        var scaleDown = new Animation(v => aura.Scale = v, maxScale, 1.0, Easing.SinInOut);
-        var fadeUp = new Animation(v => aura.Opacity = v, 0.65, 0.85, Easing.SinInOut);
-        var fadeDown = new Animation(v => aura.Opacity = v, 0.85, 0.65, Easing.SinInOut);
-
-        parentAnimation.Add(0, 0.5, scaleUp);
-        parentAnimation.Add(0.5, 1, scaleDown);
-        parentAnimation.Add(0, 0.5, fadeUp);
-        parentAnimation.Add(0.5, 1, fadeDown);
-
-        parentAnimation.Commit(aura, "AuraPulse", 16, 2500, null, null, () => true);
-    }
-
-    public static async Task StopAuraPulseAsync(VisualElement? aura)
-    {
-        if (aura is null)
-        {
-            return;
-        }
-
-        try
-        {
-            _ = aura.AbortAnimation("AuraPulse");
-            aura.CancelAnimations();
-            _ = await aura.FadeToAsync(0, DurNormal, Easing.CubicOut);
-            aura.Scale = 1.0;
-        }
-        catch (Exception)
-        {
-            try
-            {
-                aura.Opacity = 0;
-                aura.Scale = 1.0;
-            }
-            catch
-            {
-                // ignored
-            }
-        }
-    }
-
-    public static async Task SetVpnConnectedAsync(
-        MauiIcon? icon,
-        Label? label,
-        VisualElement? aura)
+    public static void SetVpnConnectedColors(MauiIcon? icon, Label? label)
     {
         try
         {
             var accent = GetThemeColor("Accent", s_cyanColor);
             _ = icon?.IconColor = accent;
             _ = label?.TextColor = accent;
-
-            if (aura is not null)
-            {
-                _ = aura.AbortAnimation("AuraPulse");
-                aura.CancelAnimations();
-                aura.Opacity = 0;
-                aura.IsVisible = true;
-                _ = await aura.FadeToAsync(0.65, 400, Easing.CubicOut);
-                StartAuraPulse(aura);
-            }
         }
         catch (Exception)
         {
@@ -286,10 +217,7 @@ public static partial class UiAnimations
         }
     }
 
-    public static async Task SetVpnDisconnectedAsync(
-        MauiIcon? icon,
-        Label? label,
-        VisualElement? aura)
+    public static void SetVpnDisconnectedColors(MauiIcon? icon, Label? label)
     {
         try
         {
@@ -298,11 +226,6 @@ public static partial class UiAnimations
 
             _ = icon?.IconColor = primary;
             _ = label?.TextColor = primaryBright;
-
-            if (aura is not null)
-            {
-                await StopAuraPulseAsync(aura);
-            }
         }
         catch (Exception)
         {

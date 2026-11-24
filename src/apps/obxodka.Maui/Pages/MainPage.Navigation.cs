@@ -56,9 +56,12 @@ public sealed partial class MainPage
         var showNav = ShouldShowNavigationChrome();
         var safeTop = _lastAppliedTopInset > 0 ? _lastAppliedTopInset : Math.Max(0, SafeAreaHelper.TopInset);
         var safeBottom = _lastAppliedBottomInset > 0 ? _lastAppliedBottomInset : Math.Max(0, SafeAreaHelper.BottomInset);
-        var dockedWidth = DesktopSidebar.OccupiedWidth > 0
-            ? DesktopSidebar.OccupiedWidth
-            : AdaptiveLayoutHelper.CollapsedSidebarRailWidth;
+        var isWinOverlay = showNav && DeviceInfo.Platform == DevicePlatform.WinUI;
+        var dockedWidth = isWinOverlay
+            ? AdaptiveLayoutHelper.CollapsedSidebarRailWidth
+            : DesktopSidebar.OccupiedWidth > 0
+                ? DesktopSidebar.OccupiedWidth
+                : AdaptiveLayoutHelper.CollapsedSidebarRailWidth;
 
         var rawViewport = AdaptiveLayoutHelper.CreateViewport(
             windowWidth,
@@ -70,14 +73,21 @@ public sealed partial class MainPage
             dockedWidth);
 
         //на экране входа сайдбар скрыт и контент занимает всю ширину окна
-        var viewport = showNav
-            ? rawViewport
-            : rawViewport with
+        //на windows сайдбар всегда работает в режиме fluent 2 compact-overlay, чтобы анимация ширины не дергала всю страницу
+        var viewport = !showNav
+            ? rawViewport with
             {
                 ContentWidth = windowWidth > 0 ? windowWidth : rawViewport.ContentWidth,
                 UseSidebar = false,
                 UseOverlaySidebar = false
-            };
+            }
+            : rawViewport.UseSidebar && DeviceInfo.Platform == DevicePlatform.WinUI
+                ? rawViewport with
+                {
+                    UseOverlaySidebar = true,
+                    ContentWidth = Math.Max(0, windowWidth - AdaptiveLayoutHelper.CollapsedSidebarRailWidth)
+                }
+                : rawViewport;
 
         var chromeChanged = _isWideLayout != viewport.UseSidebar ||
                             _isOverlaySidebar != viewport.UseOverlaySidebar ||
@@ -223,6 +233,10 @@ public sealed partial class MainPage
         {
             _tabContentPayment?.StopPaymentPolling();
         }
+        else if (prevTab == "vpn")
+        {
+            _tabContentVpn?.OnTabVisibilityChanged(false);
+        }
 
         _activeTab = tab;
         RefreshAdaptiveLayout();
@@ -243,11 +257,13 @@ public sealed partial class MainPage
         }
 
         await UiAnimations.SwitchViewAsync(outgoing, incoming, animate);
+        UnloadTransientTab(prevTab);
         UpdateAllViewsOpacity();
 
         switch (tab)
         {
             case "vpn":
+                _tabContentVpn?.OnTabVisibilityChanged(true);
                 if (animate)
                 {
                     _ = _tabContentVpn?.PlayEntranceAnimationAsync();
@@ -403,6 +419,7 @@ public sealed partial class MainPage
                     {
                         IsVisible = false
                     };
+                    _tabContentConfiguration.Initialize(VpnService);
                     _tabContentConfiguration.ThemesRequested += OnConfigurationThemesRequested;
                     ApplyInitialDecorations(_tabContentConfiguration);
                     MainContentContainer.Children.Add(_tabContentConfiguration);
@@ -507,6 +524,11 @@ public sealed partial class MainPage
                     {
                         IsVisible = false
                     };
+                    _tabContentThemeStore.RestoreNavigationState(
+                        _lastThemeStoreTab,
+                        _lastThemeStoreFilter,
+                        _lastThemeStoreSearch,
+                        _lastThemeStoreScrollY);
                     _tabContentThemeStore.Initialize(_themeManager);
                     _tabContentThemeStore.BackRequested += OnThemeStoreBackRequested;
                     ApplyInitialDecorations(_tabContentThemeStore);
@@ -530,6 +552,73 @@ public sealed partial class MainPage
         }
 
         UpdateAllViewsOpacity();
+    }
+
+    //выгрузка тяжелых временных вкладок при переходе на другой раздел для освобождения памяти
+    private void UnloadTransientTab(string? tab)
+    {
+        if (string.IsNullOrEmpty(tab) || string.Equals(tab, _activeTab, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        View? viewToRemove = null;
+        switch (tab)
+        {
+            case "themes":
+                if (_tabContentThemeStore is not null)
+                {
+                    (_lastThemeStoreTab, _lastThemeStoreFilter, _lastThemeStoreSearch, _lastThemeStoreScrollY) =
+                        _tabContentThemeStore.CaptureNavigationState();
+                    _tabContentThemeStore.BackRequested -= OnThemeStoreBackRequested;
+                    _tabContentThemeStore.Cleanup();
+                    viewToRemove = _tabContentThemeStore;
+                    _tabContentThemeStore = null;
+                }
+
+                break;
+
+            case "payment":
+                if (_tabContentPayment is not null)
+                {
+                    _tabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
+                    _tabContentPayment.PaymentCancelled -= OnPaymentCancelled;
+                    _tabContentPayment.StopPaymentPolling();
+                    viewToRemove = _tabContentPayment;
+                    _tabContentPayment = null;
+                }
+
+                break;
+
+            case "delete":
+                if (_tabContentDelete is not null)
+                {
+                    _tabContentDelete.CancelRequested -= OnDeleteCancelRequested;
+                    _tabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
+                    viewToRemove = _tabContentDelete;
+                    _tabContentDelete = null;
+                }
+
+                break;
+
+            case "devices":
+                if (_tabContentDevices is not null)
+                {
+                    viewToRemove = _tabContentDevices;
+                    _tabContentDevices = null;
+                }
+
+                break;
+        }
+
+        if (viewToRemove is null)
+        {
+            return;
+        }
+
+        _ = MainContentContainer.Children.Remove(viewToRemove);
+        viewToRemove.Handler?.DisconnectHandler();
+        ScheduleMemoryTrim();
     }
 
     private View? GetTabContent(string? tab) => tab switch
