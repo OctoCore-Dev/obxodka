@@ -144,8 +144,6 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(clientBuf);
-            ArrayPool<byte>.Shared.Return(serverBuf);
             try
             {
                 await upstreamTask;
@@ -153,6 +151,11 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
             catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
             {
                 //штатная остановка приемника upstream udp прокси
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(clientBuf);
+                ArrayPool<byte>.Shared.Return(serverBuf);
             }
         }
     }
@@ -285,15 +288,19 @@ public sealed class TspuLiveHarness : IDisposable, IAsyncDisposable
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(buffer);
                 try
                 {
+                    await innerCts.CancelAsync();
                     await targetToClientTask;
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException
                                                or InvalidOperationException)
                 {
                     //закрытие канала чтения ответа от целевого tcp сервера
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
             }
         }

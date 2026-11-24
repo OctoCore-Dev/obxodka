@@ -28,10 +28,7 @@
     <Folder Name="/.docs/">
         <File Path="README.md"/>
         <File Path="LICENSE"/>
-        <File Path="RULES.md"/>
         <File Path="AGENTS.md"/>
-        <File Path="CODEBASE_MAP.md"/>
-        <File Path="CORE_PROTOCOL_GRAPH_AND_SECURITY_AUDIT.md"/>
         <File Path="PRIVACY_POLICY.md"/>
         <File Path="TERMS_OF_SERVICE.md"/>
     </Folder>

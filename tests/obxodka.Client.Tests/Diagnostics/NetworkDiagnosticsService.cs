@@ -363,25 +363,45 @@ public sealed class NetworkDiagnosticsService(HttpClient? httpClient = null)
         }
     }
 
-    //проверка доступности udp порта
+    //реальная проверка доступности udp порта с ожиданием ответной датаграммы
     private static async Task<bool> TestUdpReachabilityAsync(string host, int port, CancellationToken ct)
     {
         try
         {
-            using var udp = new Socket(SocketType.Dgram, ProtocolType.Udp);
-            udp.ReceiveTimeout = 1500;
-            var ep = new IPEndPoint(IPAddress.Parse(host), port);
+            if (!IPAddress.TryParse(host, out var targetIp))
+            {
+                var resolved = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
+                targetIp = resolved.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+                if (targetIp is null)
+                {
+                    return false;
+                }
+            }
 
-            var dummyPacket = new byte[32];
-            RandomNumberGenerator.Fill(dummyPacket);
+            using var udp = new Socket(targetIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            var ep = new IPEndPoint(targetIp, port);
 
-            _ = await udp.SendToAsync(dummyPacket, SocketFlags.None, ep, ct).ConfigureAwait(false);
+            //отправляем валидный rfc 5389 stun binding request и ждём реальный ответ сервера
+            var stunProbe = new byte[20];
+            stunProbe[0] = 0x00;
+            stunProbe[1] = 0x01; //Binding Request
+            stunProbe[4] = 0x21;
+            stunProbe[5] = 0x12;
+            stunProbe[6] = 0xA4;
+            stunProbe[7] = 0x42; //Magic Cookie
+            RandomNumberGenerator.Fill(stunProbe.AsSpan(8, 12));
 
-            await Task.Delay(300, ct).ConfigureAwait(false);
-            return true;
+            _ = await udp.SendToAsync(stunProbe, SocketFlags.None, ep, ct).ConfigureAwait(false);
+
+            using var recvCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            recvCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
+            var recvBuf = new byte[512];
+            EndPoint remoteEp = new IPEndPoint(targetIp.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
+            var received = await udp.ReceiveFromAsync(recvBuf, SocketFlags.None, remoteEp, recvCts.Token).ConfigureAwait(false);
+            return received.ReceivedBytes > 0;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TimeoutException
-                                       or OperationCanceledException)
+                                       or OperationCanceledException or ObjectDisposedException)
         {
             return false;
         }

@@ -1,5 +1,6 @@
 namespace obxodka.Client.Tests;
 
+[Collection("GlobalStaticState")]
 [Trait("Category", "Unit")]
 public class AppConfigTests
 {

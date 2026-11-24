@@ -1,5 +1,6 @@
 namespace obxodka.Client.Tests.Protocols;
 
+[Collection("GlobalStaticState")]
 [Trait("Category", "Protocol")]
 [Trait("Category", "Security")]
 [Trait("Category", "Unit")]
@@ -129,6 +130,45 @@ public class SslCertificateValidationTests
 
         var result = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateNameMismatch);
         Assert.False(result);
+    }
+
+    [Fact]
+    public void ValidateServerCertificateRejectsNameMismatchForUntrustedExpectedHost()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest($"cn={AppConfig.PrimaryDomain}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        var result = CertificateValidator.ValidateServerCertificate(
+            cert,
+            null,
+            SslPolicyErrors.RemoteCertificateNameMismatch,
+            "",
+            "evil.example.com");
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void AppLoggerFormatExceptionDetailsUnwrapsNestedAggregateExceptionWithStackTrace()
+    {
+        Exception captured;
+        try
+        {
+            ThrowInnerNullRef();
+            return;
+        }
+        catch (Exception ex)
+        {
+            captured = new AggregateException(new AggregateException(ex));
+        }
+
+        var formatted = AppLogger.FormatExceptionDetails(captured);
+        Assert.Contains("NullReferenceException", formatted);
+        Assert.Contains("simulated-nre", formatted);
+        Assert.Contains(nameof(ThrowInnerNullRef), formatted);
+        return;
+
+        static void ThrowInnerNullRef() => throw new NullReferenceException("simulated-nre");
     }
 
     [Fact]

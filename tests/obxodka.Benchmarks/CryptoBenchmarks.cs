@@ -28,9 +28,10 @@ public sealed class CryptoBenchmarks : IDisposable
     [GlobalCleanup]
     public void Cleanup()
     {
-        if (_packed1420 != null)
+        var packed = Interlocked.Exchange(ref _packed1420, null!);
+        if (packed is not null)
         {
-            ArrayPool<byte>.Shared.Return(_packed1420);
+            ArrayPool<byte>.Shared.Return(packed);
         }
     }
 

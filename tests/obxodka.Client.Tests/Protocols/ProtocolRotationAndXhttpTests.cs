@@ -1,5 +1,6 @@
 namespace obxodka.Client.Tests.Protocols;
 
+[Collection("GlobalStaticState")]
 [Trait("Category", "Unit")]
 [Trait("Category", "Protocols")]
 public sealed class ProtocolRotationAndXhttpTests
