@@ -296,20 +296,6 @@ public sealed partial class DesktopSidebarView
             }, 0, 1);
             labelsAnim.Commit(this, "SidebarLabelsAnim", 16, 170, Easing.CubicOut);
 
-#if WINDOWS
-            DesktopSidebar.WidthRequest = targetWidth;
-            if (!_isOverlayMode)
-            {
-                SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
-            }
-
-            _ = Platforms.Windows.WinUiMainPageHelper.AnimateWidthClip(
-                DesktopSidebar,
-                currentWidth,
-                targetWidth,
-                12.0,
-                210);
-#else
             var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
             anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicOut, (_, _) =>
             {
@@ -318,7 +304,6 @@ public sealed partial class DesktopSidebarView
                     SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
                 }
             });
-#endif
         }
         else
         {
@@ -345,39 +330,6 @@ public sealed partial class DesktopSidebarView
                 }
             });
 
-#if WINDOWS
-            var animated = Platforms.Windows.WinUiMainPageHelper.AnimateWidthClip(
-                DesktopSidebar,
-                currentWidth,
-                targetWidth,
-                12.0,
-                180,
-                () =>
-                {
-                    if (generation != _toggleGeneration || IsExpanded)
-                    {
-                        return;
-                    }
-
-                    DesktopSidebar.WidthRequest = targetWidth;
-                    HideSidebarLabels();
-                    if (!_isOverlayMode)
-                    {
-                        SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
-                    }
-                });
-
-            if (!animated)
-            {
-                DesktopSidebar.WidthRequest = targetWidth;
-                HideSidebarLabels();
-                if (!_isOverlayMode)
-                {
-                    SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
-                }
-            }
-#else
-            VersionBadge.IsVisible = false;
             var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
             anim.Commit(this, "SidebarResize", 16, 180, Easing.CubicInOut, (_, _) =>
             {
@@ -390,7 +342,6 @@ public sealed partial class DesktopSidebarView
                     }
                 }
             });
-#endif
         }
     }
 

@@ -264,9 +264,8 @@
                     <HorizontalStackLayout Spacing="8">
                         <Border
                             x:Name="ChipFilterAll"
-                            Padding="14,0"
+                            Padding="14,7"
                             BackgroundColor="{DynamicResource Primary}"
-                            HeightRequest="32"
                             Stroke="Transparent"
                             StrokeShape="RoundRectangle 8"
                             StrokeThickness="1"
@@ -280,15 +279,13 @@
                                 FontSize="12"
                                 Text="Все"
                                 TextColor="{DynamicResource TextOnPrimary}"
-                                VerticalOptions="Center"
-                                VerticalTextAlignment="Center" />
+                                VerticalOptions="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterVideo"
-                            Padding="14,0"
+                            Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
-                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
                             StrokeShape="RoundRectangle 8"
                             StrokeThickness="1"
@@ -302,15 +299,13 @@
                                 FontSize="12"
                                 Text="Видео"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center"
-                                VerticalTextAlignment="Center" />
+                                VerticalOptions="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterAnim"
-                            Padding="14,0"
+                            Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
-                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
                             StrokeShape="RoundRectangle 8"
                             StrokeThickness="1"
@@ -324,15 +319,13 @@
                                 FontSize="12"
                                 Text="Анимация"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center"
-                                VerticalTextAlignment="Center" />
+                                VerticalOptions="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterSound"
-                            Padding="14,0"
+                            Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
-                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
                             StrokeShape="RoundRectangle 8"
                             StrokeThickness="1"
@@ -346,15 +339,13 @@
                                 FontSize="12"
                                 Text="Звук"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center"
-                                VerticalTextAlignment="Center" />
+                                VerticalOptions="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterShaders"
-                            Padding="14,0"
+                            Padding="14,7"
                             BackgroundColor="{DynamicResource BgSurface}"
-                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
                             StrokeShape="RoundRectangle 8"
                             StrokeThickness="1"
@@ -368,8 +359,7 @@
                                 FontSize="12"
                                 Text="Шейдеры"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center"
-                                VerticalTextAlignment="Center" />
+                                VerticalOptions="Center" />
                         </Border>
                     </HorizontalStackLayout>
                 </ScrollView>

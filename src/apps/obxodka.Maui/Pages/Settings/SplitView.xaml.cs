@@ -16,7 +16,12 @@ public sealed partial class SplitView : IAdaptivePage
     private CancellationTokenSource? _headerAnimCts;
     private bool _isHeaderHidden;
     private bool _isSitesTabActive;
+    private double _lastAppsScrollY;
     private double _lastSitesScrollY;
+    private double _accumulatedScrollDelta;
+#if WINDOWS
+    private Action? _detachNativeAppsScroll;
+#endif
     private MainPage _parent = null!;
     private CancellationTokenSource? _saveDebounceCts;
     private CancellationTokenSource? _searchDebounceCts;
@@ -30,6 +35,9 @@ public sealed partial class SplitView : IAdaptivePage
         HeaderContainer.SizeChanged += OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled += OnSitesScrollViewScrolled;
 #if WINDOWS
+        _detachNativeAppsScroll = Platforms.Windows.WinUiMainPageHelper.AttachNativeScrollViewer(
+            SplitAppsCollectionView,
+            OnNativeAppsScrollOffsetChanged);
         ModeTabsGrid.IsVisible = true;
         ChipAddExe.IsVisible = true;
         AndroidWarningBanner.IsVisible = false;
@@ -177,6 +185,8 @@ public sealed partial class SplitView : IAdaptivePage
         SplitAppsCollectionView.Scrolled -= OnSplitAppsCollectionScrolled;
         _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
 #if WINDOWS
+        _detachNativeAppsScroll?.Invoke();
+        _detachNativeAppsScroll = null;
         CancelAndDisposeCts(ref _routesDebounceCts);
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {

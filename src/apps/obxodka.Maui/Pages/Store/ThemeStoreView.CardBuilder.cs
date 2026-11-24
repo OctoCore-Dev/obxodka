@@ -553,16 +553,14 @@ public sealed partial class ThemeStoreView
             FontSize = 10.5,
             TextColor = fgColor,
             LineBreakMode = LineBreakMode.NoWrap,
-            VerticalOptions = LayoutOptions.Center,
-            VerticalTextAlignment = TextAlignment.Center
+            VerticalOptions = LayoutOptions.Center
         };
         badgeLabel.SetDynamicResource(Label.FontFamilyProperty, "AppFontBold");
 
         return new Border
         {
-            HeightRequest = 24,
             Margin = new Thickness(0, 0, 6, 6),
-            Padding = new Thickness(8, 0),
+            Padding = new Thickness(8, 4),
             StrokeShape = new RoundRectangle
             {
                 CornerRadius = new CornerRadius(6)
@@ -580,7 +578,7 @@ public sealed partial class ThemeStoreView
                     new MauiIcon
                     {
                         Icon = icon,
-                        IconSize = 12,
+                        IconSize = 13,
                         IconColor = fgColor,
                         VerticalOptions = LayoutOptions.Center
                     },

@@ -1,10 +1,8 @@
-using System.Numerics;
 using Windows.Media.Playback;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Rect = Windows.Foundation.Rect;
 using RectangleGeometry = Microsoft.UI.Xaml.Media.RectangleGeometry;
 using Visibility = Microsoft.UI.Xaml.Visibility;
@@ -137,61 +135,122 @@ internal static class WinUiMainPageHelper
         }
     }
 
-    //аппаратная gpu-анимация ширины элемента через composition clip без пересчета layout на каждом кадре
-    public static bool AnimateWidthClip(
-        VisualElement element,
-        double fromWidth,
-        double toWidth,
-        double cornerRadius,
-        int durationMs,
-        Action? onCompleted = null)
+    public static Action AttachNativeScrollViewer(VisualElement element, Action<double> onVerticalOffsetChanged)
     {
-        if (element.Handler?.PlatformView is not FrameworkElement fe)
+        ScrollViewer? attachedScrollViewer = null;
+        FrameworkElement? attachedHost = null;
+        var isDetached = false;
+
+        void OnScrollViewerViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
         {
-            return false;
+            if (isDetached || sender is not ScrollViewer sv)
+            {
+                return;
+            }
+
+            //переводим логические единицы прокрутки winui listview в dip, если viewport выражен в элементах
+            var offsetDip = sv.ViewportHeight > 0.1 && sv.ActualHeight > 0.1 && sv.ViewportHeight < sv.ActualHeight * 0.5
+                ? sv.VerticalOffset * (sv.ActualHeight / sv.ViewportHeight)
+                : sv.VerticalOffset;
+            onVerticalOffsetChanged(offsetDip);
         }
 
-        try
+        void TryAttachToScrollViewer()
         {
-            var visual = ElementCompositionPreview.GetElementVisual(fe);
-            var compositor = visual.Compositor;
-            var height = (float)Math.Max(fe.ActualHeight, element.Height > 0 ? element.Height : 600.0);
+            if (isDetached || attachedScrollViewer is not null || element.Handler?.PlatformView is not DependencyObject root)
+            {
+                return;
+            }
 
-            var geometry = compositor.CreateRoundedRectangleGeometry();
-            geometry.Offset = Vector2.Zero;
-            geometry.CornerRadius = new Vector2((float)cornerRadius, (float)cornerRadius);
-            geometry.Size = new Vector2((float)fromWidth, height);
+            var sv = FindDescendantScrollViewer(root);
+            if (sv is null)
+            {
+                return;
+            }
 
-            var clip = compositor.CreateGeometricClip(geometry);
-            visual.Clip = clip;
+            attachedScrollViewer = sv;
+            sv.ViewChanged += OnScrollViewerViewChanged;
+            if (attachedHost is not null)
+            {
+                attachedHost.Loaded -= OnHostLoadedOrUpdated;
+                attachedHost.LayoutUpdated -= OnHostLayoutUpdated;
+            }
+        }
 
-            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.0f, 0.0f), new Vector2(0.0f, 1.0f));
-            var sizeAnim = compositor.CreateVector2KeyFrameAnimation();
-            sizeAnim.Duration = TimeSpan.FromMilliseconds(durationMs);
-            sizeAnim.InsertKeyFrame(0f, new Vector2((float)fromWidth, height));
-            sizeAnim.InsertKeyFrame(1f, new Vector2((float)toWidth, height), easing);
+        void OnHostLoadedOrUpdated(object sender, RoutedEventArgs e) => TryAttachToScrollViewer();
+        void OnHostLayoutUpdated(object? sender, object e) => TryAttachToScrollViewer();
 
-            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-            geometry.StartAnimation(nameof(CompositionRoundedRectangleGeometry.Size), sizeAnim);
-            batch.End();
+        void BindHost()
+        {
+            if (isDetached)
+            {
+                return;
+            }
 
-            batch.Completed += (_, _) =>
-                MainThread.BeginInvokeOnMainThread(() =>
+            if (attachedHost is not null)
+            {
+                attachedHost.Loaded -= OnHostLoadedOrUpdated;
+                attachedHost.LayoutUpdated -= OnHostLayoutUpdated;
+                attachedHost = null;
+            }
+
+            if (element.Handler?.PlatformView is FrameworkElement fe)
+            {
+                attachedHost = fe;
+                TryAttachToScrollViewer();
+                if (attachedScrollViewer is null)
                 {
-                    if (ReferenceEquals(visual.Clip, clip))
-                    {
-                        visual.Clip = null;
-                    }
-
-                    onCompleted?.Invoke();
-                });
-
-            return true;
+                    fe.Loaded += OnHostLoadedOrUpdated;
+                    fe.LayoutUpdated += OnHostLayoutUpdated;
+                }
+            }
         }
-        catch
+
+        void OnHandlerChanged(object? sender, EventArgs e) => BindHost();
+
+        element.HandlerChanged += OnHandlerChanged;
+        BindHost();
+
+        return () =>
         {
-            return false;
+            isDetached = true;
+            element.HandlerChanged -= OnHandlerChanged;
+            if (attachedHost is not null)
+            {
+                attachedHost.Loaded -= OnHostLoadedOrUpdated;
+                attachedHost.LayoutUpdated -= OnHostLayoutUpdated;
+                attachedHost = null;
+            }
+
+            attachedScrollViewer?.ViewChanged -= OnScrollViewerViewChanged;
+            attachedScrollViewer = null;
+        };
+    }
+
+    private static ScrollViewer? FindDescendantScrollViewer(DependencyObject root)
+    {
+        if (root is ScrollViewer direct)
+        {
+            return direct;
         }
+
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollViewer sv)
+            {
+                return sv;
+            }
+
+            var nested = FindDescendantScrollViewer(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private static void OnNativeElementSizeChangedForClip(object sender, SizeChangedEventArgs e)

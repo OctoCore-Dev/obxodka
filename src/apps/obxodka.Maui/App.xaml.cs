@@ -260,22 +260,6 @@ internal sealed partial class App
                 titleBar.ButtonBackgroundColor = Colors.Transparent;
                 titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
 
-                void SyncTitleBarInset()
-                {
-                    var density = Math.Max(1.0, DeviceDisplay.Current.MainDisplayInfo.Density);
-                    var titleBarDip = titleBar.Height > 0 ? Math.Ceiling(titleBar.Height / density) : 32.0;
-                    SafeAreaHelper.NotifyInsetsChanged(Math.Clamp(titleBarDip, 32.0, 48.0), 0);
-                }
-
-                SyncTitleBarInset();
-                appWindow.Changed += (_, args) =>
-                {
-                    if (args.DidSizeChange)
-                    {
-                        SyncTitleBarInset();
-                    }
-                };
-
                 void SyncTitleBarColors()
                 {
                     var bgBase = Current?.Resources != null && Current.Resources.TryGetValue("BgBase", out var bObj) && bObj is Color c

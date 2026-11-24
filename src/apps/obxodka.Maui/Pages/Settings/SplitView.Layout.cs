@@ -48,14 +48,41 @@ public sealed partial class SplitView
         }
     }
 
-    private void OnSplitAppsCollectionScrolled(object? sender, ItemsViewScrolledEventArgs e)
+#if WINDOWS
+    //нативный winui 3 обработчик прокрутки списка приложений для надежного скрытия и возврата шапки
+    private void OnNativeAppsScrollOffsetChanged(double scrollY)
     {
-        if (SplitAppsCollectionView.Height <= 0)
+        if (SplitAppsCollectionView.Height <= 0 || _isSitesTabActive)
         {
             return;
         }
 
-        UpdateQuickReturnHeader(e.VerticalOffset, e.VerticalDelta);
+        var deltaY = scrollY - _lastAppsScrollY;
+        _lastAppsScrollY = scrollY;
+        UpdateQuickReturnHeader(scrollY, deltaY);
+    }
+#endif
+
+    private void OnSplitAppsCollectionScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    {
+#if WINDOWS
+        if (_detachNativeAppsScroll is not null)
+        {
+            return;
+        }
+#endif
+        if (SplitAppsCollectionView.Height <= 0 || _isSitesTabActive)
+        {
+            return;
+        }
+
+        var effectiveOffset = Math.Max(e.VerticalOffset, e.FirstVisibleItemIndex * 70.0);
+        var rawDelta = Math.Abs(e.VerticalDelta) > 0.01
+            ? e.VerticalDelta
+            : effectiveOffset - _lastAppsScrollY;
+        _lastAppsScrollY = effectiveOffset;
+
+        UpdateQuickReturnHeader(effectiveOffset, rawDelta);
     }
 
     private void OnSitesScrollViewScrolled(object? sender, ScrolledEventArgs e)
@@ -82,6 +109,7 @@ public sealed partial class SplitView
 
         if (scrollY <= 25.0)
         {
+            _accumulatedScrollDelta = 0;
             if (!_isHeaderHidden && !(Math.Abs(HeaderContainer.TranslationY) > 0.5))
             {
                 return;
@@ -94,14 +122,26 @@ public sealed partial class SplitView
             return;
         }
 
-        switch (deltaY)
+        //накапливаем смещение одного направления чтобы плавные мелкие шаги колесика мыши надежно скрывали и возвращали шапку
+        if ((deltaY > 0 && _accumulatedScrollDelta < 0) || (deltaY < 0 && _accumulatedScrollDelta > 0))
         {
-            case > 12.0 when !_isHeaderHidden && scrollY > 70.0:
+            _accumulatedScrollDelta = deltaY;
+        }
+        else
+        {
+            _accumulatedScrollDelta += deltaY;
+        }
+
+        switch (_accumulatedScrollDelta)
+        {
+            case > 14.0 when !_isHeaderHidden && scrollY > 55.0:
+                _accumulatedScrollDelta = 0;
                 _isHeaderHidden = true;
                 _ = ReplaceCtsToken(ref _headerAnimCts);
                 _ = AnimateHeaderAsync(-maxHideOffset, 0.0, true);
                 break;
-            case < -10.0 when _isHeaderHidden:
+            case < -14.0 when _isHeaderHidden:
+                _accumulatedScrollDelta = 0;
                 _isHeaderHidden = false;
                 _ = ReplaceCtsToken(ref _headerAnimCts);
                 _ = AnimateHeaderAsync(0, 1.0, false);
@@ -128,6 +168,7 @@ public sealed partial class SplitView
     private void ResetHeaderToVisible()
     {
         _isHeaderHidden = false;
+        _accumulatedScrollDelta = 0;
         CancelAndDisposeCts(ref _headerAnimCts);
         if (HeaderContainer is not null)
         {
@@ -136,6 +177,7 @@ public sealed partial class SplitView
             HeaderContainer.InputTransparent = false;
         }
 
+        _lastAppsScrollY = 0;
         _lastSitesScrollY = 0;
     }
 

@@ -54,11 +54,10 @@
                                 Wrap="Wrap">
                                 <Border
                                     Margin="4,3"
-                                    Padding="10,0"
+                                    Padding="10,5"
                                     BackgroundColor="{DynamicResource BgElevated}"
-                                    HeightRequest="26"
                                     Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 13"
+                                    StrokeShape="RoundRectangle 14"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
@@ -79,13 +78,11 @@
                                                 LineBreakMode="TailTruncation"
                                                 Text="Не назначен"
                                                 TextColor="{DynamicResource TextPrimary}"
-                                                VerticalOptions="Center"
-                                                VerticalTextAlignment="Center" />
+                                                VerticalOptions="Center" />
                                             <Border
                                                 x:Name="IpVersionBadge"
-                                                Padding="4,0"
+                                                Padding="4,1"
                                                 BackgroundColor="{DynamicResource AccentDim}"
-                                                HeightRequest="16"
                                                 IsVisible="False"
                                                 Stroke="{DynamicResource Accent}"
                                                 StrokeShape="RoundRectangle 4"
@@ -97,15 +94,13 @@
                                                     FontSize="8.5"
                                                     Text="v4"
                                                     TextColor="{DynamicResource Accent}"
-                                                    VerticalOptions="Center"
-                                                    VerticalTextAlignment="Center" />
+                                                    VerticalOptions="Center" />
                                             </Border>
                                         </HorizontalStackLayout>
                                         <Border
                                             x:Name="IpCopyButton"
-                                            Padding="3,0"
+                                            Padding="3,1"
                                             BackgroundColor="Transparent"
-                                            HeightRequest="20"
                                             IsVisible="False"
                                             Stroke="Transparent"
                                             StrokeShape="RoundRectangle 4"
@@ -125,11 +120,10 @@
 
                                 <Border
                                     Margin="4,3"
-                                    Padding="10,0"
+                                    Padding="10,5"
                                     BackgroundColor="{DynamicResource BgElevated}"
-                                    HeightRequest="26"
                                     Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 13"
+                                    StrokeShape="RoundRectangle 14"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
@@ -146,19 +140,17 @@
                                             MaximumWidthRequest="140"
                                             Text="Нет подключения"
                                             TextColor="{DynamicResource TextSecondary}"
-                                            VerticalOptions="Center"
-                                            VerticalTextAlignment="Center" />
+                                            VerticalOptions="Center" />
                                     </HorizontalStackLayout>
                                 </Border>
 
                                 <Border
                                     x:Name="PingBadge"
                                     Margin="4,3"
-                                    Padding="10,0"
+                                    Padding="10,5"
                                     BackgroundColor="{DynamicResource SuccessDim}"
-                                    HeightRequest="26"
                                     Stroke="{DynamicResource Success}"
-                                    StrokeShape="RoundRectangle 13"
+                                    StrokeShape="RoundRectangle 14"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
@@ -175,8 +167,7 @@
                                             FontSize="11.5"
                                             Text="-- ms"
                                             TextColor="{DynamicResource Success}"
-                                            VerticalOptions="Center"
-                                            VerticalTextAlignment="Center" />
+                                            VerticalOptions="Center" />
                                     </HorizontalStackLayout>
                                 </Border>
                             </FlexLayout>

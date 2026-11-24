@@ -56,9 +56,12 @@ public sealed partial class MainPage
         var showNav = ShouldShowNavigationChrome();
         var safeTop = _lastAppliedTopInset > 0 ? _lastAppliedTopInset : Math.Max(0, SafeAreaHelper.TopInset);
         var safeBottom = _lastAppliedBottomInset > 0 ? _lastAppliedBottomInset : Math.Max(0, SafeAreaHelper.BottomInset);
-        var dockedWidth = DesktopSidebar.OccupiedWidth > 0
-            ? DesktopSidebar.OccupiedWidth
-            : AdaptiveLayoutHelper.CollapsedSidebarRailWidth;
+        var isWinOverlay = showNav && DeviceInfo.Platform == DevicePlatform.WinUI;
+        var dockedWidth = isWinOverlay
+            ? AdaptiveLayoutHelper.CollapsedSidebarRailWidth
+            : DesktopSidebar.OccupiedWidth > 0
+                ? DesktopSidebar.OccupiedWidth
+                : AdaptiveLayoutHelper.CollapsedSidebarRailWidth;
 
         var rawViewport = AdaptiveLayoutHelper.CreateViewport(
             windowWidth,
@@ -70,14 +73,21 @@ public sealed partial class MainPage
             dockedWidth);
 
         //на экране входа сайдбар скрыт и контент занимает всю ширину окна
-        var viewport = showNav
-            ? rawViewport
-            : rawViewport with
+        //на windows сайдбар всегда работает в режиме fluent 2 compact-overlay, чтобы анимация ширины не дергала всю страницу
+        var viewport = !showNav
+            ? rawViewport with
             {
                 ContentWidth = windowWidth > 0 ? windowWidth : rawViewport.ContentWidth,
                 UseSidebar = false,
                 UseOverlaySidebar = false
-            };
+            }
+            : rawViewport.UseSidebar && DeviceInfo.Platform == DevicePlatform.WinUI
+                ? rawViewport with
+                {
+                    UseOverlaySidebar = true,
+                    ContentWidth = Math.Max(0, windowWidth - AdaptiveLayoutHelper.CollapsedSidebarRailWidth)
+                }
+                : rawViewport;
 
         var chromeChanged = _isWideLayout != viewport.UseSidebar ||
                             _isOverlaySidebar != viewport.UseOverlaySidebar ||
@@ -626,6 +636,11 @@ public sealed partial class MainPage
 
     private void ApplySafeArea(double top, double bottom)
     {
+        if (DeviceInfo.Platform != DevicePlatform.Android && DeviceInfo.Platform != DevicePlatform.iOS)
+        {
+            return;
+        }
+
         if (Math.Abs(_lastAppliedTopInset - top) < 0.5 && Math.Abs(_lastAppliedBottomInset - bottom) < 0.5)
         {
             return;
@@ -634,11 +649,7 @@ public sealed partial class MainPage
         _lastAppliedTopInset = top;
         _lastAppliedBottomInset = bottom;
 
-        //на windows клиентская область скролла начинается строго ниже системного titlebar, чтобы контент не залезал под кнопки окна
-        MainContentContainer.Padding = DeviceInfo.Platform == DevicePlatform.WinUI
-            ? new Thickness(0, top, 0, bottom)
-            : new Thickness(0);
-
+        MainContentContainer.Padding = new Thickness(0);
         DesktopSidebar.ApplySafeAreaInsets(top, bottom);
         MobileBottomBar.ApplyBottomInset(bottom);
         RefreshAdaptiveLayout(forceApply: true);
