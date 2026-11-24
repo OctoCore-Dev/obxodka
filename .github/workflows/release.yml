@@ -30,6 +30,7 @@ on:
         description: "Override application display version (leave blank to use version.props)"
         required: false
         default: ""
+        type: string
       android_track:
         description: "Google Play Release Track"
         required: true
