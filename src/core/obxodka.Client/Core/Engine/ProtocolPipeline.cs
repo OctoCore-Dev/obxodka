@@ -73,6 +73,9 @@ public static class ProtocolPipelineRegistry
         s_factories[factory.Kind] = factory;
     }
 
+    //удаление временной фабрики протокола из реестра (для изоляции тестов)
+    internal static bool UnregisterFactory(TransportProtocolKind kind) => s_factories.TryRemove(kind, out _);
+
     //получение всех зарегистрированных фабрик протоколов в стабильном порядке приоритета
     public static IReadOnlyList<ITransportProtocolFactory> GetRegisteredFactories() =>
         [.. s_factories.Values.OrderBy(f => f.Order).ThenBy(f => f.Kind)];

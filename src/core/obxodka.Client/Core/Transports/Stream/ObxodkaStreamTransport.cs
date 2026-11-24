@@ -317,6 +317,21 @@ public sealed partial class ObxodkaStreamTransport(int serverPort = 443, string?
                     sw.Stop();
                     AppLogger.Log($"[TCP OK] Connected to {connectTarget} in {sw.ElapsedMilliseconds}ms.");
                 }
+                catch (OperationCanceledException) when (_cts?.IsCancellationRequested == true)
+                {
+                    sw.Stop();
+                    AppLogger.Log($"[TCP CANCEL] Socket connect to {connectTarget} cancelled during shutdown ({sw.ElapsedMilliseconds}ms).");
+                    socket.Dispose();
+                    throw;
+                }
+                catch (OperationCanceledException ex)
+                {
+                    sw.Stop();
+                    AppLogger.LogWarning(
+                        $"[TCP TIMEOUT] Socket connect to {connectTarget} timed out after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                    socket.Dispose();
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     sw.Stop();

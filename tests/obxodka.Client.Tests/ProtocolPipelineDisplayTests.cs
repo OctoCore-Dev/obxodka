@@ -1,7 +1,7 @@
 namespace obxodka.Client.Tests;
 
 //тесты реестра протоколов, бейджей активного транспорта и сброса состояния при отключении
-[Collection(nameof(GlobalStaticStateCollection))]
+[Collection("GlobalStaticState")]
 public sealed class ProtocolPipelineDisplayTests
 {
     [Fact]
