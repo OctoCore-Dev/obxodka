@@ -41,6 +41,16 @@ public interface ITransportProtocolFactory
 
     public string DisplayName { get; }
 
+    public string FriendlyName => DisplayName;
+
+    public string ShortTag => FriendlyName;
+
+    public string TransportSummary => DisplayName;
+
+    public string Description => string.Empty;
+
+    public int Order => (int)Kind;
+
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp);
 }
 
@@ -63,9 +73,33 @@ public static class ProtocolPipelineRegistry
         s_factories[factory.Kind] = factory;
     }
 
+    //получение всех зарегистрированных фабрик протоколов в стабильном порядке приоритета
+    public static IReadOnlyList<ITransportProtocolFactory> GetRegisteredFactories() =>
+        [.. s_factories.Values.OrderBy(f => f.Order).ThenBy(f => f.Kind)];
+
     //получение зарегистрированной фабрики
     public static bool TryGetFactory(TransportProtocolKind kind, [NotNullWhen(true)] out ITransportProtocolFactory? factory) =>
         s_factories.TryGetValue(kind, out factory);
+
+    //поиск фабрики протокола по внутреннему имени транспорта (например OBXODKA-STREAM / OBXODKA-WS / OBXODKA-XHTTP)
+    public static bool TryFindFactoryByProtocolName(string? protocolName, [NotNullWhen(true)] out ITransportProtocolFactory? factory)
+    {
+        if (!string.IsNullOrWhiteSpace(protocolName))
+        {
+            foreach (var item in s_factories.Values)
+            {
+                if (string.Equals(item.DisplayName, protocolName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(item.Kind.ToString(), protocolName, StringComparison.OrdinalIgnoreCase))
+                {
+                    factory = item;
+                    return true;
+                }
+            }
+        }
+
+        factory = null;
+        return false;
+    }
 
     //разрешение активного тега транспорта для ui без строковых костылей
     public static ActiveTransportTag ResolveActiveTag(string? protocolName, int activeRays) =>
@@ -75,6 +109,31 @@ public static class ProtocolPipelineRegistry
             "OBXODKA-XHTTP" => XhttpTransportTag.Instance,
             _ => new StreamTransportTag(activeRays)
         };
+
+    //форматирование краткого бейджа активного протокола для верхней плашки ui
+    public static string FormatLiveStatusBadge(string? protocolName, int activeRays)
+    {
+        if (string.IsNullOrWhiteSpace(protocolName) ||
+            string.Equals(protocolName, "AUTO", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Подбор...";
+        }
+
+        if (TryFindFactoryByProtocolName(protocolName, out var customFactory) &&
+            customFactory.Kind is not (TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaWebSocket or TransportProtocolKind.ObxodkaXhttp))
+        {
+            return customFactory.ShortTag;
+        }
+
+#pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
+        return ResolveActiveTag(protocolName, activeRays) switch
+        {
+            StreamTransportTag stream => $"Stream • {Math.Max(1, stream.ActiveRays)}L",
+            WebSocketTransportTag => "WebSocket",
+            XhttpTransportTag => "XHTTP"
+        };
+#pragma warning restore IDE0072
+    }
 
     //создание экземпляра транспорта для указанного шага кругового маршрута с автозащитой сокетов
     public static IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp = null)
@@ -92,6 +151,11 @@ internal sealed class ObxodkaStreamProtocolFactory : ITransportProtocolFactory
 {
     public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaStream;
     public string DisplayName => "OBXODKA-STREAM";
+    public string FriendlyName => "Obxodka Stream";
+    public string ShortTag => "Stream";
+    public string TransportSummary => "HTTP/2 TLS 443";
+    public string Description => "Многолучевой защищённый дуплексный поток с минимальной задержкой и обходом DPI.";
+    public int Order => 0;
 
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
         new ObxodkaStreamTransport(step.Port, step.TargetSni, preferredAssignedIp);
@@ -101,6 +165,11 @@ internal sealed class ObxodkaWebSocketProtocolFactory : ITransportProtocolFactor
 {
     public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaWebSocket;
     public string DisplayName => "OBXODKA-WS";
+    public string FriendlyName => "WebSocket (Cloudflare)";
+    public string ShortTag => "WebSocket";
+    public string TransportSummary => "WSS CDN 443";
+    public string Description => "Защищённый облачный щит через WebSocket поверх CDN для обхода жёстких блокировок.";
+    public int Order => 1;
 
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
         new ObxodkaWebSocketTransport(step.Port, step.TargetSni, preferredAssignedIp);
@@ -110,6 +179,11 @@ internal sealed class ObxodkaXhttpProtocolFactory : ITransportProtocolFactory
 {
     public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaXhttp;
     public string DisplayName => "OBXODKA-XHTTP";
+    public string FriendlyName => "XHTTP (Split-HTTP)";
+    public string ShortTag => "XHTTP";
+    public string TransportSummary => "Split-HTTP 443";
+    public string Description => "Разделённый HTTP-транспорт (GET/POST) для устойчивой работы при агрессивной фильтрации.";
+    public int Order => 2;
 
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
         new ObxodkaXhttpTransport(step.Port, step.TargetSni, preferredAssignedIp);

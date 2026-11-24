@@ -344,6 +344,12 @@ public sealed class SplitTunnelPolicy
             return false;
         }
 
+        //stun/turn серверы никогда не пускаются в авто-обход рф чтобы исключить утечку реального ip через webrtc
+        if (StunPacketInspector.IsStunHostname(normalized))
+        {
+            return false;
+        }
+
         //проверка правила обхода всех национальных доменных зон РФ
         if (BypassAllRuTlds &&
             (normalized == "ru" || normalized.EndsWith(".ru", StringComparison.Ordinal) ||
