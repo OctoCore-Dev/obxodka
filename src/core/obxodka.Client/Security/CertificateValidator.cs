@@ -59,10 +59,19 @@ public static class CertificateValidator
 
         var pubKey = cert2.GetPublicKey();
         var hash = Convert.ToBase64String(SHA256.HashData(pubKey));
-        AppLogger.Log(
-            $"[CERT] Validating server certificate: Subject='{cert2.Subject}', Thumbprint='{cert2.Thumbprint}', PubKeyHash='{hash}', NotAfter='{notAfterUtc:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
+        string? spkiHash = null;
+        using (var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey())
+        {
+            if (key is not null)
+            {
+                spkiHash = Convert.ToBase64String(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
+            }
+        }
 
-        //сверка с ожидаемым пином
+        AppLogger.Log(
+            $"[CERT] Validating server certificate: Subject='{cert2.Subject}', PubKeyHash='{hash}', SpkiHash='{spkiHash ?? "none"}', NotAfter='{notAfterUtc:u}', SslErrors='{errors}', ExpectedPin='{expectedPin ?? "none"}'");
+
+        //сверка с ожидаемым sha-256 пином (только публичный ключ или spki, без sha-1)
         if (!string.IsNullOrWhiteSpace(expectedPin))
         {
             if (string.Equals(hash, expectedPin, StringComparison.Ordinal))
@@ -71,34 +80,23 @@ public static class CertificateValidator
                 return true;
             }
 
-            using var key = cert2.GetRSAPublicKey() as AsymmetricAlgorithm ?? cert2.GetECDsaPublicKey();
-            if (key is not null)
+            if (spkiHash is not null && string.Equals(spkiHash, expectedPin, StringComparison.Ordinal))
             {
-                var spkiHash = Convert.ToBase64String(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
-                if (string.Equals(spkiHash, expectedPin, StringComparison.Ordinal))
-                {
-                    AppLogger.Log($"[CERT OK] Matched SPKI public key hash '{expectedPin}'");
-                    return true;
-                }
-            }
-
-            if (string.Equals(cert2.Thumbprint, expectedPin, StringComparison.OrdinalIgnoreCase))
-            {
-                AppLogger.Log($"[CERT OK] Matched thumbprint '{expectedPin}'");
+                AppLogger.Log($"[CERT OK] Matched SPKI public key hash '{expectedPin}'");
                 return true;
             }
         }
 
-        //сверка с резервными зашитыми ключами
+        //сверка с резервными зашитыми sha-256 ключами
         foreach (var backupHash in AppSecrets.BackupPublicKeyHashes)
         {
-            if (!string.Equals(cert2.Thumbprint, backupHash, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(hash, backupHash, StringComparison.Ordinal))
+            if (!string.Equals(hash, backupHash, StringComparison.Ordinal) &&
+                (spkiHash is null || !string.Equals(spkiHash, backupHash, StringComparison.Ordinal)))
             {
                 continue;
             }
 
-            AppLogger.Log($"[CERT OK] Matched hardcoded backup thumbprint '{backupHash}'");
+            AppLogger.Log($"[CERT OK] Matched hardcoded backup SHA-256 pin '{backupHash}'");
             return true;
         }
 
