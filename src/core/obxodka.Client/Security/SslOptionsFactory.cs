@@ -17,7 +17,7 @@ public static class SslOptionsFactory
             EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = applicationProtocols,
             RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
-                CertificateValidator.ValidateServerCertificate(cert, chain, errors, dynamicPinningHash)
+                CertificateValidator.ValidateServerCertificate(cert, chain, errors, dynamicPinningHash, targetHost)
         };
 
         if (!OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
