@@ -173,8 +173,10 @@ internal static partial class WindowsStartupManager
                 var schtasksPath = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
                 using var proc = Process.Start(new ProcessStartInfo(schtasksPath, $"/delete /tn \"{LegacyTaskName}\" /f")
                 {
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
                 });
                 proc?.WaitForExit();
             }

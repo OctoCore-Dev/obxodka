@@ -19,7 +19,8 @@
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and ('$(RuntimeIdentifier)' != '' or '$(BuildWindowsOnly)' == 'true')">$(WindowsTargetFramework)</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">$(AndroidTargetFramework)</TargetFrameworks>
     <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">$(MacCatalystTargetFramework);$(IosTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
-    <OutputType>Exe</OutputType>
+    <OutputType Condition="!$(TargetFramework.Contains('-windows'))">Exe</OutputType>
+    <OutputType Condition="$(TargetFramework.Contains('-windows'))">WinExe</OutputType>
     <RootNamespace>obxodka</RootNamespace>
     <ApplicationTitle>Obxodka</ApplicationTitle>
     <ApplicationId>com.octocore.obxodka</ApplicationId>

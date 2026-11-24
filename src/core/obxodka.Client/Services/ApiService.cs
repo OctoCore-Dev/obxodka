@@ -93,8 +93,8 @@ public sealed class ApiService(HttpClient client)
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
-            //для прямого подключения к ip отключаем подставной sni (clean zero-sni)
-            SslOptions = SslOptionsFactory.Create(),
+            //для прямого подключения к ip отключаем подставной sni и не смешиваем пин туннеля с api
+            SslOptions = SslOptionsFactory.Create(dynamicPinningHash: ""),
             ConnectCallback = async (context, cToken) =>
             {
                 var targetIp = IPAddress.TryParse(context.DnsEndPoint.Host, out var parsedHostIp)

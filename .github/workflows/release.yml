@@ -451,6 +451,74 @@ jobs:
           }
           if ($pkg) {
             Write-Host "[INFO] Found Store Package: $($pkg.FullName)" -ForegroundColor Cyan
+
+            # Verify MSIX payload: obxodka.Maui.exe must be Windows GUI (Subsystem=2) and SplashScreen image must exist
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $tmpDir = Join-Path $env:RUNNER_TEMP "msix-verify"
+            Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+
+            $currentArchive = $pkg.FullName
+            $verified = $false
+            for ($depth = 0; $depth -lt 4; $depth++) {
+              $zip = [IO.Compression.ZipFile]::OpenRead($currentArchive)
+              try {
+                if ($zip.GetEntry("AppxManifest.xml") -and $zip.GetEntry("obxodka.Maui.exe")) {
+                  $exeStream = $zip.GetEntry("obxodka.Maui.exe").Open()
+                  $ms = [IO.MemoryStream]::new()
+                  $exeStream.CopyTo($ms)
+                  $exeStream.Dispose()
+                  $bytes = $ms.ToArray()
+                  $ms.Dispose()
+                  $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
+                  $subsys = [BitConverter]::ToUInt16($bytes, $peOff + 24 + 68)
+                  if ($subsys -ne 2) {
+                    Write-Error "[FAIL] MSIX obxodka.Maui.exe has PE Subsystem=$subsys (expected 2=Windows GUI, 3=Console would open terminal)!"
+                    exit 1
+                  }
+                  Write-Host "[VERIFY] MSIX obxodka.Maui.exe PE Subsystem = $subsys (Windows GUI) [OK]" -ForegroundColor Green
+
+                  $sr = [IO.StreamReader]::new($zip.GetEntry("AppxManifest.xml").Open())
+                  [xml]$manifestXml = $sr.ReadToEnd()
+                  $sr.Dispose()
+                  $ns = [System.Xml.XmlNamespaceManager]::new($manifestXml.NameTable)
+                  $ns.AddNamespace("uap", "http://schemas.microsoft.com/appx/manifest/uap/windows10")
+                  $splashNode = $manifestXml.SelectSingleNode("//uap:SplashScreen", $ns)
+                  if ($splashNode) {
+                    $splashImg = $splashNode.GetAttribute("Image")
+                    $splashBase = [IO.Path]::GetFileNameWithoutExtension($splashImg)
+                    $splashExt = [IO.Path]::GetExtension($splashImg)
+                    $matched = $zip.Entries | Where-Object {
+                      $_.FullName -ieq $splashImg -or $_.FullName -ilike "$splashBase.scale-*$splashExt"
+                    }
+                    if (-not $matched) {
+                      Write-Error "[FAIL] MSIX AppxManifest.xml references SplashScreen '$splashImg', but no matching asset exists inside MSIX (causes Store error 0x80073CF6)!"
+                      exit 1
+                    }
+                    Write-Host "[VERIFY] MSIX SplashScreen '$splashImg' matched asset(s): $(($matched | ForEach-Object FullName) -join ', ') [OK]" -ForegroundColor Green
+                  }
+                  $verified = $true
+                  break
+                }
+
+                $nested = $zip.Entries | Where-Object { $_.FullName -like "*_x64.msix" -or $_.FullName -like "*.msixbundle" -or $_.FullName -like "*.msix" } | Where-Object { $_.FullName -notlike "*scale-*" } | Select-Object -First 1
+                if (-not $nested) {
+                  Write-Error "[FAIL] Could not locate inner x64 MSIX inside $($pkg.Name) for verification!"
+                  exit 1
+                }
+                $nextPath = Join-Path $tmpDir ("layer_" + $depth + "_" + [IO.Path]::GetFileName($nested.FullName))
+                [IO.Compression.ZipFileExtensions]::ExtractToFile($nested, $nextPath, $true)
+                $currentArchive = $nextPath
+              } finally {
+                $zip.Dispose()
+              }
+            }
+            Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            if (-not $verified) {
+              Write-Error "[FAIL] MSIX verification did not reach AppxManifest.xml / obxodka.Maui.exe!"
+              exit 1
+            }
+
             Copy-Item -Path $pkg.FullName -Destination "./win-dist/$($pkg.Name)"
             echo "pkg_path=$($pkg.FullName)" >> $env:GITHUB_OUTPUT
             echo "pkg_name=$($pkg.Name)" >> $env:GITHUB_OUTPUT
@@ -481,6 +549,10 @@ jobs:
             $unpackagedArgs += "-p:IsTestingBuild=true"
           }
 
+          # Clean MSIX intermediate/output artifacts so unpackaged build never inherits packaged state
+          Remove-Item "C:\BuildCache\obxodka.Maui\obj\release_net11.0-windows10.0.19041.0_win-x64" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "C:\BuildCache\obxodka.Maui\bin\release_net11.0-windows10.0.19041.0_win-x64" -Recurse -Force -ErrorAction SilentlyContinue
+
           Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `
             -p:BuildWindowsOnly=true `
@@ -489,6 +561,20 @@ jobs:
             -p:GenerateAppxPackageOnBuild=false `
             $unpackagedArgs `
             -o ./win-unpackaged
+
+          $unpackagedExe = "./win-unpackaged/obxodka.Maui.exe"
+          if (-not (Test-Path $unpackagedExe)) {
+            Write-Error "[FAIL] Unpackaged obxodka.Maui.exe not found!"
+            exit 1
+          }
+          $exeBytes = [IO.File]::ReadAllBytes((Resolve-Path $unpackagedExe))
+          $exePeOff = [BitConverter]::ToInt32($exeBytes, 0x3C)
+          $exeSubsys = [BitConverter]::ToUInt16($exeBytes, $exePeOff + 24 + 68)
+          if ($exeSubsys -ne 2) {
+            Write-Error "[FAIL] Unpackaged obxodka.Maui.exe has PE Subsystem=$exeSubsys (expected 2=Windows GUI, 3=Console would open terminal)!"
+            exit 1
+          }
+          Write-Host "[VERIFY] Unpackaged obxodka.Maui.exe PE Subsystem = $exeSubsys (Windows GUI) [OK]" -ForegroundColor Green
 
           Write-Host "[INFO] Executing Inno Setup compiler (ISCC)..." -ForegroundColor Cyan
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"

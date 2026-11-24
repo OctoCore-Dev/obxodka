@@ -124,13 +124,7 @@ public static class CertificateValidator
                 using var verifyChain = new X509Chain();
                 verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
                 verifyChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeNested;
-                if (chain is not null)
-                {
-                    foreach (var elem in chain.ChainElements)
-                    {
-                        _ = verifyChain.ChainPolicy.ExtraStore.Add(elem.Certificate);
-                    }
-                }
+                PopulateExtraStore(verifyChain, chain);
 
                 if (verifyChain.Build(cert2) || IsOnlyNonFatalRevocationStatus(verifyChain))
                 {
@@ -156,6 +150,7 @@ public static class CertificateValidator
         {
             using var verifyChain = new X509Chain();
             verifyChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            PopulateExtraStore(verifyChain, chain);
             if (verifyChain.Build(cert2) || IsOnlyNonFatalRevocationStatus(verifyChain))
             {
                 AppLogger.Log("[CERT OK] Default system root CA chain verified.");
@@ -181,6 +176,25 @@ public static class CertificateValidator
         return false;
     }
 
+    //перенос промежуточных сертификатов из элементов цепочки и extrastore исходного рукопожатия
+    internal static void PopulateExtraStore(X509Chain target, X509Chain? source)
+    {
+        if (source is null)
+        {
+            return;
+        }
+
+        foreach (var elem in source.ChainElements)
+        {
+            _ = target.ChainPolicy.ExtraStore.Add(elem.Certificate);
+        }
+
+        foreach (var extra in source.ChainPolicy.ExtraStore)
+        {
+            _ = target.ChainPolicy.ExtraStore.Add(extra);
+        }
+    }
+
     //проверка что цепочка доверия не содержит критических ошибок кроме недоступности ocsp/crl
     private static bool IsOnlyNonFatalRevocationStatus(X509Chain chain) =>
         chain.ChainElements.Count > 1 &&
@@ -190,16 +204,66 @@ public static class CertificateValidator
             or X509ChainStatusFlags.OfflineRevocation);
 
     //проверка наличия доменов обходки в san сертификата
-    private static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
+    internal static bool IsTrustedObxodkaCertificate(X509Certificate2 cert2)
     {
         if (cert2.Extensions.OfType<X509SubjectAlternativeNameExtension>().SelectMany(sanExt => sanExt.EnumerateDnsNames())
-            .Any(IsTrustedHostName))
+            .Any(IsTrustedCertificateName))
         {
             return true;
         }
 
         var simpleName = cert2.GetNameInfo(X509NameType.SimpleName, false);
-        return !string.IsNullOrWhiteSpace(simpleName) && IsTrustedHostName(simpleName.Trim());
+        return !string.IsNullOrWhiteSpace(simpleName) && IsTrustedCertificateName(simpleName.Trim());
+    }
+
+    //проверка имени из сертификата включая wildcard-записи вида *.octocore.dev для поддоменов зеркал
+    private static bool IsTrustedCertificateName(string certDnsName)
+    {
+        var trimmed = certDnsName.Trim();
+        if (IsTrustedHostName(trimmed))
+        {
+            return true;
+        }
+
+        if (!trimmed.StartsWith("*.", StringComparison.Ordinal) || trimmed.Length <= 2)
+        {
+            return false;
+        }
+
+        var suffix = trimmed.AsSpan(1);
+        if (MatchesWildcardSuffix(AppConfig.PrimaryDomain, suffix) ||
+            MatchesWildcardSuffix(AppConfig.MirrorDomain, suffix))
+        {
+            return true;
+        }
+
+        foreach (var mirror in BootstrapConfig.Mirrors)
+        {
+            if (MatchesWildcardSuffix(mirror, suffix))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    //проверка одноуровневого wildcard-совпадения по rfc 6125
+    private static bool MatchesWildcardSuffix(string? host, ReadOnlySpan<char> wildcardSuffix)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        var hostSpan = host.AsSpan().Trim();
+        if (hostSpan.Length <= wildcardSuffix.Length || !hostSpan.EndsWith(wildcardSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var prefix = hostSpan[..^wildcardSuffix.Length];
+        return prefix.Length > 0 && !prefix.Contains('.');
     }
 
     //проверка совпадения хоста с основным или зеркальным доменом

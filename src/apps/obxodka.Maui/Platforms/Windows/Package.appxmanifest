@@ -16,7 +16,7 @@
     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$" uap18:RuntimeBehavior="windowsApp">
       <uap:VisualElements DisplayName="obxodka" Description="Fast and Secure VPN" Square150x150Logo="$placeholder$.png" Square44x44Logo="$placeholder$.png" BackgroundColor="#08080C">
         <uap:DefaultTile Square71x71Logo="$placeholder$.png" Wide310x150Logo="$placeholder$.png" Square310x310Logo="$placeholder$.png" ShortName="Obxodka" />
-        <uap:SplashScreen Image="splash_logo.png" BackgroundColor="#08080C" />
+        <uap:SplashScreen Image="$placeholder$.png" BackgroundColor="#08080C" />
       </uap:VisualElements>
       <Extensions>
         <desktop:Extension Category="windows.startupTask">

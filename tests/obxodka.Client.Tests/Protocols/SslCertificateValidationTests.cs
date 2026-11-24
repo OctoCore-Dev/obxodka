@@ -149,6 +149,57 @@ public class SslCertificateValidationTests
     }
 
     [Fact]
+    public void IsTrustedObxodkaCertificateMatchesWildcardSanForConfiguredMirrorSubdomains()
+    {
+        var mirrorWithSubdomain = BootstrapConfig.Mirrors.FirstOrDefault(m => m.Count(c => c == '.') >= 2);
+        Assert.False(string.IsNullOrWhiteSpace(mirrorWithSubdomain));
+
+        var dotIndex = mirrorWithSubdomain.IndexOf('.');
+        var wildcard = "*" + mirrorWithSubdomain[dotIndex..];
+
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest($"cn={mirrorWithSubdomain[(dotIndex + 1)..]}", rsa, HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName(wildcard);
+        sanBuilder.AddDnsName(mirrorWithSubdomain[(dotIndex + 1)..]);
+        req.CertificateExtensions.Add(sanBuilder.Build());
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        Assert.True(CertificateValidator.IsTrustedObxodkaCertificate(cert));
+    }
+
+    [Fact]
+    public void IsTrustedObxodkaCertificateRejectsAttackerWildcardSan()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=attacker.example", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName("*.attacker.example");
+        sanBuilder.AddDnsName($"*.{AppConfig.PrimaryDomain}.attacker.example");
+        req.CertificateExtensions.Add(sanBuilder.Build());
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        Assert.False(CertificateValidator.IsTrustedObxodkaCertificate(cert));
+    }
+
+    [Fact]
+    public void PopulateExtraStoreCopiesIntermediatesFromSourceExtraStore()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=intermediate-ca", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var intermediate = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        using var sourceChain = new X509Chain();
+        _ = sourceChain.ChainPolicy.ExtraStore.Add(intermediate);
+
+        using var targetChain = new X509Chain();
+        CertificateValidator.PopulateExtraStore(targetChain, sourceChain);
+
+        Assert.Contains(targetChain.ChainPolicy.ExtraStore, c => c.Thumbprint == intermediate.Thumbprint);
+    }
+
+    [Fact]
     public void AppLoggerFormatExceptionDetailsUnwrapsNestedAggregateExceptionWithStackTrace()
     {
         Exception captured;
