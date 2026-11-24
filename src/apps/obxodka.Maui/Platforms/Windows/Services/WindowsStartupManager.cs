@@ -7,6 +7,7 @@ namespace obxodka.Platforms.Windows;
 internal static partial class WindowsStartupManager
 {
     private const string StartupTaskId = "ObxodkaStartup";
+    private const string ScheduledTaskName = "ObxodkaStartupTask";
     private const string LegacyTaskName = "ObxodkaVpnStartup";
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "Obxodka";
@@ -28,8 +29,7 @@ internal static partial class WindowsStartupManager
             }
             else if (OperatingSystem.IsWindows())
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, false);
-                isEnabled = key?.GetValue(RunValueName) is not null;
+                isEnabled = await QueryScheduledTaskExistsAsync(ScheduledTaskName).ConfigureAwait(false);
             }
 
             Preferences.Set(AppPreferenceKeys.RunOnStartup, isEnabled);
@@ -80,23 +80,31 @@ internal static partial class WindowsStartupManager
             }
             else if (OperatingSystem.IsWindows())
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
-                if (key is not null)
+                //убираем устаревший ключ hkcu\run (windows игнорирует его для exe с requireAdministrator)
+                try
                 {
-                    if (enable)
+                    using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
+                    key?.DeleteValue(RunValueName, false);
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                if (enable)
+                {
+                    var exePath = Environment.ProcessPath;
+                    if (!string.IsNullOrEmpty(exePath))
                     {
-                        var exePath = Environment.ProcessPath;
-                        if (!string.IsNullOrEmpty(exePath))
-                        {
-                            key.SetValue(RunValueName, $"\"{exePath}\"");
-                            isEnabled = true;
-                        }
+                        var exitCode = await RunSchtasksAsync(
+                            $"/create /tn \"{ScheduledTaskName}\" /tr \"\\\"{exePath}\\\"\" /sc ONLOGON /rl HIGHEST /f").ConfigureAwait(false);
+                        isEnabled = exitCode == 0;
                     }
-                    else
-                    {
-                        key.DeleteValue(RunValueName, false);
-                        isEnabled = false;
-                    }
+                }
+                else
+                {
+                    _ = await RunSchtasksAsync($"/delete /tn \"{ScheduledTaskName}\" /f").ConfigureAwait(false);
+                    isEnabled = false;
                 }
             }
 
@@ -108,6 +116,35 @@ internal static partial class WindowsStartupManager
             AppLogger.LogError($"[STARTUP ERROR] {ex.Message}", ex);
             return Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
         }
+    }
+
+    //проверка наличия задачи в планировщике windows
+    private static async Task<bool> QueryScheduledTaskExistsAsync(string taskName) =>
+        await RunSchtasksAsync($"/query /tn \"{taskName}\"").ConfigureAwait(false) == 0;
+
+    //безопасный запуск системного schtasks.exe по полному пути из system32
+    private static async Task<int> RunSchtasksAsync(string arguments)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return -1;
+        }
+
+        var schtasksPath = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
+        using var proc = Process.Start(new ProcessStartInfo(schtasksPath, arguments)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        });
+        if (proc is null)
+        {
+            return -1;
+        }
+
+        await proc.WaitForExitAsync().ConfigureAwait(false);
+        return proc.ExitCode;
     }
 
     //проверка наличия msix пакета приложения
