@@ -7,6 +7,7 @@ public sealed partial class DesktopSidebarView
     private const double ExpandedWidth = 248.0;
     private const double SideMargin = 12.0;
 
+    private readonly VisualElement[] _sidebarLabels;
     private IAppUpdaterService? _appUpdaterService;
     private string _currentTab = "vpn";
     private bool _isCompactHeight;
@@ -14,10 +15,25 @@ public sealed partial class DesktopSidebarView
     private bool _isVpnConnected;
     private double _lastSafeBottom;
     private double _lastSafeTop;
+    private int _toggleGeneration;
 
     public DesktopSidebarView()
     {
         InitializeComponent();
+        _sidebarLabels =
+        [
+            AppLogoText,
+            CollapseChevronIcon,
+            LabelVpn,
+            LabelProfile,
+            LabelConfiguration,
+            LabelDevices,
+            LabelSplit,
+            LabelBug,
+            LabelReviews,
+            VpnStatusLabel,
+            LogoutText
+        ];
         AppVersionLabel.Text = $"v{AppInfo.Current.VersionString}";
         UpdateSeasonalLogo();
     }
@@ -87,8 +103,9 @@ public sealed partial class DesktopSidebarView
     {
         var minVert = _isCompactHeight ? 8.0 : SideMargin;
         var extra = _isCompactHeight ? 4.0 : 8.0;
-        var topMargin = Math.Max(_lastSafeTop + extra, minVert);
-        var bottomMargin = Math.Max(_lastSafeBottom + extra, minVert);
+        var isMobile = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS;
+        var topMargin = isMobile ? Math.Max(_lastSafeTop + extra, minVert) : minVert;
+        var bottomMargin = isMobile ? Math.Max(_lastSafeBottom + extra, minVert) : minVert;
         DesktopSidebar.Margin = new Thickness(_isCompactHeight ? 8.0 : SideMargin, topMargin, 0, bottomMargin);
     }
 
@@ -197,7 +214,7 @@ public sealed partial class DesktopSidebarView
         {
             UpdateSeasonalLogo();
             UpdateCardOpacity();
-            UpdateActiveTab(_currentTab);
+            UpdateActiveTab(_currentTab, animate: false);
             UpdateVpnStatus(_isVpnConnected);
 
             var textPrimary = GetResourceColor("TextPrimary", Colors.White);
@@ -229,135 +246,173 @@ public sealed partial class DesktopSidebarView
     private void OnLogoTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = AppLogoImage.BounceClickAsync();
         ToggleSidebar();
     }
 
-    //плавная анимация ширины панели с каскадным появлением подписей без шторма событий
+    //плавная анимация ширины панели без покадрового пересчета layout всей страницы
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
         Justification = "MAUI Animation is managed and executed by the visual element animation extension")]
     private void ToggleSidebar()
     {
+        var generation = ++_toggleGeneration;
         IsExpanded = !IsExpanded;
         ApplyHeightDensity();
         ExpandedChanged?.Invoke(this, IsExpanded);
         var targetWidth = IsExpanded ? ExpandedWidth : CollapsedWidth;
         var currentWidth = DesktopSidebar.Width > 0 ? DesktopSidebar.Width : DesktopSidebar.WidthRequest;
 
-        VisualElement[] labels =
-        [
-            AppLogoText,
-            CollapseChevronIcon,
-            LabelVpn,
-            LabelProfile,
-            LabelConfiguration,
-            LabelDevices,
-            LabelSplit,
-            LabelBug,
-            LabelReviews,
-            VpnStatusLabel,
-            LogoutText
-        ];
-
         _ = this.AbortAnimation("SidebarResize");
+        _ = this.AbortAnimation("SidebarLabelsAnim");
+        AppLogoImage.CancelAnimations();
 
         if (IsExpanded)
         {
             AppLogoImage.Rotation = 0;
-            _ = AppLogoImage.RotateToAsync(360, 240, Easing.CubicOut);
+            _ = AppLogoImage.RotateToAsync(360, 220, Easing.CubicOut);
             VersionBadge.IsVisible = true;
-
-            for (var i = 0; i < labels.Length; i++)
-            {
-                _ = AnimateLabelShowAsync(labels[i], i * 14);
-            }
-
-            _ = AnimateLabelShowAsync(AppVersionLabel, labels.Length * 14, 0.65);
             UpdateVpnStatus(_isVpnConnected);
 
+            foreach (var label in _sidebarLabels)
+            {
+                label.IsVisible = true;
+                label.Opacity = 0;
+                label.TranslationX = -8;
+            }
+
+            AppVersionLabel.Opacity = 0;
+            AppVersionLabel.TranslationX = -8;
+
+            var labelsAnim = new Animation(v =>
+            {
+                var tx = -8.0 * (1.0 - v);
+                foreach (var label in _sidebarLabels)
+                {
+                    label.Opacity = v;
+                    label.TranslationX = tx;
+                }
+
+                AppVersionLabel.Opacity = v * 0.65;
+                AppVersionLabel.TranslationX = tx;
+            }, 0, 1);
+            labelsAnim.Commit(this, "SidebarLabelsAnim", 16, 170, Easing.CubicOut);
+
+#if WINDOWS
+            DesktopSidebar.WidthRequest = targetWidth;
+            if (!_isOverlayMode)
+            {
+                SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+            }
+
+            _ = Platforms.Windows.WinUiMainPageHelper.AnimateWidthClip(
+                DesktopSidebar,
+                currentWidth,
+                targetWidth,
+                12.0,
+                210);
+#else
             var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
             anim.Commit(this, "SidebarResize", 16, 200, Easing.CubicOut, (_, _) =>
             {
-                if (!_isOverlayMode)
+                if (generation == _toggleGeneration && !_isOverlayMode)
                 {
                     SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
                 }
             });
+#endif
         }
         else
         {
-            _ = AppLogoImage.RotateToAsync(0, 200, Easing.CubicInOut);
-            foreach (var item in labels)
-            {
-                _ = AnimateLabelHideAsync(item);
-            }
-
-            _ = AnimateLabelHideAsync(AppVersionLabel);
-            VersionBadge.IsVisible = false;
+            _ = AppLogoImage.RotateToAsync(0, 180, Easing.CubicInOut);
             UpdateVpnStatus(_isVpnConnected);
 
-            var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
-            anim.Commit(this, "SidebarResize", 16, 180, Easing.CubicInOut, (_, _) =>
+            var hideAnim = new Animation(v =>
             {
+                var tx = -6.0 * (1.0 - v);
+                foreach (var label in _sidebarLabels)
+                {
+                    label.Opacity = v;
+                    label.TranslationX = tx;
+                }
+
+                AppVersionLabel.Opacity = v * 0.65;
+                AppVersionLabel.TranslationX = tx;
+            }, 1, 0);
+            hideAnim.Commit(this, "SidebarLabelsAnim", 16, 90, Easing.CubicIn, (_, _) =>
+            {
+                if (generation == _toggleGeneration && !IsExpanded)
+                {
+                    HideSidebarLabels();
+                }
+            });
+
+#if WINDOWS
+            var animated = Platforms.Windows.WinUiMainPageHelper.AnimateWidthClip(
+                DesktopSidebar,
+                currentWidth,
+                targetWidth,
+                12.0,
+                180,
+                () =>
+                {
+                    if (generation != _toggleGeneration || IsExpanded)
+                    {
+                        return;
+                    }
+
+                    DesktopSidebar.WidthRequest = targetWidth;
+                    HideSidebarLabels();
+                    if (!_isOverlayMode)
+                    {
+                        SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                });
+
+            if (!animated)
+            {
+                DesktopSidebar.WidthRequest = targetWidth;
+                HideSidebarLabels();
                 if (!_isOverlayMode)
                 {
                     SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
                 }
+            }
+#else
+            VersionBadge.IsVisible = false;
+            var anim = new Animation(v => DesktopSidebar.WidthRequest = v, currentWidth, targetWidth);
+            anim.Commit(this, "SidebarResize", 16, 180, Easing.CubicInOut, (_, _) =>
+            {
+                if (generation == _toggleGeneration && !IsExpanded)
+                {
+                    HideSidebarLabels();
+                    if (!_isOverlayMode)
+                    {
+                        SidebarWidthChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                }
             });
+#endif
         }
     }
 
-    //плавный выезд подписи пункта меню при раскрытии панели с защитой от гонки быстрого клика
-    private async Task AnimateLabelShowAsync(VisualElement? label, int delayMs, double targetOpacity = 1.0)
+    //скрытие текстовых подписей после сворачивания панели
+    private void HideSidebarLabels()
     {
-        if (label is null)
+        foreach (var label in _sidebarLabels)
         {
-            return;
-        }
-
-        label.CancelAnimations();
-        label.IsVisible = true;
-        label.TranslationX = -8;
-        label.Opacity = 0;
-
-        if (delayMs > 0)
-        {
-            await Task.Delay(delayMs);
-        }
-
-        if (!IsExpanded)
-        {
-            label.TranslationX = 0;
             label.Opacity = 0;
-            label.IsVisible = false;
-            return;
-        }
-
-        _ = label.TranslateToAsync(0, 0, 160, Easing.SpringOut);
-        _ = label.FadeToAsync(targetOpacity, 140, Easing.CubicOut);
-    }
-
-    //плавное скрытие подписи пункта меню при сворачивании панели
-    private async Task AnimateLabelHideAsync(VisualElement? label)
-    {
-        if (label is null)
-        {
-            return;
-        }
-
-        label.CancelAnimations();
-        _ = label.TranslateToAsync(-8, 0, 90, Easing.CubicIn);
-        _ = await label.FadeToAsync(0, 90, Easing.CubicIn);
-        label.TranslationX = 0;
-        if (!IsExpanded)
-        {
+            label.TranslationX = 0;
             label.IsVisible = false;
         }
+
+        AppVersionLabel.Opacity = 0;
+        AppVersionLabel.TranslationX = 0;
+        VersionBadge.IsVisible = false;
     }
 
     //подсветка активной вкладки с fluent 2 индикатором и микро-анимацией иконки
-    public void UpdateActiveTab(string tabName)
+    public void UpdateActiveTab(string tabName, bool animate = true)
     {
+        var changed = !string.Equals(_currentTab, tabName, StringComparison.Ordinal);
         _currentTab = tabName;
         ResetAllSideNavItems();
 
@@ -365,33 +420,54 @@ public sealed partial class DesktopSidebarView
         var activeBg = ActiveBgColor;
         var textPrimary = GetResourceColor("TextPrimary", Colors.White);
         var boldFont = GetResourceFont("AppFontBold", "RobotoBold");
+        var shouldAnimate = animate && changed;
 
         switch (tabName)
         {
             case "vpn":
                 ApplyActiveNav(SideNavVpn, IndicatorVpn, NavVpnIcon, LabelVpn, activeBg, activeColor, textPrimary, boldFont);
-                _ = NavVpnIcon.PlayIconSpringHoverAsync(1.2);
+                if (shouldAnimate)
+                {
+                    _ = NavVpnIcon.PlayIconPulseAsync(1.16);
+                }
+
                 break;
             case "profile":
                 ApplyActiveNav(SideNavProfile, IndicatorProfile, NavProfileIcon, LabelProfile, activeBg, activeColor, textPrimary, boldFont);
-                _ = NavProfileIcon.PlayIconBounceJumpAsync(-3);
+                if (shouldAnimate)
+                {
+                    _ = NavProfileIcon.PlayIconBounceJumpAsync(-3);
+                }
+
                 break;
             case "configuration" or "themes":
                 ApplyActiveNav(SideNavConfiguration, IndicatorConfiguration, NavConfigurationIcon, LabelConfiguration, activeBg, activeColor, textPrimary, boldFont);
-                _ = NavConfigurationIcon.PlayIconSpinAsync(90, 200);
+                if (shouldAnimate)
+                {
+                    _ = NavConfigurationIcon.PlayIconSpinAsync(90, 200);
+                }
+
                 break;
             case "devices":
                 ApplyActiveNav(SideNavDevices, IndicatorDevices, NavDevicesIcon, LabelDevices, activeBg, activeColor, textPrimary, boldFont);
-                _ = NavDevicesIcon.PlayIconWiggleAsync(12);
+                if (shouldAnimate)
+                {
+                    _ = NavDevicesIcon.PlayIconWiggleAsync(10);
+                }
+
                 break;
             case "split":
                 ApplyActiveNav(SideNavSplit, IndicatorSplit, NavSplitIcon, LabelSplit, activeBg, activeColor, textPrimary, boldFont);
-                _ = NavSplitIcon.PlayIconSpringHoverAsync(1.2);
+                if (shouldAnimate)
+                {
+                    _ = NavSplitIcon.PlayIconPulseAsync(1.16);
+                }
+
                 break;
         }
     }
 
-    //применение активного состояния на элемент навигации
+    //применение активного состояния на элемент навигации без искажения масштаба
     private static void ApplyActiveNav(
         Border container,
         BoxView indicator,
@@ -408,7 +484,6 @@ public sealed partial class DesktopSidebarView
         icon.IconColor = activeColor;
         label.TextColor = textPrimary;
         label.FontFamily = boldFont;
-        _ = container.ScaleToAsync(1.02, 150, Easing.SpringOut);
     }
 
     //сброс визуального состояния всех пунктов меню
@@ -464,7 +539,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavVpnTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = SideNavVpn.BounceClickAsync();
         NavTapped?.Invoke(this, "vpn");
     }
 
@@ -472,7 +546,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavProfileTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = SideNavProfile.BounceClickAsync();
         NavTapped?.Invoke(this, "profile");
     }
 
@@ -480,7 +553,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavConfigurationTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = SideNavConfiguration.BounceClickAsync();
         NavTapped?.Invoke(this, "configuration");
     }
 
@@ -488,7 +560,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavDevicesTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = SideNavDevices.BounceClickAsync();
         NavTapped?.Invoke(this, "devices");
     }
 
@@ -496,7 +567,6 @@ public sealed partial class DesktopSidebarView
     private void OnNavSplitTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = SideNavSplit.BounceClickAsync();
         NavTapped?.Invoke(this, "split");
     }
 

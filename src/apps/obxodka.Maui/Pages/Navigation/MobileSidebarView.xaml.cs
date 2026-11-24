@@ -11,11 +11,6 @@ public sealed partial class MobileSidebarView
     private static Color GetResourceColor(string key, Color fallback) =>
         Application.Current?.Resources.TryGetValue(key, out var val) == true && val is Color c ? c : fallback;
 
-    private static string GetResourceFont(string key, string fallback) =>
-        Application.Current?.Resources.TryGetValue(key, out var val) == true && val is string s && !string.IsNullOrWhiteSpace(s)
-            ? s
-            : fallback;
-
     private static Color ActiveColor => GetResourceColor("Primary", Color.FromArgb("#0078D4"));
 
     private static Color ActivePillColor => ActiveColor.WithAlpha(0.18f);
@@ -36,7 +31,7 @@ public sealed partial class MobileSidebarView
         MainThread.BeginInvokeOnMainThread(() =>
         {
             UpdateCardOpacity();
-            UpdateActiveTab(_currentTab);
+            UpdateActiveTab(_currentTab, animate: false);
         });
 
     //скрытие нижней панели
@@ -101,87 +96,117 @@ public sealed partial class MobileSidebarView
         {
             MobileBottomBar.HeightRequest = 66;
             MobileBottomBar.Margin = new Thickness(14, 0, 14, Math.Max(14, bottomSafe + 6));
-            MobileBottomBar.Padding = new Thickness(8, 6);
+            MobileBottomBar.Padding = new Thickness(6, 6);
         }
     }
 
     //обновление визуального состояния активной вкладки с material 3 пилюлей и микро-анимациями иконок
-    public void UpdateActiveTab(string tabName)
+    public void UpdateActiveTab(string tabName, bool animate = true)
     {
+        var changed = !string.Equals(_currentTab, tabName, StringComparison.Ordinal);
         _currentTab = tabName;
         ResetAllBottomNavItems();
 
         var activeColor = ActiveColor;
         var activePill = ActivePillColor;
         var textPrimary = GetResourceColor("TextPrimary", Colors.White);
-        var boldFont = GetResourceFont("AppFontBold", "RobotoBold");
+        var shouldAnimate = animate && changed;
 
         switch (tabName)
         {
             case "vpn":
-                ApplyActiveItem(BottomNavVpn, PillVpn, BottomNavVpnIcon, LabelVpn, activePill, activeColor, textPrimary, boldFont);
-                _ = BottomNavVpnIcon.PlayIconSpringHoverAsync(1.22);
+                ApplyActiveItem(PillVpn, BottomNavVpnIcon, LabelVpn, activePill, activeColor, textPrimary, shouldAnimate);
+                if (shouldAnimate)
+                {
+                    _ = BottomNavVpnIcon.PlayIconPulseAsync(1.16);
+                }
+
                 break;
             case "configuration" or "themes":
-                ApplyActiveItem(BottomNavConfiguration, PillConfiguration, BottomNavConfigurationIcon, LabelConfiguration, activePill, activeColor, textPrimary, boldFont);
-                _ = BottomNavConfigurationIcon.PlayIconSpinAsync(180, 260);
+                ApplyActiveItem(PillConfiguration, BottomNavConfigurationIcon, LabelConfiguration, activePill, activeColor, textPrimary, shouldAnimate);
+                if (shouldAnimate)
+                {
+                    _ = BottomNavConfigurationIcon.PlayIconSpinAsync(180, 240);
+                }
+
                 break;
             case "profile":
-                ApplyActiveItem(BottomNavProfile, PillProfile, BottomNavProfileIcon, LabelProfile, activePill, activeColor, textPrimary, boldFont);
-                _ = BottomNavProfileIcon.PlayIconBounceJumpAsync();
+                ApplyActiveItem(PillProfile, BottomNavProfileIcon, LabelProfile, activePill, activeColor, textPrimary, shouldAnimate);
+                if (shouldAnimate)
+                {
+                    _ = BottomNavProfileIcon.PlayIconBounceJumpAsync(-3);
+                }
+
                 break;
             case "devices":
-                ApplyActiveItem(BottomNavDevices, PillDevices, BottomNavDevicesIcon, LabelDevices, activePill, activeColor, textPrimary, boldFont);
-                _ = BottomNavDevicesIcon.PlayIconWiggleAsync();
+                ApplyActiveItem(PillDevices, BottomNavDevicesIcon, LabelDevices, activePill, activeColor, textPrimary, shouldAnimate);
+                if (shouldAnimate)
+                {
+                    _ = BottomNavDevicesIcon.PlayIconWiggleAsync(10);
+                }
+
                 break;
             case "split":
-                ApplyActiveItem(BottomNavSplit, PillSplit, BottomNavSplitIcon, LabelSplit, activePill, activeColor, textPrimary, boldFont);
-                _ = BottomNavSplitIcon.PlayIconTwinkleAsync();
+                ApplyActiveItem(PillSplit, BottomNavSplitIcon, LabelSplit, activePill, activeColor, textPrimary, shouldAnimate);
+                if (shouldAnimate)
+                {
+                    _ = BottomNavSplitIcon.PlayIconPulseAsync(1.16);
+                }
+
                 break;
         }
     }
 
-    //применение активного состояния пилюли и подписи
+    //применение активного состояния пилюли и подписи без искажения выравнивания текста
     private static void ApplyActiveItem(
-        Border item,
         Border pill,
         MauiIcon icon,
         Label label,
         Color pillColor,
         Color activeColor,
         Color textPrimary,
-        string boldFont)
+        bool animate)
     {
         pill.CancelAnimations();
         pill.BackgroundColor = pillColor;
-        pill.Scale = 0.86;
-        _ = pill.ScaleToAsync(1.0, 160, Easing.SpringOut);
-        _ = item.ScaleToAsync(1.04, 140, Easing.SpringOut);
+        if (animate)
+        {
+            pill.Scale = 0.82;
+            pill.Opacity = 0.45;
+            _ = pill.ScaleToAsync(1.0, 170, Easing.CubicOut);
+            _ = pill.FadeToAsync(1.0, 150, Easing.CubicOut);
+        }
+        else
+        {
+            pill.Scale = 1.0;
+            pill.Opacity = 1.0;
+        }
+
         icon.IconColor = activeColor;
         label.TextColor = textPrimary;
-        label.FontFamily = boldFont;
+        label.Opacity = 1.0;
     }
 
     //сброс активных индикаторов и цветов элементов
     private void ResetAllBottomNavItems()
     {
         var inactive = InactiveColor;
-        var mediumFont = GetResourceFont("AppFontMedium", "RobotoMedium");
 
-        ResetNavItem(BottomNavVpn, PillVpn, BottomNavVpnIcon, LabelVpn, inactive, mediumFont);
-        ResetNavItem(BottomNavConfiguration, PillConfiguration, BottomNavConfigurationIcon, LabelConfiguration, inactive, mediumFont);
-        ResetNavItem(BottomNavProfile, PillProfile, BottomNavProfileIcon, LabelProfile, inactive, mediumFont);
-        ResetNavItem(BottomNavDevices, PillDevices, BottomNavDevicesIcon, LabelDevices, inactive, mediumFont);
-        ResetNavItem(BottomNavSplit, PillSplit, BottomNavSplitIcon, LabelSplit, inactive, mediumFont);
+        ResetNavItem(BottomNavVpn, PillVpn, BottomNavVpnIcon, LabelVpn, inactive);
+        ResetNavItem(BottomNavConfiguration, PillConfiguration, BottomNavConfigurationIcon, LabelConfiguration, inactive);
+        ResetNavItem(BottomNavProfile, PillProfile, BottomNavProfileIcon, LabelProfile, inactive);
+        ResetNavItem(BottomNavDevices, PillDevices, BottomNavDevicesIcon, LabelDevices, inactive);
+        ResetNavItem(BottomNavSplit, PillSplit, BottomNavSplitIcon, LabelSplit, inactive);
     }
 
     //сброс одного пункта нижней навигации
-    private static void ResetNavItem(Border item, Border pill, MauiIcon icon, Label label, Color inactiveColor, string mediumFont)
+    private static void ResetNavItem(Border item, Border pill, MauiIcon icon, Label label, Color inactiveColor)
     {
         item.CancelAnimations();
         item.Scale = 1.0;
         pill.CancelAnimations();
         pill.Scale = 1.0;
+        pill.Opacity = 1.0;
         pill.BackgroundColor = Colors.Transparent;
         icon.CancelAnimations();
         icon.Rotation = 0;
@@ -189,7 +214,7 @@ public sealed partial class MobileSidebarView
         icon.TranslationY = 0;
         icon.IconColor = inactiveColor;
         label.TextColor = inactiveColor;
-        label.FontFamily = mediumFont;
+        label.Opacity = 0.82;
     }
 
     //актуализация цвета фона и границы панели под активную тему и cardopacity
@@ -206,7 +231,6 @@ public sealed partial class MobileSidebarView
     private void OnNavVpnTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = BottomNavVpn.BounceClickAsync();
         NavTapped?.Invoke(this, "vpn");
     }
 
@@ -214,7 +238,6 @@ public sealed partial class MobileSidebarView
     private void OnNavProfileTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = BottomNavProfile.BounceClickAsync();
         NavTapped?.Invoke(this, "profile");
     }
 
@@ -222,7 +245,6 @@ public sealed partial class MobileSidebarView
     private void OnNavDevicesTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = BottomNavDevices.BounceClickAsync();
         NavTapped?.Invoke(this, "devices");
     }
 
@@ -230,7 +252,6 @@ public sealed partial class MobileSidebarView
     private void OnNavSplitTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = BottomNavSplit.BounceClickAsync();
         NavTapped?.Invoke(this, "split");
     }
 
@@ -238,7 +259,6 @@ public sealed partial class MobileSidebarView
     private void OnNavConfigurationTapped(object? sender, TappedEventArgs e)
     {
         ThemeAudioService.PlayClick();
-        _ = BottomNavConfiguration.BounceClickAsync();
         NavTapped?.Invoke(this, "configuration");
     }
 }

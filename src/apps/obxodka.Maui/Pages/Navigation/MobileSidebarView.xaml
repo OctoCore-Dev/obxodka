@@ -9,7 +9,7 @@
     <Border
         x:Name="MobileBottomBar"
         Margin="14,0,14,16"
-        Padding="8,6"
+        Padding="6,6"
         BackgroundColor="{DynamicResource BgSurface}"
         HeightRequest="66"
         HorizontalOptions="Fill"
@@ -22,7 +22,7 @@
             <RoundRectangle CornerRadius="26" />
         </Border.StrokeShape>
 
-        <Grid ColumnDefinitions="*, *, *, *, *" ColumnSpacing="2">
+        <Grid ColumnDefinitions="*, *, *, *, *" ColumnSpacing="0">
 
             <Border
                 x:Name="BottomNavVpn"
@@ -32,7 +32,8 @@
                     <TapGestureRecognizer Tapped="OnNavVpnTapped" />
                 </Border.GestureRecognizers>
                 <Grid
-                    RowDefinitions="Auto, Auto"
+                    HorizontalOptions="Fill"
+                    RowDefinitions="30, 16"
                     RowSpacing="2"
                     VerticalOptions="Center">
                     <Border
@@ -44,6 +45,7 @@
                         Stroke="Transparent"
                         StrokeShape="RoundRectangle 15"
                         StrokeThickness="0"
+                        VerticalOptions="Center"
                         WidthRequest="50">
                         <mi:MauiIcon
                             x:Name="BottomNavVpnIcon"
@@ -56,13 +58,18 @@
                     <Label
                         x:Name="LabelVpn"
                         Grid.Row="1"
+                        Margin="1,0"
                         FontFamily="{DynamicResource AppFontMedium}"
-                        FontSize="10.5"
+                        FontSize="10"
+                        HeightRequest="16"
+                        HorizontalOptions="Fill"
                         HorizontalTextAlignment="Center"
                         LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="VPN"
-                        TextColor="{DynamicResource TextMuted}" />
+                        TextColor="{DynamicResource TextMuted}"
+                        VerticalOptions="Center"
+                        VerticalTextAlignment="Center" />
                 </Grid>
             </Border>
 
@@ -74,7 +81,8 @@
                     <TapGestureRecognizer Tapped="OnNavProfileTapped" />
                 </Border.GestureRecognizers>
                 <Grid
-                    RowDefinitions="Auto, Auto"
+                    HorizontalOptions="Fill"
+                    RowDefinitions="30, 16"
                     RowSpacing="2"
                     VerticalOptions="Center">
                     <Border
@@ -86,6 +94,7 @@
                         Stroke="Transparent"
                         StrokeShape="RoundRectangle 15"
                         StrokeThickness="0"
+                        VerticalOptions="Center"
                         WidthRequest="50">
                         <mi:MauiIcon
                             x:Name="BottomNavProfileIcon"
@@ -98,13 +107,18 @@
                     <Label
                         x:Name="LabelProfile"
                         Grid.Row="1"
+                        Margin="1,0"
                         FontFamily="{DynamicResource AppFontMedium}"
-                        FontSize="10.5"
+                        FontSize="10"
+                        HeightRequest="16"
+                        HorizontalOptions="Fill"
                         HorizontalTextAlignment="Center"
                         LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="Профиль"
-                        TextColor="{DynamicResource TextMuted}" />
+                        TextColor="{DynamicResource TextMuted}"
+                        VerticalOptions="Center"
+                        VerticalTextAlignment="Center" />
                 </Grid>
             </Border>
 
@@ -116,7 +130,8 @@
                     <TapGestureRecognizer Tapped="OnNavDevicesTapped" />
                 </Border.GestureRecognizers>
                 <Grid
-                    RowDefinitions="Auto, Auto"
+                    HorizontalOptions="Fill"
+                    RowDefinitions="30, 16"
                     RowSpacing="2"
                     VerticalOptions="Center">
                     <Border
@@ -128,6 +143,7 @@
                         Stroke="Transparent"
                         StrokeShape="RoundRectangle 15"
                         StrokeThickness="0"
+                        VerticalOptions="Center"
                         WidthRequest="50">
                         <mi:MauiIcon
                             x:Name="BottomNavDevicesIcon"
@@ -140,13 +156,18 @@
                     <Label
                         x:Name="LabelDevices"
                         Grid.Row="1"
+                        Margin="1,0"
                         FontFamily="{DynamicResource AppFontMedium}"
-                        FontSize="10.5"
+                        FontSize="10"
+                        HeightRequest="16"
+                        HorizontalOptions="Fill"
                         HorizontalTextAlignment="Center"
                         LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="Девайсы"
-                        TextColor="{DynamicResource TextMuted}" />
+                        TextColor="{DynamicResource TextMuted}"
+                        VerticalOptions="Center"
+                        VerticalTextAlignment="Center" />
                 </Grid>
             </Border>
 
@@ -158,7 +179,8 @@
                     <TapGestureRecognizer Tapped="OnNavSplitTapped" />
                 </Border.GestureRecognizers>
                 <Grid
-                    RowDefinitions="Auto, Auto"
+                    HorizontalOptions="Fill"
+                    RowDefinitions="30, 16"
                     RowSpacing="2"
                     VerticalOptions="Center">
                     <Border
@@ -170,6 +192,7 @@
                         Stroke="Transparent"
                         StrokeShape="RoundRectangle 15"
                         StrokeThickness="0"
+                        VerticalOptions="Center"
                         WidthRequest="50">
                         <mi:MauiIcon
                             x:Name="BottomNavSplitIcon"
@@ -182,13 +205,18 @@
                     <Label
                         x:Name="LabelSplit"
                         Grid.Row="1"
+                        Margin="1,0"
                         FontFamily="{DynamicResource AppFontMedium}"
-                        FontSize="10.5"
+                        FontSize="10"
+                        HeightRequest="16"
+                        HorizontalOptions="Fill"
                         HorizontalTextAlignment="Center"
                         LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="Туннель"
-                        TextColor="{DynamicResource TextMuted}" />
+                        TextColor="{DynamicResource TextMuted}"
+                        VerticalOptions="Center"
+                        VerticalTextAlignment="Center" />
                 </Grid>
             </Border>
 
@@ -200,7 +228,8 @@
                     <TapGestureRecognizer Tapped="OnNavConfigurationTapped" />
                 </Border.GestureRecognizers>
                 <Grid
-                    RowDefinitions="Auto, Auto"
+                    HorizontalOptions="Fill"
+                    RowDefinitions="30, 16"
                     RowSpacing="2"
                     VerticalOptions="Center">
                     <Border
@@ -212,6 +241,7 @@
                         Stroke="Transparent"
                         StrokeShape="RoundRectangle 15"
                         StrokeThickness="0"
+                        VerticalOptions="Center"
                         WidthRequest="50">
                         <mi:MauiIcon
                             x:Name="BottomNavConfigurationIcon"
@@ -224,13 +254,18 @@
                     <Label
                         x:Name="LabelConfiguration"
                         Grid.Row="1"
+                        Margin="1,0"
                         FontFamily="{DynamicResource AppFontMedium}"
-                        FontSize="10.5"
+                        FontSize="10"
+                        HeightRequest="16"
+                        HorizontalOptions="Fill"
                         HorizontalTextAlignment="Center"
                         LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="Опции"
-                        TextColor="{DynamicResource TextMuted}" />
+                        TextColor="{DynamicResource TextMuted}"
+                        VerticalOptions="Center"
+                        VerticalTextAlignment="Center" />
                 </Grid>
             </Border>
 

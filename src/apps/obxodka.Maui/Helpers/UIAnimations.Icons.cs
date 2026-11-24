@@ -45,19 +45,28 @@ public static partial class UiAnimations
                 return;
             }
 
-            _ = icon.ScaleToAsync(1.22, DurFast, Easing.SpringOut);
-            _ = await icon.RelRotateToAsync(degrees, duration, Easing.SpringOut);
+            _ = await Task.WhenAll(
+                icon.ScaleToAsync(1.14, duration / 2, Easing.CubicOut),
+                icon.RelRotateToAsync(degrees, duration, Easing.CubicOut)
+            );
+            _ = await icon.ScaleToAsync(1.0, 120, Easing.CubicOut);
         }
 
-        internal async Task PlayIconBounceJumpAsync(double jumpY = -4)
+        internal async Task PlayIconBounceJumpAsync(double jumpY = -3)
         {
             if (icon is null)
             {
                 return;
             }
 
-            _ = icon.TranslateToAsync(0, jumpY, DurFast, Easing.SpringOut);
-            _ = await icon.ScaleToAsync(1.2, DurFast, Easing.SpringOut);
+            _ = await Task.WhenAll(
+                icon.TranslateToAsync(0, jumpY, 110, Easing.CubicOut),
+                icon.ScaleToAsync(1.14, 110, Easing.CubicOut)
+            );
+            _ = await Task.WhenAll(
+                icon.TranslateToAsync(0, 0, 130, Easing.CubicOut),
+                icon.ScaleToAsync(1.0, 130, Easing.CubicOut)
+            );
         }
 
         internal async Task PlayIconWiggleAsync(double angle = 14)

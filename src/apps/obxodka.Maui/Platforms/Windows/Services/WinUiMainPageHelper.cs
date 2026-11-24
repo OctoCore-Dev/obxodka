@@ -1,6 +1,9 @@
+using System.Numerics;
 using Windows.Media.Playback;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Rect = Windows.Foundation.Rect;
 using RectangleGeometry = Microsoft.UI.Xaml.Media.RectangleGeometry;
@@ -118,12 +121,76 @@ internal static class WinUiMainPageHelper
 
         try
         {
-            winPlayer.MediaPlayer?.Pause();
+            if (winPlayer.MediaPlayer is { } mp)
+            {
+                mp.Pause();
+                var oldSource = mp.Source as IDisposable;
+                mp.Source = null;
+                oldSource?.Dispose();
+            }
+
             winPlayer.SetMediaPlayer(null);
         }
         catch
         {
             //игнорируем ошибки остановки плеера при выгрузке
+        }
+    }
+
+    //аппаратная gpu-анимация ширины элемента через composition clip без пересчета layout на каждом кадре
+    public static bool AnimateWidthClip(
+        VisualElement element,
+        double fromWidth,
+        double toWidth,
+        double cornerRadius,
+        int durationMs,
+        Action? onCompleted = null)
+    {
+        if (element.Handler?.PlatformView is not FrameworkElement fe)
+        {
+            return false;
+        }
+
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(fe);
+            var compositor = visual.Compositor;
+            var height = (float)Math.Max(fe.ActualHeight, element.Height > 0 ? element.Height : 600.0);
+
+            var geometry = compositor.CreateRoundedRectangleGeometry();
+            geometry.Offset = Vector2.Zero;
+            geometry.CornerRadius = new Vector2((float)cornerRadius, (float)cornerRadius);
+            geometry.Size = new Vector2((float)fromWidth, height);
+
+            var clip = compositor.CreateGeometricClip(geometry);
+            visual.Clip = clip;
+
+            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.0f, 0.0f), new Vector2(0.0f, 1.0f));
+            var sizeAnim = compositor.CreateVector2KeyFrameAnimation();
+            sizeAnim.Duration = TimeSpan.FromMilliseconds(durationMs);
+            sizeAnim.InsertKeyFrame(0f, new Vector2((float)fromWidth, height));
+            sizeAnim.InsertKeyFrame(1f, new Vector2((float)toWidth, height), easing);
+
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+            geometry.StartAnimation(nameof(CompositionRoundedRectangleGeometry.Size), sizeAnim);
+            batch.End();
+
+            batch.Completed += (_, _) =>
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (ReferenceEquals(visual.Clip, clip))
+                    {
+                        visual.Clip = null;
+                    }
+
+                    onCompleted?.Invoke();
+                });
+
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
