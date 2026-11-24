@@ -15,7 +15,7 @@ public sealed partial class ThemeStoreView
         var textMutedColor = GetAppColor("TextMuted", Color.FromArgb("#A0A0B0"));
         var borderSubtleColor = GetAppColor("BorderSubtle", Color.FromArgb("#282838"));
 
-        var installedCount = _themeManager?.GetInstalledThemes().Count ?? 0;
+        var installedCount = _cachedInstalledThemes.Count;
         LabelTabInstalled.Text = installedCount > 0 ? $"Установленные ({installedCount})" : "Установленные";
         LabelTabCommunity.Text = "Сообщество";
 
@@ -90,16 +90,38 @@ public sealed partial class ThemeStoreView
     {
         _searchQuery = e.NewTextValue ?? string.Empty;
         BtnClearSearch.IsVisible = !string.IsNullOrEmpty(_searchQuery);
-        RenderThemes();
+
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(180, token).ConfigureAwait(false);
+                if (!token.IsCancellationRequested)
+                {
+                    MainThread.BeginInvokeOnMainThread(() => RenderThemes(false));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                //отменено новым вводом текста
+            }
+        }, token);
     }
 
     private void OnClearSearchClicked(object? sender, EventArgs e)
     {
         ThemeAudioService.PlayClick();
+        _searchDebounceCts?.Cancel();
         SearchEntry.Text = string.Empty;
         _searchQuery = string.Empty;
         BtnClearSearch.IsVisible = false;
-        RenderThemes();
+        RenderThemes(false);
     }
 
     private async Task SwitchTabAnimatedAsync(string newTab)
@@ -441,6 +463,10 @@ public sealed partial class ThemeStoreView
         SwitchFrames.OnColor = primaryColor;
         SwitchVideoBackground.OnColor = primaryColor;
         SwitchAlwaysPlayVideo.OnColor = primaryColor;
+        SwitchParallax.OnColor = primaryColor;
+
+        ThemePreviewModalCard.BackgroundColor = GetAppColor("BgSurface", Color.FromArgb("#161622"));
+        ThemePreviewModalCard.Stroke = borderSubtleColor;
     }
 
     private static Color GetAppColor(string key, Color fallback)
@@ -462,21 +488,8 @@ public sealed partial class ThemeStoreView
         return fallback;
     }
 
-    private static ImageSource LoadLocalImage(string? path, string fallback = "splash_logo.png")
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            return fallback;
-        }
-
-        try
-        {
-            var bytes = File.ReadAllBytes(path);
-            return ImageSource.FromStream(() => new MemoryStream(bytes));
-        }
-        catch
-        {
-            return fallback;
-        }
-    }
+    private static ImageSource LoadLocalImage(string? path, string fallback = "splash_logo.png") =>
+        !string.IsNullOrWhiteSpace(path) && File.Exists(path)
+            ? ImageSource.FromFile(path)
+            : fallback;
 }

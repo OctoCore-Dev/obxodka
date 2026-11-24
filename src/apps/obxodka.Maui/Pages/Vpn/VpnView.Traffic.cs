@@ -6,7 +6,7 @@ public sealed partial class VpnView
     //обработка одного кадра интерполяции и перерисовки графика скорости
     private void StepGraphFrame()
     {
-        if (!IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
+        if (_disposed || !_isTabVisible || !_isWindowFocused || !IsVisible || TrafficGraphCanvas is null || !TrafficGraphCanvas.IsVisible)
         {
             return;
         }
@@ -81,21 +81,56 @@ public sealed partial class VpnView
     }
 #endif
 
-    //запуск цикла интерполяции и отрисовки графика трафика
-    private void StartGraphAnimation()
+    //пауза цикла отрисовки графика без потери накопленных точек
+    private void PauseGraphLoop()
     {
 #if WINDOWS
         if (_graphVsyncActive)
         {
-            return;
+            _graphVsyncActive = false;
+            Platforms.Windows.WinUiVsync.Unsubscribe(OnGraphVsyncRendering);
         }
 #else
-        if (_graphAnimTimer is not null)
+        _graphAnimTimer?.Stop();
+        _graphAnimTimer = null;
+#endif
+    }
+
+    //возобновление цикла отрисовки графика при возврате на вкладку
+    private void ResumeGraphLoop()
+    {
+        if (_disposed || !_isTabVisible || !_isWindowFocused)
         {
             return;
         }
-#endif
 
+        if (!_graphStopwatch.IsRunning)
+        {
+            _graphStopwatch.Start();
+        }
+
+        _lastGraphTickTime = (float)_graphStopwatch.Elapsed.TotalSeconds;
+#if WINDOWS
+        if (!_graphVsyncActive)
+        {
+            _graphLastVsyncTicks = 0;
+            _graphVsyncActive = true;
+            Platforms.Windows.WinUiVsync.Subscribe(OnGraphVsyncRendering);
+        }
+#else
+        if (_graphAnimTimer is null)
+        {
+            _graphAnimTimer = Dispatcher.CreateTimer();
+            _graphAnimTimer.Interval = TimeSpan.FromMilliseconds(16);
+            _graphAnimTimer.Tick += (_, _) => StepGraphFrame();
+            _graphAnimTimer.Start();
+        }
+#endif
+    }
+
+    //запуск цикла интерполяции и отрисовки графика трафика
+    private void StartGraphAnimation()
+    {
         _graphStopwatch.Restart();
         lock (_graphSamples)
         {
@@ -109,31 +144,13 @@ public sealed partial class VpnView
         _smoothSpeedDown = 0;
         _smoothMaxSpeed = 1024.0;
 
-#if WINDOWS
-        _graphLastVsyncTicks = 0;
-        _graphVsyncActive = true;
-        Platforms.Windows.WinUiVsync.Subscribe(OnGraphVsyncRendering);
-#else
-        _graphAnimTimer = Dispatcher.CreateTimer();
-        _graphAnimTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _graphAnimTimer.Tick += (_, _) => StepGraphFrame();
-        _graphAnimTimer.Start();
-#endif
+        ResumeGraphLoop();
     }
 
     //остановка анимации графика скорости
     private void StopGraphAnimation()
     {
-#if WINDOWS
-        if (_graphVsyncActive)
-        {
-            _graphVsyncActive = false;
-            Platforms.Windows.WinUiVsync.Unsubscribe(OnGraphVsyncRendering);
-        }
-#else
-        _graphAnimTimer?.Stop();
-        _graphAnimTimer = null;
-#endif
+        PauseGraphLoop();
         _graphStopwatch.Reset();
         _lastGraphTickTime = 0;
         _lastSampleTime = 0;
@@ -209,6 +226,11 @@ public sealed partial class VpnView
     //отрисовка сплайнового графика скорости на холсте skia
     private void OnPaintGraphSurface(object? sender, SKPaintSurfaceEventArgs e)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 

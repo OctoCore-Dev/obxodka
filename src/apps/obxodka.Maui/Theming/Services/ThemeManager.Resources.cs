@@ -527,31 +527,29 @@ public sealed partial class ThemeManager
 
     public void ResetToDefault()
     {
-        ActiveTheme = null;
-        ActiveThemeFolderPath = null;
-        Preferences.Default.Set(ActiveThemeKey, DefaultThemePreferenceValue);
-        ThemeAudioService.Reset();
+        void CommitResetOnMainThread()
+        {
+            ActiveTheme = null;
+            ActiveThemeFolderPath = null;
+            Preferences.Default.Set(ActiveThemeKey, DefaultThemePreferenceValue);
+            ThemeAudioService.Reset();
+            ResetDefaultResources();
+            OnThemeReset?.Invoke();
+        }
 
         if (MainThread.IsMainThread)
         {
-            ResetDefaultResources();
+            CommitResetOnMainThread();
         }
         else
         {
-            MainThread.BeginInvokeOnMainThread(ResetDefaultResources);
+            MainThread.BeginInvokeOnMainThread(CommitResetOnMainThread);
         }
-
-        OnThemeReset?.Invoke();
     }
 
     public async Task ResetToDefaultAsync()
     {
-        if (MainThread.IsMainThread)
-        {
-            ResetToDefault();
-            return;
-        }
-
+        await NotifyTransitionStartingAsync("Сброс темы...", "Возвращение к системному оформлению").ConfigureAwait(false);
         await MainThread.InvokeOnMainThreadAsync(ResetToDefault).ConfigureAwait(false);
     }
 }

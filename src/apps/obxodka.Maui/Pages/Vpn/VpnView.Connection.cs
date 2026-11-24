@@ -351,11 +351,17 @@ public sealed partial class VpnView
         });
     }
 
-    //обработка смены состояния vpn туннеля
+    //обработка смены состояния vpn туннеля с защитой от устаревших переходов
     private void HandleAppVpnStateChanged(AppVpnState state)
     {
-        MainThread.BeginInvokeOnMainThread(async void () =>
+        var generation = Interlocked.Increment(ref _vpnUiStateGeneration);
+        MainThread.BeginInvokeOnMainThread(() =>
         {
+            if (_disposed || generation != Volatile.Read(ref _vpnUiStateGeneration))
+            {
+                return;
+            }
+
             try
             {
                 ServerSelectorButton.Opacity =
@@ -366,10 +372,9 @@ public sealed partial class VpnView
                 var textPrimary = GetAppColor("TextPrimary", Colors.White);
                 var accent = GetAppColor("Accent", s_cyanAccent);
 
-                object? condition = null;
-                switch (state, condition)
+                switch (state)
                 {
-                    case (AppVpnState.Disconnected, _):
+                    case AppVpnState.Disconnected:
                         if (_isHotSwapping)
                         {
                             break;
@@ -382,19 +387,18 @@ public sealed partial class VpnView
                         StopGraphAnimation();
                         ResetPingIndicators();
                         TriggerShockwave(false);
-                        OuterAura.IsVisible = true;
                         UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
                         _activeConnectedNode = null;
                         UpdateActiveNode();
                         ConnectButtonCore.IsEnabled = true;
-                        await SetNeonStateAsync(
+                        SetNeonState(
                             GetStatusTextForState(AppVpnState.Disconnected, VpnStatusMessages.Disconnected),
                             GetButtonTextForState(AppVpnState.Disconnected, VpnStatusMessages.StartAction),
                             AppVpnState.Disconnected);
                         ParentPage?.NotifyVpnDisconnected();
                         break;
 
-                    case (AppVpnState.Connected, _):
+                    case AppVpnState.Connected:
                         _isBusy = false;
                         _isErrorState = false;
                         _errorTransitionFactor = 0f;
@@ -402,25 +406,23 @@ public sealed partial class VpnView
                         StartGraphAnimation();
                         AnimateReactorMorph(1.0f, 650);
                         TriggerShockwave(true);
-                        OuterAura.IsVisible = true;
                         UpdateIpStatusDisplay(OctopusEngine.Current.AssignedIp, textPrimary, accent);
                         UpdateActiveNode(_activeConnectedNode);
                         ConnectButtonCore.IsEnabled = true;
-                        await SetNeonStateAsync(
+                        SetNeonState(
                             GetStatusTextForState(AppVpnState.Connected, VpnStatusMessages.Protected),
                             GetButtonTextForState(AppVpnState.Connected, VpnStatusMessages.StopAction),
                             AppVpnState.Connected);
                         ParentPage?.NotifyVpnConnected();
                         break;
 
-                    case (AppVpnState.Error, _):
+                    case AppVpnState.Error:
                         _isBusy = false;
                         _isErrorState = true;
                         StopGraphAnimation();
                         ResetPingIndicators();
                         AnimateErrorMorph(1.0f, 350);
                         TriggerShockwave(false);
-                        OuterAura.IsVisible = true;
                         UpdateIpStatusDisplay(VpnStatusMessages.IpNotAssigned, muted, muted);
                         _activeConnectedNode = null;
                         UpdateActiveNode();
@@ -429,7 +431,7 @@ public sealed partial class VpnView
                         var errDisplay = !string.IsNullOrWhiteSpace(_lastErrorMessage)
                             ? _lastErrorMessage
                             : GetStatusTextForState(AppVpnState.Error, VpnStatusMessages.DefaultConnectionError);
-                        await SetNeonStateAsync(
+                        SetNeonState(
                             errDisplay,
                             GetButtonTextForState(AppVpnState.Error, VpnStatusMessages.Retry),
                             AppVpnState.Error);
@@ -437,8 +439,8 @@ public sealed partial class VpnView
                         StopLoaderAnimation();
                         break;
 
-                    case (AppVpnState.Connecting, _):
-                    case (AppVpnState.Reconnecting, _):
+                    case AppVpnState.Connecting:
+                    case AppVpnState.Reconnecting:
                         _isErrorState = false;
                         _errorTransitionFactor = 0f;
                         _reactorTransitionFactor = 0f;
@@ -447,13 +449,13 @@ public sealed partial class VpnView
                         ConnectButtonCore.IsEnabled = true;
                         UpdateIpStatusDisplay(VpnStatusMessages.IpAcquiring, accent, accent);
                         UpdateActiveNode();
-                        await SetNeonStateAsync(
+                        SetNeonState(
                             GetStatusTextForState(state, VpnStatusMessages.Connecting),
                             GetButtonTextForState(state, VpnStatusMessages.PleaseWait),
                             state);
                         break;
 
-                    case (AppVpnState.Disconnecting, _):
+                    case AppVpnState.Disconnecting:
                         StopGraphAnimation();
                         ResetPingIndicators();
                         ConnectButtonCore.IsEnabled = false;
@@ -463,8 +465,9 @@ public sealed partial class VpnView
                         ConnectButtonText.Text = GetButtonTextForState(AppVpnState.Disconnecting, VpnStatusMessages.PleaseWait);
                         _ = UpdateCustomButtonStateAsync(AppVpnState.Disconnecting);
                         AnimateReactorMorph(0.0f, 350);
-                        SafeScaleTo(LoaderCanvas, 0.35, 400, Easing.CubicIn);
-                        SafeFadeTo(LoaderCanvas, 0, 350, Easing.CubicIn);
+                        SetAuraActive(false);
+                        AnimateLoaderScale(0.35f, 400, Easing.CubicIn);
+                        AnimateLoaderFade(0f, 350, Easing.CubicIn);
                         break;
                 }
             }
@@ -475,7 +478,7 @@ public sealed partial class VpnView
         });
     }
 
-    private async Task SetNeonStateAsync(string status, string btnText, AppVpnState state)
+    private void SetNeonState(string status, string btnText, AppVpnState state)
     {
         StatusLabel.Text = status;
         ConnectButtonText.Text = btnText;
@@ -486,7 +489,8 @@ public sealed partial class VpnView
         {
             case AppVpnState.Connected:
                 {
-                    await UiAnimations.SetVpnConnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    UiAnimations.SetVpnConnectedColors(ConnectIcon, StatusLabel);
+                    SetAuraActive(true);
                     var activeOv = ThemeManager.Instance?.ActiveTheme?.Vfx?.ActiveOverrides;
                     var accentColor = GetAppColor("Accent", s_cyanAccent);
                     if (!string.IsNullOrWhiteSpace(activeOv?.AccentColor) && Color.TryParse(activeOv.AccentColor, out var ovColor))
@@ -502,13 +506,14 @@ public sealed partial class VpnView
                         ConnectButtonCore.Stroke = accentColor;
                     }
 
-                    var targetScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.05 : 1.12;
-                    SafeScaleTo(LoaderCanvas, targetScale, 650, Easing.SpringOut);
+                    var targetScale = DeviceInfo.Idiom == DeviceIdiom.Phone ? 1.05f : 1.12f;
+                    AnimateLoaderScale(targetScale, 650, Easing.SpringOut);
                     break;
                 }
             case AppVpnState.Error:
                 {
-                    await UiAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    UiAnimations.SetVpnDisconnectedColors(ConnectIcon, StatusLabel);
+                    SetAuraActive(false);
                     var errColor = GetAppColor("Error", s_redDot);
                     var errDim = GetAppColor("ErrorDim", s_redBg);
                     ConnectIcon.IconColor = errColor;
@@ -531,12 +536,13 @@ public sealed partial class VpnView
                         ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
                     }
 
-                    SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
+                    AnimateLoaderScale(1.0f, 500, Easing.SpringOut);
                     break;
                 }
             default:
                 {
-                    await UiAnimations.SetVpnDisconnectedAsync(ConnectIcon, StatusLabel, OuterAura);
+                    UiAnimations.SetVpnDisconnectedColors(ConnectIcon, StatusLabel);
+                    SetAuraActive(false);
                     if (!CustomButtonImage.IsVisible && !CustomButtonAnimatedCanvas.IsVisible)
                     {
                         ConnectButtonCore.ClearValue(BackgroundColorProperty);
@@ -545,7 +551,7 @@ public sealed partial class VpnView
                         ConnectButtonCore.SetDynamicResource(Border.StrokeProperty, "BorderMedium");
                     }
 
-                    SafeScaleTo(LoaderCanvas, 1.0, 500, Easing.SpringOut);
+                    AnimateLoaderScale(1.0f, 500, Easing.SpringOut);
                     break;
                 }
         }
@@ -706,7 +712,7 @@ public sealed partial class VpnView
                 ConnectButtonCore.IsEnabled = true;
                 var accent = GetAppColor("Accent", s_cyanAccent);
                 UpdateIpStatusDisplay("Получение...", accent, accent);
-                await SetNeonStateAsync(
+                SetNeonState(
                     GetStatusTextForState(AppVpnState.Connecting, "Подключение..."),
                     GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
                     AppVpnState.Connecting);
@@ -794,7 +800,7 @@ public sealed partial class VpnView
                 ConnectButtonCore.IsEnabled = true;
                 var muted = GetAppColor("TextMuted", s_grayText);
                 UpdateIpStatusDisplay("Не назначен", muted, muted);
-                await SetNeonStateAsync(
+                SetNeonState(
                     GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
                     GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
                     AppVpnState.Disconnected);

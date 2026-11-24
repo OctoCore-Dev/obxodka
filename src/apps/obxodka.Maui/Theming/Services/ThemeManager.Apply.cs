@@ -20,20 +20,45 @@ public sealed partial class ThemeManager
             return false;
         }
 
-        var folderPath = Path.Combine(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
-
+        var args = PrepareThemeAppliedArgs(manifest);
         if (MainThread.IsMainThread)
         {
-            InjectThemeResources(manifest);
+            CommitPreparedThemeOnMainThread(args);
         }
         else
         {
-            MainThread.BeginInvokeOnMainThread(() => InjectThemeResources(manifest));
+            MainThread.BeginInvokeOnMainThread(() => CommitPreparedThemeOnMainThread(args));
         }
 
+        return true;
+    }
+
+    //атомарное применение подготовленной темы на главном потоке без дисковых задержек
+    private void CommitPreparedThemeOnMainThread(ThemeAppliedEventArgs args)
+    {
+        var manifest = args.Manifest;
+        InjectThemeResources(manifest);
+
         ActiveTheme = manifest;
-        ActiveThemeFolderPath = folderPath;
+        ActiveThemeFolderPath = args.ThemeFolderPath;
         Preferences.Default.Set(ActiveThemeKey, manifest.Id);
+
+        ThemeAudioService.Configure(
+            args.ClickSoundPath,
+            args.HoverSoundPath,
+            args.NotificationSoundPath,
+            args.ConnectSoundPath,
+            args.DisconnectSoundPath,
+            args.AmbientSoundPath,
+            SoundVolume);
+
+        OnThemeApplied?.Invoke(args);
+    }
+
+    //фоновая подготовка всех файловых путей темы без блокировки ui-потока
+    private ThemeAppliedEventArgs PrepareThemeAppliedArgs(ThemeManifest manifest)
+    {
+        var folderPath = Path.Combine(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
 
         string? bgPath = null;
         string? backgroundVideoPath = null;
@@ -181,16 +206,7 @@ public sealed partial class ThemeManager
                 : null);
         var screenOverlayPath = ThemeStorageService.ResolveFilePath(folderPath, overlayCandidate);
 
-        ThemeAudioService.Configure(
-            clickSound,
-            hoverSound,
-            notificationSound,
-            connectSound,
-            disconnectSound,
-            ambientSound,
-            SoundVolume);
-
-        var args = new ThemeAppliedEventArgs
+        return new ThemeAppliedEventArgs
         {
             Manifest = manifest,
             ThemeFolderPath = folderPath,
@@ -224,8 +240,5 @@ public sealed partial class ThemeManager
             ButtonVideoErrorPath = buttonVideoError,
             ScreenOverlayPath = screenOverlayPath
         };
-
-        OnThemeApplied?.Invoke(args);
-        return true;
     }
 }

@@ -89,8 +89,11 @@ public sealed partial class ThemeParticlesOverlay
         }
     }
 
-    //проверка наличия активных визуальных эффектов для анимации
-    private bool HasActiveVisuals()
+    //проверка наличия активных визуальных эффектов для отрисовки
+    private bool HasActiveVisuals() => HasAnimatedVisuals() || _hasScreenFrame;
+
+    //проверка наличия анимируемых эффектов требующих vsync-цикла
+    private bool HasAnimatedVisuals()
     {
         var activeOverlay = GetActiveOverlayName();
         var hasOverlay = !string.IsNullOrWhiteSpace(activeOverlay) &&
@@ -263,13 +266,15 @@ public sealed partial class ThemeParticlesOverlay
         var step = dt * 36f;
         _shaderTime += dt;
 
-        for (var i = _burstParticles.Count - 1; i >= 0; i--)
+        var burstSpan = CollectionsMarshal.AsSpan(_burstParticles);
+        for (var i = burstSpan.Length - 1; i >= 0; i--)
         {
-            var bp = _burstParticles[i];
+            ref var bp = ref burstSpan[i];
             bp.Life += dt;
             if (bp.Life >= bp.MaxLife)
             {
                 _burstParticles.RemoveAt(i);
+                burstSpan = CollectionsMarshal.AsSpan(_burstParticles);
                 continue;
             }
 
@@ -311,9 +316,11 @@ public sealed partial class ThemeParticlesOverlay
         var speedScale = _currentTrafficMultiplier * step;
         var centerX = w * 0.5f;
         var centerY = h * 0.5f;
+        var particlesSpan = CollectionsMarshal.AsSpan(_particles);
 
-        foreach (var p in _particles)
+        for (var idx = 0; idx < particlesSpan.Length; idx++)
         {
+            ref var p = ref particlesSpan[idx];
             p.SwayPhase += p.SwaySpeed * step;
             var sway = p.SwaySpeed <= 0f
                 ? 0f
@@ -443,9 +450,11 @@ public sealed partial class ThemeParticlesOverlay
         Floating
     }
 
-    //состояние отдельной частицы фона
-    private sealed class Particle
+    //состояние отдельной частицы фона (структура без аллокаций в куче)
+    private struct Particle
     {
+        public Particle() => Depth = 1.0f;
+
         public float X { get; set; }
         public float Y { get; set; }
         public float SpeedX { get; init; }
@@ -453,7 +462,7 @@ public sealed partial class ThemeParticlesOverlay
         public float Rotation { get; set; }
         public float RotationSpeed { get; init; }
         public float Size { get; init; }
-        public float Depth { get; init; } = 1.0f;
+        public float Depth { get; init; }
         public float BaseAlpha { get; init; }
         public float CurrentAlpha { get; set; }
         public float SwayPhase { get; set; }
@@ -463,8 +472,8 @@ public sealed partial class ThemeParticlesOverlay
         public int SpriteIndex { get; init; }
     }
 
-    //частица интерактивного взрыва при касании
-    private sealed class BurstParticle
+    //частица интерактивного взрыва при касании (структура без аллокаций в куче)
+    private struct BurstParticle
     {
         public float X { get; set; }
         public float Y { get; set; }

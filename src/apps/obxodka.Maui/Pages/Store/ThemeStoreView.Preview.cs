@@ -99,24 +99,27 @@ public sealed partial class ThemeStoreView
     }
 
     private static ImageSource ResolvePreviewBannerSource(ThemeCardModel model) =>
-        model switch
-        {
-            { LocalPreviewPath: { Length: > 0 } previewPath } when File.Exists(previewPath) => LoadLocalImage(previewPath),
-            { RemotePreviewUrl: { Length: > 0 } remotePreview } => new UriImageSource
-            {
-                Uri = new Uri(ThemeManager.ToMirrorUrl(remotePreview)),
-                CachingEnabled = true,
-                CacheValidity = TimeSpan.FromDays(14)
-            },
-            { LocalIconPath: { Length: > 0 } iconPath } when File.Exists(iconPath) => LoadLocalImage(iconPath),
-            { RemoteIconUrl: { Length: > 0 } remoteIcon } => new UriImageSource
-            {
-                Uri = new Uri(ThemeManager.ToMirrorUrl(remoteIcon)),
-                CachingEnabled = true,
-                CacheValidity = TimeSpan.FromDays(14)
-            },
-            _ => "splash_logo.png"
-        };
+        !string.IsNullOrEmpty(model.LocalPreviewPath) && File.Exists(model.LocalPreviewPath)
+            ? LoadLocalImage(model.LocalPreviewPath)
+            : !string.IsNullOrEmpty(model.RemotePreviewUrl) &&
+              Uri.TryCreate(ThemeManager.ToMirrorUrl(model.RemotePreviewUrl), UriKind.Absolute, out var previewUri)
+                ? new UriImageSource
+                {
+                    Uri = previewUri,
+                    CachingEnabled = true,
+                    CacheValidity = TimeSpan.FromDays(14)
+                }
+                : !string.IsNullOrEmpty(model.LocalIconPath) && File.Exists(model.LocalIconPath)
+                    ? LoadLocalImage(model.LocalIconPath)
+                    : !string.IsNullOrEmpty(model.RemoteIconUrl) &&
+                      Uri.TryCreate(ThemeManager.ToMirrorUrl(model.RemoteIconUrl), UriKind.Absolute, out var iconUri)
+                        ? new UriImageSource
+                        {
+                            Uri = iconUri,
+                            CachingEnabled = true,
+                            CacheValidity = TimeSpan.FromDays(14)
+                        }
+                        : "splash_logo.png";
 
     public async Task ClosePreviewModalAsync()
     {

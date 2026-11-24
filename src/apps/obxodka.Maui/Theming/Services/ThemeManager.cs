@@ -167,6 +167,7 @@ public sealed partial class ThemeManager
     public static ThemeManager? Instance { get; private set; }
     public static double CurrentGlowIntensity => Instance?.GlowIntensity ?? Preferences.Default.Get(ThemeGlowIntensityKey, 1.0);
 
+    public event Func<string, string?, Task>? OnThemeTransitionStarting;
     public event Action<ThemeAppliedEventArgs>? OnThemeApplied;
     public event Action? OnThemeReset;
     public event Action? OnSystemThemeSynced;
@@ -212,6 +213,25 @@ public sealed partial class ThemeManager
         }
     }
 
+    //показ оверлея перехода на ui-потоке до старта тяжелой дисковой подготовки темы
+    private async Task NotifyTransitionStartingAsync(string title, string? subtitle)
+    {
+        if (OnThemeTransitionStarting is not { } handler)
+        {
+            return;
+        }
+
+        try
+        {
+            await MainThread.InvokeOnMainThreadAsync(() => handler(title, subtitle)).ConfigureAwait(false);
+            await Task.Delay(16).ConfigureAwait(false);
+        }
+        catch
+        {
+            //подавление ошибок показа оверлея перехода
+        }
+    }
+
     public async Task<bool> ApplyThemeByIdAsync(string themeId)
     {
         var themeDir = _storageService.ResolveSafeThemeDirectory(themeId);
@@ -226,6 +246,8 @@ public sealed partial class ThemeManager
             return false;
         }
 
+        await NotifyTransitionStartingAsync("Применение темы...", null).ConfigureAwait(false);
+
         try
         {
             var json = await File.ReadAllTextAsync(manifestPath).ConfigureAwait(false);
@@ -238,12 +260,19 @@ public sealed partial class ThemeManager
         }
     }
 
-    public async Task<bool> ApplyThemeAsync(ThemeManifest? manifest) =>
-        manifest != null &&
-        ThemeValidator.ValidateManifest(manifest, out _) &&
-        (MainThread.IsMainThread
-            ? ApplyTheme(manifest)
-            : await MainThread.InvokeOnMainThreadAsync(() => ApplyTheme(manifest)).ConfigureAwait(false));
+    public async Task<bool> ApplyThemeAsync(ThemeManifest? manifest)
+    {
+        if (manifest == null || !ThemeValidator.ValidateManifest(manifest, out _))
+        {
+            return false;
+        }
+
+        await NotifyTransitionStartingAsync("Применение темы...", manifest.Name).ConfigureAwait(false);
+        var prepared = await Task.Run(() => PrepareThemeAppliedArgs(manifest)).ConfigureAwait(false);
+
+        await MainThread.InvokeOnMainThreadAsync(() => CommitPreparedThemeOnMainThread(prepared)).ConfigureAwait(false);
+        return true;
+    }
 
     //проверка что пользователь использует тему по умолчанию а не кастомную тему
     public bool IsUsingSystemDefaultTheme()

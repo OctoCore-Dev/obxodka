@@ -18,15 +18,22 @@ public sealed partial class ThemeStoreView
     {
         if (_themeManager is null)
         {
+            _ = Interlocked.Increment(ref _renderGeneration);
             ThemesContainer.Clear();
             _cardMap.Clear();
+            _pendingIcons.Clear();
             _activeDownloadLabels.Clear();
             LabelStatus.IsVisible = false;
             return;
         }
 
-        var installedList = _themeManager.GetInstalledThemes();
-        var installedMap = installedList.ToDictionary(t => t.Id, t => t);
+        var installedList = _cachedInstalledThemes;
+        Dictionary<string, ThemeManifest> installedMap = [with(StringComparer.OrdinalIgnoreCase)];
+        foreach (var manifest in installedList)
+        {
+            installedMap[manifest.Id] = manifest;
+        }
+
         List<ThemeCardModel> models = [];
 
         if (_currentTab == "installed")
@@ -64,8 +71,10 @@ public sealed partial class ThemeStoreView
 
         if (models.Count == 0)
         {
+            _ = Interlocked.Increment(ref _renderGeneration);
             ThemesContainer.Clear();
             _cardMap.Clear();
+            _pendingIcons.Clear();
             _activeDownloadLabels.Clear();
             LabelStatus.Text = _currentTab == "installed"
                 ? string.IsNullOrWhiteSpace(_searchQuery) && _activeFilter == "all"
@@ -86,6 +95,17 @@ public sealed partial class ThemeStoreView
 
         if (canUpdateInPlace)
         {
+            var savedScrollY = ThemeScrollView.ScrollY;
+            var cardCornerRadius = Application.Current?.Resources.TryGetValue("CardCornerRadius", out var cr) == true &&
+                                   cr is CornerRadius themeRadius
+                ? themeRadius
+                : new CornerRadius(12);
+            var borderThickness = Application.Current?.Resources.TryGetValue("CardBorderThickness", out var bt) == true &&
+                                  bt is double t
+                ? t
+                : 1.0;
+            var anyActionsChanged = false;
+
             foreach (var model in models)
             {
                 if (!_cardMap.TryGetValue(model.Id, out var holder))
@@ -93,46 +113,127 @@ public sealed partial class ThemeStoreView
                     continue;
                 }
 
-                holder.CardBorder.StrokeThickness = model.IsActive ? 2.0 : 1.0;
+                holder.CardBorder.StrokeThickness = model.IsActive ? Math.Max(2.0, borderThickness) : borderThickness;
+                holder.CardBorder.StrokeShape = new RoundRectangle
+                {
+                    CornerRadius = cardCornerRadius
+                };
                 holder.CardBorder.SetDynamicResource(Border.StrokeProperty, model.IsActive ? "Primary" : "BorderSubtle");
-                holder.ActionLayout.Children.Clear();
-                PopulateActionLayout(holder.ActionLayout, model);
-                _cardMap[model.Id] = (holder.CardBorder, holder.ActionLayout, model);
+
+                var prev = holder.Model;
+                var stateChanged = prev.IsActive != model.IsActive ||
+                                   prev.IsInstalled != model.IsInstalled ||
+                                   prev.HasUpdate != model.HasUpdate ||
+                                   !string.Equals(prev.DisplayVersion, model.DisplayVersion, StringComparison.Ordinal) ||
+                                   !string.Equals(prev.UpdateVersion, model.UpdateVersion, StringComparison.Ordinal);
+
+                if (stateChanged)
+                {
+                    anyActionsChanged = true;
+                    _ = _activeDownloadLabels.Remove(model.Id);
+                    holder.ActionLayout.Children.Clear();
+                    PopulateActionLayout(holder.ActionLayout, model);
+                }
+
+                _cardMap[model.Id] = (holder.CardBorder, holder.ActionLayout, holder.IconImage, model);
+            }
+
+            if (anyActionsChanged && savedScrollY > 2)
+            {
+                _ = Dispatcher.Dispatch(() =>
+                {
+                    if (Math.Abs(ThemeScrollView.ScrollY - savedScrollY) > 2)
+                    {
+                        _ = ThemeScrollView.ScrollToAsync(0, savedScrollY, false);
+                    }
+                });
             }
 
             return;
         }
 
-        var prevScrollY = ThemeScrollView.ScrollY;
+        var generation = Interlocked.Increment(ref _renderGeneration);
+        var restoreScrollY = _pendingRestoreScrollY > 2 ? _pendingRestoreScrollY : ThemeScrollView.ScrollY;
+        _pendingRestoreScrollY = 0;
+
+        foreach (var (_, _, iconImage, _) in _cardMap.Values)
+        {
+            iconImage.Source = null;
+        }
 
         ThemesContainer.Clear();
         _cardMap.Clear();
+        _pendingIcons.Clear();
         _activeDownloadLabels.Clear();
         _revealedCards.Clear();
 
-        var index = 0;
-        foreach (var model in models)
-        {
-            var (card, actionLayout) = CreateThemeCard(model);
-            ThemesContainer.Add(card);
-            _cardMap[model.Id] = (card, actionLayout, model);
+        const int initialBatchSize = 6;
+        var initialCount = Math.Min(models.Count, restoreScrollY > 2 ? models.Count : initialBatchSize);
+        AppendThemeCardBatch(models, 0, initialCount, animate, loadIconsImmediately: restoreScrollY <= 2);
 
-            if (!animate || index < 4)
+        if (initialCount < models.Count)
+        {
+            ScheduleRemainingCardBatches(models, initialCount, generation, animate);
+        }
+        else if (restoreScrollY > 2)
+        {
+            _ = Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(35), () =>
+            {
+                if (generation != Volatile.Read(ref _renderGeneration))
+                {
+                    return;
+                }
+
+                _ = ThemeScrollView.ScrollToAsync(0, restoreScrollY, false);
+                LoadPendingIconsForViewport(restoreScrollY, ThemeScrollView.Height);
+            });
+        }
+    }
+
+    //порционное добавление карточек тем между кадрами без блокировки ui-потока
+    private void AppendThemeCardBatch(List<ThemeCardModel> models, int startIndex, int endExclusive, bool animate, bool loadIconsImmediately)
+    {
+        for (var i = startIndex; i < endExclusive; i++)
+        {
+            var model = models[i];
+            var eagerIcon = loadIconsImmediately && i < 6;
+            var (card, actionLayout, iconImage) = CreateThemeCard(model, eagerIcon);
+            ThemesContainer.Add(card);
+            _cardMap[model.Id] = (card, actionLayout, iconImage, model);
+            if (!eagerIcon)
+            {
+                _pendingIcons.Add((card, iconImage, model));
+            }
+
+            if (!animate || i < 4)
             {
                 card.Opacity = 1.0;
                 card.Scale = 1.0;
                 card.TranslationY = 0;
                 _ = _revealedCards.Add(card);
             }
-
-            index++;
         }
+    }
 
-        if (prevScrollY > 10)
+    private void ScheduleRemainingCardBatches(List<ThemeCardModel> models, int nextIndex, int generation, bool animate)
+    {
+        _ = Dispatcher.Dispatch(() =>
         {
-            _ = Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(40),
-                () => _ = ThemeScrollView.ScrollToAsync(0, prevScrollY, false));
-        }
+            if (generation != Volatile.Read(ref _renderGeneration) || _themeManager is null)
+            {
+                return;
+            }
+
+            const int batchSize = 5;
+            var end = Math.Min(models.Count, nextIndex + batchSize);
+            AppendThemeCardBatch(models, nextIndex, end, animate, loadIconsImmediately: false);
+            LoadPendingIconsForViewport(ThemeScrollView.ScrollY, ThemeScrollView.Height);
+
+            if (end < models.Count)
+            {
+                ScheduleRemainingCardBatches(models, end, generation, animate);
+            }
+        });
     }
 
     private ThemeCardModel BuildInstalledThemeModel(ThemeManifest manifest)

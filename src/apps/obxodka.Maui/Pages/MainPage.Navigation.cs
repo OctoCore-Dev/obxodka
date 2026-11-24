@@ -223,6 +223,10 @@ public sealed partial class MainPage
         {
             _tabContentPayment?.StopPaymentPolling();
         }
+        else if (prevTab == "vpn")
+        {
+            _tabContentVpn?.OnTabVisibilityChanged(false);
+        }
 
         _activeTab = tab;
         RefreshAdaptiveLayout();
@@ -243,11 +247,13 @@ public sealed partial class MainPage
         }
 
         await UiAnimations.SwitchViewAsync(outgoing, incoming, animate);
+        UnloadTransientTab(prevTab);
         UpdateAllViewsOpacity();
 
         switch (tab)
         {
             case "vpn":
+                _tabContentVpn?.OnTabVisibilityChanged(true);
                 if (animate)
                 {
                     _ = _tabContentVpn?.PlayEntranceAnimationAsync();
@@ -507,6 +513,11 @@ public sealed partial class MainPage
                     {
                         IsVisible = false
                     };
+                    _tabContentThemeStore.RestoreNavigationState(
+                        _lastThemeStoreTab,
+                        _lastThemeStoreFilter,
+                        _lastThemeStoreSearch,
+                        _lastThemeStoreScrollY);
                     _tabContentThemeStore.Initialize(_themeManager);
                     _tabContentThemeStore.BackRequested += OnThemeStoreBackRequested;
                     ApplyInitialDecorations(_tabContentThemeStore);
@@ -532,6 +543,73 @@ public sealed partial class MainPage
         UpdateAllViewsOpacity();
     }
 
+    //выгрузка тяжелых временных вкладок при переходе на другой раздел для освобождения памяти
+    private void UnloadTransientTab(string? tab)
+    {
+        if (string.IsNullOrEmpty(tab) || string.Equals(tab, _activeTab, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        View? viewToRemove = null;
+        switch (tab)
+        {
+            case "themes":
+                if (_tabContentThemeStore is not null)
+                {
+                    (_lastThemeStoreTab, _lastThemeStoreFilter, _lastThemeStoreSearch, _lastThemeStoreScrollY) =
+                        _tabContentThemeStore.CaptureNavigationState();
+                    _tabContentThemeStore.BackRequested -= OnThemeStoreBackRequested;
+                    _tabContentThemeStore.Cleanup();
+                    viewToRemove = _tabContentThemeStore;
+                    _tabContentThemeStore = null;
+                }
+
+                break;
+
+            case "payment":
+                if (_tabContentPayment is not null)
+                {
+                    _tabContentPayment.PaymentCompleted -= OnPaymentCompletedAsync;
+                    _tabContentPayment.PaymentCancelled -= OnPaymentCancelled;
+                    _tabContentPayment.StopPaymentPolling();
+                    viewToRemove = _tabContentPayment;
+                    _tabContentPayment = null;
+                }
+
+                break;
+
+            case "delete":
+                if (_tabContentDelete is not null)
+                {
+                    _tabContentDelete.CancelRequested -= OnDeleteCancelRequested;
+                    _tabContentDelete.AccountDeleted -= OnAccountDeletedAsync;
+                    viewToRemove = _tabContentDelete;
+                    _tabContentDelete = null;
+                }
+
+                break;
+
+            case "devices":
+                if (_tabContentDevices is not null)
+                {
+                    viewToRemove = _tabContentDevices;
+                    _tabContentDevices = null;
+                }
+
+                break;
+        }
+
+        if (viewToRemove is null)
+        {
+            return;
+        }
+
+        _ = MainContentContainer.Children.Remove(viewToRemove);
+        viewToRemove.Handler?.DisconnectHandler();
+        ScheduleMemoryTrim();
+    }
+
     private View? GetTabContent(string? tab) => tab switch
     {
         "auth" => _tabContentAuth,
@@ -548,11 +626,6 @@ public sealed partial class MainPage
 
     private void ApplySafeArea(double top, double bottom)
     {
-        if (DeviceInfo.Platform != DevicePlatform.Android && DeviceInfo.Platform != DevicePlatform.iOS)
-        {
-            return;
-        }
-
         if (Math.Abs(_lastAppliedTopInset - top) < 0.5 && Math.Abs(_lastAppliedBottomInset - bottom) < 0.5)
         {
             return;
@@ -561,7 +634,11 @@ public sealed partial class MainPage
         _lastAppliedTopInset = top;
         _lastAppliedBottomInset = bottom;
 
-        MainContentContainer.Padding = new Thickness(0);
+        //на windows клиентская область скролла начинается строго ниже системного titlebar, чтобы контент не залезал под кнопки окна
+        MainContentContainer.Padding = DeviceInfo.Platform == DevicePlatform.WinUI
+            ? new Thickness(0, top, 0, bottom)
+            : new Thickness(0);
+
         DesktopSidebar.ApplySafeAreaInsets(top, bottom);
         MobileBottomBar.ApplyBottomInset(bottom);
         RefreshAdaptiveLayout(forceApply: true);

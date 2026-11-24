@@ -112,12 +112,14 @@ public sealed partial class MainPage
             }
 
             _isDecorationsFaded = true;
+            ThemeParticles?.SetScreenFrameOpacity(0f);
             ThemeDecorationsContainer.CancelAnimations();
             _ = ThemeDecorationsContainer.FadeToAsync(0.0, 120, Easing.CubicOut);
         }
         else if (_isDecorationsFaded)
         {
             _isDecorationsFaded = false;
+            ThemeParticles?.SetScreenFrameOpacity(1f);
             ThemeDecorationsContainer.CancelAnimations();
             _ = ThemeDecorationsContainer.FadeToAsync(1.0, 180, Easing.CubicIn);
         }
@@ -146,6 +148,7 @@ public sealed partial class MainPage
         }
 
         _isDecorationsFaded = false;
+        ThemeParticles?.SetScreenFrameOpacity(1f);
         ThemeDecorationsContainer.CancelAnimations();
         _ = ThemeDecorationsContainer.FadeToAsync(1.0, 180, Easing.CubicIn);
     }

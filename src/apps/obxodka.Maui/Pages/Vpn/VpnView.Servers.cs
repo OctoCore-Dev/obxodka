@@ -547,7 +547,7 @@ public sealed partial class VpnView
             ConnectButtonCore.IsEnabled = false;
             var accent = GetAppColor("Accent", s_cyanAccent);
             UpdateIpStatusDisplay("Переключение...", accent, accent);
-            await SetNeonStateAsync(
+            SetNeonState(
                 GetStatusTextForState(AppVpnState.Connecting, "Смена сервера..."),
                 GetButtonTextForState(AppVpnState.Connecting, "ЖДИТЕ"),
                 AppVpnState.Connecting);
@@ -573,7 +573,7 @@ public sealed partial class VpnView
             ConnectButtonCore.IsEnabled = true;
             var muted = GetAppColor("TextMuted", s_grayText);
             UpdateIpStatusDisplay("Не назначен", muted, muted);
-            await SetNeonStateAsync(
+            SetNeonState(
                 GetStatusTextForState(AppVpnState.Disconnected, "Не в сети"),
                 GetButtonTextForState(AppVpnState.Disconnected, "СТАРТ"),
                 AppVpnState.Disconnected);

@@ -62,6 +62,51 @@ public static partial class ThemeAudioService
         }
     }
 
+    //освобождение нативных медиаплееров и источников звука
+    public static void ReleaseMediaResources()
+    {
+#if WINDOWS
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 10240))
+        {
+            return;
+        }
+
+        MediaPlayer?[]? poolToDispose;
+        lock (s_sync)
+        {
+            poolToDispose = s_sfxPool;
+            s_sfxPool = null;
+            s_sfxPoolIndex = 0;
+        }
+
+        if (poolToDispose is null)
+        {
+            return;
+        }
+
+        foreach (var player in poolToDispose)
+        {
+            if (player is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                player.Pause();
+                var oldSource = player.Source as IDisposable;
+                player.Source = null;
+                oldSource?.Dispose();
+                player.Dispose();
+            }
+            catch
+            {
+                //подавление ошибок освобождения плеера
+            }
+        }
+#endif
+    }
+
     //установка уровня громкости
     public static void SetVolume(double volume)
     {
@@ -316,20 +361,24 @@ public static partial class ThemeAudioService
 
                 try
                 {
-                    MediaPlayer player;
+                    var fullPath = Path.GetFullPath(soundFilePath);
                     lock (s_sync)
                     {
                         s_sfxPool ??= new MediaPlayer?[4];
                         var idx = s_sfxPoolIndex % s_sfxPool.Length;
                         s_sfxPoolIndex = (s_sfxPoolIndex + 1) % s_sfxPool.Length;
-                        player = s_sfxPool[idx] ??= new MediaPlayer();
-                    }
+                        var player = s_sfxPool[idx] ??= new MediaPlayer();
 
-                    var fullPath = Path.GetFullPath(soundFilePath);
-                    player.IsLoopingEnabled = false;
-                    player.Volume = effectiveVolume;
-                    player.Source = MediaSource.CreateFromUri(new Uri(fullPath));
-                    player.Play();
+                        player.Pause();
+                        var oldSource = player.Source as IDisposable;
+                        player.Source = null;
+                        oldSource?.Dispose();
+
+                        player.IsLoopingEnabled = false;
+                        player.Volume = effectiveVolume;
+                        player.Source = MediaSource.CreateFromUri(new Uri(fullPath));
+                        player.Play();
+                    }
                 }
                 catch
                 {

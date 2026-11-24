@@ -16,6 +16,7 @@ public partial class NeoDialog
 
     private TaskCompletionSource<bool>? _dialogTcs;
     private DialogTone _lastTone = DialogTone.Info;
+    private int _dialogGeneration;
 
     public NeoDialog() => InitializeComponent();
 
@@ -49,6 +50,7 @@ public partial class NeoDialog
         string cancelText = "OK",
         DialogTone? tone = null)
     {
+        var generation = Interlocked.Increment(ref _dialogGeneration);
         _ = _dialogTcs?.TrySetResult(false);
         var tcs = new TaskCompletionSource<bool>();
         _dialogTcs = tcs;
@@ -59,6 +61,12 @@ public partial class NeoDialog
         {
             try
             {
+                if (generation != Volatile.Read(ref _dialogGeneration))
+                {
+                    _ = tcs.TrySetResult(false);
+                    return;
+                }
+
                 TitleLabel.Text = title;
                 MessageLabel.Text = message;
 
@@ -146,6 +154,7 @@ public partial class NeoDialog
     private async Task CloseAsync(bool result)
     {
         ThemeAudioService.PlayClick();
+        var generation = Volatile.Read(ref _dialogGeneration);
         var tcs = _dialogTcs;
         _dialogTcs = null;
 
@@ -155,8 +164,11 @@ public partial class NeoDialog
                 this.FadeToAsync(0, 150, Easing.CubicIn),
                 DialogCard.ScaleToAsync(0.88, 150, Easing.CubicIn));
 
-            InputTransparent = true;
-            IsVisible = false;
+            if (generation == Volatile.Read(ref _dialogGeneration))
+            {
+                InputTransparent = true;
+                IsVisible = false;
+            }
         }
         catch
         {

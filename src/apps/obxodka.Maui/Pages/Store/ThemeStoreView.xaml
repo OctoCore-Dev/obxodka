@@ -264,11 +264,13 @@
                     <HorizontalStackLayout Spacing="8">
                         <Border
                             x:Name="ChipFilterAll"
-                            Padding="14,7"
+                            Padding="14,0"
                             BackgroundColor="{DynamicResource Primary}"
+                            HeightRequest="32"
                             Stroke="Transparent"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterAllClicked" />
                             </Border.GestureRecognizers>
@@ -278,16 +280,19 @@
                                 FontSize="12"
                                 Text="Все"
                                 TextColor="{DynamicResource TextOnPrimary}"
-                                VerticalOptions="Center" />
+                                VerticalOptions="Center"
+                                VerticalTextAlignment="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterVideo"
-                            Padding="14,7"
+                            Padding="14,0"
                             BackgroundColor="{DynamicResource BgSurface}"
+                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterVideoClicked" />
                             </Border.GestureRecognizers>
@@ -297,16 +302,19 @@
                                 FontSize="12"
                                 Text="Видео"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center" />
+                                VerticalOptions="Center"
+                                VerticalTextAlignment="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterAnim"
-                            Padding="14,7"
+                            Padding="14,0"
                             BackgroundColor="{DynamicResource BgSurface}"
+                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterAnimClicked" />
                             </Border.GestureRecognizers>
@@ -316,16 +324,19 @@
                                 FontSize="12"
                                 Text="Анимация"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center" />
+                                VerticalOptions="Center"
+                                VerticalTextAlignment="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterSound"
-                            Padding="14,7"
+                            Padding="14,0"
                             BackgroundColor="{DynamicResource BgSurface}"
+                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterSoundClicked" />
                             </Border.GestureRecognizers>
@@ -335,16 +346,19 @@
                                 FontSize="12"
                                 Text="Звук"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center" />
+                                VerticalOptions="Center"
+                                VerticalTextAlignment="Center" />
                         </Border>
 
                         <Border
                             x:Name="ChipFilterShaders"
-                            Padding="14,7"
+                            Padding="14,0"
                             BackgroundColor="{DynamicResource BgSurface}"
+                            HeightRequest="32"
                             Stroke="{DynamicResource BorderSubtle}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
+                            StrokeShape="RoundRectangle 8"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnFilterShadersClicked" />
                             </Border.GestureRecognizers>
@@ -354,7 +368,8 @@
                                 FontSize="12"
                                 Text="Шейдеры"
                                 TextColor="{DynamicResource TextMuted}"
-                                VerticalOptions="Center" />
+                                VerticalOptions="Center"
+                                VerticalTextAlignment="Center" />
                         </Border>
                     </HorizontalStackLayout>
                 </ScrollView>

@@ -87,13 +87,6 @@
             VerticalOptions="Fill"
             ZIndex="20">
 
-            <theming:ThemeFrameOverlay
-                x:Name="ThemeScreenFrameOverlay"
-                HorizontalOptions="Fill"
-                InputTransparent="True"
-                IsVisible="False"
-                VerticalOptions="Fill" />
-
             <Image
                 x:Name="ThemeCornerTopLeft"
                 Aspect="AspectFit"

@@ -53,11 +53,12 @@
                                 JustifyContent="Center"
                                 Wrap="Wrap">
                                 <Border
-                                    Margin="3,2"
-                                    Padding="9,4"
+                                    Margin="4,3"
+                                    Padding="10,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
+                                    HeightRequest="26"
                                     Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 999"
+                                    StrokeShape="RoundRectangle 13"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
@@ -78,11 +79,13 @@
                                                 LineBreakMode="TailTruncation"
                                                 Text="Не назначен"
                                                 TextColor="{DynamicResource TextPrimary}"
-                                                VerticalOptions="Center" />
+                                                VerticalOptions="Center"
+                                                VerticalTextAlignment="Center" />
                                             <Border
                                                 x:Name="IpVersionBadge"
-                                                Padding="4,1"
+                                                Padding="4,0"
                                                 BackgroundColor="{DynamicResource AccentDim}"
+                                                HeightRequest="16"
                                                 IsVisible="False"
                                                 Stroke="{DynamicResource Accent}"
                                                 StrokeShape="RoundRectangle 4"
@@ -94,13 +97,15 @@
                                                     FontSize="8.5"
                                                     Text="v4"
                                                     TextColor="{DynamicResource Accent}"
-                                                    VerticalOptions="Center" />
+                                                    VerticalOptions="Center"
+                                                    VerticalTextAlignment="Center" />
                                             </Border>
                                         </HorizontalStackLayout>
                                         <Border
                                             x:Name="IpCopyButton"
-                                            Padding="3,1"
+                                            Padding="3,0"
                                             BackgroundColor="Transparent"
+                                            HeightRequest="20"
                                             IsVisible="False"
                                             Stroke="Transparent"
                                             StrokeShape="RoundRectangle 4"
@@ -119,11 +124,12 @@
                                 </Border>
 
                                 <Border
-                                    Margin="3,2"
-                                    Padding="9,4"
+                                    Margin="4,3"
+                                    Padding="10,0"
                                     BackgroundColor="{DynamicResource BgElevated}"
+                                    HeightRequest="26"
                                     Stroke="{DynamicResource BorderMedium}"
-                                    StrokeShape="RoundRectangle 999"
+                                    StrokeShape="RoundRectangle 13"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
@@ -140,17 +146,19 @@
                                             MaximumWidthRequest="140"
                                             Text="Нет подключения"
                                             TextColor="{DynamicResource TextSecondary}"
-                                            VerticalOptions="Center" />
+                                            VerticalOptions="Center"
+                                            VerticalTextAlignment="Center" />
                                     </HorizontalStackLayout>
                                 </Border>
 
                                 <Border
                                     x:Name="PingBadge"
-                                    Margin="3,2"
-                                    Padding="9,4"
+                                    Margin="4,3"
+                                    Padding="10,0"
                                     BackgroundColor="{DynamicResource SuccessDim}"
+                                    HeightRequest="26"
                                     Stroke="{DynamicResource Success}"
-                                    StrokeShape="RoundRectangle 999"
+                                    StrokeShape="RoundRectangle 13"
                                     StrokeThickness="1"
                                     VerticalOptions="Center">
                                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
@@ -167,7 +175,8 @@
                                             FontSize="11.5"
                                             Text="-- ms"
                                             TextColor="{DynamicResource Success}"
-                                            VerticalOptions="Center" />
+                                            VerticalOptions="Center"
+                                            VerticalTextAlignment="Center" />
                                     </HorizontalStackLayout>
                                 </Border>
                             </FlexLayout>
@@ -502,19 +511,11 @@
                                                        Default=340}">
 
                                 <skia:SKCanvasView
-                                    x:Name="OuterAura"
+                                    x:Name="ButtonEffectsCanvas"
                                     HorizontalOptions="Fill"
                                     IgnorePixelScaling="True"
-                                    Opacity="0"
-                                    PaintSurface="OnPaintOuterAuraSurface"
-                                    VerticalOptions="Fill" />
-
-                                <skia:SKCanvasView
-                                    x:Name="LoaderCanvas"
-                                    HorizontalOptions="Fill"
-                                    IgnorePixelScaling="True"
-                                    Opacity="0"
-                                    PaintSurface="OnPaintLoaderSurface"
+                                    InputTransparent="True"
+                                    PaintSurface="OnPaintButtonEffectsSurface"
                                     VerticalOptions="Fill" />
 
                                 <Image

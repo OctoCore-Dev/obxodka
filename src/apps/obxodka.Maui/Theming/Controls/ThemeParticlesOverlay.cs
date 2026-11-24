@@ -48,11 +48,38 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
     private readonly SKPath _petalPath = CreatePetalPath();
     private readonly SKPath _diamondPath = CreateDiamondPath();
     private readonly SKPathBuilder _wavePathBuilder = new();
+    private SKPath? _rayUnitPath;
+    private readonly SKColorFilter?[] _tintFilterCache = new SKColorFilter?[32];
+    private SKColor _lastTintFilterColor;
     private SKShader? _auroraRibbonShader0;
     private SKShader? _auroraRibbonShader1;
     private float _lastAuroraHeight;
     private SKColor _lastAuroraAccent;
     private SKColor _lastAuroraPrimary;
+    private SKShader? _cyberBeamShader;
+    private SKColor _lastCyberAccent;
+    private SKShader? _vignetteShader;
+    private float _lastVignetteW;
+    private float _lastVignetteH;
+    private SKColor _lastVignetteColor;
+    private SKShader? _fogShader0;
+    private SKShader? _fogShader1;
+    private float _lastFogTopY;
+    private float _lastFogH;
+    private SKColor _lastFogPrimary;
+    private SKColor _lastFogAccent;
+    private SKShader? _rayShader;
+    private float _lastRayLength;
+    private SKColor _lastRayColor;
+    private readonly Lock _frameLock = new();
+    private readonly SKPaint _framePaint = new() { IsAntialias = true };
+    private SKImage? _frameImage;
+    private string? _frameImagePath;
+    private FrameSlice? _frameSlice;
+    private SKRectI _frameCachedCenter;
+    private bool _frameUseNinePatch;
+    private bool _hasScreenFrame;
+    private float _screenFrameOpacity = 1f;
     private static readonly SKSamplingOptions s_samplingOptions = new(SKFilterMode.Linear);
 
 #if WINDOWS
@@ -129,18 +156,20 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         {
             var ratioX = newW / _lastWidth;
             var ratioY = newH / _lastHeight;
-            foreach (var p in _particles)
+            var span = CollectionsMarshal.AsSpan(_particles);
+            for (var i = 0; i < span.Length; i++)
             {
-                p.X = Math.Clamp(p.X * ratioX, -20f, newW + 20f);
-                p.Y = Math.Clamp(p.Y * ratioY, -20f, newH + 20f);
+                span[i].X = Math.Clamp(span[i].X * ratioX, -20f, newW + 20f);
+                span[i].Y = Math.Clamp(span[i].Y * ratioY, -20f, newH + 20f);
             }
         }
         else
         {
-            foreach (var p in _particles)
+            var span = CollectionsMarshal.AsSpan(_particles);
+            for (var i = 0; i < span.Length; i++)
             {
-                p.X = (float)(_random.NextDouble() * newW);
-                p.Y = (float)(_random.NextDouble() * newH);
+                span[i].X = (float)(_random.NextDouble() * newW);
+                span[i].Y = (float)(_random.NextDouble() * newH);
             }
         }
 
@@ -205,7 +234,7 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
             _particles.Clear();
             _initialized = false;
             StopAnimation();
-            IsVisible = false;
+            IsVisible = _hasScreenFrame;
             InvalidateSurface();
             return;
         }
@@ -345,26 +374,132 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         if (!HasActiveVisuals())
         {
             StopAnimation();
-            IsVisible = false;
+            IsVisible = _hasScreenFrame;
             InvalidateSurface();
             return;
         }
 
         IsVisible = true;
-        StartAnimation();
+        if (HasAnimatedVisuals())
+        {
+            StartAnimation();
+        }
+        else
+        {
+            StopAnimation();
+        }
+
         InvalidateSurface();
     }
 
-    //обработка одного кадра физики частиц
+    //установка 9-patch рамки экрана на единый холст без отдельного swapchain
+    public void SetScreenFrame(string? imagePath, FrameSlice? slice)
+    {
+        lock (_frameLock)
+        {
+            if (string.Equals(_frameImagePath, imagePath, StringComparison.OrdinalIgnoreCase) && Equals(_frameSlice, slice))
+            {
+                return;
+            }
+
+            _frameImage?.Dispose();
+            _frameImage = null;
+            _frameImagePath = imagePath;
+            _frameSlice = slice;
+            _frameUseNinePatch = false;
+            _frameCachedCenter = default;
+
+            if (!string.IsNullOrEmpty(imagePath) && File.Exists(imagePath))
+            {
+                try
+                {
+                    _frameImage = SKImage.FromEncodedData(imagePath);
+                }
+                catch
+                {
+                    _frameImage = null;
+                }
+            }
+
+            if (_frameImage is not null)
+            {
+                if (slice is { IsValid: true })
+                {
+                    var left = Math.Clamp(slice.Left, 0, _frameImage.Width / 2);
+                    var top = Math.Clamp(slice.Top, 0, _frameImage.Height / 2);
+                    var right = Math.Clamp(slice.Right, 0, _frameImage.Width / 2);
+                    var bottom = Math.Clamp(slice.Bottom, 0, _frameImage.Height / 2);
+
+                    _frameCachedCenter = new SKRectI(left, top, Math.Max(left + 1, _frameImage.Width - right),
+                        Math.Max(top + 1, _frameImage.Height - bottom));
+                    _frameUseNinePatch = true;
+                }
+                else if (DeviceInfo.Idiom == DeviceIdiom.Phone && _frameImage.Width > _frameImage.Height * 1.15f)
+                {
+                    var sliceX = Math.Max(1, (int)(_frameImage.Width * 0.12f));
+                    var sliceY = Math.Max(1, (int)(_frameImage.Height * 0.12f));
+                    _frameCachedCenter = new SKRectI(sliceX, sliceY, _frameImage.Width - sliceX, _frameImage.Height - sliceY);
+                    _frameUseNinePatch = true;
+                }
+            }
+
+            _hasScreenFrame = _frameImage is not null;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            IsVisible = _hasScreenFrame || HasAnimatedVisuals();
+            InvalidateSurface();
+        });
+    }
+
+    //очистка рамки экрана с освобождением нативного skimage
+    public void ClearScreenFrame()
+    {
+        lock (_frameLock)
+        {
+            _frameImage?.Dispose();
+            _frameImage = null;
+            _frameImagePath = null;
+            _frameSlice = null;
+            _frameUseNinePatch = false;
+            _frameCachedCenter = default;
+            _hasScreenFrame = false;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            IsVisible = HasAnimatedVisuals();
+            InvalidateSurface();
+        });
+    }
+
+    //изменение прозрачности рамки экрана при приближении курсора к краю
+    public void SetScreenFrameOpacity(float opacity)
+    {
+        var clamped = Math.Clamp(opacity, 0f, 1f);
+        if (Math.Abs(_screenFrameOpacity - clamped) < 0.01f)
+        {
+            return;
+        }
+
+        _screenFrameOpacity = clamped;
+        if (_hasScreenFrame)
+        {
+            InvalidateSurface();
+        }
+    }
+
+    //обработка одного кадра физики частиц с защитой от рывков dt
     private void StepAnimationFrame()
     {
-        if (!IsVisible || !HasActiveVisuals())
+        if (!IsVisible || !HasAnimatedVisuals())
         {
             return;
         }
 
         var now = _stopwatch.Elapsed.TotalSeconds;
-        var dt = (float)Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
+        var dt = (float)Math.Clamp(now - _lastFrameSeconds, 0.001, 0.033);
         _lastFrameSeconds = now;
 
         UpdatePhysics((float)Width, (float)Height, dt);
@@ -448,11 +583,30 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         _screenOverlayBitmap = null;
     }
 
+    //очистка кэша цветовых фильтров частиц
+    private void ClearTintFilterCache()
+    {
+        for (var i = 0; i < _tintFilterCache.Length; i++)
+        {
+            _tintFilterCache[i]?.Dispose();
+            _tintFilterCache[i] = null;
+        }
+    }
+
     public void Dispose()
     {
         StopAnimation();
         ClearSprites();
         ClearOverlayBitmap();
+        ClearTintFilterCache();
+        lock (_frameLock)
+        {
+            _frameImage?.Dispose();
+            _frameImage = null;
+            _hasScreenFrame = false;
+        }
+
+        _framePaint.Dispose();
         _bitmapPaint.Dispose();
         _fallbackPaint.Dispose();
         _shaderPaint.Dispose();
@@ -462,8 +616,14 @@ public sealed partial class ThemeParticlesOverlay : SKCanvasView, IDisposable
         _petalPath.Dispose();
         _diamondPath.Dispose();
         _wavePathBuilder.Dispose();
+        _rayUnitPath?.Dispose();
         _auroraRibbonShader0?.Dispose();
         _auroraRibbonShader1?.Dispose();
+        _cyberBeamShader?.Dispose();
+        _vignetteShader?.Dispose();
+        _fogShader0?.Dispose();
+        _fogShader1?.Dispose();
+        _rayShader?.Dispose();
         GC.SuppressFinalize(this);
     }
 }
