@@ -254,6 +254,12 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
+    protected override void OnDestroy()
+    {
+        _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(false);
+        base.OnDestroy();
+    }
+
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
     {
         base.OnActivityResult(requestCode, resultCode, data);
@@ -267,7 +273,7 @@ public sealed class MainActivity : MauiAppCompatActivity
                 AndroidVpnService.Orchestrator.ReportError("Пользователь отклонил запрос на подключение");
                 break;
             case VpnCustomRequestCode:
-                _ = s_vpnPermTcs?.TrySetResult(resultCode == Result.Ok);
+                _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(resultCode == Result.Ok);
                 break;
         }
     }
@@ -279,9 +285,10 @@ public sealed class MainActivity : MauiAppCompatActivity
         _ = context.StartForegroundService(intent);
     }
 
-    //асинхронный запрос разрешения на vpn с защитой от отсутствия активности
-    public static async Task<bool> RequestVpnPermissionAsync(Intent intent)
+    //асинхронный запрос разрешения на vpn с защитой от отсутствия активности и отмены токена
+    public static async Task<bool> RequestVpnPermissionAsync(Intent intent, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var activity = Platform.CurrentActivity;
         if (activity is null || activity.IsFinishing || activity.IsDestroyed)
         {
@@ -289,7 +296,7 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        s_vpnPermTcs = tcs;
+        _ = Interlocked.Exchange(ref s_vpnPermTcs, tcs)?.TrySetResult(false);
 
         var launched = await MainThread.InvokeOnMainThreadAsync(() =>
         {
@@ -311,16 +318,31 @@ public sealed class MainActivity : MauiAppCompatActivity
             }
         }).ConfigureAwait(false);
 
-        if (launched)
+        if (!launched)
         {
-            return await tcs.Task.ConfigureAwait(false);
+            _ = Interlocked.CompareExchange(ref s_vpnPermTcs, null, tcs);
+            return false;
         }
 
-        s_vpnPermTcs = null;
-        return false;
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+            return await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (System.OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _ = Interlocked.CompareExchange(ref s_vpnPermTcs, null, tcs);
+            return false;
+        }
+        catch (System.OperationCanceledException)
+        {
+            _ = Interlocked.CompareExchange(ref s_vpnPermTcs, null, tcs);
+            throw;
+        }
     }
 
-    //обработчик отступов системных панелей для корректного отображения edge to edge
+    //обработчик отступов системных панелей для корректного отображения edge to edge с сохранением ime-инсетов клавиатуры
     private sealed class WindowInsetsHandler : Object, IOnApplyWindowInsetsListener
     {
         public WindowInsetsCompat? OnApplyWindowInsets(View? v, WindowInsetsCompat? insets)
@@ -337,7 +359,11 @@ public sealed class MainActivity : MauiAppCompatActivity
 
             SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
 
-            return WindowInsetsCompat.Consumed;
+            //обнуляем только системные панели и вырез, оставляя инсеты клавиатуры (ime) нетронутыми
+            using var insetsBuilder = new WindowInsetsCompat.Builder(insets);
+            _ = insetsBuilder.SetInsets(WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout(),
+                AndroidX.Core.Graphics.Insets.None);
+            return insetsBuilder.Build() ?? WindowInsetsCompat.Consumed;
         }
     }
 }
