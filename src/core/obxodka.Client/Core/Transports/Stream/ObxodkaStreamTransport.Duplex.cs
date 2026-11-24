@@ -20,7 +20,6 @@ public sealed partial class ObxodkaStreamTransport
             var client = !forceNewSocket && activePort == currentClientPort && _httpClient0 != null
                 ? _httpClient0
                 : ResetRayHttpClient(0, channelHost, activePort, enableDpi);
-            forceNewSocket = false;
             currentClientPort = activePort;
             var rxBefore = Read(ref _lastRxTicks0);
             var rotatedCleanly = false;
@@ -33,6 +32,7 @@ public sealed partial class ObxodkaStreamTransport
             {
                 AppLogger.LogWarning(
                     $"[OBXODKA-STREAM] Ray #0 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
+                forceNewSocket = true;
                 portIdx++;
             }
             catch (OperationCanceledException)
@@ -45,9 +45,10 @@ public sealed partial class ObxodkaStreamTransport
                 lastAttemptEx = ex;
                 if (Read(ref _connected))
                 {
-                    AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 dropped on port {activePort}: {ex.Message}. Reconnecting in 1s...");
+                    AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #0 dropped on port {activePort}: {ex.Message}. Reconnecting in 500ms...");
                 }
 
+                forceNewSocket = true;
                 portIdx++;
             }
 
@@ -111,7 +112,6 @@ public sealed partial class ObxodkaStreamTransport
             var client = !forceNewSocket && activePort == currentClientPort && _httpClient1 != null
                 ? _httpClient1
                 : ResetRayHttpClient(1, channelHost, activePort, enableDpi);
-            forceNewSocket = false;
             currentClientPort = activePort;
             var rotatedCleanly = false;
             try
@@ -123,6 +123,7 @@ public sealed partial class ObxodkaStreamTransport
             {
                 AppLogger.LogWarning(
                     $"[OBXODKA-STREAM] Ray #1 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
+                forceNewSocket = true;
                 portIdx++;
             }
             catch (OperationCanceledException)
@@ -133,7 +134,8 @@ public sealed partial class ObxodkaStreamTransport
                                            or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
                 lastAttemptEx = ex;
-                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #1 dropped on port {activePort}: {ex.Message}. Reconnecting in 2s...");
+                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #1 dropped on port {activePort}: {ex.Message}. Reconnecting in 500ms...");
+                forceNewSocket = true;
                 portIdx++;
             }
 
@@ -159,7 +161,13 @@ public sealed partial class ObxodkaStreamTransport
     //фоновый цикл работы третьего луча инспектора ray 2
     private async Task RunTertiaryRayAsync(string channelHost, int initialPort, string thumbprint, bool enableDpi, CancellationToken ct)
     {
-        int[] tertiaryPorts = [initialPort, 2053, 8443, 443];
+        int[] tertiaryPorts = initialPort switch
+        {
+            2053 => [2053, 8443, 443],
+            8443 => [8443, 2053, 443],
+            443 => [443, 2053, 8443],
+            _ => [initialPort, 2053, 8443, 443]
+        };
         var portIdx = 0;
         var currentClientPort = initialPort;
         var forceNewSocket = false;
@@ -171,7 +179,6 @@ public sealed partial class ObxodkaStreamTransport
             var client = !forceNewSocket && activePort == currentClientPort && _httpClient2 != null
                 ? _httpClient2
                 : ResetRayHttpClient(2, channelHost, activePort, enableDpi);
-            forceNewSocket = false;
             currentClientPort = activePort;
             var rotatedCleanly = false;
             try
@@ -183,6 +190,7 @@ public sealed partial class ObxodkaStreamTransport
             {
                 AppLogger.LogWarning(
                     $"[OBXODKA-STREAM] Ray #2 socket aborted on port {activePort} by health watchdog. Failing over to next port...");
+                forceNewSocket = true;
                 portIdx++;
             }
             catch (OperationCanceledException)
@@ -193,7 +201,8 @@ public sealed partial class ObxodkaStreamTransport
                                            or AuthenticationException or InvalidOperationException or ObjectDisposedException)
             {
                 lastAttemptEx = ex;
-                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #2 dropped on port {activePort}: {ex.Message}. Reconnecting in 2s...");
+                AppLogger.LogWarning($"[OBXODKA-STREAM] Ray #2 dropped on port {activePort}: {ex.Message}. Reconnecting in 500ms...");
+                forceNewSocket = true;
                 portIdx++;
             }
 
@@ -652,6 +661,13 @@ public sealed partial class ObxodkaStreamTransport
         }
         catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or TimeoutException
+                                       or ObjectDisposedException)
+        {
+            //штатный сетевой сброс или http2 reset обрабатывается и переподключается внешним циклом луча без дублирования error
+            AppLogger.Log($"[OBXODKA-STREAM] Ray #{ray} transient stream reset: {ex.Message}");
             throw;
         }
         catch (Exception ex)

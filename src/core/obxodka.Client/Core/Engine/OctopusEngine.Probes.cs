@@ -9,6 +9,11 @@ public sealed partial class OctopusEngine
     //проверка двусторонней проходимости канала с опциональным требованием свежего ответа от нового транспорта
     public async Task<bool> VerifyDownlinkAsync(TimeSpan timeout, bool forceFreshProbe, CancellationToken ct = default)
     {
+        if (ct.IsCancellationRequested || _cts?.IsCancellationRequested == true)
+        {
+            return false;
+        }
+
         if (!IsConnected || _transport is null)
         {
             AppLogger.LogWarning("[PROBE FAIL] Engine is not connected or transport is null.");

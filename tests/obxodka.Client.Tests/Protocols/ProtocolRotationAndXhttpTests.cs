@@ -120,9 +120,15 @@ public sealed class ProtocolRotationAndXhttpTests
         var customKind = (TransportProtocolKind)99;
         var customFactory = new StubProtocolFactory(customKind, "OBXODKA-FUTURE");
         ProtocolPipelineRegistry.RegisterFactory(customFactory);
-
-        Assert.True(ProtocolPipelineRegistry.TryGetFactory(customKind, out var resolved));
-        Assert.Equal("OBXODKA-FUTURE", resolved.DisplayName);
+        try
+        {
+            Assert.True(ProtocolPipelineRegistry.TryGetFactory(customKind, out var resolved));
+            Assert.Equal("OBXODKA-FUTURE", resolved.DisplayName);
+        }
+        finally
+        {
+            _ = ProtocolPipelineRegistry.UnregisterFactory(customKind);
+        }
     }
 
     [Fact]

@@ -2,7 +2,7 @@ using obxodka.Core.Pipeline;
 
 namespace obxodka.Client.Tests.Resilience;
 
-[Collection("OctopusEngineSequential")]
+[Collection("GlobalStaticState")]
 [Trait("Category", "Unit")]
 public sealed class VpnSessionOrchestratorTests : IDisposable
 {
@@ -101,21 +101,29 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
 
         var customFactory = new Mock<ITransportProtocolFactory>(MockBehavior.Strict);
         customFactory.SetupGet(f => f.Kind).Returns((TransportProtocolKind)999);
+        customFactory.SetupGet(f => f.Order).Returns(999);
         customFactory.SetupGet(f => f.DisplayName).Returns("CUSTOM-TEST");
         customFactory
             .Setup(f => f.CreateTransport(It.IsAny<ProtocolRouteStep>(), It.IsAny<string?>()))
             .Returns(mockTransport.Object);
 
         ProtocolPipelineRegistry.RegisterFactory(customFactory.Object);
-        var created = ProtocolPipelineRegistry.CreateTransport(
-            new ProtocolRouteStep((TransportProtocolKind)999, "127.0.0.1", 443, null, false, false));
+        try
+        {
+            var created = ProtocolPipelineRegistry.CreateTransport(
+                new ProtocolRouteStep((TransportProtocolKind)999, "127.0.0.1", 443, null, false, false));
 
-        Assert.Same(mockTransport.Object, created);
-        Assert.NotNull(injectedProtector);
+            Assert.Same(mockTransport.Object, created);
+            Assert.NotNull(injectedProtector);
 
-        using var testSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        injectedProtector!(testSocket);
-        Assert.Single(protectedSockets, testSocket);
+            using var testSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            injectedProtector!(testSocket);
+            Assert.Single(protectedSockets, testSocket);
+        }
+        finally
+        {
+            _ = ProtocolPipelineRegistry.UnregisterFactory((TransportProtocolKind)999);
+        }
     }
 
     [Theory]

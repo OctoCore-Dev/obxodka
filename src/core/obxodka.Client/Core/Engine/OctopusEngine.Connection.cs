@@ -707,15 +707,20 @@ public sealed partial class OctopusEngine
 
                 try
                 {
-                    using var rotateTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct, rotateTimeoutCts.Token);
+                    //разделяем таймауты: многокандидатному connect (xhttp/ws) даем 15с, а проверке rx свой чистый бюджет 3.5с
+                    var connectTimeout = nextStep.Kind == TransportProtocolKind.ObxodkaStream
+                        ? TimeSpan.FromSeconds(10)
+                        : TimeSpan.FromSeconds(15);
+                    using var connectTimeoutCts = new CancellationTokenSource(connectTimeout);
+                    using var connectLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct, connectTimeoutCts.Token);
 
-                    var (newIp, newIp6) = await candidateTransport.ConnectAsync(nextStep.Host, _clientCert.Thumbprint, linkedCts.Token)
+                    var (newIp, newIp6) = await candidateTransport.ConnectAsync(nextStep.Host, _clientCert.Thumbprint, connectLinkedCts.Token)
                         .ConfigureAwait(false);
 
                     //временно переключаем активный транспорт для честного живого эхо-зонда на новом канале
                     _ = Interlocked.Exchange(ref _transport, candidateTransport);
-                    var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), true, linkedCts.Token).ConfigureAwait(false);
+                    using var verifyLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct);
+                    var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), true, verifyLinkedCts.Token).ConfigureAwait(false);
                     if (!verified)
                     {
                         AppLogger.LogWarning(
