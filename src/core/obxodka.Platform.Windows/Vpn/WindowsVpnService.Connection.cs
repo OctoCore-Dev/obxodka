@@ -2,7 +2,7 @@ namespace obxodka.Platforms.Windows;
 
 //реализация контракта платформенного драйвера windows для vpn gateway и единого оркестратора
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService
+public sealed partial class WindowsVpnService
 {
     public void BindPhysicalSocket(Socket socket) => BindSocketToPhysicalAdapter(socket);
 
@@ -17,7 +17,7 @@ internal sealed partial class WindowsVpnService
         ct.ThrowIfCancellationRequested();
         using var suppressScope = SuppressNetworkChanges();
         Win32WfpLeakGuard.Disable();
-        AppManager.SyncPolicyFromPreferences();
+        SyncSplitTunnelPolicy?.Invoke();
         await CleanupStaleRoutesAsync().ConfigureAwait(false);
         LogNetworkDiagnostics();
     }
@@ -123,7 +123,7 @@ internal sealed partial class WindowsVpnService
     public async Task HandlePhysicalUplinkLostAsync()
     {
         ResetSavedPhysicalGateway();
-        if (!Preferences.Get(AppPreferenceKeys.KillSwitch, true))
+        if (!PlatformServices.Preferences.Get(AppPreferenceKeys.KillSwitch, true))
         {
             Win32WfpLeakGuard.Disable();
             await CleanupStaleRoutesAsync().ConfigureAwait(false);

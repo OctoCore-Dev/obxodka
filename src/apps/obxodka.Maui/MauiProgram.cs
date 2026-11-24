@@ -78,6 +78,7 @@ internal static class MauiProgram
                 new WindowsCertificateAuditService(),
                 new WindowsNotificationService());
 
+            WindowsVpnService.SyncSplitTunnelPolicy = AppManager.SyncPolicyFromPreferences;
             builder.Services.AddSingleton<ITunnelPlatformAdapter, WindowsVpnService>();
             builder.Services.AddSingleton<IVpnService>(sp => new VpnSessionOrchestrator(sp.GetRequiredService<ITunnelPlatformAdapter>()));
             builder.Services.AddSingleton<IAppManager, AppManager>();

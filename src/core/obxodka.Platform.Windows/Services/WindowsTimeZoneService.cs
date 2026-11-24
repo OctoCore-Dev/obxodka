@@ -6,7 +6,7 @@ namespace obxodka.Platforms.Windows;
 
 //нативная синхронизация системного часового пояса windows со страной vpn-сервера и отказоустойчивый откат
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal static partial class WindowsTimeZoneService
+public static partial class WindowsTimeZoneService
 {
     private const uint TokenAdjustPrivileges = 0x0020;
     private const uint TokenQuery = 0x0008;
@@ -24,7 +24,7 @@ internal static partial class WindowsTimeZoneService
     //синхронизация часового пояса windows с локацией активного vpn-сервера (если опция включена)
     public static void SyncToServerLocation(string? serverLocation, string? serverFlag = null)
     {
-        if (!Preferences.Default.Get(AppPreferenceKeys.SyncTimeZoneWithServer, false))
+        if (!PlatformServices.Preferences.Get(AppPreferenceKeys.SyncTimeZoneWithServer, false))
         {
             return;
         }
@@ -38,12 +38,12 @@ internal static partial class WindowsTimeZoneService
         lock (s_sync)
         {
             var currentId = GetCurrentWindowsTimeZoneId();
-            var savedOriginal = Preferences.Default.Get(AppPreferenceKeys.OriginalUserTimeZoneId, string.Empty);
+            var savedOriginal = PlatformServices.Preferences.Get(AppPreferenceKeys.OriginalUserTimeZoneId, string.Empty);
 
             //сохраняем исходный часовой пояс пользователя строго до первого переключения
             if (string.IsNullOrWhiteSpace(savedOriginal) && !string.IsNullOrWhiteSpace(currentId))
             {
-                Preferences.Default.Set(AppPreferenceKeys.OriginalUserTimeZoneId, currentId);
+                PlatformServices.Preferences.Set(AppPreferenceKeys.OriginalUserTimeZoneId, currentId);
                 AppLogger.Log($"[TIMEZONE] Сохранён исходный часовой пояс пользователя: '{currentId}'.");
             }
 
@@ -64,7 +64,7 @@ internal static partial class WindowsTimeZoneService
     {
         lock (s_sync)
         {
-            var savedOriginal = Preferences.Default.Get(AppPreferenceKeys.OriginalUserTimeZoneId, string.Empty);
+            var savedOriginal = PlatformServices.Preferences.Get(AppPreferenceKeys.OriginalUserTimeZoneId, string.Empty);
             if (string.IsNullOrWhiteSpace(savedOriginal))
             {
                 return;
@@ -73,13 +73,13 @@ internal static partial class WindowsTimeZoneService
             var currentId = GetCurrentWindowsTimeZoneId();
             if (string.Equals(currentId, savedOriginal, StringComparison.OrdinalIgnoreCase))
             {
-                Preferences.Default.Remove(AppPreferenceKeys.OriginalUserTimeZoneId);
+                PlatformServices.Preferences.Remove(AppPreferenceKeys.OriginalUserTimeZoneId);
                 return;
             }
 
             if (TryApplyWindowsTimeZoneUnsafe(savedOriginal))
             {
-                Preferences.Default.Remove(AppPreferenceKeys.OriginalUserTimeZoneId);
+                PlatformServices.Preferences.Remove(AppPreferenceKeys.OriginalUserTimeZoneId);
                 AppLogger.Log($"[TIMEZONE] Исходный часовой пояс '{savedOriginal}' восстановлен ({reason}).");
             }
             else

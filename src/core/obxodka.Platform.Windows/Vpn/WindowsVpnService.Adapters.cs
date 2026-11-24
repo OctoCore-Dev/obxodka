@@ -5,7 +5,7 @@ namespace obxodka.Platforms.Windows;
 
 //диагностика и настройка сетевых интерфейсов, защита от утечек DNS
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService
+public sealed partial class WindowsVpnService
 {
     private const string NrptRuleComment = "ObxodkaVpnDns";
     private static int? s_savedDisableSmartNameResolution;
@@ -760,7 +760,7 @@ internal sealed partial class WindowsVpnService
                 _ = Win32NetworkHelper.AddIpv4Route(dns, "255.255.255.255", tunGateway, tunIfIndex);
             }
 
-            var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+            var blockIpv6 = PlatformServices.Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
             var hasTunV6 = !blockIpv6 && (AdapterHasIpv6Address(adapter.Name) || HasActiveIpv6Connectivity());
             if (hasTunV6 && tunIfIndex > 0)
             {

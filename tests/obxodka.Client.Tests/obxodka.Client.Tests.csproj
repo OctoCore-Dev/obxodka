@@ -30,6 +30,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\core\obxodka.Client\obxodka.Client.csproj"/>
     <ProjectReference Include="..\..\src\core\obxodka.Shared\obxodka.Shared.csproj"/>
+    <ProjectReference Include="..\..\src\core\obxodka.Platform.Linux\obxodka.Platform.Linux.csproj"/>
+    <ProjectReference Include="..\..\src\core\obxodka.Platform.Windows\obxodka.Platform.Windows.csproj"/>
+    <ProjectReference Include="..\..\src\apps\obxodka.Cli\obxodka.Cli.csproj"/>
   </ItemGroup>
 
 </Project>

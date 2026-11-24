@@ -74,6 +74,9 @@ jobs:
           echo "============================================================"
           dotnet build src/core/obxodka.Shared/obxodka.Shared.csproj -c Release
           dotnet build src/core/obxodka.Client/obxodka.Client.csproj -c Release
+          dotnet build src/core/obxodka.Platform.Windows/obxodka.Platform.Windows.csproj -c Release
+          dotnet build src/core/obxodka.Platform.Linux/obxodka.Platform.Linux.csproj -c Release
+          dotnet build src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release
 
       - name: "[POLICY-ANDROID] Android Manifest & Google Play Security Audit"
         run: |

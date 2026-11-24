@@ -2,7 +2,7 @@ namespace obxodka.Platforms.Windows;
 
 //платформенный драйвер windows (wintun, маршруты и защита от утечек) для единого оркестратора vpn
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDisposable
+public sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDisposable
 {
     private static int s_suppressNetworkChangeDepth;
     private static long s_suppressNetworkChangeUntilTicks;
@@ -11,9 +11,12 @@ internal sealed partial class WindowsVpnService : ITunnelPlatformAdapter, IDispo
     private Action? _platformNetworkChanged;
     private Task? _trafficTask;
 
+    //обратный вызов хоста (maui/cli/avalonia) для синхронизации политики сплит-туннеля из настроек
+    public static Action? SyncSplitTunnelPolicy { get; set; }
+
     public WindowsVpnService()
     {
-        AppManager.SyncPolicyFromPreferences();
+        SyncSplitTunnelPolicy?.Invoke();
         NetworkChange.NetworkAddressChanged += OnSystemNetworkAddressChanged;
         _ = Task.Run(CleanupStaleRoutesAsync);
     }

@@ -25,8 +25,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="obxodka"/>
     <InternalsVisibleTo Include="obxodka.Maui"/>
     <InternalsVisibleTo Include="obxodka.Avalonia"/>
+    <InternalsVisibleTo Include="obxodka.Platform.Windows"/>
+    <InternalsVisibleTo Include="obxodka.Platform.Linux"/>
     <InternalsVisibleTo Include="obxodka.Client.Tests"/>
     <InternalsVisibleTo Include="obxodka.Benchmarks"/>
   </ItemGroup>

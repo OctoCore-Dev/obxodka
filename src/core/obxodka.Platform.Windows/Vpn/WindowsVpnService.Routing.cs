@@ -5,7 +5,7 @@ namespace obxodka.Platforms.Windows;
 
 //управление системными маршрутами windows и привязкой сетевых сокетов к физическому шлюзу
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService
+public sealed partial class WindowsVpnService
 {
     private static string s_savedPhysicalGateway = "";
     private static int s_savedPhysicalIfIndex;
@@ -239,7 +239,7 @@ internal sealed partial class WindowsVpnService
             AppLogger.Log(
                 $"[NET CONFIG] IPv4 Win32 set: ipStatus={ipStatus}, ifStatus={v4IfStatus}, dnsStatus={v4DnsStatus}, wintunMtu={effectiveMtu} (tunnelMtu={SmartMtuEngine.CurrentMtu})");
 
-            var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+            var blockIpv6 = PlatformServices.Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
             var hasServerIpv6 = !string.IsNullOrWhiteSpace(ipv6) &&
                                 IPAddress.TryParse(ipv6, out var parsedV6) &&
                                 parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
@@ -660,7 +660,7 @@ internal sealed partial class WindowsVpnService
                 var hasServerIpv6 = !string.IsNullOrWhiteSpace(assignedIpV6) &&
                                     IPAddress.TryParse(assignedIpV6, out var parsedV6) &&
                                     parsedV6.AddressFamily == AddressFamily.InterNetworkV6;
-                var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
+                var blockIpv6 = PlatformServices.Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
                 if (!hasServerIpv6 && !blockIpv6 && !HasActiveIpv6Connectivity())
                 {
                     return Task.CompletedTask;

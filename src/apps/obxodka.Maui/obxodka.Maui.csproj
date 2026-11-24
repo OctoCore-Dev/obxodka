@@ -108,11 +108,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(_IsSkippedLinuxMaui)' != 'true' and $(TargetFramework.Contains('-windows'))">
-    <Content Include="Platforms\Windows\Engine\**\*">
-      <PackagePath>Engine</PackagePath>
-      <Link>Engine\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <ProjectReference Include="..\..\core\obxodka.Platform.Windows\obxodka.Platform.Windows.csproj"/>
   </ItemGroup>
 
   <ItemGroup Condition="'$(_IsSkippedLinuxMaui)' != 'true'">

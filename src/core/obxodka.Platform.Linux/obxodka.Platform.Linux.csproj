@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(NetTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>obxodka.Platforms.Linux</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj"/>
+    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="obxodka"/>
+    <InternalsVisibleTo Include="obxodka.Avalonia"/>
+    <InternalsVisibleTo Include="obxodka.Client.Tests"/>
+  </ItemGroup>
+
+</Project>
