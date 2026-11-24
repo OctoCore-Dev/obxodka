@@ -177,8 +177,8 @@ public sealed class AppManager : IAppManager
 
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(180).ConfigureAwait(false);
-                    var batch = new List<(AppInfoItem Target, string Path)>(35);
+                    await Task.Delay(120).ConfigureAwait(false);
+                    var batch = new List<(AppInfoItem Target, string Path)>(12);
                     foreach (var (appInfo, pkgName, iconPath) in orderedPending)
                     {
                         try
@@ -217,7 +217,7 @@ public sealed class AppManager : IAppManager
                                 }
                             }
 
-                            if (batch.Count < 35)
+                            if (batch.Count < 12)
                             {
                                 continue;
                             }
@@ -231,7 +231,7 @@ public sealed class AppManager : IAppManager
                                     target.IconPath = path;
                                 }
                             });
-                            await Task.Delay(45).ConfigureAwait(false);
+                            await Task.Delay(24).ConfigureAwait(false);
                         }
                         catch
                         {

@@ -17,7 +17,7 @@ public sealed partial class SplitView
 
         var safeTop = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
             ? Math.Max(viewport.SafeTop + 10.0, isCompact ? 38.0 : 22.0)
-            : isCompact ? 14.0 : 22.0;
+            : isCompact ? 10.0 : 12.0;
         HeaderContainer.Margin = new Thickness(0, safeTop, 0, 0);
 
         UpdateTopSpacers();
@@ -48,17 +48,14 @@ public sealed partial class SplitView
         }
     }
 
-    private void OnSplitAppsScrollViewScrolled(object? sender, ScrolledEventArgs e)
+    private void OnSplitAppsCollectionScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
-        if (SplitAppsScrollView.Height <= 0)
+        if (SplitAppsCollectionView.Height <= 0)
         {
             return;
         }
 
-        var currentScrollY = e.ScrollY;
-        var deltaY = currentScrollY - _lastAppsScrollY;
-        _lastAppsScrollY = currentScrollY;
-        UpdateQuickReturnHeader(currentScrollY, deltaY);
+        UpdateQuickReturnHeader(e.VerticalOffset, e.VerticalDelta);
     }
 
     private void OnSitesScrollViewScrolled(object? sender, ScrolledEventArgs e)
@@ -91,8 +88,7 @@ public sealed partial class SplitView
             }
 
             _isHeaderHidden = false;
-            _headerAnimCts?.Cancel();
-            _headerAnimCts = new CancellationTokenSource();
+            _ = ReplaceCtsToken(ref _headerAnimCts);
             _ = AnimateHeaderAsync(0, 1.0, false);
 
             return;
@@ -102,14 +98,12 @@ public sealed partial class SplitView
         {
             case > 12.0 when !_isHeaderHidden && scrollY > 70.0:
                 _isHeaderHidden = true;
-                _headerAnimCts?.Cancel();
-                _headerAnimCts = new CancellationTokenSource();
+                _ = ReplaceCtsToken(ref _headerAnimCts);
                 _ = AnimateHeaderAsync(-maxHideOffset, 0.0, true);
                 break;
             case < -10.0 when _isHeaderHidden:
                 _isHeaderHidden = false;
-                _headerAnimCts?.Cancel();
-                _headerAnimCts = new CancellationTokenSource();
+                _ = ReplaceCtsToken(ref _headerAnimCts);
                 _ = AnimateHeaderAsync(0, 1.0, false);
                 break;
         }
@@ -134,7 +128,7 @@ public sealed partial class SplitView
     private void ResetHeaderToVisible()
     {
         _isHeaderHidden = false;
-        _headerAnimCts?.Cancel();
+        CancelAndDisposeCts(ref _headerAnimCts);
         if (HeaderContainer is not null)
         {
             HeaderContainer.TranslationY = 0;
@@ -142,7 +136,6 @@ public sealed partial class SplitView
             HeaderContainer.InputTransparent = false;
         }
 
-        _lastAppsScrollY = 0;
         _lastSitesScrollY = 0;
     }
 
@@ -171,7 +164,7 @@ public sealed partial class SplitView
         }
         else
         {
-            await UiAnimations.PlayEntranceCascadeAsync(35, 220, HeaderContainer, SplitAppsScrollView);
+            await UiAnimations.PlayEntranceCascadeAsync(35, 220, HeaderContainer, SplitAppsCollectionView);
         }
     }
 

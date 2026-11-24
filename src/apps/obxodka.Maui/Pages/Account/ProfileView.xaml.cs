@@ -91,14 +91,16 @@ public sealed partial class ProfileView : IAdaptivePage
         var sidePad = viewport.ComputeHorizontalPadding(baseSidePad, 960.0);
         var topPad = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
             ? Math.Max(viewport.SafeTop + 14.0, isCompact ? 42.0 : 24.0)
-            : isCompact ? 16.0 : 24.0;
+            : isCompact ? 12.0 : 16.0;
         var bottomPad = !viewport.UseSidebar
-            ? Math.Max(110.0, viewport.SafeBottom + 96.0)
-            : Math.Max(28.0, viewport.SafeBottom + 16.0);
+            ? Math.Max(116.0, viewport.SafeBottom + 98.0)
+            : Math.Max(32.0, viewport.SafeBottom + 20.0);
 
         RootLayoutGrid.Padding = new Thickness(sidePad, 0, sidePad, 0);
         ContentStack.Padding = new Thickness(0, topPad, 0, bottomPad);
-        CardLogout.IsVisible = !viewport.UseSidebar;
+        var showMobileLogout = !viewport.UseSidebar;
+        CardLogout.IsVisible = showMobileLogout;
+        CardLogout.Margin = showMobileLogout ? new Thickness(0, 0, 0, 14) : new Thickness(0);
 
         var isTwoColumns = viewport.UseMultiColumnContent;
         if (_isTwoColumns == isTwoColumns)

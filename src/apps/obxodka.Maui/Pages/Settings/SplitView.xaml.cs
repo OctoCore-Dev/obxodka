@@ -8,12 +8,14 @@ public sealed partial class SplitView : IAdaptivePage
         BindableProperty.Create(nameof(IsSplitEditingAllowed), typeof(bool), typeof(SplitView), false);
 
     private readonly Dictionary<string, Border> _activeChipBorders = [with(StringComparer.OrdinalIgnoreCase)];
+    private readonly Lock _appsLock = new();
     private List<AppInfoItem> _allApps = [];
     private IAppManager _appManager = null!;
+    private int _filterGeneration;
+    private int _isLoadingApps;
     private CancellationTokenSource? _headerAnimCts;
     private bool _isHeaderHidden;
     private bool _isSitesTabActive;
-    private double _lastAppsScrollY;
     private double _lastSitesScrollY;
     private MainPage _parent = null!;
     private CancellationTokenSource? _saveDebounceCts;
@@ -27,7 +29,6 @@ public sealed partial class SplitView : IAdaptivePage
         Unloaded += OnUnloaded;
         HeaderContainer.SizeChanged += OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled += OnSitesScrollViewScrolled;
-        SplitAppsScrollView.Scrolled += OnSplitAppsScrollViewScrolled;
 #if WINDOWS
         ModeTabsGrid.IsVisible = true;
         ChipAddExe.IsVisible = true;
@@ -87,16 +88,79 @@ public sealed partial class SplitView : IAdaptivePage
         UpdateRestartWarningVisibility(_parent.VpnService.CurrentState);
     }
 
-    private void OnUnloaded(object? sender, EventArgs e)
+    //безопасная замена и освобождение токена отмены без утечек
+    private static CancellationToken ReplaceCtsToken(ref CancellationTokenSource? field)
     {
-        if (_saveDebounceCts is not null)
+        var next = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref field, next);
+        if (prev is not null)
         {
-            _saveDebounceCts.Cancel();
-            _saveDebounceCts = null;
             try
             {
-                var bypassed = _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName).ToList();
-                _appManager.SaveBypassedPackages(bypassed);
+                prev.Cancel();
+            }
+            catch
+            {
+                // ignored
+            }
+            finally
+            {
+                prev.Dispose();
+            }
+        }
+
+        return next.Token;
+    }
+
+    //отмена и освобождение токена отмены
+    private static void CancelAndDisposeCts(ref CancellationTokenSource? field)
+    {
+        var prev = Interlocked.Exchange(ref field, null);
+        if (prev is null)
+        {
+            return;
+        }
+
+        try
+        {
+            prev.Cancel();
+        }
+        catch
+        {
+            // ignored
+        }
+        finally
+        {
+            prev.Dispose();
+        }
+    }
+
+    private void OnUnloaded(object? sender, EventArgs e)
+    {
+        if (Interlocked.Exchange(ref _saveDebounceCts, null) is { } pendingSave)
+        {
+            try
+            {
+                pendingSave.Cancel();
+            }
+            catch
+            {
+                // ignored
+            }
+            finally
+            {
+                pendingSave.Dispose();
+            }
+
+            try
+            {
+                List<string> bypassed;
+                lock (_appsLock)
+                {
+                    bypassed = [.. _allApps.Where(a => a.IsBypassed).Select(a => a.PackageName)];
+                }
+
+                _appManager?.SaveBypassedPackages(bypassed);
             }
             catch
             {
@@ -104,14 +168,16 @@ public sealed partial class SplitView : IAdaptivePage
             }
         }
 
-        _headerAnimCts?.Cancel();
-        _toastCts?.Cancel();
+        _ = Interlocked.Increment(ref _filterGeneration);
+        CancelAndDisposeCts(ref _headerAnimCts);
+        CancelAndDisposeCts(ref _searchDebounceCts);
+        CancelAndDisposeCts(ref _toastCts);
         HeaderContainer.SizeChanged -= OnHeaderContainerSizeChanged;
         SitesSplitScrollView.Scrolled -= OnSitesScrollViewScrolled;
-        SplitAppsScrollView.Scrolled -= OnSplitAppsScrollViewScrolled;
-        _parent.VpnService.OnStateChanged -= OnVpnStateChanged;
+        SplitAppsCollectionView.Scrolled -= OnSplitAppsCollectionScrolled;
+        _parent?.VpnService.OnStateChanged -= OnVpnStateChanged;
 #if WINDOWS
-        _routesDebounceCts?.Cancel();
+        CancelAndDisposeCts(ref _routesDebounceCts);
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
             Platforms.Windows.WindowsSplitTunnelEngine.OnRoutesUpdated -= OnWindowsRoutesUpdated;
@@ -147,16 +213,16 @@ public sealed partial class SplitView : IAdaptivePage
         ResetHeaderToVisible();
         ThemeAudioService.PlayClick();
         _ = TabModeApps.BounceClickAsync();
-        _toastCts?.Cancel();
+        CancelAndDisposeCts(ref _toastCts);
         _ = HideSplitToastAsync();
         _isSitesTabActive = false;
         AppsHeaderControls.IsVisible = true;
-        SplitAppsScrollView.IsVisible = true;
+        SplitAppsCollectionView.IsVisible = true;
         SitesSplitScrollView.IsVisible = false;
         UpdateModeTabStyles();
         UpdateFilterChipStyles();
         ApplyFilterAndRenderList();
-        _ = UiAnimations.PlayEntranceCascadeAsync(30, 200, AppsHeaderControls, SplitAppsScrollView);
+        _ = UiAnimations.PlayEntranceCascadeAsync(30, 200, AppsHeaderControls, SplitAppsCollectionView);
     }
 
     private void OnTabModeSitesClicked(object? sender, EventArgs e)
@@ -169,11 +235,11 @@ public sealed partial class SplitView : IAdaptivePage
         ResetHeaderToVisible();
         ThemeAudioService.PlayClick();
         _ = TabModeSites.BounceClickAsync();
-        _toastCts?.Cancel();
+        CancelAndDisposeCts(ref _toastCts);
         _ = HideSplitToastAsync();
         _isSitesTabActive = true;
         AppsHeaderControls.IsVisible = false;
-        SplitAppsScrollView.IsVisible = false;
+        SplitAppsCollectionView.IsVisible = false;
         SitesSplitScrollView.IsVisible = true;
 #if WINDOWS
         LoadWindowsSitesAndPresetsState();
@@ -232,13 +298,7 @@ public sealed partial class SplitView : IAdaptivePage
 
     private async Task ShowSplitErrorAsync(string msg)
     {
-        if (_toastCts is { } oldCts)
-        {
-            await oldCts.CancelAsync().ConfigureAwait(true);
-        }
-
-        _toastCts = new CancellationTokenSource();
-        var token = _toastCts.Token;
+        var token = ReplaceCtsToken(ref _toastCts);
 
         SplitToastText.Text = msg;
         SplitToastNotification.Opacity = 0;
@@ -277,7 +337,7 @@ public sealed partial class SplitView : IAdaptivePage
 
     private void OnDismissToastClicked(object? sender, EventArgs e)
     {
-        _toastCts?.Cancel();
+        CancelAndDisposeCts(ref _toastCts);
         _ = HideSplitToastAsync();
     }
 

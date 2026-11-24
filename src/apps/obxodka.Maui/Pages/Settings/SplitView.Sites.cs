@@ -90,10 +90,7 @@ public sealed partial class SplitView
 #if WINDOWS
     private void OnWindowsRoutesUpdated()
     {
-        _routesDebounceCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _routesDebounceCts = cts;
-        var token = cts.Token;
+        var token = ReplaceCtsToken(ref _routesDebounceCts);
 
         _ = Task.Run(async () =>
         {
