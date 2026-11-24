@@ -28,6 +28,27 @@ public class SslCertificateValidationTests
     }
 
     [Fact]
+    public void ValidateServerCertificateRejectsWeakSha1ThumbprintAndAcceptsSha256Spki()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        //слабый sha-1 thumbprint больше не принимается как пин
+        var sha1Result = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateChainErrors, cert.Thumbprint);
+        Assert.False(sha1Result);
+
+        //sha-256 spki хэш принимается
+        var spkiHash = Convert.ToBase64String(SHA256.HashData(rsa.ExportSubjectPublicKeyInfo()));
+        var spkiResult = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateChainErrors, spkiHash);
+        Assert.True(spkiResult);
+
+        //резервные пины содержат только 32-байтовые sha-256 base64 хэши (44 символа)
+        Assert.NotEmpty(AppSecrets.BackupPublicKeyHashes);
+        Assert.All(AppSecrets.BackupPublicKeyHashes, pin => Assert.Equal(32, Convert.FromBase64String(pin).Length));
+    }
+
+    [Fact]
     public void ValidateServerCertificateReturnsFalseWhenPublicKeyMismatchesPinningHash()
     {
         using var rsa = RSA.Create(2048);

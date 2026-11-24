@@ -58,7 +58,8 @@ public sealed partial class ThemeManager
     //фоновая подготовка всех файловых путей темы без блокировки ui-потока
     private ThemeAppliedEventArgs PrepareThemeAppliedArgs(ThemeManifest manifest)
     {
-        var folderPath = Path.Combine(ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
+        var folderPath = _storageService.ResolveSafeThemeDirectory(manifest.Id)
+            ?? throw new InvalidOperationException($"Небезопасный идентификатор темы: '{manifest.Id}'.");
 
         string? bgPath = null;
         string? backgroundVideoPath = null;
