@@ -1,12 +1,15 @@
 <Solution>
     <Folder Name="/apps/">
         <Project Path="src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj"/>
+        <Project Path="src/apps/obxodka.Cli/obxodka.Cli.csproj"/>
         <Project Path="src/apps/obxodka.Maui/obxodka.Maui.csproj">
             <Deploy Solution="Debug|*"/>
         </Project>
     </Folder>
     <Folder Name="/core/">
         <Project Path="src/core/obxodka.Client/obxodka.Client.csproj"/>
+        <Project Path="src/core/obxodka.Platform.Linux/obxodka.Platform.Linux.csproj"/>
+        <Project Path="src/core/obxodka.Platform.Windows/obxodka.Platform.Windows.csproj"/>
         <Project Path="src/core/obxodka.Shared/obxodka.Shared.csproj"/>
     </Folder>
     <Folder Name="/tests/">

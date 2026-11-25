@@ -2,7 +2,7 @@ namespace obxodka.Platforms.Windows;
 
 //обработка входящего и исходящего сетевого трафика через адаптер wintun
 [SupportedOSPlatform("windows10.0.19041.0")]
-internal sealed partial class WindowsVpnService
+public sealed partial class WindowsVpnService
 {
     //цикл обработки входящего и исходящего трафика wintun
     private async Task ProcessTrafficAsync(CancellationToken ct)

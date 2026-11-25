@@ -1,0 +1,17 @@
+global using System.Buffers;
+global using System.Collections.Concurrent;
+global using System.Diagnostics;
+global using System.Globalization;
+global using System.Net;
+global using System.Net.Sockets;
+global using System.Runtime.InteropServices;
+global using System.Runtime.Versioning;
+global using System.Text;
+global using obxodka.Client.Platforms;
+global using obxodka.Config;
+global using obxodka.Core;
+global using obxodka.Core.Pipeline;
+global using obxodka.Core.Transports;
+global using obxodka.Services;
+global using obxodka.Shared.Logging;
+global using obxodka.Shared.MtuEngine;
