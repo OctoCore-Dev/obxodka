@@ -3,45 +3,61 @@
              xmlns:vm="using:obxodka.Avalonia.ViewModels"
              x:Class="obxodka.Avalonia.Views.AuthView"
              x:DataType="vm:MainViewModel">
+  <Grid>
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="0" Margin="0,24">
+      <!-- Реальный логотип и брендинг 1-в-1 с obxodka.Maui AuthView.xaml -->
+      <StackPanel Margin="0,0,0,28" HorizontalAlignment="Center" Spacing="10">
+        <Image Source="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png"
+               Width="90" Height="90" Stretch="Uniform" HorizontalAlignment="Center"/>
+        <TextBlock Text="ОБХОДКА"
+                   FontFamily="{StaticResource AppFontTitle}"
+                   FontSize="28" LetterSpacing="2.5"
+                   Foreground="{StaticResource TextPrimaryBrush}"
+                   HorizontalAlignment="Center"/>
+      </StackPanel>
 
-    <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-        <StackPanel Spacing="24" Width="400" HorizontalAlignment="Center">
-            <!-- App Logo + Title -->
-            <StackPanel HorizontalAlignment="Center" Spacing="12">
-                <Image Source="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png"
-                       Width="88" Height="88"
-                       HorizontalAlignment="Center" />
-                <TextBlock Text="ОБХОДКА VPN"
-                           FontWeight="Bold"
-                           FontSize="26"
-                           LetterSpacing="2"
-                           Foreground="{DynamicResource TextPrimaryBrush}"
-                           HorizontalAlignment="Center" />
-            </StackPanel>
+      <Border Classes="neo-card" Padding="28,24" Width="400" HorizontalAlignment="Center">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding AuthStatusMessage}"
+                     FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                     Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"
+                     IsVisible="{Binding AuthStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-            <!-- Auth Form Card -->
-            <Border Classes="neo-card" Padding="28,24">
-                <StackPanel Spacing="16">
-                    <TextBlock Text="Быстрый вход и регистрация без паролей. Один клик — и вы в безопасности."
-                               Classes="label-muted"
-                               TextWrapping="Wrap"
-                               TextAlignment="Center"
-                               FontSize="13" />
+          <!-- Шаг 1: Email -->
+          <StackPanel Spacing="14" IsVisible="{Binding !IsAuthCodeSent}">
+            <TextBlock Text="Быстрый вход и регистрация без паролей. Один клик — и вы в безопасности."
+                       FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
 
-                    <!-- Email Field -->
-                    <TextBox Classes="neo-input"
-                             Text="{Binding UserEmail}"
-                             PlaceholderText="Ваш Email" />
+            <TextBox Classes="fluent-input" Text="{Binding AuthEmail}" PlaceholderText="Ваш Email"/>
 
-                    <!-- Submit Button -->
-                    <Button Classes="neo-primary"
-                            Height="46"
-                            Content="ВОЙТИ"
-                            Command="{Binding SelectTabCommand}"
-                            CommandParameter="vpn" />
-                </StackPanel>
-            </Border>
+            <Button Classes="primary-btn" Content="Получить код" Height="48"
+                    Command="{Binding RequestAuthCodeCommand}"
+                    IsEnabled="{Binding !IsAuthBusy}" HorizontalAlignment="Stretch"/>
+          </StackPanel>
+
+          <!-- Шаг 2: 6-значный код -->
+          <StackPanel Spacing="12" IsVisible="{Binding IsAuthCodeSent}">
+            <TextBlock Text="Введите 6-значный код, отправленный на ваш Email."
+                       FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+
+            <TextBox Classes="fluent-input" Text="{Binding AuthCode}" PlaceholderText="6-значный код"
+                     MaxLength="6" TextAlignment="Center" FontSize="16" FontWeight="SemiBold"/>
+
+            <TextBlock Text="Код отправлен на вашу почту, проверьте папку «Спам».&#x0a;Официальный аккаунт: no-reply.obxodkavpn@gmail.com"
+                       FontSize="10.5" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+
+            <Button Classes="primary-btn" Content="Войти" Height="48"
+                    Command="{Binding VerifyAuthCodeCommand}"
+                    IsEnabled="{Binding !IsAuthBusy}" HorizontalAlignment="Stretch"/>
+
+            <Button Classes="ghost-btn" Content="Изменить Email"
+                    Command="{Binding ResetAuthStepCommand}" HorizontalAlignment="Stretch"/>
+          </StackPanel>
         </StackPanel>
-    </Grid>
-
+      </Border>
+    </StackPanel>
+  </Grid>
 </UserControl>

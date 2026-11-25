@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:obxodka.Avalonia.ViewModels"
+             x:Class="obxodka.Avalonia.Views.SplitView"
+             x:DataType="vm:MainViewModel">
+  <ScrollViewer Padding="28,24" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16" MaxWidth="780" HorizontalAlignment="Left">
+      <TextBlock Text="Split Tunnel" FontFamily="{StaticResource AppFontTitle}" FontSize="26" Foreground="{StaticResource TextPrimaryBrush}"/>
+      <TextBlock Text="Домены, IP или исполняемые файлы, трафик которых пойдёт напрямую в обход VPN."
+                 FontSize="13" Foreground="{StaticResource TextMutedBrush}"/>
+
+      <Border Classes="neo-card" Padding="18">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <TextBox Classes="fluent-input" Text="{Binding NewSplitRuleInput}" PlaceholderText="Например: gosuslugi.ru или discord.exe"/>
+          <Button Grid.Column="1" Classes="primary-btn" Content="Добавить" Command="{Binding AddSplitRuleCommand}"/>
+        </Grid>
+      </Border>
+
+      <ItemsControl ItemsSource="{Binding SplitRules}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Border Classes="neo-card" Margin="0,0,0,8" Padding="14,10">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding}" VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
+                <Button Grid.Column="1" Classes="danger-btn" Content="Удалить" Padding="10,4"
+                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).RemoveSplitRuleCommand}"
+                        CommandParameter="{Binding}"/>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

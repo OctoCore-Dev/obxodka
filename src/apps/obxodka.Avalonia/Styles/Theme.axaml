@@ -1,0 +1,184 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <!-- шрифты 1-в-1 из obxodka.Maui -->
+    <FontFamily x:Key="AppFontRegular">avares://obxodka.Avalonia/Assets/Fonts/Roboto-Regular.ttf#Roboto</FontFamily>
+    <FontFamily x:Key="AppFontMedium">avares://obxodka.Avalonia/Assets/Fonts/Roboto-Medium.ttf#Roboto</FontFamily>
+    <FontFamily x:Key="AppFontBold">avares://obxodka.Avalonia/Assets/Fonts/Roboto-Bold.ttf#Roboto</FontFamily>
+    <FontFamily x:Key="AppFontTitle">avares://obxodka.Avalonia/Assets/Fonts/Commissioner-ExtraBold.ttf#Commissioner</FontFamily>
+
+    <!-- палитра 1-в-1 из obxodka.Maui/Resources/Styles/Colors.xaml -->
+    <Color x:Key="BgBaseColor">#202020</Color>
+    <Color x:Key="BgSurfaceColor">#2B2B2B</Color>
+    <Color x:Key="BgElevatedColor">#323232</Color>
+    <Color x:Key="BgInputColor">#252525</Color>
+    <Color x:Key="BgOverlayColor">#A6000000</Color>
+
+    <Color x:Key="PrimaryColor">#0078D4</Color>
+    <Color x:Key="PrimaryBrightColor">#60CDFF</Color>
+    <Color x:Key="PrimaryDimColor">#2660CDFF</Color>
+    <Color x:Key="PrimaryGlowColor">#4060CDFF</Color>
+    <Color x:Key="AccentDimColor">#2660CDFF</Color>
+    <Color x:Key="PurpleColor">#A78BFA</Color>
+    <Color x:Key="PurpleDimColor">#26A78BFA</Color>
+
+    <Color x:Key="TextPrimaryColor">#FFFFFF</Color>
+    <Color x:Key="TextSecondaryColor">#D2D2D2</Color>
+    <Color x:Key="TextMutedColor">#9E9E9E</Color>
+
+    <Color x:Key="BorderSubtleColor">#383838</Color>
+    <Color x:Key="BorderMediumColor">#484848</Color>
+    <Color x:Key="BorderStrongColor">#5E5E5E</Color>
+
+    <Color x:Key="SuccessColor">#10B981</Color>
+    <Color x:Key="SuccessDimColor">#2410B981</Color>
+    <Color x:Key="WarningColor">#F59E0B</Color>
+    <Color x:Key="WarningDimColor">#24F59E0B</Color>
+    <Color x:Key="ErrorColor">#EF4444</Color>
+    <Color x:Key="ErrorDimColor">#24EF4444</Color>
+
+    <SolidColorBrush x:Key="BgBaseBrush" Color="{StaticResource BgBaseColor}"/>
+    <SolidColorBrush x:Key="BgSurfaceBrush" Color="{StaticResource BgSurfaceColor}"/>
+    <SolidColorBrush x:Key="BgElevatedBrush" Color="{StaticResource BgElevatedColor}"/>
+    <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInputColor}"/>
+    <SolidColorBrush x:Key="BgOverlayBrush" Color="{StaticResource BgOverlayColor}"/>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}"/>
+    <SolidColorBrush x:Key="PrimaryBrightBrush" Color="{StaticResource PrimaryBrightColor}"/>
+    <SolidColorBrush x:Key="PrimaryDimBrush" Color="{StaticResource PrimaryDimColor}"/>
+    <SolidColorBrush x:Key="PrimaryGlowBrush" Color="{StaticResource PrimaryGlowColor}"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource PrimaryBrightColor}"/>
+    <SolidColorBrush x:Key="AccentDimBrush" Color="{StaticResource AccentDimColor}"/>
+    <SolidColorBrush x:Key="PurpleBrush" Color="{StaticResource PurpleColor}"/>
+    <SolidColorBrush x:Key="PurpleDimBrush" Color="{StaticResource PurpleDimColor}"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}"/>
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtleColor}"/>
+    <SolidColorBrush x:Key="BorderMediumBrush" Color="{StaticResource BorderMediumColor}"/>
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource BorderStrongColor}"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="SuccessDimBrush" Color="{StaticResource SuccessDimColor}"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+    <SolidColorBrush x:Key="WarningDimBrush" Color="{StaticResource WarningDimColor}"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}"/>
+    <SolidColorBrush x:Key="ErrorDimBrush" Color="{StaticResource ErrorDimColor}"/>
+  </Styles.Resources>
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource AppFontRegular}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="Border.neo-card">
+    <Setter Property="Background" Value="{StaticResource BgSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="10"/>
+  </Style>
+
+  <Style Selector="Border.pill-badge">
+    <Setter Property="Background" Value="{StaticResource BgElevatedBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderMediumBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="Padding" Value="10,5"/>
+  </Style>
+
+  <Style Selector="Border.neo-input">
+    <Setter Property="Background" Value="{StaticResource BgInputBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderMediumBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Padding" Value="4,2"/>
+  </Style>
+
+  <Style Selector="Button.primary-btn">
+    <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="FontFamily" Value="{StaticResource AppFontMedium}"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16,10"/>
+    <Setter Property="MinHeight" Value="44"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.primary-btn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#1484DC"/>
+  </Style>
+
+  <Style Selector="Button.subtle-btn">
+    <Setter Property="Background" Value="{StaticResource BgElevatedBrush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderMediumBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="FontFamily" Value="{StaticResource AppFontMedium}"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Padding" Value="14,8"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.subtle-btn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#3C3C3C"/>
+  </Style>
+
+  <Style Selector="Button.ghost-btn">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="FontFamily" Value="{StaticResource AppFontMedium}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="10,6"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.ghost-btn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#12FFFFFF"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="Button.danger-btn">
+    <Setter Property="Background" Value="{StaticResource ErrorDimBrush}"/>
+    <Setter Property="Foreground" Value="{StaticResource ErrorBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource ErrorBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="FontFamily" Value="{StaticResource AppFontMedium}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="14,8"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+
+  <Style Selector="Button.nav-btn">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Height" Value="42"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.nav-btn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#14FFFFFF"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+  <Style Selector="Button.nav-btn.active">
+    <Setter Property="Background" Value="#1C60CDFF"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBox.fluent-input">
+    <Setter Property="Background" Value="{StaticResource BgInputBrush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderMediumBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="14,11"/>
+    <Setter Property="FontSize" Value="14"/>
+  </Style>
+</Styles>
