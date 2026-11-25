@@ -1,12 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>$(NetTargetFramework)</TargetFramework>
-    <Nullable>enable</Nullable>
+    <AssemblyName>obxodka.Avalonia</AssemblyName>
     <RootNamespace>obxodka.Avalonia</RootNamespace>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);IDE0011;IDE0021;IDE0022;IDE0048;IDE0046;IDE0007;IDE0055;IDE1006;MVVMTK0042;AVLN5001;CS8618;CS8602;CS8604;CA1822</NoWarn>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NoWarn>$(NoWarn);MVVMTK0042</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,5 +27,19 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm"/>
+    <PackageReference Include="Microsoft.Extensions.Http"/>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData"/>
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\obxodka.Client\obxodka.Client.csproj"/>
+    <ProjectReference Include="..\..\core\obxodka.Shared\obxodka.Shared.csproj"/>
+    <ProjectReference Include="..\..\core\obxodka.Platform.Linux\obxodka.Platform.Linux.csproj"/>
+    <ProjectReference Include="..\..\core\obxodka.Platform.Windows\obxodka.Platform.Windows.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="packaging\obxodka.desktop" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+
 </Project>

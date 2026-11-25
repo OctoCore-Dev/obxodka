@@ -3,112 +3,87 @@
              xmlns:vm="using:obxodka.Avalonia.ViewModels"
              x:Class="obxodka.Avalonia.Views.ConfigurationView"
              x:DataType="vm:MainViewModel">
+  <ScrollViewer Padding="28,24" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16" MaxWidth="780" HorizontalAlignment="Left">
+      <TextBlock Text="Настройки" FontFamily="{StaticResource AppFontTitle}" FontSize="26" Foreground="{StaticResource TextPrimaryBrush}"/>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="32,28" Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
-            <!-- Header -->
-            <Grid ColumnDefinitions="Auto, *">
-                <TextBlock Grid.Column="0"
-                           Text="Конфигурация"
-                           FontWeight="Bold"
-                           FontSize="22"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Grid.Column="1"
-                           Margin="16,0,0,0"
-                           Text="[ obxodka Stream • HTTP/2 ]"
-                           FontWeight="Bold"
-                           FontSize="14"
-                           Foreground="{DynamicResource AccentBrush}"
-                           VerticalAlignment="Center" />
-            </Grid>
+      <Border Classes="neo-card" Padding="20">
+        <StackPanel Spacing="16">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Kill Switch" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Блокировать трафик в обход туннеля при обрыве соединения" FontSize="12" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding KillSwitchEnabled}" OnContent="Вкл" OffContent="Выкл"/>
+          </Grid>
 
-            <!-- Description -->
-            <TextBlock Text="Оптимизированный транспорт: obxodka Stream через HTTP/2 на 443 порту с обфускацией и защитой от цензуры."
-                       Classes="label-muted"
-                       TextWrapping="Wrap"
-                       FontSize="13" />
+          <Separator Background="{StaticResource BorderSubtleBrush}"/>
 
-            <!-- Protocol Card -->
-            <Border Classes="neo-card" Padding="18">
-                <Grid ColumnDefinitions="Auto, *, Auto">
-                    <Border Grid.Column="0"
-                            Width="44" Height="44"
-                            CornerRadius="8"
-                            Background="{DynamicResource AccentDimBrush}">
-                        <PathIcon Data="{StaticResource IconSettings24}"
-                                  Width="20" Height="20"
-                                  Foreground="{DynamicResource AccentBrush}"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
-                    </Border>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Автопереподключение" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Автоматически восстанавливать сессию при смене сети" FontSize="12" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoReconnectEnabled}" OnContent="Вкл" OffContent="Выкл"/>
+          </Grid>
 
-                    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center" Spacing="3">
-                        <TextBlock Text="obxodka Stream Engine"
-                                   FontWeight="Bold"
-                                   FontSize="15"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Камуфляж трафика под легитимный HTTPS / TLS 1.3"
-                                   Classes="label-muted"
-                                   FontSize="12" />
-                    </StackPanel>
+          <Separator Background="{StaticResource BorderSubtleBrush}"/>
 
-                    <Border Grid.Column="2"
-                            Background="{DynamicResource SuccessDimBrush}"
-                            BorderBrush="{DynamicResource SuccessBrush}"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="8,3"
-                            VerticalAlignment="Center">
-                        <TextBlock Text="Активен"
-                                   FontWeight="Bold"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource SuccessBrush}" />
-                    </Border>
-                </Grid>
-            </Border>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="AdBlock DNS" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Фильтрация рекламы и трекеров на уровне DNS пакетов" FontSize="12" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding AdBlockDnsEnabled}" OnContent="Вкл" OffContent="Выкл"/>
+          </Grid>
 
-            <!-- AdBlock / DNS Security Card -->
-            <Border Classes="neo-card" Padding="18">
-                <Grid ColumnDefinitions="*, Auto">
-                    <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock Text="Блокировка рекламы и трекеров (DNS Shield)"
-                                   FontWeight="Bold"
-                                   FontSize="15"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Фильтрует вредоносные домены, спам и трекеры на уровне сетевого стека"
-                                   Classes="label-muted"
-                                   FontSize="12" />
-                    </StackPanel>
+          <Separator Background="{StaticResource BorderSubtleBrush}"/>
 
-                    <ToggleSwitch Grid.Column="1"
-                                  IsChecked="{Binding IsAdBlockEnabled}"
-                                  OnContent=""
-                                  OffContent=""
-                                  VerticalAlignment="Center" />
-                </Grid>
-            </Border>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Блокировка утечек IPv6" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Отключать IPv6 трафик, если у узла нет IPv6 маршрутизации" FontSize="12" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding BlockIpv6Enabled}" OnContent="Вкл" OffContent="Выкл"/>
+          </Grid>
 
-            <!-- Split Tunneling Card -->
-            <Border Classes="neo-card" Padding="18">
-                <Grid ColumnDefinitions="*, Auto">
-                    <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock Text="Раздельное туннелирование (Split Tunneling)"
-                                   FontWeight="Bold"
-                                   FontSize="15"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Возможность исключать локальные сервисы, банки и игры из VPN-канала"
-                                   Classes="label-muted"
-                                   FontSize="12" />
-                    </StackPanel>
+          <Separator Background="{StaticResource BorderSubtleBrush}"/>
 
-                    <Button Grid.Column="1"
-                            Classes="neo-secondary"
-                            Content="Настроить"
-                            Command="{Binding ConfigureSplitTunnelingCommand}"
-                            VerticalAlignment="Center" />
-                </Grid>
-            </Border>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Принудительный WebSocket" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Использовать WSS-транспорт в сетях со строгой фильтрацией H2" FontSize="12" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ForceWebSocketEnabled}" OnContent="Вкл" OffContent="Выкл"/>
+          </Grid>
+
+          <Separator Background="{StaticResource BorderSubtleBrush}"/>
+
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Анонимная телеметрия ошибок" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Отправлять только критические ошибки подключения для улучшения стабильности" FontSize="12" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding TelemetryEnabled}" OnContent="Вкл" OffContent="Выкл"/>
+          </Grid>
         </StackPanel>
-    </ScrollViewer>
+      </Border>
 
+      <!-- Диагностика сети -->
+      <Border Classes="neo-card" Padding="20">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Диагностика сети и прав TUN" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Classes="primary-btn" Content="Запустить диагностику"
+                    Command="{Binding RunDiagnosticsCommand}" IsEnabled="{Binding !IsDiagBusy}"/>
+          </Grid>
+          <Border Background="{StaticResource BgInputBrush}" CornerRadius="8" Padding="14">
+            <TextBlock Text="{Binding DiagSummary}" FontSize="12.5" TextWrapping="Wrap"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+          </Border>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

@@ -1,6 +1,6 @@
 namespace obxodka.Avalonia.Views;
 
-public partial class ConfigurationView : UserControl
+public sealed partial class ConfigurationView : UserControl
 {
     public ConfigurationView() => InitializeComponent();
 }
