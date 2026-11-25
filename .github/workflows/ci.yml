@@ -78,6 +78,16 @@ jobs:
           dotnet build src/core/obxodka.Platform.Linux/obxodka.Platform.Linux.csproj -c Release
           dotnet build src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release
 
+      - name: "[SMOKE-CLI] Linux CLI Binary Smoke Test"
+        run: |
+          echo "============================================================"
+          echo "  [CLI] TESTING OBXODKA CLI ON UBUNTU LINUX"
+          echo "============================================================"
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- version
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- config get --json
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- status --json
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- completion bash | head -n 5
+
       - name: "[POLICY-ANDROID] Android Manifest & Google Play Security Audit"
         run: |
           echo "============================================================"

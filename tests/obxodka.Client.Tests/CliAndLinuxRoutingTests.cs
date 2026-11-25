@@ -137,4 +137,21 @@ public sealed class CliAndLinuxRoutingTests
             }
         }
     }
+
+    [Theory]
+    [InlineData("Швеция, Стокгольм (Cloudflare)", "obxodka.one", "shv-sto-cf")]
+    [InlineData("Швеция, Стокгольм", "70.34.201.253", "shv-stok")]
+    [InlineData("Netherlands, Amsterdam", "1.2.3.4", "net-amst")]
+    public void BuildServerSlug_GeneratesReadableAsciiId(string location, string ip, string expected)
+    {
+        var dto = new obxodka.Models.VpnServerDto(ip, 443, location, true, 10);
+        Assert.Equal(expected, CliApp.BuildServerSlug(dto));
+    }
+
+    [Fact]
+    public void AnsiUi_CalculatesVisibleLengthWithoutEscapeCodes()
+    {
+        const string colored = "\x1b[1m\x1b[38;2;96;205;255mOBXODKA\x1b[0m";
+        Assert.Equal(7, CliAnsiUi.VisibleLength(colored));
+    }
 }

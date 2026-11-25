@@ -42,8 +42,8 @@ public sealed record CliDiagOutput(
 public sealed record CliWhoAmIOutput(
     bool LoggedIn,
     string? Email,
-    DateTime? SubscriptionUntilUtc,
-    long BalanceSeconds);
+    long BalanceSeconds,
+    double BalanceHours);
 
 //генератор метаданных json для совместимости с trimming и aot
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

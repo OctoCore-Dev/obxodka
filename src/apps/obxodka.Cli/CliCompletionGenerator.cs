@@ -6,7 +6,7 @@ public static class CliCompletionGenerator
     public static readonly string[] TopLevelCommands =
     [
         "login", "auth", "logout", "whoami", "servers", "connect", "start",
-        "disconnect", "stop", "status", "config", "split", "diag", "completion", "version", "help"
+        "disconnect", "stop", "status", "config", "split", "diag", "alias", "completion", "version", "help"
     ];
 
     //выдача скрипта автодополнения по имени оболочки

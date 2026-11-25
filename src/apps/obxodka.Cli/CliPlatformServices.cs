@@ -302,20 +302,52 @@ public sealed class CliSecureStorageService : ISecureStorageService
     }
 }
 
-//сервис состояния сети для cli
-internal sealed class CliConnectivityService : IConnectivityService
+//сервис состояния сети для cli с реальной подпиской на смену интерфейсов ос
+internal sealed class CliConnectivityService : IConnectivityService, IDisposable
 {
+    private EventHandler<AppConnectivityChangedEventArgs>? _connectivityChanged;
+    private int _disposed;
+
+    public CliConnectivityService()
+    {
+        NetworkChange.NetworkAddressChanged += OnNetworkChanged;
+        NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
+    }
+
     public AppNetworkAccess NetworkAccess =>
         NetworkInterface.GetIsNetworkAvailable() ? AppNetworkAccess.Internet : AppNetworkAccess.None;
 
     public event EventHandler<AppConnectivityChangedEventArgs>? ConnectivityChanged
     {
-        add { }
-        remove { }
+        add => _connectivityChanged += value;
+        remove => _connectivityChanged -= value;
     }
 
     public Task<AppConnectionProfile> GetConnectionProfileAsync() =>
         Task.FromResult(new AppConnectionProfile(NetworkConnectionType.Ethernet, NetworkAccess));
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
+        NetworkChange.NetworkAvailabilityChanged -= OnNetworkAvailabilityChanged;
+    }
+
+    private void OnNetworkChanged(object? sender, EventArgs e) => NotifyChanged();
+
+    private void OnNetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e) => NotifyChanged();
+
+    private void NotifyChanged()
+    {
+        var access = NetworkAccess;
+        _connectivityChanged?.Invoke(
+            this,
+            new AppConnectivityChangedEventArgs(access, [new AppConnectionProfile(NetworkConnectionType.Ethernet, access)]));
+    }
 }
 
 //сервис информации об устройстве для cli

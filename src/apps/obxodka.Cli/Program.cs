@@ -1,9 +1,12 @@
 using obxodka.Cli;
 
+CliAnsiUi.Initialize();
+
+using var connectivity = new CliConnectivityService();
 PlatformServices.Init(
     new CliPreferencesService(),
     new CliSecureStorageService(),
-    new CliConnectivityService(),
+    connectivity,
     new CliMainThreadService(),
     new CliDeviceInfoService());
 
