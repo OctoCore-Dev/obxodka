@@ -32,12 +32,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         RuAutoBypassCard.IsVisible = false;
         SyncTimeZoneCard.IsVisible = false;
 #endif
-#if ANDROID
-        VoiceAssistantCard.IsVisible = true;
-        RefreshVoiceAssistantStatus();
-#else
+        //карточка голосового помощника временно скрыта в ui до открытия сторонних appfunctions в google gemini
         VoiceAssistantCard.IsVisible = false;
-#endif
 
         UpdateSelectionUi();
     }

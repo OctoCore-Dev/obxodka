@@ -58,6 +58,41 @@ internal static class AndroidBackgroundVpnController
             new AndroidCertificateAuditService(appContext));
     }
 
+    //мгновенный прогрев foreground-службы vpn синхронно в окне клика плитки для холодного старта android 12+
+    public static void TryPrewarmForegroundServiceOnClick(Context context)
+    {
+        try
+        {
+            var appContext = context.ApplicationContext ?? context;
+            EnsurePlatformReady(appContext);
+
+            if (OctopusVpnService.Instance is { IsActive: true })
+            {
+                return;
+            }
+
+            if (!PlatformServices.Preferences.Get(AppPreferenceKeys.UserIsLogged, false) ||
+                !PlatformServices.Preferences.Get(AppPreferenceKeys.VpnDisclosureAccepted, false) ||
+                !HasActiveNetworkUplink(appContext))
+            {
+                return;
+            }
+
+            using var vpnPrepareIntent = VpnService.Prepare(appContext);
+            if (vpnPrepareIntent is not null)
+            {
+                return;
+            }
+
+            MainActivity.StartActualService(appContext);
+            AppLogger.Log("[ANDROID-BG] Прогрев Foreground Service выполнен в окне клика плитки");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[ANDROID-BG] Не удалось прогреть Foreground Service в OnClick: {ex.Message}");
+        }
+    }
+
     //переключение vpn по нажатию на системную плитку в шторке
     public static async Task ToggleFromTileAsync(Context context, Action<string> launchActivity)
     {
@@ -84,6 +119,7 @@ internal static class AndroidBackgroundVpnController
         catch (Exception ex)
         {
             AppLogger.LogError($"[ANDROID-BG TILE ERROR] {ex.Message}", ex);
+            StopPrewarmedServiceIfNotConnected();
             OctopusTileService.RequestTileUpdate(appContext);
         }
         finally
@@ -192,6 +228,7 @@ internal static class AndroidBackgroundVpnController
         catch (Exception ex)
         {
             AppLogger.LogError($"[ANDROID-BG ASSISTANT CONNECT ERROR] {ex.Message}", ex);
+            StopPrewarmedServiceIfNotConnected();
             OctopusTileService.RequestTileUpdate(appContext);
         }
         finally
@@ -230,6 +267,7 @@ internal static class AndroidBackgroundVpnController
         if (!session.IsLoggedIn || string.IsNullOrWhiteSpace(session.JwtToken))
         {
             AppLogger.Log("[ANDROID-BG] Пользователь не авторизован — открываем экран входа");
+            StopPrewarmedServiceIfNotConnected();
             launchActivity(ActionValueRequireAuth);
             OctopusTileService.RequestTileUpdate(appContext);
             return;
@@ -238,6 +276,7 @@ internal static class AndroidBackgroundVpnController
         if (!HasActiveNetworkUplink(appContext))
         {
             AppLogger.Log("[ANDROID-BG] Нет интернета — открываем приложение с уведомлением");
+            StopPrewarmedServiceIfNotConnected();
             launchActivity(ActionValueNoInternet);
             OctopusTileService.RequestTileUpdate(appContext);
             return;
@@ -248,6 +287,7 @@ internal static class AndroidBackgroundVpnController
         if (balanceSeconds <= 0)
         {
             AppLogger.Log("[ANDROID-BG] Закончилось время баланса — открываем приложение с предложением пополнения");
+            StopPrewarmedServiceIfNotConnected();
             launchActivity(ActionValueNoBalance);
             OctopusTileService.RequestTileUpdate(appContext);
             return;
@@ -258,6 +298,7 @@ internal static class AndroidBackgroundVpnController
         if (!isDisclosureAccepted || vpnPrepareIntent is not null)
         {
             AppLogger.Log("[ANDROID-BG] Требуется подтверждение VPN disclosure или системное разрешение Android VpnService");
+            StopPrewarmedServiceIfNotConnected();
             launchActivity(ActionValueRequireVpnPermission);
             OctopusTileService.RequestTileUpdate(appContext);
             return;
@@ -267,6 +308,7 @@ internal static class AndroidBackgroundVpnController
         if (servers.Count == 0)
         {
             AppLogger.LogWarning("[ANDROID-BG] Список серверов недоступен при фоновом запуске");
+            StopPrewarmedServiceIfNotConnected();
             launchActivity(ActionValueNoInternet);
             OctopusTileService.RequestTileUpdate(appContext);
             return;
@@ -309,6 +351,22 @@ internal static class AndroidBackgroundVpnController
 
         AppLogger.Log($"[ANDROID-BG] Фоновый запуск VPN: {targetServer.Location} ({targetServer.Ip}:{targetServer.Port})");
         await AndroidVpnService.Orchestrator.StartVpnAsync(targetServer.Ip, targetServer.Port, orderedCandidates).ConfigureAwait(false);
+    }
+
+    //остановка заранее прогретой foreground-службы если запуск отменился на проверке предусловий
+    private static void StopPrewarmedServiceIfNotConnected()
+    {
+        if (AndroidVpnService.Orchestrator.CurrentState is AppVpnState.Disconnected or AppVpnState.Error)
+        {
+            try
+            {
+                OctopusVpnService.Instance?.StopNativeVpn();
+            }
+            catch
+            {
+                //игнорируем ошибку остановки прогретой службы
+            }
+        }
     }
 
     //штатная остановка vpn туннеля и оповещение сервера

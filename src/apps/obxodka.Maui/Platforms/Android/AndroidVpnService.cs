@@ -26,7 +26,8 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
     //запрос системного разрешения vpn service и запуск foreground-службы android
     public async Task<bool> PreparePermissionsAndStartServiceAsync(CancellationToken ct)
     {
-        var intent = VpnService.Prepare(Platform.AppContext);
+        var appContext = Android.App.Application.Context;
+        using var intent = VpnService.Prepare(appContext);
         if (intent is not null)
         {
             var granted = await MainActivity.RequestVpnPermissionAsync(intent, ct).ConfigureAwait(false);
@@ -36,7 +37,11 @@ internal sealed class AndroidVpnService : ITunnelPlatformAdapter
             }
         }
 
-        MainActivity.StartVpnService();
+        if (OctopusVpnService.Instance is not { IsActive: true })
+        {
+            MainActivity.StartVpnService();
+        }
+
         _ = await OctopusVpnService.WaitForServiceReadyAsync(4000, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Не удалось запустить системную службу VPN.");
         return true;

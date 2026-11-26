@@ -255,7 +255,7 @@ public sealed class MainActivity : MauiAppCompatActivity
 
         if (Platform.CurrentActivity is not MainActivity activity || activity.IsFinishing || activity.IsDestroyed)
         {
-            StartActualService(Platform.AppContext);
+            StartActualService(Android.App.Application.Context);
             return;
         }
 
@@ -296,7 +296,7 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
-    private static void StartActualService(Context context)
+    internal static void StartActualService(Context context)
     {
         using var intent = new Intent(context, typeof(OctopusVpnService));
         _ = intent.SetAction("START");

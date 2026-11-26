@@ -57,6 +57,12 @@ public sealed class OctopusTileService : TileService
         var currentState = AndroidVpnService.Orchestrator.CurrentState;
         var isStopping = currentState is not (AppVpnState.Disconnected or AppVpnState.Error);
 
+        //при холодном старте немедленно поднимаем foreground-службу внутри окна клика плитки
+        if (!isStopping)
+        {
+            AndroidBackgroundVpnController.TryPrewarmForegroundServiceOnClick(appContext);
+        }
+
         //мгновенный визуальный отклик плитки до завершения сетевого хендшейка
         SyncTileVisual(isStopping ? AppVpnState.Disconnecting : AppVpnState.Connecting);
 
