@@ -26,7 +26,7 @@ internal sealed partial class WintunAdapter : IDisposable
                 return IntPtr.Zero;
             }
 
-            var dllPath = Path.Combine(AppContext.BaseDirectory, "Engine", "wintun.dll");
+            var dllPath = Path.Join(AppContext.BaseDirectory, "Engine", "wintun.dll");
             return File.Exists(dllPath) && NativeLibrary.TryLoad(dllPath, out var handle) ? handle : IntPtr.Zero;
         });
     }

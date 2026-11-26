@@ -245,13 +245,13 @@ internal static partial class CliAnsiUi
             _ = headSb.Append(' ').Append(cell).Append(' ').Append(Paint("│", Border));
         }
 
-        Console.WriteLine(headSb.ToString());
+        Console.WriteLine(headSb);
         Console.WriteLine("  " + Paint(BuildRule('├', '┼', '┤', widths), Border));
 
+        var rowSb = new StringBuilder();
         foreach (var row in rows)
         {
-            var rowSb = new StringBuilder();
-            _ = rowSb.Append("  ").Append(Paint("│", Border));
+            _ = rowSb.Clear().Append("  ").Append(Paint("│", Border));
             for (var c = 0; c < cols; c++)
             {
                 var raw = c < row.Length ? row[c] : string.Empty;
@@ -260,7 +260,7 @@ internal static partial class CliAnsiUi
                 _ = rowSb.Append(' ').Append(cell).Append(' ').Append(Paint("│", Border));
             }
 
-            Console.WriteLine(rowSb.ToString());
+            Console.WriteLine(rowSb);
         }
 
         Console.WriteLine("  " + Paint(BuildRule('╰', '┴', '╯', widths), Border));
@@ -406,7 +406,7 @@ internal static partial class CliAnsiUi
             _ = sb.Append(CultureInfo.InvariantCulture, $"{Esc}{extraClear}F");
         }
 
-        Console.Write(sb.ToString());
+        Console.Write(sb);
         return lines.Count;
     }
 

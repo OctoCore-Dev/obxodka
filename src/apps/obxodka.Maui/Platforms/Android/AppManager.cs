@@ -44,7 +44,7 @@ public sealed class AppManager : IAppManager
         "ru.x5.app"
     ];
 
-    private static string PersistentFilePath => Path.Combine(FileSystem.AppDataDirectory, "split_tunnel_apps.json");
+    private static string PersistentFilePath => Path.Join(FileSystem.AppDataDirectory, "split_tunnel_apps.json");
 
     //получение списка установленных приложений с иконками и статусом исключения
     public Task<List<AppInfoItem>> GetInstalledAppsAsync() =>
@@ -74,7 +74,7 @@ public sealed class AppManager : IAppManager
             }
 
             var cacheDir = FileSystem.Current.CacheDirectory;
-            var iconsDir = Path.Combine(cacheDir, "AppIcons");
+            var iconsDir = Path.Join(cacheDir, "AppIcons");
             _ = Directory.CreateDirectory(iconsDir);
 
             var mainIntent = new Intent(Intent.ActionMain, null);
@@ -106,7 +106,7 @@ public sealed class AppManager : IAppManager
                     continue;
                 }
 
-                var iconPath = Path.Combine(iconsDir, $"{pkgName}.png");
+                var iconPath = Path.Join(iconsDir, $"{pkgName}.png");
                 var hasIcon = File.Exists(iconPath);
 
                 if (!hasIcon)
@@ -135,7 +135,7 @@ public sealed class AppManager : IAppManager
                         continue;
                     }
 
-                    var iconPath = Path.Combine(iconsDir, $"{bypassedPkg}.png");
+                    var iconPath = Path.Join(iconsDir, $"{bypassedPkg}.png");
                     var hasIcon = File.Exists(iconPath);
 
                     if (!hasIcon)

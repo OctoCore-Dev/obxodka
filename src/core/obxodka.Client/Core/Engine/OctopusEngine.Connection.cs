@@ -259,13 +259,15 @@ public sealed partial class OctopusEngine
             var oldCts = Interlocked.Exchange(ref _cts, sessionCts);
             if (oldCts is not null)
             {
-                try
+                using (oldCts)
                 {
-                    await oldCts.CancelAsync().ConfigureAwait(false);
-                    oldCts.Dispose();
-                }
-                catch (ObjectDisposedException)
-                {
+                    try
+                    {
+                        await oldCts.CancelAsync().ConfigureAwait(false);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                    }
                 }
             }
 
@@ -845,7 +847,7 @@ public sealed partial class OctopusEngine
                         badCandidate.ReportUnhealthyEndpoint();
                     }
 
-                    if (_transport == candidateTransport)
+                    if (ReferenceEquals(_transport, candidateTransport))
                     {
                         _ = Interlocked.CompareExchange(ref _transport, originalTransport, candidateTransport);
                     }

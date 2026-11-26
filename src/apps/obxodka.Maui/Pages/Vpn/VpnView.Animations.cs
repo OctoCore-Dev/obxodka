@@ -435,7 +435,7 @@ public sealed partial class VpnView
         using var builder = new SKPathBuilder();
         for (var i = 0; i < sides; i++)
         {
-            var a = (float)(i * 2 * Math.PI / sides - Math.PI / 2);
+            var a = (float)(i * 2.0 * Math.PI / sides - Math.PI / 2.0);
             var x = r * MathF.Cos(a);
             var y = r * MathF.Sin(a);
             if (i == 0)

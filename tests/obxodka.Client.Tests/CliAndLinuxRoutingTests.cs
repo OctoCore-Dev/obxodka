@@ -46,7 +46,7 @@ public sealed class CliAndLinuxRoutingTests
     [Fact]
     public void CliPreferences_PersistsValuesToDisk()
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), $"obx-prefs-{Guid.NewGuid():N}.json");
+        var tempFile = Path.Join(Path.GetTempPath(), $"obx-prefs-{Guid.NewGuid():N}.json");
         try
         {
             var prefs1 = new CliPreferencesService(tempFile);
@@ -107,10 +107,10 @@ public sealed class CliAndLinuxRoutingTests
     [Fact]
     public void LinuxRoutingHelper_ResolvConfBackupAndRestoreIsAtomicAndIdempotent()
     {
-        var dir = Path.Combine(Path.GetTempPath(), $"obx-resolv-{Guid.NewGuid():N}");
+        var dir = Path.Join(Path.GetTempPath(), $"obx-resolv-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
-        var resolvPath = Path.Combine(dir, "resolv.conf");
-        var backupPath = Path.Combine(dir, "resolv.conf.bak");
+        var resolvPath = Path.Join(dir, "resolv.conf");
+        var backupPath = Path.Join(dir, "resolv.conf.bak");
         try
         {
             const string original = "nameserver 192.168.1.1\nsearch home.arpa\n";

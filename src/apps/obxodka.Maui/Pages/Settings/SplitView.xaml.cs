@@ -101,17 +101,16 @@ public sealed partial class SplitView : IAdaptivePage
         var prev = Interlocked.Exchange(ref field, next);
         if (prev is not null)
         {
-            try
+            using (prev)
             {
-                prev.Cancel();
-            }
-            catch
-            {
-                // ignored
-            }
-            finally
-            {
-                prev.Dispose();
+                try
+                {
+                    prev.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    //игнорируем уже освобожденный токен
+                }
             }
         }
 
@@ -127,17 +126,16 @@ public sealed partial class SplitView : IAdaptivePage
             return;
         }
 
-        try
+        using (prev)
         {
-            prev.Cancel();
-        }
-        catch
-        {
-            // ignored
-        }
-        finally
-        {
-            prev.Dispose();
+            try
+            {
+                prev.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                //игнорируем уже освобожденный токен
+            }
         }
     }
 
@@ -145,17 +143,16 @@ public sealed partial class SplitView : IAdaptivePage
     {
         if (Interlocked.Exchange(ref _saveDebounceCts, null) is { } pendingSave)
         {
-            try
+            using (pendingSave)
             {
-                pendingSave.Cancel();
-            }
-            catch
-            {
-                // ignored
-            }
-            finally
-            {
-                pendingSave.Dispose();
+                try
+                {
+                    pendingSave.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    //игнорируем уже освобожденный токен
+                }
             }
 
             try

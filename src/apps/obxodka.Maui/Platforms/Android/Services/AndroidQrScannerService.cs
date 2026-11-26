@@ -26,10 +26,10 @@ public sealed class AndroidQrScannerService : IQrScannerService
 
         try
         {
-            var options = new GmsBarcodeScannerOptions.Builder()
-                .SetBarcodeFormats(Barcode.FormatQrCode)
-                .EnableAutoZoom()
-                .Build();
+            using var optionsBuilder = new GmsBarcodeScannerOptions.Builder();
+            _ = optionsBuilder.SetBarcodeFormats(Barcode.FormatQrCode);
+            _ = optionsBuilder.EnableAutoZoom();
+            using var options = optionsBuilder.Build();
 
             var scanner = GmsBarcodeScanning.GetClient(activity, options);
 

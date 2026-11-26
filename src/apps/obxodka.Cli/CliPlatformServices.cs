@@ -15,24 +15,24 @@ public static class CliStoragePaths
         string baseDir;
         if (OperatingSystem.IsWindows())
         {
-            baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Obxodka", "cli");
+            baseDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Obxodka", "cli");
         }
         else
         {
             var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
             baseDir = !string.IsNullOrWhiteSpace(xdg)
-                ? Path.Combine(xdg, "obxodka")
-                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "obxodka");
+                ? Path.Join(xdg, "obxodka")
+                : Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "obxodka");
         }
 
         _ = Directory.CreateDirectory(baseDir);
         return baseDir;
     }
 
-    public static string PreferencesPath => Path.Combine(GetConfigDirectory(), "preferences.json");
-    public static string SecretsPath => Path.Combine(GetConfigDirectory(), "secrets.json");
-    public static string StatePath => Path.Combine(GetConfigDirectory(), "state.json");
-    public static string SplitRulesPath => Path.Combine(GetConfigDirectory(), "split_rules.json");
+    public static string PreferencesPath => Path.Join(GetConfigDirectory(), "preferences.json");
+    public static string SecretsPath => Path.Join(GetConfigDirectory(), "secrets.json");
+    public static string StatePath => Path.Join(GetConfigDirectory(), "state.json");
+    public static string SplitRulesPath => Path.Join(GetConfigDirectory(), "split_rules.json");
 }
 
 //файловое хранилище настроек cli с атомарной записью
@@ -60,9 +60,9 @@ public sealed class CliPreferencesService : IPreferencesService
             try
             {
                 var targetType = typeof(T);
-                if (targetType == typeof(string))
+                if (raw is T stringVal)
                 {
-                    return (T)(object)raw;
+                    return stringVal;
                 }
 
                 if (targetType == typeof(bool) && bool.TryParse(raw, out var b))

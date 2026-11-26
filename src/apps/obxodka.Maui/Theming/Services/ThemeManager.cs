@@ -29,7 +29,7 @@ public sealed partial class ThemeManager
     public ThemeManager()
     {
         Instance = this;
-        _storageService = new ThemeStorageService(Path.Combine(FileSystem.AppDataDirectory, "themes"));
+        _storageService = new ThemeStorageService(Path.Join(FileSystem.AppDataDirectory, "themes"));
         EnsureSystemThemeTracking();
     }
 

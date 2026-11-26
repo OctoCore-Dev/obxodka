@@ -112,7 +112,7 @@ public class LeakPreventionTests
     {
         const int packetSize = 1340;
         const int totalPackets = 4096; //~5.5 MB
-        var listener = new TcpListener(IPAddress.Loopback, 0);
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 

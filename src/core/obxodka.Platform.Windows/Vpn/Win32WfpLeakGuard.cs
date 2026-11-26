@@ -534,26 +534,25 @@ internal static partial class Win32WfpLeakGuard
             var nameSet = new HashSet<string>(s_splitExeNames, StringComparer.OrdinalIgnoreCase);
             foreach (var proc in Process.GetProcesses())
             {
-                try
+                using (proc)
                 {
-                    if (!nameSet.Contains(proc.ProcessName) && !nameSet.Contains($"{proc.ProcessName}.exe"))
+                    try
                     {
-                        continue;
-                    }
+                        if (!nameSet.Contains(proc.ProcessName) && !nameSet.Contains($"{proc.ProcessName}.exe"))
+                        {
+                            continue;
+                        }
 
-                    var mainPath = proc.MainModule?.FileName;
-                    if (!string.IsNullOrWhiteSpace(mainPath))
-                    {
-                        _ = allowedPaths.Add(mainPath);
+                        var mainPath = proc.MainModule?.FileName;
+                        if (!string.IsNullOrWhiteSpace(mainPath))
+                        {
+                            _ = allowedPaths.Add(mainPath);
+                        }
                     }
-                }
-                catch
-                {
-                    //игнорируем системные процессы без доступа к MainModule
-                }
-                finally
-                {
-                    proc.Dispose();
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                    {
+                        //игнорируем системные процессы без доступа к MainModule
+                    }
                 }
             }
         }

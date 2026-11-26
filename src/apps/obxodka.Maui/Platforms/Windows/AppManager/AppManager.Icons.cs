@@ -61,7 +61,7 @@ public sealed partial class AppManager
     private static string GetCachedIconPath(string exePath, string iconsDir)
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(exePath.ToLowerInvariant())))[..16];
-        return Path.Combine(iconsDir, $"win_{hash}.png");
+        return Path.Join(iconsDir, $"win_{hash}.png");
     }
 
     //получение пути к существующей иконке или извлечение новой

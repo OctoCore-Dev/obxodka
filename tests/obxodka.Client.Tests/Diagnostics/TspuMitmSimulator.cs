@@ -156,7 +156,6 @@ public sealed class TspuMitmSimulator : IAsyncDisposable
                     if (allowed > 0)
                     {
                         _ = await dst.SendAsync(buf.AsMemory(0, allowed), SocketFlags.None, ct).ConfigureAwait(false);
-                        forwarded += allowed;
                     }
 
                     onFrozenOnce();

@@ -238,7 +238,7 @@ public sealed partial class ThemeStoreView
 
     private ThemeCardModel BuildInstalledThemeModel(ThemeManifest manifest)
     {
-        var folder = Path.Combine(_themeManager!.ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
+        var folder = Path.Join(_themeManager!.ThemesDirectory, manifest.Id.TrimStart('/', '\\'));
         var isActive = _themeManager.ActiveTheme?.Id == manifest.Id;
         var remoteItem = _currentCatalog?.Themes.FirstOrDefault(t => t.Id == manifest.Id);
         var hasUpdate = remoteItem is not null && ThemeManager.IsVersionNewer(manifest.Version, remoteItem.Version);
@@ -270,9 +270,9 @@ public sealed partial class ThemeStoreView
             hasOverlay,
             hasReactive,
             remoteItem?.IconUrl,
-            Path.Combine(folder, "icon.png"),
+            Path.Join(folder, "icon.png"),
             remoteItem?.PreviewUrl,
-            Path.Combine(folder, "preview.png"),
+            Path.Join(folder, "preview.png"),
             manifest.Core.Colors,
             true,
             isActive,
@@ -288,7 +288,7 @@ public sealed partial class ThemeStoreView
         var installedVersion = isInstalled ? _themeManager.GetInstalledThemeVersion(item.Id) : null;
         var displayVersion = !string.IsNullOrEmpty(installedVersion) ? installedVersion : item.Version;
         var hasUpdate = isInstalled && _themeManager.IsUpdateAvailable(item.Id, item.Version);
-        var folder = isInstalled ? Path.Combine(_themeManager.ThemesDirectory, item.Id.TrimStart('/', '\\')) : null;
+        var folder = isInstalled ? Path.Join(_themeManager.ThemesDirectory, item.Id.TrimStart('/', '\\')) : null;
 
         return new ThemeCardModel(
             item.Id,
@@ -304,9 +304,9 @@ public sealed partial class ThemeStoreView
             item.Features.HasScreenOverlay,
             item.Features.HasReactiveVfx,
             item.IconUrl,
-            folder is not null ? Path.Combine(folder, "icon.png") : null,
+            folder is not null ? Path.Join(folder, "icon.png") : null,
             item.PreviewUrl,
-            folder is not null ? Path.Combine(folder, "preview.png") : null,
+            folder is not null ? Path.Join(folder, "preview.png") : null,
             installedManifest?.Core.Colors,
             isInstalled,
             isActive,
