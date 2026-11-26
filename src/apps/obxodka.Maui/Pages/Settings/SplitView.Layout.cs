@@ -123,7 +123,7 @@ public sealed partial class SplitView
         }
 
         //накапливаем смещение одного направления чтобы плавные мелкие шаги колесика мыши надежно скрывали и возвращали шапку
-        if ((deltaY > 0 && _accumulatedScrollDelta < 0) || (deltaY < 0 && _accumulatedScrollDelta > 0))
+        if (deltaY > 0 && _accumulatedScrollDelta < 0 || deltaY < 0 && _accumulatedScrollDelta > 0)
         {
             _accumulatedScrollDelta = deltaY;
         }

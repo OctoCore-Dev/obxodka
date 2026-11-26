@@ -241,7 +241,7 @@ public sealed class CliApp : IDisposable
         await AuthManager.ClearSessionAsync().ConfigureAwait(false);
         if (cmd.IsJson)
         {
-            Console.WriteLine("{\"loggedIn\":false}");
+            Console.WriteLine(/*lang=json,strict*/ "{\"loggedIn\":false}");
         }
         else
         {
@@ -761,7 +761,7 @@ public sealed class CliApp : IDisposable
             CliRuntimeStateStore.Clear();
             if (cmd.IsJson)
             {
-                Console.WriteLine("{\"disconnected\":false,\"message\":\"Активный туннель не найден\"}");
+                Console.WriteLine(/*lang=json,strict*/ "{\"disconnected\":false,\"message\":\"Активный туннель не найден\"}");
             }
             else
             {
@@ -828,7 +828,7 @@ public sealed class CliApp : IDisposable
             if (cmd.IsJson)
             {
                 Console.WriteLine(state is null
-                    ? "{\"state\":\"Disconnected\"}"
+                    ? /*lang=json,strict*/ "{\"state\":\"Disconnected\"}"
                     : JsonSerializer.Serialize(state, CliJsonContext.Default.CliRuntimeState));
             }
             else if (state is null)

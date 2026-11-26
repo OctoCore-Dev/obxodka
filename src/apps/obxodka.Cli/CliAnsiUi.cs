@@ -85,9 +85,9 @@ internal static partial class CliAnsiUi
         for (var i = 0; i < text.Length; i++)
         {
             var t = (double)i / max;
-            var r = (int)Math.Round(from.R + ((to.R - from.R) * t));
-            var g = (int)Math.Round(from.G + ((to.G - from.G) * t));
-            var b = (int)Math.Round(from.B + ((to.B - from.B) * t));
+            var r = (int)Math.Round(from.R + (to.R - from.R) * t);
+            var g = (int)Math.Round(from.G + (to.G - from.G) * t);
+            var b = (int)Math.Round(from.B + (to.B - from.B) * t);
             _ = sb.Append(CultureInfo.InvariantCulture, $"{Esc}38;2;{r};{g};{b}m{text[i]}");
         }
 

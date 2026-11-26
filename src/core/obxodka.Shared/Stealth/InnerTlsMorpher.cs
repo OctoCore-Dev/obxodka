@@ -131,7 +131,7 @@ public static class InnerTlsMorpher
         }
 
         var low = Math.Max(96, totalBytes / 5);
-        var high = Math.Min(totalBytes - 96, (totalBytes * 3) / 5);
+        var high = Math.Min(totalBytes - 96, totalBytes * 3 / 5);
         return high > low ? RandomNumberGenerator.GetInt32(low, high) : 0;
     }
 }

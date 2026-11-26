@@ -114,7 +114,7 @@ public sealed class TrafficGraphControl : Control
         using (var fCtx = fillGeo.Open())
         {
             var firstX = startIdx * stepX;
-            var firstY = padBottom - ((double)data[0] / peak * usableH);
+            var firstY = padBottom - (double)data[0] / peak * usableH;
             sCtx.BeginFigure(new Point(firstX, firstY), false);
             fCtx.BeginFigure(new Point(firstX, h), true);
             fCtx.LineTo(new Point(firstX, firstY));
@@ -122,7 +122,7 @@ public sealed class TrafficGraphControl : Control
             for (var i = 1; i < count; i++)
             {
                 var x = (startIdx + i) * stepX;
-                var y = padBottom - ((double)data[i] / peak * usableH);
+                var y = padBottom - (double)data[i] / peak * usableH;
                 sCtx.LineTo(new Point(x, y));
                 fCtx.LineTo(new Point(x, y));
             }

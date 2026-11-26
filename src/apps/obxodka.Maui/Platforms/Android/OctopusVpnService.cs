@@ -929,7 +929,7 @@ public sealed partial class OctopusVpnService : VpnService
                     _ = Instance?.SetUnderlyingNetworks([network]);
                 }
 
-                if ((_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId) || _hadLostNetwork)
+                if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId || _hadLostNetwork)
                 {
                     var now = Environment.TickCount64;
                     var elapsed = now - Volatile.Read(ref _lastReconnectTicks);

@@ -29,7 +29,7 @@ public static class StunPacketInspector
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsStunIpv4Packet(ReadOnlySpan<byte> ipPacket)
     {
-        if (ipPacket.Length < 28 || (ipPacket[0] >> 4) != 4 || ipPacket[9] != 17)
+        if (ipPacket.Length < 28 || ipPacket[0] >> 4 != 4 || ipPacket[9] != 17)
         {
             return false;
         }
@@ -49,7 +49,7 @@ public static class StunPacketInspector
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsStunIpv6Packet(ReadOnlySpan<byte> ipPacket)
     {
-        if (ipPacket.Length < 48 || (ipPacket[0] >> 4) != 6 || ipPacket[6] != 17)
+        if (ipPacket.Length < 48 || ipPacket[0] >> 4 != 6 || ipPacket[6] != 17)
         {
             return false;
         }

@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using obxodka.Shared.Stealth.Tls13;
 
 namespace obxodka.Core.Transports;
@@ -1163,7 +1162,7 @@ public sealed class ObxodkaRealityTransport(
 
         public bool NeedsHydraRotation =>
             Volatile.Read(ref _serverHandoff) != 0 ||
-            (clientTxBudget > 0 && (Volatile.Read(ref _txBytes) >= clientTxBudget || Volatile.Read(ref _rxBytes) >= HydraServerBudgetBytes));
+            clientTxBudget > 0 && (Volatile.Read(ref _txBytes) >= clientTxBudget || Volatile.Read(ref _rxBytes) >= HydraServerBudgetBytes);
 
         public void AddTxBytes(long delta) => _ = Interlocked.Add(ref _txBytes, delta);
         public void AddRxBytes(long delta) => _ = Interlocked.Add(ref _rxBytes, delta);
