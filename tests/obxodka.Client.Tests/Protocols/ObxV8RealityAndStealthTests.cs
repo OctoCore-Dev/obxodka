@@ -300,6 +300,200 @@ public sealed class ObxV8RealityAndStealthTests
         }
     }
 
+    [Fact]
+    public async Task ObxodkaRealityTransport_AutoDetects16KbTspuFreeze_AndActivatesHydraCarouselAsync()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var serverEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var certReq = new CertificateRequest("CN=cdn.jsdelivr.net", serverEcdsa, HashAlgorithmName.SHA256);
+        using var serverCert = certReq.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(30));
+        var spkiPin = Convert.ToBase64String(SHA256.HashData(serverEcdsa.ExportSubjectPublicKeyInfo()));
+        var realityPriv = new byte[32];
+        var realityPub = new byte[32];
+        ObxRealityAuth.DeriveNodeRealityKeyPair(spkiPin, realityPriv, realityPub);
+
+        var prevDynPin = OctopusEngine.DynamicSslPublicKeyHash;
+        var prevOriginPin = OctopusEngine.DirectOriginCertHash;
+        OctopusEngine.DynamicSslPublicKeyHash = spkiPin;
+        OctopusEngine.DirectOriginCertHash = spkiPin;
+
+        using var serverListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        serverListener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        serverListener.Listen(16);
+        var serverEndpoint = (IPEndPoint)serverListener.LocalEndPoint!;
+
+        //мини-сервер reality с поддержкой карусели hydra (один и тот же виртуальный ip 100.64.0.77 и бюджет H:<bytes>)
+        _ = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                Socket sock;
+                try
+                {
+                    sock = await serverListener.AcceptAsync(cts.Token);
+                }
+                catch
+                {
+                    break;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    using (sock)
+                    {
+                        var initBuf = new byte[2048];
+                        var n = await sock.ReceiveAsync(initBuf, SocketFlags.None, cts.Token);
+                        if (!ObxRealityAuth.TryVerifyClientHello(
+                                initBuf.AsSpan(0, n),
+                                realityPriv,
+                                DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                                out var chMsg,
+                                out _,
+                                out var sid,
+                                out var cPub,
+                                out _,
+                                out _))
+                        {
+                            return;
+                        }
+
+                        await using var ns = new NetworkStream(sock, ownsSocket: false);
+                        await using var tls = await Tls13CryptoStream.AcceptServerAsync(
+                            ns, chMsg, sid, cPub, serverCert, targetCertPaddingBytes: 900, leaveInnerOpen: true, cts.Token);
+
+                        var rx = new byte[65536];
+                        var filled = 0;
+                        uint sessionKey = 0;
+                        var hydraCap = 0;
+                        long txSent = 0;
+
+                        while (!cts.IsCancellationRequested)
+                        {
+                            var got = await tls.ReadAsync(rx.AsMemory(filled), cts.Token);
+                            if (got <= 0)
+                            {
+                                break;
+                            }
+
+                            filled += got;
+                            var off = 0;
+                            while (filled - off >= ObxodkaFraming.HeaderSize)
+                            {
+                                var span = rx.AsSpan(off, filled - off);
+                                var key = sessionKey;
+                                if (!ObxodkaFraming.TryDecodeHeader(span, out var total, out var pLen, out var cmd, out var salt, key))
+                                {
+                                    if (!ObxodkaFraming.TryDecodeHeader(span, out total, out pLen, out cmd, out salt, 0u))
+                                    {
+                                        return;
+                                    }
+
+                                    key = 0u;
+                                }
+
+                                if (span.Length < total)
+                                {
+                                    break;
+                                }
+
+                                var payload = span.Slice(ObxodkaFraming.HeaderSize, pLen);
+                                if (pLen > 0)
+                                {
+                                    ObxodkaFraming.UnmaskPayload(payload, salt, key);
+                                }
+
+                                if (cmd == ObxodkaFraming.CmdHandshake)
+                                {
+                                    var hsText = Encoding.UTF8.GetString(payload);
+                                    uint seed = 0;
+                                    foreach (var token in hsText.Split('|'))
+                                    {
+                                        if (token.StartsWith("K:", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            _ = uint.TryParse(token[2..], System.Globalization.NumberStyles.HexNumber, null, out seed);
+                                        }
+                                        else if (token.StartsWith("H:", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            _ = int.TryParse(token[2..], out hydraCap);
+                                        }
+                                    }
+
+                                    var thumb = hsText.Split('|')[0];
+                                    sessionKey = ObxodkaFraming.DeriveSessionKey(thumb, 0, seed);
+                                    var resp = Encoding.UTF8.GetBytes($"IP:100.64.0.77|fd00::77|{thumb}|MTU:1360");
+                                    var frame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshakeResponse, resp, out var fLen, 1360, sessionKey);
+                                    await tls.WriteAsync(frame.AsMemory(0, fLen), cts.Token);
+                                    await tls.FlushAsync(cts.Token);
+                                    ArrayPool<byte>.Shared.Return(frame);
+                                    txSent += fLen;
+                                }
+                                else if (cmd == ObxodkaFraming.CmdPing && pLen >= 1000)
+                                {
+                                    if (hydraCap > 0 && txSent + pLen + 32 >= hydraCap)
+                                    {
+                                        var handoff = ObxodkaFraming.Pack(ObxodkaFraming.CmdChaff, [], out var hLen, 1360, sessionKey);
+                                        await tls.WriteAsync(handoff.AsMemory(0, hLen), cts.Token);
+                                        await tls.FlushAsync(cts.Token);
+                                        ArrayPool<byte>.Shared.Return(handoff);
+                                    }
+                                    else
+                                    {
+                                        var pong = new byte[pLen + 2];
+                                        pong[0] = 0xAA;
+                                        pong[1] = 0xBB;
+                                        payload.CopyTo(pong.AsSpan(2));
+                                        var frame = ObxodkaFraming.Pack(ObxodkaFraming.CmdPong, pong, out var fLen, 1360, sessionKey);
+                                        await tls.WriteAsync(frame.AsMemory(0, fLen), cts.Token);
+                                        await tls.FlushAsync(cts.Token);
+                                        ArrayPool<byte>.Shared.Return(frame);
+                                        txSent += fLen;
+                                    }
+                                }
+
+                                off += total;
+                            }
+
+                            var rem = filled - off;
+                            if (rem > 0)
+                            {
+                                rx.AsSpan(off, rem).CopyTo(rx);
+                            }
+
+                            filled = rem;
+                        }
+                    }
+                }, CancellationToken.None);
+            }
+        }, CancellationToken.None);
+
+        try
+        {
+            //жесткий стенд тспу: замораживает любой tcp сокет ровно на 15.8 кб и пускает только белый sni cdn.jsdelivr.net
+            await using var tspu = new obxodka.Client.Diagnostics.TspuMitmSimulator(
+                serverEndpoint,
+                byteCapPerDirection: 15800,
+                whitelistSnis: ["cdn.jsdelivr.net", "fastly.jsdelivr.net", "www.wikipedia.org", "unpkg.com"]);
+
+            await using var transport = new ObxodkaRealityTransport(tspu.ListenEndpoint.Port, "cdn.jsdelivr.net", forceHydraCarousel: false);
+            var (ip4, _) = await transport.ConnectAsync("127.0.0.1", "AABBCCDDEEFF00112233445566778899AABBCCDD", cts.Token);
+            Assert.Equal("100.64.0.77", ip4);
+            Assert.False(transport.IsHydraCarouselActive);
+
+            //проверка 24 кб обнаруживает заморозку первого сокета на 15.8 кб, автоматически включает карусель hydra и прокачивает 25 кб!
+            var verified = await transport.VerifyThroughputOrActivateHydraAsync(cts.Token);
+            Assert.True(verified);
+            Assert.True(transport.IsHydraCarouselActive);
+            Assert.True(transport.HydraRotationsCount >= 2);
+            Assert.True(tspu.FrozenConnections >= 1);
+            Assert.Equal(0, tspu.SniBlocks);
+        }
+        finally
+        {
+            OctopusEngine.DynamicSslPublicKeyHash = prevDynPin;
+            OctopusEngine.DirectOriginCertHash = prevOriginPin;
+        }
+    }
+
     private sealed class CaptureOnlyStream(MemoryStream sink) : Stream
     {
         public override bool CanRead => true;

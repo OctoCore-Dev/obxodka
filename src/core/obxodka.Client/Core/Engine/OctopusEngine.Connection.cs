@@ -302,6 +302,13 @@ public sealed partial class OctopusEngine
 
                 //жесткая проверка двустороннего трафика: без реального rx/cmdpong шаг считается мертвым
                 var verified = await VerifyDownlinkAsync(TimeSpan.FromMilliseconds(3500), true, stepToken).ConfigureAwait(false);
+                if (verified && !step.IsShield &&
+                    (!IPAddress.TryParse(step.Host, out var stepLiteralIp) || !IPAddress.IsLoopback(stepLiteralIp)) &&
+                    transport is IAntiFreezeTransport antiFreezeTransport)
+                {
+                    verified = await antiFreezeTransport.VerifyThroughputOrActivateHydraAsync(stepToken).ConfigureAwait(false);
+                }
+
                 if (!verified)
                 {
                     AppLogger.LogWarning(

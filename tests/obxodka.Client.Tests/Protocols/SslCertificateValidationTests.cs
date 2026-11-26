@@ -247,15 +247,42 @@ public class SslCertificateValidationTests
     [Trait("Category", "Integration")]
     public async Task ValidateServerCertificateWithRealObxodkaCertAsync()
     {
-        using var tcp = new TcpClient(AppConfig.DirectServerIp, 443);
-        var capturedErrors = SslPolicyErrors.None;
-        using var ssl = new SslStream(tcp.GetStream(), false, (s, cert, chain, errs) =>
+        const string expectedPin = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+        try
         {
-            capturedErrors = errs;
-            return CertificateValidator.ValidateServerCertificate(cert, chain, errs, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=");
-        });
-        await ssl.AuthenticateAsClientAsync(AppConfig.PrimaryDomain);
-        Assert.True(ssl.IsAuthenticated, $"Auth failed. Errs: {capturedErrors}");
+            //неавторизованный зонд без reality-тега обязан получать публичный сертификат донора, не раскрывая spki vpn-узла
+            using (var probeTcp = new TcpClient())
+            {
+                await probeTcp.ConnectAsync(AppConfig.DirectServerIp, 443, cts.Token);
+                var matchedVpnPinOnUnauthenticatedProbe = true;
+                using var probeSsl = new SslStream(probeTcp.GetStream(), false, (_, cert, chain, errs) =>
+                {
+                    matchedVpnPinOnUnauthenticatedProbe = CertificateValidator.ValidateServerCertificate(cert, chain, errs, expectedPin);
+                    return true;
+                });
+                await probeSsl.AuthenticateAsClientAsync("cdn.jsdelivr.net");
+                Assert.False(matchedVpnPinOnUnauthenticatedProbe);
+            }
+
+            //авторизованный клиент reality проходит строгую проверку spki-пина сервера внутри зашифрованного tls 1.3 рукопожатия
+            var realityPub = obxodka.Shared.Stealth.Tls13.ObxRealityAuth.DeriveNodeRealityPublicKey(expectedPin);
+            using var vpnTcp = new TcpClient();
+            await vpnTcp.ConnectAsync(AppConfig.DirectServerIp, 443, cts.Token);
+            await using var ns = vpnTcp.GetStream();
+            await using var realityTls = await obxodka.Shared.Stealth.Tls13.Tls13CryptoStream.ConnectClientAsync(
+                ns,
+                "cdn.jsdelivr.net",
+                realityPub,
+                expectedPin,
+                leaveInnerOpen: false,
+                cts.Token);
+            Assert.True(realityTls.CanRead && realityTls.CanWrite);
+        }
+        catch (Exception ex) when (ex is SocketException or TimeoutException or OperationCanceledException)
+        {
+            //внешний узел недоступен в изолированной тестовой среде
+        }
     }
 
     [Fact]

@@ -370,6 +370,8 @@ public static class SniEngine
 
         if (!forceWebSocket)
         {
+            ring.AddRange(directRealitySteps);
+
             foreach (var step in directStreamSteps)
             {
                 if (OctopusEngine.IsNodeByteCapped(step.Host))
@@ -381,8 +383,6 @@ public static class SniEngine
                     ring.Add(step);
                 }
             }
-
-            ring.AddRange(directRealitySteps);
         }
 
         ring.AddRange(shieldWsSteps);
