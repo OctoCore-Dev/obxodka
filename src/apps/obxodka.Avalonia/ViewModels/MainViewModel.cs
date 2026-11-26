@@ -87,6 +87,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         AppVersionText = $"v{typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "6.2.6"}";
         PlatformBadgeText = OperatingSystem.IsLinux() ? "Linux TUN (/dev/net/tun)" : "Windows Wintun";
+        ProtocolOptions = BuildProtocolOptions();
         LoadSettingsFromPreferences();
         LoadSplitRulesFromDisk();
     }
@@ -151,10 +152,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private AppVpnState _vpnState = AppVpnState.Disconnected;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeNetworkSettings))]
     private bool _isConnected;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeNetworkSettings))]
     private bool _isConnecting;
+
+    public bool CanChangeNetworkSettings => !IsConnected && !IsConnecting;
+
+    public IReadOnlyList<ProtocolOptionItem> ProtocolOptions { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedProtocolDescription))]
+    private ProtocolOptionItem? _selectedProtocolOption;
+
+    public string SelectedProtocolDescription =>
+        SelectedProtocolOption?.Description ?? "Умный подбор и мгновенная ротация транспортов при блокировках";
 
     [ObservableProperty]
     private string _vpnStatusText = "Не в сети";
@@ -294,11 +308,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    partial void OnSelectedProtocolOptionChanged(ProtocolOptionItem? value)
+    {
+        if (_isLoadingSettings || value is null)
+        {
+            return;
+        }
+
+        var normalized = ProtocolPipelineRegistry.SetPreferredProtocol(value.Id);
+        _isLoadingSettings = true;
+        try
+        {
+            ForceWebSocketEnabled = string.Equals(normalized, "OBXODKA-WS", StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            _isLoadingSettings = false;
+        }
+    }
+
     partial void OnForceWebSocketEnabledChanged(bool value)
     {
-        if (!_isLoadingSettings)
+        if (_isLoadingSettings)
         {
-            PlatformServices.Preferences.Set(AppPreferenceKeys.ForceWebSocket, value);
+            return;
+        }
+
+        var normalized = ProtocolPipelineRegistry.SetPreferredProtocol(value ? "OBXODKA-WS" : ProtocolPipelineRegistry.AutoProtocolId);
+        _isLoadingSettings = true;
+        try
+        {
+            SelectedProtocolOption = FindProtocolOption(normalized);
+        }
+        finally
+        {
+            _isLoadingSettings = false;
         }
     }
 
@@ -877,13 +921,40 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             AutoReconnectEnabled = PlatformServices.Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
             AdBlockDnsEnabled = PlatformServices.Preferences.Get(AppPreferenceKeys.UseAdblockDns, false);
             BlockIpv6Enabled = PlatformServices.Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
-            ForceWebSocketEnabled = PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+            var preferredProtocol = ProtocolPipelineRegistry.GetPreferredProtocol();
+            SelectedProtocolOption = FindProtocolOption(preferredProtocol);
+            ForceWebSocketEnabled = string.Equals(preferredProtocol, "OBXODKA-WS", StringComparison.OrdinalIgnoreCase);
             TelemetryEnabled = PlatformServices.Preferences.Get(AppPreferenceKeys.UseTelemetry, true);
         }
         finally
         {
             _isLoadingSettings = false;
         }
+    }
+
+    private ProtocolOptionItem FindProtocolOption(string protocolId) =>
+        ProtocolOptions.FirstOrDefault(o => string.Equals(o.Id, protocolId, StringComparison.OrdinalIgnoreCase))
+        ?? ProtocolOptions[0];
+
+    private static ProtocolOptionItem[] BuildProtocolOptions()
+    {
+        List<ProtocolOptionItem> list =
+        [
+            new(
+                ProtocolPipelineRegistry.AutoProtocolId,
+                "Авто (Рекомендуется)",
+                "Умный подбор и мгновенная ротация транспортов при блокировках")
+        ];
+
+        foreach (var factory in ProtocolPipelineRegistry.GetRegisteredFactories())
+        {
+            var title = factory.Kind == TransportProtocolKind.ObxodkaReality
+                ? $"{factory.FriendlyName} (OBX-V8)"
+                : $"{factory.FriendlyName} ({factory.TransportSummary})";
+            list.Add(new ProtocolOptionItem(factory.DisplayName, title, factory.Description));
+        }
+
+        return [.. list];
     }
 
     private void LoadSplitRulesFromDisk()
@@ -981,3 +1052,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ => $"{bytes} B"
     };
 }
+
+//пункт выпадающего списка выбора протокола подключения
+public sealed record ProtocolOptionItem(string Id, string Title, string Description);

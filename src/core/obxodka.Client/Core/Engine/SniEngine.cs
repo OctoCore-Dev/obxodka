@@ -230,13 +230,23 @@ public static class SniEngine
         return result;
     }
 
-    //формирование кругового маршрута протоколов: obxodka stream -> websocket -> xhttp -> резервные узлы -> по кругу
+    //формирование кругового маршрута протоколов: obxodka stream -> reality -> websocket -> xhttp -> резервные узлы -> по кругу
     public static List<ProtocolRouteStep> BuildProtocolRotationRing(
         IReadOnlyList<VpnServerDto>? servers,
         string? primaryHost,
         int primaryPort,
         string? configuredSni,
-        bool forceWebSocket)
+        bool forceWebSocket) =>
+        BuildProtocolRotationRing(servers, primaryHost, primaryPort, configuredSni, forceWebSocket, null);
+
+    //формирование кругового маршрута с учетом ручного выбора протокола пользователя (auto или конкретный транспорт)
+    public static List<ProtocolRouteStep> BuildProtocolRotationRing(
+        IReadOnlyList<VpnServerDto>? servers,
+        string? primaryHost,
+        int primaryPort,
+        string? configuredSni,
+        bool forceWebSocket,
+        string? preferredProtocol)
     {
         List<VpnServerDto> normalizedServers = servers is { Count: > 0 }
             ? [.. servers]
@@ -335,6 +345,27 @@ public static class SniEngine
 
         List<ProtocolRouteStep> ring =
             [with(directStreamSteps.Count + directRealitySteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
+
+        if (ProtocolPipelineRegistry.TryResolvePreferredKind(preferredProtocol, out var preferredKind))
+        {
+            List<ProtocolRouteStep> manualSteps = preferredKind switch
+            {
+                TransportProtocolKind.ObxodkaStream =>
+                [
+                    .. directStreamSteps.Where(static s => !OctopusEngine.IsNodeByteCapped(s.Host)),
+                    .. directStreamSteps.Where(static s => OctopusEngine.IsNodeByteCapped(s.Host))
+                ],
+                TransportProtocolKind.ObxodkaReality => [.. directRealitySteps, .. penalizedDirectReality],
+                TransportProtocolKind.ObxodkaWebSocket => [.. shieldWsSteps],
+                TransportProtocolKind.ObxodkaXhttp => [.. directXhttpSteps, .. penalizedDirectXhttp],
+                _ => []
+            };
+
+            if (manualSteps.Count > 0)
+            {
+                return manualSteps;
+            }
+        }
 
         if (!forceWebSocket)
         {

@@ -9,6 +9,27 @@
 
       <Border Classes="neo-card" Padding="20">
         <StackPanel Spacing="16">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Протокол подключения" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="{Binding SelectedProtocolDescription}" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+            <ComboBox Grid.Column="1"
+                      MinWidth="240"
+                      VerticalAlignment="Center"
+                      ItemsSource="{Binding ProtocolOptions}"
+                      SelectedItem="{Binding SelectedProtocolOption}"
+                      IsEnabled="{Binding CanChangeNetworkSettings}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ProtocolOptionItem">
+                  <TextBlock Text="{Binding Title}"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+
+          <Separator Background="{StaticResource BorderSubtleBrush}"/>
+
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel Spacing="2">
               <TextBlock Text="Kill Switch" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>

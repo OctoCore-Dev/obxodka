@@ -673,7 +673,8 @@ public sealed partial class OctopusEngine
                     ConnectedServerIp,
                     ConnectedServerPort > 0 ? ConnectedServerPort : 443,
                     ActiveTargetSni,
-                    PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false));
+                    PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false),
+                    ProtocolPipelineRegistry.GetPreferredProtocol());
             }
 
             if (_rotationRing.Count == 0)
