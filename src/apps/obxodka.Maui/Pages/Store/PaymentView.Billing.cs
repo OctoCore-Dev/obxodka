@@ -436,12 +436,9 @@ public sealed partial class PaymentView
                 var map = new Dictionary<string, InAppBillingProduct>(StringComparer.OrdinalIgnoreCase);
                 if (products is not null)
                 {
-                    foreach (var item in products)
+                    foreach (var item in products.Where(static item => !string.IsNullOrWhiteSpace(item.ProductId)))
                     {
-                        if (!string.IsNullOrWhiteSpace(item.ProductId))
-                        {
-                            map[item.ProductId] = item;
-                        }
+                        map[item.ProductId] = item;
                     }
                 }
 

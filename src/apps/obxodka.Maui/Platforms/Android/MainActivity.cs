@@ -272,9 +272,12 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
+    private static void CompletePendingVpnPermission(bool granted) =>
+        _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(granted);
+
     protected override void OnDestroy()
     {
-        _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(false);
+        CompletePendingVpnPermission(false);
         base.OnDestroy();
     }
 
@@ -291,7 +294,7 @@ public sealed class MainActivity : MauiAppCompatActivity
                 AndroidVpnService.Orchestrator.ReportError("Пользователь отклонил запрос на подключение");
                 break;
             case VpnCustomRequestCode:
-                _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(resultCode == Result.Ok);
+                CompletePendingVpnPermission(resultCode == Result.Ok);
                 break;
         }
     }

@@ -268,14 +268,14 @@ public static class CertificateValidator
     private static bool IsTrustedHostName(string host)
     {
         var trimmed = host.Trim();
-        var primary = AppConfig.PrimaryDomain;
-        var mirrorDomain = AppConfig.MirrorDomain;
-
-        return !string.IsNullOrWhiteSpace(primary) &&
-            (trimmed.Equals(primary, StringComparison.OrdinalIgnoreCase) ||
-             trimmed.EndsWith($".{primary}", StringComparison.OrdinalIgnoreCase)) || !string.IsNullOrWhiteSpace(mirrorDomain) &&
-            (trimmed.Equals(mirrorDomain, StringComparison.OrdinalIgnoreCase) ||
-             trimmed.EndsWith($".{mirrorDomain}", StringComparison.OrdinalIgnoreCase)) || BootstrapConfig.Mirrors.Any(m =>
-                trimmed.Equals(m, StringComparison.OrdinalIgnoreCase) || trimmed.EndsWith($".{m}", StringComparison.OrdinalIgnoreCase));
+        return HostMatchesDomain(trimmed, AppConfig.PrimaryDomain) ||
+               HostMatchesDomain(trimmed, AppConfig.MirrorDomain) ||
+               BootstrapConfig.Mirrors.Any(m => HostMatchesDomain(trimmed, m));
     }
+
+    //проверка точного совпадения хоста или его поддомена с целевым доменом
+    private static bool HostMatchesDomain(string host, string? domain) =>
+        !string.IsNullOrWhiteSpace(domain) &&
+        (host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+         host.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase));
 }

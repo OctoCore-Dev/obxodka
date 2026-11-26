@@ -42,30 +42,26 @@ internal static class AndroidVoiceAssistantDetector
         var hasBixbyRoutines = IsPackageEnabled(appContext, BixbyRoutinesPackage);
 
         //сначала учитываем системного ассистента по умолчанию в настройках android
-        if (defaultLower.Contains(BixbyAgentPackage, StringComparison.Ordinal) ||
-            defaultLower.Contains("bixby", StringComparison.Ordinal))
+        if ((defaultLower.Contains(BixbyAgentPackage, StringComparison.Ordinal) ||
+             defaultLower.Contains("bixby", StringComparison.Ordinal)) &&
+            hasBixby)
         {
-            if (hasBixby)
-            {
-                return new VoiceAssistantDetectionResult(
-                    DetectedVoiceAssistantKind.SamsungBixby,
-                    "Samsung Bixby",
-                    IsDefaultSystemAssistant: true,
-                    HasBixbyRoutines: hasBixbyRoutines);
-            }
+            return new VoiceAssistantDetectionResult(
+                DetectedVoiceAssistantKind.SamsungBixby,
+                "Samsung Bixby",
+                IsDefaultSystemAssistant: true,
+                HasBixbyRoutines: hasBixbyRoutines);
         }
 
-        if (defaultLower.Contains(GeminiPackage, StringComparison.Ordinal) ||
-            defaultLower.Contains("gemini", StringComparison.Ordinal))
+        if ((defaultLower.Contains(GeminiPackage, StringComparison.Ordinal) ||
+             defaultLower.Contains("gemini", StringComparison.Ordinal)) &&
+            (hasGemini || hasGoogleApp))
         {
-            if (hasGemini || hasGoogleApp)
-            {
-                return new VoiceAssistantDetectionResult(
-                    DetectedVoiceAssistantKind.GoogleGemini,
-                    "Google Gemini",
-                    IsDefaultSystemAssistant: true,
-                    HasBixbyRoutines: hasBixbyRoutines);
-            }
+            return new VoiceAssistantDetectionResult(
+                DetectedVoiceAssistantKind.GoogleGemini,
+                "Google Gemini",
+                IsDefaultSystemAssistant: true,
+                HasBixbyRoutines: hasBixbyRoutines);
         }
 
         if (defaultLower.Contains(GoogleAppPackage, StringComparison.Ordinal) ||

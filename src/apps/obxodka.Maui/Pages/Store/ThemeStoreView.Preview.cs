@@ -21,23 +21,24 @@ public sealed partial class ThemeStoreView
         if (model.Colors is { } colors)
         {
             string?[] hexes = [colors.Primary, colors.Accent, colors.BgBase, colors.BgSurface, colors.Success];
-            foreach (var hex in hexes)
+            foreach (var swatchColor in hexes
+                         .OfType<string>()
+                         .Where(static hex => !string.IsNullOrWhiteSpace(hex))
+                         .Select(static hex => Color.TryParse(hex, out var parsed) ? parsed : null)
+                         .OfType<Color>())
             {
-                if (!string.IsNullOrWhiteSpace(hex) && Color.TryParse(hex, out var swatchColor))
+                PreviewModalSwatchesLayout.Children.Add(new Border
                 {
-                    PreviewModalSwatchesLayout.Children.Add(new Border
+                    WidthRequest = 24,
+                    HeightRequest = 24,
+                    StrokeShape = new RoundRectangle
                     {
-                        WidthRequest = 24,
-                        HeightRequest = 24,
-                        StrokeShape = new RoundRectangle
-                        {
-                            CornerRadius = new CornerRadius(12)
-                        },
-                        BackgroundColor = swatchColor,
-                        Stroke = GetAppColor("BorderMedium", Colors.Gray),
-                        StrokeThickness = 1
-                    });
-                }
+                        CornerRadius = new CornerRadius(12)
+                    },
+                    BackgroundColor = swatchColor,
+                    Stroke = GetAppColor("BorderMedium", Colors.Gray),
+                    StrokeThickness = 1
+                });
             }
         }
 
@@ -99,27 +100,27 @@ public sealed partial class ThemeStoreView
     }
 
     private static ImageSource ResolvePreviewBannerSource(ThemeCardModel model) =>
-        !string.IsNullOrEmpty(model.LocalPreviewPath) && File.Exists(model.LocalPreviewPath)
-            ? LoadLocalImage(model.LocalPreviewPath)
-            : !string.IsNullOrEmpty(model.RemotePreviewUrl) &&
-              Uri.TryCreate(ThemeManager.ToMirrorUrl(model.RemotePreviewUrl), UriKind.Absolute, out var previewUri)
-                ? new UriImageSource
-                {
-                    Uri = previewUri,
-                    CachingEnabled = true,
-                    CacheValidity = TimeSpan.FromDays(14)
-                }
-                : !string.IsNullOrEmpty(model.LocalIconPath) && File.Exists(model.LocalIconPath)
-                    ? LoadLocalImage(model.LocalIconPath)
-                    : !string.IsNullOrEmpty(model.RemoteIconUrl) &&
-                      Uri.TryCreate(ThemeManager.ToMirrorUrl(model.RemoteIconUrl), UriKind.Absolute, out var iconUri)
-                        ? new UriImageSource
-                        {
-                            Uri = iconUri,
-                            CachingEnabled = true,
-                            CacheValidity = TimeSpan.FromDays(14)
-                        }
-                        : "splash_logo.png";
+        TryLoadLocalImage(model.LocalPreviewPath)
+        ?? TryCreateRemoteImage(model.RemotePreviewUrl)
+        ?? TryLoadLocalImage(model.LocalIconPath)
+        ?? TryCreateRemoteImage(model.RemoteIconUrl)
+        ?? ImageSource.FromFile("splash_logo.png");
+
+    private static ImageSource? TryLoadLocalImage(string? path) =>
+        !string.IsNullOrEmpty(path) && File.Exists(path) ? LoadLocalImage(path) : null;
+
+    private static UriImageSource? TryCreateRemoteImage(string? url) =>
+        !string.IsNullOrEmpty(url) && Uri.TryCreate(ThemeManager.ToMirrorUrl(url), UriKind.Absolute, out var uri)
+            ? CreateCachedUriImageSource(uri)
+            : null;
+
+    private static UriImageSource CreateCachedUriImageSource(Uri uri) =>
+        new()
+        {
+            Uri = uri,
+            CachingEnabled = true,
+            CacheValidity = TimeSpan.FromDays(14)
+        };
 
     public async Task ClosePreviewModalAsync()
     {

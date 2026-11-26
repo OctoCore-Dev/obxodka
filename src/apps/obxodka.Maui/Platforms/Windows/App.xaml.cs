@@ -55,7 +55,10 @@ public sealed partial class App : MauiWinUIApplication
                 _ = ShowWindow(obxodka.App.MainWindowHandle, 9);
                 _ = SetForegroundWindow(obxodka.App.MainWindowHandle);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.LogWarning($"[WINUI] Ошибка вывода окна на передний план: {ex.Message}");
+            }
         }
 
         HandleIncomingActivation(args);
@@ -71,23 +74,23 @@ public sealed partial class App : MauiWinUIApplication
         try
         {
             if (args.Kind == ExtendedActivationKind.ToastNotification &&
-                args.Data is Windows.ApplicationModel.Activation.ToastNotificationActivatedEventArgs toastArgs)
+                args.Data is Windows.ApplicationModel.Activation.ToastNotificationActivatedEventArgs toastArgs &&
+                toastArgs.Argument.Contains("reconnect", StringComparison.Ordinal))
             {
-                if (toastArgs.Argument.Contains("reconnect"))
-                {
-                    PlatformServices.Notification.RequestReconnect();
-                }
+                PlatformServices.Notification.RequestReconnect();
             }
             else if (args.Kind == ExtendedActivationKind.Launch &&
-                     args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs)
+                     args.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launchArgs &&
+                     (launchArgs.Arguments.Contains("reconnect", StringComparison.Ordinal) ||
+                      launchArgs.Arguments.Contains("ToastActivated", StringComparison.Ordinal)))
             {
-                if (launchArgs.Arguments.Contains("reconnect") || launchArgs.Arguments.Contains("ToastActivated"))
-                {
-                    PlatformServices.Notification.RequestReconnect();
-                }
+                PlatformServices.Notification.RequestReconnect();
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[WINUI] Ошибка обработки активации: {ex.Message}");
+        }
     }
 
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
@@ -100,7 +103,10 @@ public sealed partial class App : MauiWinUIApplication
             var activatedArgs = AppInstance.GetCurrent().GetActivatedEventArgs();
             HandleIncomingActivation(activatedArgs);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarning($"[WINUI] Ошибка чтения аргументов запуска: {ex.Message}");
+        }
     }
 
     //глобальный перехват необработанных исключений пользовательского интерфейса
@@ -111,6 +117,9 @@ public sealed partial class App : MauiWinUIApplication
             AppLogger.LogError($"[WINUI UNHANDLED] {e.Exception.Message}", e.Exception);
             e.Handled = true;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[WINUI UNHANDLED FALLBACK] {ex.Message}");
+        }
     }
 }

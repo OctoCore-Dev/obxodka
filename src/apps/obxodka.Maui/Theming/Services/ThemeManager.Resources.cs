@@ -152,7 +152,7 @@ public sealed partial class ThemeManager
 
             if (primaryColor is not null)
             {
-                var stop2 = accentColor is not null && accentColor != primaryColor
+                var stop2 = accentColor != primaryColor
                     ? accentColor
                     : primaryColor.AddLuminosity(0.18f);
                 var gradStops = new GradientStopCollection
@@ -529,7 +529,7 @@ public sealed partial class ThemeManager
                 new GradientStop(surfaceWithAlpha, 0.0f),
                 new GradientStop(surfaceWithAlpha.AddLuminosity(0.06f), 1.0f)
             };
-            if (hasCustomTheme && ActiveTheme?.Core.Gradients?.SurfaceGradient?.Stops is { Count: >= 2 } customSurfaceStops)
+            if (ActiveTheme?.Core.Gradients?.SurfaceGradient?.Stops is { Count: >= 2 } customSurfaceStops)
             {
                 surfaceGradStops.Clear();
                 for (var i = 0; i < customSurfaceStops.Count; i++)

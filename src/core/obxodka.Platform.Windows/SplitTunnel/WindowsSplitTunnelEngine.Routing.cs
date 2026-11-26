@@ -15,13 +15,7 @@ internal static partial class WindowsSplitTunnelEngine
             MemoryMarshal.Write(ipBytes, in ipUint);
             var ipStr = new IPAddress(ipBytes).ToString();
 
-            var stillValid = customIps.Contains(ipStr) ||
-                             customIps.Contains(reason) ||
-                             policy.BypassAllRuTlds && (reason.StartsWith("Auto-Bypass RU", StringComparison.Ordinal) ||
-                                                        reason == "Tier-1 RU Supernet") ||
-                             policy.BypassRemoteManagement && reason == "Сессия удалённого доступа" ||
-                             reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsProcessBypassed(reason, reason) ||
-                             !reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && policy.IsDomainBypassed(reason);
+            var stillValid = IsPinnedRouteStillValid(ipStr, reason, customIps, policy);
 
             if (!stillValid)
             {
@@ -128,10 +122,10 @@ internal static partial class WindowsSplitTunnelEngine
     //внутренняя очистка маршрутов и сброс состояния
     private static void CleanupAllRoutesInternal()
     {
-        foreach (var kvp in s_pinnedRoutes)
+        var rows = s_pinnedRoutes.Values.ToArray();
+        for (var i = 0; i < rows.Length; i++)
         {
-            var row = kvp.Value;
-            _ = Win32NetworkHelper.DeleteIpForwardEntry(ref row);
+            _ = Win32NetworkHelper.DeleteIpForwardEntry(ref rows[i]);
         }
 
         s_pinnedRoutes.Clear();
@@ -139,5 +133,30 @@ internal static partial class WindowsSplitTunnelEngine
         s_checkedUdpFlows.Clear();
         s_portCache.Clear();
         Policy.ClearActiveRoutes();
+    }
+
+    //проверка актуальности закрепленного физического маршрута по текущей политике
+    private static bool IsPinnedRouteStillValid(string ipStr, string reason, HashSet<string> customIps, SplitTunnelPolicy policy)
+    {
+        if (customIps.Contains(ipStr) || customIps.Contains(reason))
+        {
+            return true;
+        }
+
+        if (policy.BypassAllRuTlds &&
+            (reason.StartsWith("Auto-Bypass RU", StringComparison.Ordinal) || reason == "Tier-1 RU Supernet"))
+        {
+            return true;
+        }
+
+        if (policy.BypassRemoteManagement && reason == "Сессия удалённого доступа")
+        {
+            return true;
+        }
+
+        var isProcess = reason.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+        return isProcess
+            ? policy.IsProcessBypassed(reason, reason)
+            : policy.IsDomainBypassed(reason);
     }
 }

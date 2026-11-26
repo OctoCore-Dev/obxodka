@@ -459,13 +459,11 @@ internal static class AndroidBackgroundVpnController
         try
         {
             var (success, servers, _) = await apiService.GetServersAsync().ConfigureAwait(false);
-            if (!success || servers is null || servers.Count == 0)
+            if ((!success || servers is null || servers.Count == 0) &&
+                !string.Equals(AppConfig.ApiBaseUrl, AppConfig.DefaultApiBaseUrl, StringComparison.OrdinalIgnoreCase))
             {
-                if (!string.Equals(AppConfig.ApiBaseUrl, AppConfig.DefaultApiBaseUrl, StringComparison.OrdinalIgnoreCase))
-                {
-                    AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-                    (success, servers, _) = await apiService.GetServersAsync().ConfigureAwait(false);
-                }
+                AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+                (success, servers, _) = await apiService.GetServersAsync().ConfigureAwait(false);
             }
 
             if (success && servers is { Count: > 0 })

@@ -253,9 +253,8 @@ public sealed partial class AuthView : IAdaptivePage
         }
 
         DomainSuggestionsList.Children.Clear();
-        foreach (var domain in matches)
+        foreach (var fullEmail in matches.Select(domain => $"{localPart}@{domain}"))
         {
-            var fullEmail = $"{localPart}@{domain}";
             var btn = new Button
             {
                 Text = fullEmail,

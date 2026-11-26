@@ -98,6 +98,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException
                                       or AuthenticationException)
         {
+            //внешний узел может быть недоступен в изолированной тестовой сети
         }
     }
 
@@ -255,6 +256,7 @@ public sealed class DynamicProtocolAndConnectivityTests
         catch (Exception e) when (e is HttpRequestException or IOException or SocketException or TimeoutException
                                       or OperationCanceledException)
         {
+            //внешний узел может быть недоступен в изолированной тестовой сети
         }
     }
 

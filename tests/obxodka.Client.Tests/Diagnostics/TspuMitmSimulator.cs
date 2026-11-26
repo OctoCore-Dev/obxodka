@@ -46,8 +46,9 @@ public sealed class TspuMitmSimulator : IAsyncDisposable
         {
             await _acceptLoop.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or ObjectDisposedException)
         {
+            //остановка фонового цикла симулятора при завершении теста
         }
 
         _cts.Dispose();
@@ -103,8 +104,9 @@ public sealed class TspuMitmSimulator : IAsyncDisposable
             {
                 await Task.WhenAll(upTask, downTask).WaitAsync(TimeSpan.FromMilliseconds(200), CancellationToken.None).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or SocketException or IOException or ObjectDisposedException)
             {
+                //фоновые задачи прокси уже прерваны при закрытии тестового соединения
             }
         }
     }
@@ -131,8 +133,9 @@ public sealed class TspuMitmSimulator : IAsyncDisposable
                     {
                         dst.Shutdown(SocketShutdown.Send);
                     }
-                    catch
+                    catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
                     {
+                        //сокет получателя уже закрыт
                     }
 
                     break;
@@ -178,6 +181,7 @@ public sealed class TspuMitmSimulator : IAsyncDisposable
         }
         catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
         {
+            //разрыв соединения в симуляторе тспу
         }
         finally
         {

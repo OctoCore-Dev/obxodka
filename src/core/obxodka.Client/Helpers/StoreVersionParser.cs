@@ -61,12 +61,17 @@ public static partial class StoreVersionParser
                 where match.Success
                 let hash = match.Groups[1].Value.ToLowerInvariant()
                 let file = match.Groups[2].Value
-                where !string.IsNullOrWhiteSpace(targetFileName) && (file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
-                                                                     targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)) ||
-                      string.IsNullOrWhiteSpace(targetFileName) && (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                                                                    file.Contains("Setup", StringComparison.OrdinalIgnoreCase))
+                where IsMatchingChecksumFile(file, targetFileName)
                 select hash).FirstOrDefault();
     }
+
+    //проверка соответствия имени файла в контрольных суммах целевому установщику
+    private static bool IsMatchingChecksumFile(string file, string? targetFileName) =>
+        !string.IsNullOrWhiteSpace(targetFileName)
+            ? file.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
+              targetFileName.Contains(file, StringComparison.OrdinalIgnoreCase)
+            : file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+              file.Contains("Setup", StringComparison.OrdinalIgnoreCase);
 
     //очистка текста релиза от технических хешей sha256 и служебных секций
     public static string? CleanReleaseNotes(string? body)

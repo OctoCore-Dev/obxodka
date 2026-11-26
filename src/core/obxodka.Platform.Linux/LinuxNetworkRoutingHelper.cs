@@ -9,24 +9,10 @@ public static class LinuxNetworkRoutingHelper
     public const string DefaultResolvBackupPath = "/run/obxodka-resolv.conf.bak";
 
     //валидация имени сетевого интерфейса linux (максимум 15 символов, безопасный набор)
-    public static bool IsValidInterfaceName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name) || name.Length > 15)
-        {
-            return false;
-        }
-
-        foreach (var ch in name)
-        {
-            var ok = char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-' or '.';
-            if (!ok)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    public static bool IsValidInterfaceName(string? name) =>
+        !string.IsNullOrWhiteSpace(name) &&
+        name.Length <= 15 &&
+        name.All(static ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-' or '.');
 
     //разбор вывода команды ip -4 route show default для определения шлюза и физического интерфейса
     public static bool TryParseDefaultRoute(string? ipRouteOutput, out string? gateway, out string interfaceName)
@@ -131,12 +117,11 @@ public static class LinuxNetworkRoutingHelper
     {
         var sb = new StringBuilder();
         _ = sb.AppendLine(ResolvConfMarker);
-        foreach (var dns in dnsServers)
+        foreach (var ip in dnsServers
+                     .Select(static dns => IPAddress.TryParse(dns, out var parsed) ? parsed : null)
+                     .OfType<IPAddress>())
         {
-            if (IPAddress.TryParse(dns, out var ip))
-            {
-                _ = sb.Append("nameserver ").AppendLine(ip.ToString());
-            }
+            _ = sb.Append("nameserver ").AppendLine(ip.ToString());
         }
 
         _ = sb.AppendLine("options edns0 trust-ad");

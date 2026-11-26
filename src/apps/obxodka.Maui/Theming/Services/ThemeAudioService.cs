@@ -122,18 +122,15 @@ public static partial class ThemeAudioService
 
             if (s_sfxPool != null)
             {
-                foreach (var player in s_sfxPool)
+                foreach (var player in s_sfxPool.Where(static player => player is not null))
                 {
-                    if (player != null)
+                    try
                     {
-                        try
-                        {
-                            player.Volume = clamped;
-                        }
-                        catch
-                        {
-                            //подавление ошибок медиаплеера
-                        }
+                        player!.Volume = clamped;
+                    }
+                    catch
+                    {
+                        //подавление ошибок медиаплеера
                     }
                 }
             }

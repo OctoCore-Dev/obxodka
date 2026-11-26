@@ -267,6 +267,7 @@ public sealed partial class OctopusEngine
                     }
                     catch (ObjectDisposedException)
                     {
+                        //токен уже освобожден при остановке предыдущего шага
                     }
                 }
             }
@@ -417,12 +418,9 @@ public sealed partial class OctopusEngine
                 dnsCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
                 var resolved = await ApiService.ResolveAllHostsAntiPoisonAsync(step.Host, dnsCts.Token).ConfigureAwait(false);
                 RegisterServerIpAddresses(resolved);
-                foreach (var addr in resolved)
+                foreach (var addr in resolved.Where(static addr => addr.AddressFamily == AddressFamily.InterNetwork))
                 {
-                    if (addr.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        _ = ips.Add(addr.ToString());
-                    }
+                    _ = ips.Add(addr.ToString());
                 }
             }
             catch (Exception ex) when (ex is SocketException or OperationCanceledException)
@@ -464,18 +462,14 @@ public sealed partial class OctopusEngine
             return;
         }
 
-        List<string> v4Strings = [with(edgeAddresses.Length)];
-        foreach (var addr in edgeAddresses)
-        {
-            if (addr.AddressFamily == AddressFamily.InterNetwork)
-            {
-                v4Strings.Add(addr.ToString());
-            }
-        }
+        var v4Strings = edgeAddresses
+            .Where(static addr => addr.AddressFamily == AddressFamily.InterNetwork)
+            .Select(static addr => addr.ToString())
+            .ToArray();
 
-        if (v4Strings.Count > 0)
+        if (v4Strings.Length > 0)
         {
-            await hook([.. v4Strings], ct).ConfigureAwait(false);
+            await hook(v4Strings, ct).ConfigureAwait(false);
         }
     }
 
@@ -861,6 +855,7 @@ public sealed partial class OctopusEngine
                         catch (Exception disposeEx) when (disposeEx is OperationCanceledException or ObjectDisposedException
                                                               or TimeoutException or IOException or SocketException)
                         {
+                            //игнорируем сетевую ошибку при освобождении отклоненного кандидата
                         }
 
                         candidateTransport = null;
@@ -882,6 +877,7 @@ public sealed partial class OctopusEngine
                 catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException
                                                or SocketException)
                 {
+                    //игнорируем ошибку освобождения старого транспорта после переключения
                 }
             }
 

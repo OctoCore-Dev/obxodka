@@ -138,24 +138,18 @@ public sealed partial class DevicesView : IAdaptivePage
             ? bgColor
             : Color.FromArgb("#161622");
 
-        foreach (var child in DevicesGrid.Children)
+        foreach (var card in DevicesGrid.Children.OfType<DeviceCardView>())
         {
-            if (child is DeviceCardView card)
-            {
-                card.UpdateCardOpacity(bgSurface);
-            }
+            card.UpdateCardOpacity(bgSurface);
         }
     }
 
     //построение плитки устройств с текущим во главе
     private void RebuildDevicesGrid()
     {
-        foreach (var child in DevicesGrid.Children)
+        foreach (var oldCard in DevicesGrid.Children.OfType<DeviceCardView>())
         {
-            if (child is DeviceCardView oldCard)
-            {
-                oldCard.RemoveClicked -= OnRemoveDeviceClickedAsync;
-            }
+            oldCard.RemoveClicked -= OnRemoveDeviceClickedAsync;
         }
 
         DevicesGrid.Children.Clear();

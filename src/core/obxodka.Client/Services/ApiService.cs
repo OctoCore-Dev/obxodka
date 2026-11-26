@@ -270,9 +270,8 @@ public sealed class ApiService(HttpClient client)
         var dohResolvers = DnsDefaults.DohResolvers;
         List<IPAddress> results = [with(4)];
 
-        foreach (var t in dohResolvers)
+        foreach (var dohUrl in dohResolvers.Select(t => DnsDefaults.BuildDohQueryUrl(t, host)))
         {
-            var dohUrl = DnsDefaults.BuildDohQueryUrl(t, host);
             try
             {
                 using var dohCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

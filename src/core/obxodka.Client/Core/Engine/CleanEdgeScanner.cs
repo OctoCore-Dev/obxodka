@@ -184,6 +184,7 @@ internal static class CleanEdgeScanner
                             }
                             catch (ObjectDisposedException)
                             {
+                                //токен сканирования уже освобожден после завершения гонки
                             }
                         }
                     }
@@ -321,12 +322,9 @@ internal static class CleanEdgeScanner
         List<IPAddress> throttledFallback = [];
         var seen = new HashSet<IPAddress>();
 
-        foreach (var ip in scannedClean)
+        foreach (var ip in scannedClean.Where(ip => !EdgeEndpointHealth.IsUnhealthy(ip.ToString()) && seen.Add(ip)))
         {
-            if (!EdgeEndpointHealth.IsUnhealthy(ip.ToString()) && seen.Add(ip))
-            {
-                primary.Add(ip);
-            }
+            primary.Add(ip);
         }
 
         foreach (var ip in EdgeEndpointHealth.FilterAndRotate(dnsIps))

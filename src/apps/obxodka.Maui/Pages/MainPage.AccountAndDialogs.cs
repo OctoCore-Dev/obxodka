@@ -160,7 +160,6 @@ public sealed partial class MainPage
                 });
 
                 if (retryCount < 3 &&
-                    _activeTab != "auth" &&
                     Volatile.Read(ref _forceLogoutActive) == 0 &&
                     !ApiService.IsUnauthorizedPending &&
                     await AuthManager.GetAuthHeaderAsync().ConfigureAwait(false) is not null)

@@ -652,12 +652,11 @@ public sealed partial class ObxodkaStreamTransport
             }
         }
 
-        foreach (var kvp in _pendingMtuSyncAcks)
+        foreach (var tcs in _pendingMtuSyncAcks.Keys
+                     .Select(key => _pendingMtuSyncAcks.TryRemove(key, out var pending) ? pending : null)
+                     .Where(static pending => pending is not null))
         {
-            if (_pendingMtuSyncAcks.TryRemove(kvp.Key, out var tcs))
-            {
-                _ = tcs.TrySetCanceled();
-            }
+            _ = tcs!.TrySetCanceled();
         }
     }
 }

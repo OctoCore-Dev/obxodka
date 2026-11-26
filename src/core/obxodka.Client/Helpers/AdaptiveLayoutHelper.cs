@@ -155,7 +155,7 @@ public static class AdaptiveLayoutHelper
         var minGraph = isShort ? 50.0 : 75.0;
         var graphHeight = Math.Clamp(Math.Round(flex - buttonSize - 10.0), minGraph, 180.0);
 
-        if (!(buttonSize + graphHeight + fixedOverhead > availableH))
+        if (buttonSize + graphHeight + fixedOverhead <= availableH)
         {
             return (buttonSize, graphHeight, bottomNavReserve);
         }
