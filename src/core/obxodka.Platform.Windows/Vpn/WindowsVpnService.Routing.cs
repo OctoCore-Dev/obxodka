@@ -155,7 +155,7 @@ public sealed partial class WindowsVpnService
         try
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var oldRecoveryFile = Path.Combine(appData, "Obxodka", "vpn_recovery.json");
+            var oldRecoveryFile = Path.Join(appData, "Obxodka", "vpn_recovery.json");
             if (File.Exists(oldRecoveryFile))
             {
                 File.Delete(oldRecoveryFile);

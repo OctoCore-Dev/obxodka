@@ -100,15 +100,15 @@ public sealed partial class WindowsVpnService
         return null;
     }
 
-    private static string GetSmhnrBackupPath() => Path.Combine(GetAppDataFolderPath(), "smhnr_backup.txt");
+    private static string GetSmhnrBackupPath() => Path.Join(GetAppDataFolderPath(), "smhnr_backup.txt");
 
-    private static string GetDnsBackupPath() => Path.Combine(GetAppDataFolderPath(), "dns_backup.txt");
+    private static string GetDnsBackupPath() => Path.Join(GetAppDataFolderPath(), "dns_backup.txt");
 
-    private static string GetVpnDnsLeakBackupPath() => Path.Combine(GetAppDataFolderPath(), "vpn_dns_leak_backup.txt");
+    private static string GetVpnDnsLeakBackupPath() => Path.Join(GetAppDataFolderPath(), "vpn_dns_leak_backup.txt");
 
     private static string GetAppDataFolderPath()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
+        var dir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
         _ = Directory.CreateDirectory(dir);
         return dir;
     }

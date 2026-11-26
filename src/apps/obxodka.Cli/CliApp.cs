@@ -1134,7 +1134,7 @@ public sealed class CliApp : IDisposable
     //установка или вывод постоянного алиаса obx для всех окон powershell / bash / zsh
     private static int HandleAlias(CliParsedCommand cmd)
     {
-        var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "obxodka.exe" : "obxodka");
+        var exePath = Environment.ProcessPath ?? Path.Join(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "obxodka.exe" : "obxodka");
         if (OperatingSystem.IsWindows())
         {
             var snippet = $"Set-Alias -Name obx -Value \"{exePath}\"\nSet-Alias -Name obxodka -Value \"{exePath}\"";
@@ -1143,8 +1143,8 @@ public sealed class CliApp : IDisposable
                 var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
                 string[] profiles =
                 [
-                    Path.Combine(docs, "PowerShell", "Microsoft.PowerShell_profile.ps1"),
-                    Path.Combine(docs, "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
+                    Path.Join(docs, "PowerShell", "Microsoft.PowerShell_profile.ps1"),
+                    Path.Join(docs, "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
                 ];
 
                 foreach (var profile in profiles)

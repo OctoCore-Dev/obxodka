@@ -49,7 +49,7 @@ public sealed class LinuxVpnService : ITunnelPlatformAdapter, IDisposable
                     name.StartsWith("nordlynx", StringComparison.OrdinalIgnoreCase) ||
                     name.StartsWith("tun", StringComparison.OrdinalIgnoreCase))
                 {
-                    var operPath = Path.Combine(dir, "operstate");
+                    var operPath = Path.Join(dir, "operstate");
                     var state = File.Exists(operPath) ? File.ReadAllText(operPath).Trim() : string.Empty;
                     if (state is "up" or "unknown")
                     {

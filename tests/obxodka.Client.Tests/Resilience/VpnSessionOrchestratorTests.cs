@@ -10,8 +10,9 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
 
     public VpnSessionOrchestratorTests()
     {
-        _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns((string?)null);
-        _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync((string?)null);
+        string? noConflict = null;
+        _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns(noConflict);
+        _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync(noConflict);
         _adapterMock.Setup(a => a.PreparePermissionsAndStartServiceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _adapterMock.Setup(a => a.CleanupBeforeConnectAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _adapterMock.Setup(a => a.PrepareBypassHostsAsync(It.IsAny<string[]>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -132,11 +133,10 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     [InlineData(TransportProtocolKind.ObxodkaXhttp)]
     public void ProtocolPipelineRegistry_BuiltInFactories_CreateDistinctTransports(TransportProtocolKind kind)
     {
-        var transport = ProtocolPipelineRegistry.CreateTransport(
+        using var transport = ProtocolPipelineRegistry.CreateTransport(
             new ProtocolRouteStep(kind, "127.0.0.1", 443, "example.com", false, false));
 
         Assert.NotNull(transport);
-        transport.Dispose();
     }
 
     [Theory]

@@ -152,7 +152,9 @@ public sealed partial class ThemeManager
 
             if (primaryColor is not null)
             {
-                var stop2 = accentColor ?? primaryColor.AddLuminosity(0.18f);
+                var stop2 = accentColor is not null && accentColor != primaryColor
+                    ? accentColor
+                    : primaryColor.AddLuminosity(0.18f);
                 var gradStops = new GradientStopCollection
                 {
                     new GradientStop(primaryColor, 0.0f),
@@ -310,7 +312,7 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "ErrorDim", errorColor.WithAlpha(0.15f));
             }
 
-            var purpleColor = accentColor ?? primaryColor ?? Color.FromArgb("#9F6FF0");
+            var purpleColor = accentColor ?? Color.FromArgb("#9F6FF0");
             SetResourceValue(appResources, "Purple", purpleColor);
             SetResourceValue(appResources, "PurpleDim", purpleColor.WithAlpha(0.20f));
             SetResourceValue(appResources, "PurpleLight", purpleColor.AddLuminosity(0.10f));

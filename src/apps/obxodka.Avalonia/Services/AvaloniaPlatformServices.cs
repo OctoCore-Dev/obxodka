@@ -16,14 +16,14 @@ internal static class AvaloniaStoragePaths
             string dir;
             if (OperatingSystem.IsWindows())
             {
-                dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Obxodka", "desktop");
+                dir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Obxodka", "desktop");
             }
             else
             {
                 var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
                 dir = !string.IsNullOrWhiteSpace(xdg)
-                    ? Path.Combine(xdg, "obxodka")
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "obxodka");
+                    ? Path.Join(xdg, "obxodka")
+                    : Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "obxodka");
             }
 
             _ = Directory.CreateDirectory(dir);
@@ -31,9 +31,9 @@ internal static class AvaloniaStoragePaths
         }
     }
 
-    public static string PreferencesPath => Path.Combine(ConfigDirectory, "preferences.json");
-    public static string SecretsPath => Path.Combine(ConfigDirectory, "secrets.json");
-    public static string SplitRulesPath => Path.Combine(ConfigDirectory, "split_rules.json");
+    public static string PreferencesPath => Path.Join(ConfigDirectory, "preferences.json");
+    public static string SecretsPath => Path.Join(ConfigDirectory, "secrets.json");
+    public static string SplitRulesPath => Path.Join(ConfigDirectory, "split_rules.json");
 }
 
 //файловое хранилище пользовательских настроек
@@ -57,9 +57,9 @@ internal sealed class AvaloniaPreferencesService : IPreferencesService
             try
             {
                 var t = typeof(T);
-                if (t == typeof(string))
+                if (raw is T stringVal)
                 {
-                    return (T)(object)raw;
+                    return stringVal;
                 }
 
                 if (t == typeof(bool) && bool.TryParse(raw, out var b))

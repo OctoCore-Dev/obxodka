@@ -128,7 +128,7 @@ public sealed partial class ThemeManager
         if (!string.IsNullOrEmpty(clickSound) && !string.IsNullOrEmpty(connectSound) &&
             string.Equals(clickSound, connectSound, StringComparison.OrdinalIgnoreCase))
         {
-            var altClick = Path.Combine(folderPath, "assets", "sounds", "click.wav");
+            var altClick = Path.Join(folderPath, "assets", "sounds", "click.wav");
             clickSound = File.Exists(altClick) ? altClick : null;
         }
         else if (!string.IsNullOrEmpty(clickSound) && File.Exists(clickSound))
@@ -137,7 +137,7 @@ public sealed partial class ThemeManager
             {
                 if (new FileInfo(clickSound).Length > 90000)
                 {
-                    var altClick = Path.Combine(folderPath, "assets", "sounds", "click.wav");
+                    var altClick = Path.Join(folderPath, "assets", "sounds", "click.wav");
                     clickSound = File.Exists(altClick) && new FileInfo(altClick).Length <= 90000 ? altClick : null;
                 }
             }

@@ -11,9 +11,9 @@ public sealed partial class WindowsNotificationService : INotificationService
 {
     //держим ссылку на активный toast, чтобы gc не отписал обработчик activated
     // ReSharper disable once NotAccessedField.Local
-    private static ToastNotification? s_activeToast;
-    private static long s_lastNotificationTicks;
-    private static long s_lastReconnectTicks;
+    private ToastNotification? _activeToast;
+    private long _lastNotificationTicks;
+    private long _lastReconnectTicks;
     private static bool s_aumidConfigured;
 
     public event Action? ReconnectRequested;
@@ -22,12 +22,12 @@ public sealed partial class WindowsNotificationService : INotificationService
     public void RequestReconnect()
     {
         var now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref s_lastReconnectTicks) < 2000)
+        if (now - Interlocked.Read(ref _lastReconnectTicks) < 2000)
         {
             return;
         }
 
-        _ = Interlocked.Exchange(ref s_lastReconnectTicks, now);
+        _ = Interlocked.Exchange(ref _lastReconnectTicks, now);
 
         if (App.MainWindowHandle != IntPtr.Zero)
         {
@@ -49,12 +49,12 @@ public sealed partial class WindowsNotificationService : INotificationService
     public void ShowUnexpectedDisconnectNotification()
     {
         var now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref s_lastNotificationTicks) < 3000)
+        if (now - Interlocked.Read(ref _lastNotificationTicks) < 3000)
         {
             return;
         }
 
-        _ = Interlocked.Exchange(ref s_lastNotificationTicks, now);
+        _ = Interlocked.Exchange(ref _lastNotificationTicks, now);
 
         try
         {
@@ -77,7 +77,7 @@ public sealed partial class WindowsNotificationService : INotificationService
             xmlDoc.LoadXml(xml);
             var toast = new ToastNotification(xmlDoc);
             AttachToastHandlers(toast);
-            s_activeToast = toast;
+            _activeToast = toast;
 
             ToastNotifier notifier;
             if (IsPackaged())
@@ -211,7 +211,7 @@ public sealed partial class WindowsNotificationService : INotificationService
             }
 
             var programsPath = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-            var shortcutPath = Path.Combine(programsPath, "Obxodka.lnk");
+            var shortcutPath = Path.Join(programsPath, "Obxodka.lnk");
             if (!File.Exists(shortcutPath) && Environment.ProcessPath is { } targetExe)
             {
                 CreateStartMenuShortcut(shortcutPath, targetExe);

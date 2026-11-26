@@ -65,17 +65,16 @@ public sealed partial class MainPage
         var prevCts = Interlocked.Exchange(ref _vpnCts, null);
         if (prevCts is not null)
         {
-            try
+            using (prevCts)
             {
-                prevCts.Cancel();
-            }
-            catch
-            {
-                // ignored
-            }
-            finally
-            {
-                prevCts.Dispose();
+                try
+                {
+                    prevCts.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    //игнорируем уже освобожденный токен
+                }
             }
         }
 
@@ -313,7 +312,7 @@ public sealed partial class MainPage
                     // ignored
                 }
 
-                if (willPlayVideo && e.BackgroundVideoPath is not null)
+                if (willPlayVideo)
                 {
                     try
                     {
@@ -323,7 +322,7 @@ public sealed partial class MainPage
                         ThemeBackgroundVideo.Scale = 1.0;
                         ThemeBackgroundVideo.TranslationX = 0;
                         ThemeBackgroundVideo.TranslationY = 0;
-                        ThemeBackgroundVideo.Source = MediaSource.FromFile(e.BackgroundVideoPath);
+                        ThemeBackgroundVideo.Source = MediaSource.FromFile(e.BackgroundVideoPath!);
                         ThemeBackgroundVideo.IsVisible = true;
                         if (_isWindowActive)
                         {

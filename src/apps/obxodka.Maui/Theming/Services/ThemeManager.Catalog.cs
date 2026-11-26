@@ -16,7 +16,7 @@ public sealed partial class ThemeManager
 
     public Task<ThemeCatalogResponse> LoadCatalogAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(FileSystem.AppDataDirectory, "theme_catalog_cache.json");
+        var cachePath = Path.Join(FileSystem.AppDataDirectory, "theme_catalog_cache.json");
         return ThemeCatalogClient.LoadCatalogAsync(
             cachePath,
             forceRefresh,

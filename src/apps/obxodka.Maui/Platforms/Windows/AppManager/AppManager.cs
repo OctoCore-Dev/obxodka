@@ -214,7 +214,7 @@ public sealed partial class AppManager : IAppManager
             SaveBypassedPackages(bypassed);
         }
 
-        var iconsDir = Path.Combine(FileSystem.Current.CacheDirectory, "AppIcons");
+        var iconsDir = Path.Join(FileSystem.Current.CacheDirectory, "AppIcons");
         _ = Directory.CreateDirectory(iconsDir);
         var iconPath = GetOrExtractIcon(exePath, iconsDir);
 

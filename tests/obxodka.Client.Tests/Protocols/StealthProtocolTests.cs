@@ -1011,7 +1011,7 @@ public sealed class StealthProtocolTests
     [InlineData("UPPERCASE_ID")]
     public void ThemeStorageServiceResolveSafeThemeDirectoryRejectsTraversalAndInvalidIds(string? unsafeId)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        var tempRoot = Path.Join(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
         try
         {
             var storage = new ThemeStorageService(tempRoot);
@@ -1030,7 +1030,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void ThemeStorageServiceResolveSafeThemeDirectoryAcceptsValidKebabCaseId()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        var tempRoot = Path.Join(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
         try
         {
             var storage = new ThemeStorageService(tempRoot);

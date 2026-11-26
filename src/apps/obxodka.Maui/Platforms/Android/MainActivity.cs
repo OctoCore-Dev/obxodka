@@ -226,8 +226,8 @@ public sealed class MainActivity : MauiAppCompatActivity
 
                         if (accepted && !IsFinishing && !IsDestroyed)
                         {
-                            using var intent = new Intent(Settings.ActionRequestIgnoreBatteryOptimizations)
-                                .SetData(Uri.Parse($"package:{pkgName}"));
+                            using var intent = new Intent(Settings.ActionRequestIgnoreBatteryOptimizations);
+                            _ = intent.SetData(Uri.Parse($"package:{pkgName}"));
                             StartActivity(intent);
                         }
                     }

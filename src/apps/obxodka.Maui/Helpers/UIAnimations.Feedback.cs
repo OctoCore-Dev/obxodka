@@ -77,7 +77,7 @@ public static partial class UiAnimations
 
     public static async Task HideErrorLabelAsync(VisualElement? label)
     {
-        if (label is null || label.Opacity == 0)
+        if (label is null || label.Opacity <= 0.001)
         {
             return;
         }

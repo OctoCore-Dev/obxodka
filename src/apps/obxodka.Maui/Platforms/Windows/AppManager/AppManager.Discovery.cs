@@ -40,7 +40,7 @@ public sealed partial class AppManager
 
             DiscoverFromUserPrograms(discovered);
 
-            var iconsDir = Path.Combine(FileSystem.Current.CacheDirectory, "AppIcons");
+            var iconsDir = Path.Join(FileSystem.Current.CacheDirectory, "AppIcons");
             _ = Directory.CreateDirectory(iconsDir);
 
             var apps = new List<AppInfoItem>(discovered.Count);
@@ -231,26 +231,25 @@ public sealed partial class AppManager
         {
             foreach (var proc in Process.GetProcesses())
             {
-                try
+                using (proc)
                 {
-                    if (proc.Id <= 4)
+                    try
                     {
-                        continue;
-                    }
+                        if (proc.Id <= 4)
+                        {
+                            continue;
+                        }
 
-                    var path = GetProcessExecutablePath(proc.Id);
-                    if (!string.IsNullOrWhiteSpace(path))
-                    {
-                        TryRegisterCandidate(discovered, path, null);
+                        var path = GetProcessExecutablePath(proc.Id);
+                        if (!string.IsNullOrWhiteSpace(path))
+                        {
+                            TryRegisterCandidate(discovered, path, null);
+                        }
                     }
-                }
-                catch
-                {
-                    // ignored
-                }
-                finally
-                {
-                    proc.Dispose();
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                    {
+                        //игнорируем системные процессы без доступа
+                    }
                 }
             }
         }
@@ -492,7 +491,7 @@ public sealed partial class AppManager
     //сканирование пользовательских программ без прав администратора в localappdata\programs
     private static void DiscoverFromUserPrograms(Dictionary<string, (string FriendlyName, string ExePath)> discovered)
     {
-        var userPrograms = Path.Combine(
+        var userPrograms = Path.Join(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs");
 

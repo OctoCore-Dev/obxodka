@@ -560,17 +560,16 @@ internal static class AndroidBackgroundVpnController
             return;
         }
 
-        try
+        using (prev)
         {
-            prev.Cancel();
-        }
-        catch
-        {
-            //игнорируем ошибку отмены
-        }
-        finally
-        {
-            prev.Dispose();
+            try
+            {
+                prev.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                //игнорируем уже освобожденный токен
+            }
         }
     }
 

@@ -286,14 +286,16 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             var oldSessionCts = Interlocked.Exchange(ref _sessionCts, activeCts);
             if (oldSessionCts is not null)
             {
-                try
+                using (oldSessionCts)
                 {
-                    await oldSessionCts.CancelAsync().ConfigureAwait(false);
-                    oldSessionCts.Dispose();
-                }
-                catch
-                {
-                    // ignored
+                    try
+                    {
+                        await oldSessionCts.CancelAsync().ConfigureAwait(false);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        //игнорируем уже освобожденный токен
+                    }
                 }
             }
 
@@ -1064,17 +1066,16 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         var cts = Interlocked.Exchange(ref _sessionCts, null);
         if (cts is not null)
         {
-            try
+            using (cts)
             {
-                await cts.CancelAsync().ConfigureAwait(false);
-            }
-            catch
-            {
-                // ignored
-            }
-            finally
-            {
-                cts.Dispose();
+                try
+                {
+                    await cts.CancelAsync().ConfigureAwait(false);
+                }
+                catch (ObjectDisposedException)
+                {
+                    //игнорируем уже освобожденный токен
+                }
             }
         }
     }

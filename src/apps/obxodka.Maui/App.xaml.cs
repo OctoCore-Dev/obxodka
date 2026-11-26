@@ -41,7 +41,7 @@ internal sealed partial class App
         {
             try
             {
-                var cacheFile = Path.Combine(FileSystem.AppDataDirectory, "adblock_rules.txt");
+                var cacheFile = Path.Join(FileSystem.AppDataDirectory, "adblock_rules.txt");
                 _ = await DnsAdBlockRuleManager.LoadFromCacheAsync(cacheFile);
 
                 var lastSyncTicks = Preferences.Default.Get(AppPreferenceKeys.AdblockLastSyncTicks, 0L);
