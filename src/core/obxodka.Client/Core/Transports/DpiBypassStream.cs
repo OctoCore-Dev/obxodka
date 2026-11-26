@@ -155,7 +155,9 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
                 _innerStream.Flush();
                 if (delay1 > 0)
                 {
+#pragma warning disable RS0030 //синхронный путь записи выдерживает паузу сегментации clienthello для обхода dpi
                     Thread.Sleep(delay1);
+#pragma warning restore RS0030
                 }
 
                 _innerStream.Write(buffer[split1..]);
@@ -239,7 +241,9 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
             WriteSingleTlsRecordSync(verMajor, verMinor, payload[r1..p1]);
             if (d1 > 0)
             {
+#pragma warning disable RS0030 //синхронный путь записи выдерживает паузу сегментации tls-записей для обхода dpi
                 Thread.Sleep(d1);
+#pragma warning restore RS0030
             }
 
             WriteSingleTlsRecordSync(verMajor, verMinor, payload[p1..]);
@@ -251,7 +255,9 @@ internal sealed class DpiBypassStream(Stream innerStream, int splitPosition = 0,
         WriteSingleTlsRecordSync(verMajor, verMinor, payload[..p1]);
         if (d1 > 0)
         {
+#pragma warning disable RS0030 //синхронный путь записи выдерживает паузу сегментации tls-записей для обхода dpi
             Thread.Sleep(d1);
+#pragma warning restore RS0030
         }
 
         WriteSingleTlsRecordSync(verMajor, verMinor, payload[p1..]);

@@ -110,7 +110,7 @@ public static class SafeThemeExtractor
                 _ = Directory.CreateDirectory(parentDir);
             }
 
-            await using var entryStream = await entry.OpenAsync(ct).ConfigureAwait(false);
+            using var entryStream = await entry.OpenAsync(ct).ConfigureAwait(false);
 
             //чтение заголовка файла для проверки magic-bytes
             var headerBytesRead = 0;
@@ -154,7 +154,7 @@ public static class SafeThemeExtractor
 
             try
             {
-                await using var fileStream =
+                using var fileStream =
                     new FileStream(destinationFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true);
                 await fileStream.WriteAsync(headerBuffer.AsMemory(0, headerBytesRead), ct).ConfigureAwait(false);
 

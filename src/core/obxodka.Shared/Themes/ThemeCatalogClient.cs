@@ -74,12 +74,15 @@ public static class ThemeCatalogClient
                     .ConfigureAwait(false);
                 if (res.IsSuccessStatusCode)
                 {
-                    await using var stream = await res.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-                    var catalog = await JsonSerializer.DeserializeAsync(stream, ThemeJsonContext.Default.ThemeCatalogResponse, cts.Token)
-                        .ConfigureAwait(false);
-                    if (catalog != null && catalog.Themes.Count > 0)
+                    var stream = await res.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+                    await using (stream.ConfigureAwait(false))
                     {
-                        return catalog;
+                        var catalog = await JsonSerializer.DeserializeAsync(stream, ThemeJsonContext.Default.ThemeCatalogResponse, cts.Token)
+                            .ConfigureAwait(false);
+                        if (catalog != null && catalog.Themes.Count > 0)
+                        {
+                            return catalog;
+                        }
                     }
                 }
             }

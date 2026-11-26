@@ -217,7 +217,9 @@ public sealed partial class MainPage : IDisposable
             {
                 await Task.Delay(350).ConfigureAwait(false);
                 System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+#pragma warning disable RS0030 //явное уплотнение loh после выгрузки тяжелых ресурсов темы
                 GC.Collect(2, GCCollectionMode.Optimized, false);
+#pragma warning restore RS0030
             }
             catch
             {

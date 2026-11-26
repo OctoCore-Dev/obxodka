@@ -1,0 +1,197 @@
+is_global = true
+# Единый источник истины (SSOT) для уровней серьёзности ВСЕХ анализаторов Roslyn и .NET.
+# global_level = 200 гарантирует приоритет над родительским .globalconfig (например, уровня 100) без предупреждения MultipleGlobalAnalyzerKeys.
+global_level = 200
+
+# ==============================================================================
+# 1. ЗАПРЕЩЁННЫЕ API (BannedSymbols.txt) И ЦЕЛОСТНОСТЬ NUGET
+# ==============================================================================
+dotnet_diagnostic.RS0030.severity = error
+dotnet_diagnostic.RS0031.severity = error
+dotnet_diagnostic.NU1605.severity = error
+dotnet_diagnostic.NU1507.severity = error
+
+# ==============================================================================
+# 2. БЕЗОПАСНОСТЬ И КРИПТОГРАФИЯ (ЖЁСТКИЕ ОШИБКИ — БЕЗ КОМПРОМИССОВ)
+# ==============================================================================
+dotnet_diagnostic.CA2100.severity = error
+dotnet_diagnostic.CA2101.severity = error
+dotnet_diagnostic.CA2153.severity = error
+dotnet_diagnostic.CA2300.severity = error
+dotnet_diagnostic.CA2301.severity = error
+dotnet_diagnostic.CA2310.severity = error
+dotnet_diagnostic.CA2315.severity = error
+dotnet_diagnostic.CA2326.severity = error
+dotnet_diagnostic.CA5350.severity = error
+dotnet_diagnostic.CA5351.severity = error
+dotnet_diagnostic.CA5358.severity = error
+dotnet_diagnostic.CA5359.severity = error
+dotnet_diagnostic.CA5360.severity = error
+dotnet_diagnostic.CA5361.severity = error
+dotnet_diagnostic.CA5364.severity = error
+dotnet_diagnostic.CA5365.severity = error
+dotnet_diagnostic.CA5366.severity = error
+dotnet_diagnostic.CA5367.severity = error
+dotnet_diagnostic.CA5369.severity = error
+dotnet_diagnostic.CA5370.severity = error
+dotnet_diagnostic.CA5371.severity = error
+dotnet_diagnostic.CA5372.severity = error
+dotnet_diagnostic.CA5373.severity = error
+dotnet_diagnostic.CA5374.severity = error
+dotnet_diagnostic.CA5378.severity = error
+dotnet_diagnostic.CA5379.severity = error
+dotnet_diagnostic.CA5380.severity = error
+dotnet_diagnostic.CA5381.severity = error
+dotnet_diagnostic.CA5384.severity = error
+dotnet_diagnostic.CA5385.severity = error
+dotnet_diagnostic.CA5386.severity = error
+dotnet_diagnostic.CA5387.severity = error
+dotnet_diagnostic.CA5388.severity = error
+dotnet_diagnostic.CA5389.severity = error
+dotnet_diagnostic.CA5390.severity = error
+dotnet_diagnostic.CA5392.severity = error
+dotnet_diagnostic.CA5393.severity = error
+dotnet_diagnostic.CA5394.severity = error
+dotnet_diagnostic.CA5397.severity = error
+dotnet_diagnostic.CA5398.severity = error
+dotnet_diagnostic.CA5400.severity = error
+dotnet_diagnostic.CA5401.severity = error
+dotnet_diagnostic.CA5402.severity = error
+dotnet_diagnostic.CA5403.severity = error
+
+# ==============================================================================
+# 3. НАДЁЖНОСТЬ, МНОГОПОТОЧНОСТЬ, РЕСУРСЫ И СОКЕТЫ (CA20xx / CA10xx / CA22xx)
+# ==============================================================================
+dotnet_diagnostic.CA1001.severity = error
+dotnet_diagnostic.CA1063.severity = warning
+dotnet_diagnostic.CA1065.severity = error
+dotnet_diagnostic.CA1416.severity = error
+dotnet_diagnostic.CA1417.severity = error
+dotnet_diagnostic.CA1508.severity = warning
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2002.severity = error
+dotnet_diagnostic.CA2007.severity = warning
+dotnet_diagnostic.CA2008.severity = warning
+dotnet_diagnostic.CA2009.severity = error
+dotnet_diagnostic.CA2011.severity = error
+dotnet_diagnostic.CA2012.severity = error
+dotnet_diagnostic.CA2013.severity = error
+dotnet_diagnostic.CA2014.severity = error
+dotnet_diagnostic.CA2015.severity = error
+dotnet_diagnostic.CA2016.severity = warning
+dotnet_diagnostic.CA2017.severity = error
+dotnet_diagnostic.CA2018.severity = error
+dotnet_diagnostic.CA2019.severity = error
+dotnet_diagnostic.CA2021.severity = error
+dotnet_diagnostic.CA2022.severity = error
+dotnet_diagnostic.CA2200.severity = error
+dotnet_diagnostic.CA2208.severity = warning
+dotnet_diagnostic.CA2211.severity = error
+dotnet_diagnostic.CA2213.severity = error
+dotnet_diagnostic.CA2215.severity = error
+dotnet_diagnostic.CA2219.severity = error
+dotnet_diagnostic.CA2241.severity = error
+dotnet_diagnostic.CA2242.severity = error
+dotnet_diagnostic.CA2244.severity = error
+dotnet_diagnostic.CA2245.severity = error
+dotnet_diagnostic.CA2246.severity = error
+dotnet_diagnostic.CA2247.severity = warning
+dotnet_diagnostic.CA2248.severity = error
+dotnet_diagnostic.CA2249.severity = warning
+dotnet_diagnostic.CA2250.severity = warning
+dotnet_diagnostic.CA2251.severity = warning
+dotnet_diagnostic.CA2254.severity = warning
+dotnet_diagnostic.CA2259.severity = error
+dotnet_diagnostic.CA2260.severity = error
+dotnet_diagnostic.CA2261.severity = error
+dotnet_diagnostic.CA2263.severity = warning
+dotnet_diagnostic.CA2264.severity = error
+dotnet_diagnostic.CA2265.severity = error
+
+# ==============================================================================
+# 4. ПРОИЗВОДИТЕЛЬНОСТЬ И МИНИМИЗАЦИЯ АЛЛОКАЦИЙ (CA18xx)
+# ==============================================================================
+dotnet_diagnostic.CA1802.severity = warning
+dotnet_diagnostic.CA1805.severity = warning
+dotnet_diagnostic.CA1806.severity = warning
+dotnet_diagnostic.CA1813.severity = warning
+dotnet_diagnostic.CA1821.severity = error
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA1823.severity = warning
+dotnet_diagnostic.CA1825.severity = error
+dotnet_diagnostic.CA1826.severity = warning
+dotnet_diagnostic.CA1827.severity = warning
+dotnet_diagnostic.CA1828.severity = warning
+dotnet_diagnostic.CA1829.severity = warning
+dotnet_diagnostic.CA1830.severity = warning
+dotnet_diagnostic.CA1831.severity = warning
+dotnet_diagnostic.CA1832.severity = warning
+dotnet_diagnostic.CA1833.severity = warning
+dotnet_diagnostic.CA1834.severity = warning
+dotnet_diagnostic.CA1835.severity = warning
+dotnet_diagnostic.CA1836.severity = warning
+dotnet_diagnostic.CA1837.severity = warning
+dotnet_diagnostic.CA1838.severity = warning
+dotnet_diagnostic.CA1839.severity = warning
+dotnet_diagnostic.CA1841.severity = warning
+dotnet_diagnostic.CA1842.severity = warning
+dotnet_diagnostic.CA1843.severity = warning
+dotnet_diagnostic.CA1845.severity = warning
+dotnet_diagnostic.CA1846.severity = warning
+dotnet_diagnostic.CA1847.severity = warning
+dotnet_diagnostic.CA1848.severity = suggestion
+dotnet_diagnostic.CA1849.severity = warning
+dotnet_diagnostic.CA1850.severity = warning
+dotnet_diagnostic.CA1851.severity = warning
+dotnet_diagnostic.CA1852.severity = warning
+dotnet_diagnostic.CA1853.severity = warning
+dotnet_diagnostic.CA1854.severity = warning
+dotnet_diagnostic.CA1855.severity = warning
+dotnet_diagnostic.CA1858.severity = warning
+dotnet_diagnostic.CA1859.severity = suggestion
+dotnet_diagnostic.CA1860.severity = warning
+dotnet_diagnostic.CA1861.severity = warning
+dotnet_diagnostic.CA1862.severity = warning
+dotnet_diagnostic.CA1863.severity = warning
+dotnet_diagnostic.CA1864.severity = warning
+dotnet_diagnostic.CA1865.severity = warning
+dotnet_diagnostic.CA1866.severity = warning
+dotnet_diagnostic.CA1867.severity = warning
+dotnet_diagnostic.CA1868.severity = warning
+dotnet_diagnostic.CA1869.severity = error
+dotnet_diagnostic.CA1870.severity = warning
+dotnet_diagnostic.CA1871.severity = error
+dotnet_diagnostic.CA1872.severity = warning
+
+# ==============================================================================
+# 5. NATIVE AOT / TRIMMING И .NET 11 RUNTIME ASYNC
+# ==============================================================================
+dotnet_diagnostic.IL2026.severity = warning
+dotnet_diagnostic.IL3050.severity = warning
+dotnet_diagnostic.SYSLIB5007.severity = none
+
+# ==============================================================================
+# 6. СТИЛЬ КОДА И ФИЛЬТРАЦИЯ ЛОЖНОГО ШУМА
+# ==============================================================================
+dotnet_diagnostic.IDE0001.severity = none
+dotnet_diagnostic.IDE0002.severity = none
+dotnet_diagnostic.IDE0005.severity = none
+dotnet_diagnostic.IDE0008.severity = none
+dotnet_diagnostic.IDE0010.severity = none
+dotnet_diagnostic.IDE0055.severity = suggestion
+dotnet_diagnostic.IDE0058.severity = none
+dotnet_diagnostic.IDE0072.severity = none
+dotnet_diagnostic.IDE0073.severity = none
+dotnet_diagnostic.IDE0130.severity = none
+dotnet_diagnostic.IDE0161.severity = none
+
+dotnet_diagnostic.CA1016.severity = none
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA1305.severity = silent
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CS1591.severity = none
+
+# Отключение шума MSBuild BuildCheck
+dotnet_diagnostic.BC0102.severity = none
+dotnet_diagnostic.BC0201.severity = none
+dotnet_diagnostic.BC0202.severity = none

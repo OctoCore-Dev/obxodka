@@ -115,7 +115,9 @@ internal sealed partial class WintunAdapter : IDisposable
 
         EndSession();
 
+#pragma warning disable RS0030 //синхронный dispose ждет завершения чтения wintun перед закрытием дескриптора
         Thread.Sleep(30);
+#pragma warning restore RS0030
 
         lock (_rxLock)
         {

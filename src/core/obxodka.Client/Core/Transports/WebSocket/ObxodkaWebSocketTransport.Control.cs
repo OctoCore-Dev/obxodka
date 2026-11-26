@@ -88,7 +88,7 @@ public sealed partial class ObxodkaWebSocketTransport
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linkedCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
-            await using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
+            using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
 
             var returnedLen = await tcs.Task.ConfigureAwait(false);
             return returnedLen >= payloadLen;

@@ -523,7 +523,7 @@ public sealed partial class OctopusEngine
             RegisterServerEndpoint(relayIp);
         }
 
-        var session = await AuthManager.LoadSessionAsync();
+        var session = await AuthManager.LoadSessionAsync().ConfigureAwait(false);
         if (string.IsNullOrEmpty(session.VpnConfig))
         {
             throw new InvalidOperationException("Сертификат VPN отсутствует. Авторизуйтесь заново.");

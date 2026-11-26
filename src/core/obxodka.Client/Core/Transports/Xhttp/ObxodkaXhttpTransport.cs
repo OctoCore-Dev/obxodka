@@ -260,7 +260,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linkedCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
-            await using var reg = linkedCts.Token.Register(() => _ = tcs.TrySetResult(0));
+            using var reg = linkedCts.Token.Register(() => _ = tcs.TrySetResult(0));
 
             var returnedLen = await tcs.Task.ConfigureAwait(false);
             return returnedLen >= payloadLen;

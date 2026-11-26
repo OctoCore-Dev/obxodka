@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(_IsSkippedLinuxMaui)' == 'true'">
-    <TargetFramework>$(NetTargetFramework)</TargetFramework>
+    <TargetFramework>$(NetCoreTfm)</TargetFramework>
     <UseMaui>false</UseMaui>
     <OutputType>Library</OutputType>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
@@ -15,10 +15,10 @@
   <!-- Общие настройки MAUI -->
   <PropertyGroup Condition="'$(_IsSkippedLinuxMaui)' != 'true'">
     <Configurations>Debug;Release</Configurations>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == '' and '$(BuildWindowsOnly)' != 'true'">$(WindowsTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and ('$(RuntimeIdentifier)' != '' or '$(BuildWindowsOnly)' == 'true')">$(WindowsTargetFramework)</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">$(AndroidTargetFramework)</TargetFrameworks>
-    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">$(MacCatalystTargetFramework);$(IosTargetFramework);$(AndroidTargetFramework)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and '$(RuntimeIdentifier)' == '' and '$(BuildWindowsOnly)' != 'true'">$(NetWindowsSdkTfm);$(NetAndroidTfm)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows')) and ('$(RuntimeIdentifier)' != '' or '$(BuildWindowsOnly)' == 'true')">$(NetWindowsSdkTfm)</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">$(NetAndroidTfm)</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('windows')) and !$([MSBuild]::IsOSPlatform('linux'))">$(NetMacCatalystTfm);$(NetIosTfm);$(NetAndroidTfm)</TargetFrameworks>
     <OutputType Condition="!$(TargetFramework.Contains('-windows'))">Exe</OutputType>
     <OutputType Condition="$(TargetFramework.Contains('-windows'))">WinExe</OutputType>
     <RootNamespace>obxodka</RootNamespace>

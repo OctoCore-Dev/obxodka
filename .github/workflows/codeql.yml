@@ -34,9 +34,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: "[CACHE-DIR] Ensure Windows Build Cache"
+      - name: "[CACHE-DIR] Ensure Build Cache Directory"
         shell: pwsh
-        run: New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
+        run: |
+          $cacheDir = Join-Path $env:RUNNER_TEMP "build-cache"
+          New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+          "BUILD_CACHE_PATH=$cacheDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6

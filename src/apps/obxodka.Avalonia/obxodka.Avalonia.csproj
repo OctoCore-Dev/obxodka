@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>$(NetTargetFramework)</TargetFramework>
+    <TargetFramework>$(NetCoreTfm)</TargetFramework>
     <AssemblyName>obxodka.Avalonia</AssemblyName>
     <RootNamespace>obxodka.Avalonia</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>

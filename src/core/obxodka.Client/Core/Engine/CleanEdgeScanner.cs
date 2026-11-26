@@ -240,9 +240,9 @@ internal static class CleanEdgeScanner
             connectCts.CancelAfter(TimeSpan.FromMilliseconds(900));
             await socket.ConnectAsync(new IPEndPoint(candidateIp, port), connectCts.Token).ConfigureAwait(false);
 
-            await using var netStream = new NetworkStream(socket, false);
-            await using var dpiStream = DpiBypassStream.CreateForProfile(netStream, TlsBrowserProfile.Chrome, true, true);
-            await using var sslStream = new SslStream(dpiStream, false);
+            using var netStream = new NetworkStream(socket, false);
+            using var dpiStream = DpiBypassStream.CreateForProfile(netStream, TlsBrowserProfile.Chrome, true, true);
+            using var sslStream = new SslStream(dpiStream, false);
 
             var sslOptions = SslOptionsFactory.Create(
                 targetSni,

@@ -660,7 +660,9 @@ public sealed partial class OctopusVpnService : VpnService
 
                 try
                 {
+#pragma warning disable RS0030 //выделенный системный поток чтения tun android не использует threadpool
                     if (!reader.WaitToReadAsync(ct).AsTask().GetAwaiter().GetResult())
+#pragma warning restore RS0030
                     {
                         break;
                     }

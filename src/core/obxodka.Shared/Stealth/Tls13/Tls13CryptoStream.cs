@@ -356,8 +356,10 @@ public sealed class Tls13CryptoStream : Stream
         }
     }
 
+#pragma warning disable RS0030 //синхронная перегрузка абстрактного stream требует синхронного ожидания
     public override int Read(byte[] buffer, int offset, int count) =>
         ReadAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+#pragma warning restore RS0030
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
@@ -417,8 +419,10 @@ public sealed class Tls13CryptoStream : Stream
         return toCopy;
     }
 
+#pragma warning disable RS0030 //синхронная перегрузка абстрактного stream требует синхронного ожидания
     public override void Write(byte[] buffer, int offset, int count) =>
         WriteAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+#pragma warning restore RS0030
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {

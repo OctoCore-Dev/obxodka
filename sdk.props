@@ -1,9 +1,16 @@
 <Project>
   <PropertyGroup>
-    <NetTargetFramework>net11.0</NetTargetFramework>
-    <AndroidTargetFramework>net11.0-android</AndroidTargetFramework>
-    <WindowsTargetFramework>net11.0-windows10.0.19041.0</WindowsTargetFramework>
-    <IosTargetFramework>net11.0-ios</IosTargetFramework>
-    <MacCatalystTargetFramework>net11.0-maccatalyst</MacCatalystTargetFramework>
+    <!-- Единый переключатель версии .NET для всех проектов решения -->
+    <NetMajorVersion>11.0</NetMajorVersion>
+
+    <NetCoreTfm>net$(NetMajorVersion)</NetCoreTfm>
+    <NetWindowsTfm>net$(NetMajorVersion)-windows</NetWindowsTfm>
+    <NetWindowsSdkTfm>net$(NetMajorVersion)-windows10.0.19041.0</NetWindowsSdkTfm>
+    <NetAndroidTfm>net$(NetMajorVersion)-android</NetAndroidTfm>
+    <NetIosTfm>net$(NetMajorVersion)-ios</NetIosTfm>
+    <NetMacCatalystTfm>net$(NetMajorVersion)-maccatalyst</NetMacCatalystTfm>
+
+    <!-- Совместимость с общим подмодулем obxodka.Shared -->
+    <NetTargetFramework>$(NetCoreTfm)</NetTargetFramework>
   </PropertyGroup>
 </Project>
