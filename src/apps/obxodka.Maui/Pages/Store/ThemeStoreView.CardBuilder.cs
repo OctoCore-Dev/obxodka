@@ -190,7 +190,8 @@ public sealed partial class ThemeStoreView
                 null,
                 null,
                 Colors.White,
-                "AppFontBold");
+                "AppFontBold",
+                textResourceKey: "TextOnSuccess");
             actionLayout.Add(btnActive);
 
             if (model.HasUpdate && !string.IsNullOrEmpty(model.UpdateVersion))
@@ -208,7 +209,8 @@ public sealed partial class ThemeStoreView
                 null,
                 null,
                 Colors.White,
-                "AppFontBold");
+                "AppFontBold",
+                textResourceKey: "TextOnPrimary");
             AttachTapAction(btnApply, async () =>
             {
                 ThemeAudioService.PlayClick();
@@ -246,7 +248,8 @@ public sealed partial class ThemeStoreView
                 null,
                 null,
                 Colors.White,
-                "AppFontBold");
+                "AppFontBold",
+                textResourceKey: "TextOnPrimary");
             btnDownload.IsEnabled = !isDownloading;
             btnDownload.Opacity = isDownloading ? 0.7 : 1.0;
             _activeDownloadLabels[model.Id] = downloadLabel;
@@ -360,7 +363,8 @@ public sealed partial class ThemeStoreView
         Color? strokeColor,
         Color textColor,
         string fontResourceKey,
-        double paddingX = 14)
+        double paddingX = 14,
+        string? textResourceKey = null)
     {
         var label = new Label
         {
@@ -370,6 +374,22 @@ public sealed partial class ThemeStoreView
             VerticalOptions = LayoutOptions.Center
         };
         label.SetDynamicResource(Label.FontFamilyProperty, fontResourceKey);
+        if (textResourceKey is not null)
+        {
+            label.SetDynamicResource(Label.TextColorProperty, textResourceKey);
+        }
+
+        var iconView = new MauiIcon
+        {
+            Icon = icon,
+            IconSize = iconSize,
+            IconColor = textColor,
+            VerticalOptions = LayoutOptions.Center
+        };
+        if (textResourceKey is not null)
+        {
+            iconView.SetDynamicResource(MauiIcon.IconColorProperty, textResourceKey);
+        }
 
         var border = new Border
         {
@@ -388,13 +408,7 @@ public sealed partial class ThemeStoreView
                 VerticalOptions = LayoutOptions.Center,
                 Children =
                 {
-                    new MauiIcon
-                    {
-                        Icon = icon,
-                        IconSize = iconSize,
-                        IconColor = textColor,
-                        VerticalOptions = LayoutOptions.Center
-                    },
+                    iconView,
                     label
                 }
             }

@@ -539,4 +539,29 @@ public class ThemeSecurityTests
         Assert.Equal(80, deserialized.Decorations.FrameSlice.Left);
         Assert.True(deserialized.Decorations.FrameSlice.IsValid);
     }
+
+    [Fact]
+    public void ChooseContrastingTextHexReturnsDarkForBrightNeonAndLightForDeepAccents()
+    {
+        Assert.Equal("#0B0E14", ThemeValidator.ChooseContrastingTextHex("#00E5FF"));
+        Assert.Equal("#0B0E14", ThemeValidator.ChooseContrastingTextHex("#00FF66"));
+        Assert.Equal("#0B0E14", ThemeValidator.ChooseContrastingTextHex("#F59E0B"));
+        Assert.Equal("#0B0E14", ThemeValidator.ChooseContrastingTextHex("#FF94B8"));
+        Assert.Equal("#0B0E14", ThemeValidator.ChooseContrastingTextHex("#39FF14"));
+
+        Assert.Equal("#0B0E14", ThemeValidator.ChooseContrastingTextHex("#8B5CF6"));
+        Assert.Equal("#FFFFFF", ThemeValidator.ChooseContrastingTextHex("#0078D4"));
+        Assert.Equal("#FFFFFF", ThemeValidator.ChooseContrastingTextHex("#D90429"));
+        Assert.Equal("#FFFFFF", ThemeValidator.ChooseContrastingTextHex("#6D28D9"));
+        Assert.Equal("#FFFFFF", ThemeValidator.ChooseContrastingTextHex("invalid"));
+    }
+
+    [Fact]
+    public void ComputeContrastRatioMatchesWcagReferenceValues()
+    {
+        Assert.InRange(ThemeValidator.ComputeContrastRatio("#FFFFFF", "#000000"), 20.9, 21.1);
+        Assert.InRange(ThemeValidator.ComputeContrastRatio("#FFFFFF", "#FFFFFF"), 0.99, 1.01);
+        Assert.True(ThemeValidator.ComputeContrastRatio("#FFFFFF", "#0B0E14") >= 18.0);
+        Assert.True(ThemeValidator.ComputeContrastRatio("#0B0E14", "#00E5FF") >= 12.0);
+    }
 }

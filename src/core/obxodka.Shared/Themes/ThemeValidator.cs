@@ -506,4 +506,65 @@ public static partial class ThemeValidator
             return (baseHex, "#004578");
         }
     }
+
+    //разбор rgb-каналов из 6- или 8-значного hex цвета без аллокаций
+    public static bool TryParseRgb(string? hex, out byte r, out byte g, out byte b)
+    {
+        r = g = b = 0;
+        if (string.IsNullOrWhiteSpace(hex) || !IsValidHexColor(hex))
+        {
+            return false;
+        }
+
+        var span = hex.AsSpan().Trim().TrimStart('#');
+        if (span.Length == 8)
+        {
+            span = span[2..];
+        }
+
+        return byte.TryParse(span[..2], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out r) &&
+               byte.TryParse(span.Slice(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out g) &&
+               byte.TryParse(span.Slice(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out b);
+    }
+
+    //расчет относительной яркости цвета по стандарту wcag 2.1
+    public static double ComputeRelativeLuminance(byte r, byte g, byte b)
+    {
+        static double Linearize(byte channel)
+        {
+            var s = channel / 255.0;
+            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Linearize(r) + 0.7152 * Linearize(g) + 0.0722 * Linearize(b);
+    }
+
+    //расчет коэффициента контрастности между двумя цветами по wcag 2.1
+    public static double ComputeContrastRatio(string? foregroundHex, string? backgroundHex)
+    {
+        if (!TryParseRgb(foregroundHex, out var fr, out var fg, out var fb) ||
+            !TryParseRgb(backgroundHex, out var br, out var bg, out var bb))
+        {
+            return 1.0;
+        }
+
+        var l1 = ComputeRelativeLuminance(fr, fg, fb);
+        var l2 = ComputeRelativeLuminance(br, bg, bb);
+        var lighter = Math.Max(l1, l2);
+        var darker = Math.Min(l1, l2);
+        return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    //выбор максимально контрастного цвета текста поверх акцентного или статусного фона
+    public static string ChooseContrastingTextHex(string? backgroundHex, string darkHex = "#0B0E14", string lightHex = "#FFFFFF")
+    {
+        if (!TryParseRgb(backgroundHex, out _, out _, out _))
+        {
+            return lightHex;
+        }
+
+        var darkRatio = ComputeContrastRatio(darkHex, backgroundHex);
+        var lightRatio = ComputeContrastRatio(lightHex, backgroundHex);
+        return darkRatio >= lightRatio ? darkHex : lightHex;
+    }
 }
