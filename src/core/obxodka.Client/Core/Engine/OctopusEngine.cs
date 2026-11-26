@@ -68,11 +68,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public Func<string[], CancellationToken, Task>? EnsureExternalHostRoutesAsync { get; set; }
 
     //число активных лучей туннеля
-    public int ActiveRays
-    {
-        get => (_transport as ObxodkaStreamTransport)?.ActiveRayCount ?? field;
-        private set;
-    } = 2;
+    public int ActiveRays { get; private set; } = 1;
 
     //флаг активности соединения
     public bool IsConnected => _transport is { IsConnected: true };
@@ -109,13 +105,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public string ActiveProtocolDisplayName { get; private set; } = "Obxodka";
 
     //активное имя sni маскировки
-    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ??
-                               (_transport as ObxodkaRealityTransport)?.ActiveSni ??
+    public string ActiveSni => (_transport as ObxodkaRealityTransport)?.ActiveSni ??
                                (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? string.Empty;
 
     //активный браузерный профиль маскировки tls (ssot)
     public TlsBrowserProfile ActiveBrowserProfile =>
-        (_transport as ObxodkaStreamTransport)?.ActiveBrowserProfile ??
         (_transport as ObxodkaWebSocketTransport)?.ActiveBrowserProfile ??
         TlsBrowserProfile.Chrome;
 

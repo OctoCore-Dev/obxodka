@@ -284,38 +284,4 @@ public class SslCertificateValidationTests
             //внешний узел недоступен в изолированной тестовой среде
         }
     }
-
-    [Fact]
-    [Trait("Category", "Integration")]
-    public async Task ObxodkaStreamTransportConnectsToRealServerAsync()
-    {
-        using var sw = new StringWriter();
-        var listener = new TextWriterTraceListener(sw);
-        _ = Trace.Listeners.Add(listener);
-        try
-        {
-            OctopusEngine.DynamicSslPublicKeyHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
-            using var transport = new ObxodkaStreamTransport();
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try
-            {
-                var (ip, _) = await transport.ConnectAsync(AppConfig.DirectServerIp, "441671375F27A7A223240C624CF1F56678666289", cts.Token);
-                Assert.False(string.IsNullOrEmpty(ip));
-            }
-            catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException
-                                           or HttpRequestException or IOException)
-            {
-                //внешний сервер недоступен в офлайн или тестовой среде
-            }
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            listener.Flush();
-            Assert.Fail($"ObxodkaStreamTransport failed: {ex.Message}\nTrace:\n{sw}");
-        }
-        finally
-        {
-            Trace.Listeners.Remove(listener);
-        }
-    }
 }

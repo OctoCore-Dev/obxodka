@@ -10,7 +10,7 @@ public sealed class ProtocolPipelineDisplayTests
         var factories = ProtocolPipelineRegistry.GetRegisteredFactories();
 
         Assert.True(factories.Count >= 3);
-        Assert.Equal(TransportProtocolKind.ObxodkaStream, factories[0].Kind);
+        Assert.Equal(TransportProtocolKind.ObxodkaReality, factories[0].Kind);
         Assert.Equal(TransportProtocolKind.ObxodkaWebSocket, factories[1].Kind);
         Assert.Equal(TransportProtocolKind.ObxodkaXhttp, factories[2].Kind);
         Assert.All(factories, f =>
@@ -23,17 +23,15 @@ public sealed class ProtocolPipelineDisplayTests
     }
 
     [Theory]
-    [InlineData(null, 2, "Подбор...")]
-    [InlineData("", 2, "Подбор...")]
-    [InlineData("AUTO", 2, "Подбор...")]
-    [InlineData("OBXODKA-STREAM", 3, "Stream • 3L")]
-    [InlineData("OBXODKA-STREAM", 2, "Stream • 2L")]
-    [InlineData("OBXODKA-STREAM", 0, "Stream • 1L")]
-    [InlineData("OBXODKA-WS", 1, "WebSocket")]
-    [InlineData("OBXODKA-XHTTP", 1, "XHTTP")]
-    public void FormatLiveStatusBadge_FormatsExpectedProtocolTags(string? protocolName, int rays, string expected)
+    [InlineData(null, "Подбор...")]
+    [InlineData("", "Подбор...")]
+    [InlineData("AUTO", "Подбор...")]
+    [InlineData("OBXODKA-REALITY", "Reality")]
+    [InlineData("OBXODKA-WS", "WebSocket")]
+    [InlineData("OBXODKA-XHTTP", "XHTTP")]
+    public void FormatLiveStatusBadge_FormatsExpectedProtocolTags(string? protocolName, string expected)
     {
-        var badge = ProtocolPipelineRegistry.FormatLiveStatusBadge(protocolName, rays);
+        var badge = ProtocolPipelineRegistry.FormatLiveStatusBadge(protocolName);
         Assert.Equal(expected, badge);
     }
 
@@ -55,7 +53,8 @@ public sealed class ProtocolPipelineDisplayTests
     [InlineData(null, "AUTO", true)]
     [InlineData("", "AUTO", true)]
     [InlineData("auto", "AUTO", true)]
-    [InlineData("stream", "OBXODKA-STREAM", true)]
+    [InlineData("stream", "AUTO", true)]
+    [InlineData("obxodka-stream", "AUTO", true)]
     [InlineData("ws", "OBXODKA-WS", true)]
     [InlineData("websocket", "OBXODKA-WS", true)]
     [InlineData("xhttp", "OBXODKA-XHTTP", true)]
@@ -100,7 +99,6 @@ public sealed class ProtocolPipelineDisplayTests
     }
 
     [Theory]
-    [InlineData("OBXODKA-STREAM", TransportProtocolKind.ObxodkaStream)]
     [InlineData("OBXODKA-WS", TransportProtocolKind.ObxodkaWebSocket)]
     [InlineData("OBXODKA-XHTTP", TransportProtocolKind.ObxodkaXhttp)]
     [InlineData("OBXODKA-REALITY", TransportProtocolKind.ObxodkaReality)]

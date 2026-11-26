@@ -72,7 +72,6 @@ public static class VpnStatusMessages
     public static string FormatProtocolName(string? protocolName, bool isShield = false) =>
         protocolName switch
         {
-            "OBXODKA-STREAM" or "ObxodkaStream" => "Obxodka Stream",
             "OBXODKA-WS" or "ObxodkaWebSocket" => isShield ? "Cloudflare WS" : "WebSocket",
             "OBXODKA-XHTTP" or "ObxodkaXhttp" => isShield ? "Cloudflare XHTTP" : "Direct XHTTP",
             "OBXODKA-REALITY" or "ObxodkaReality" => "Obxodka Reality",

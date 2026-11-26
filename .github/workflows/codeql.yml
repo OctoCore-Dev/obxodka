@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - '.github/workflows/codeql.yml'
+      - '.github/codeql/**'
   pull_request:
     branches: [ develop, main, feat/dotnet11 ]
     paths:
@@ -57,7 +58,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: csharp
-          queries: +security-extended,security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: "[BUILD] Compile C# Codebase for CodeQL Tracer"
         shell: pwsh
@@ -117,7 +118,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: csharp
-          queries: +security-extended,security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: "[BUILD] Compile Android MAUI Client for CodeQL Tracer"
         run: |

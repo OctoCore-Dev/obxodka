@@ -192,7 +192,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string _assignedIpText = "Не назначен";
 
     [ObservableProperty]
-    private string _activeProtocolText = "OBXODKA-STREAM";
+    private string _activeProtocolText = "AUTO";
 
     [ObservableProperty]
     private string _activeMtuText = "1420 B";
@@ -846,7 +846,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 _connectedAtUtc ??= DateTimeOffset.UtcNow;
                 var ip = OctopusEngine.Current.AssignedIp;
                 AssignedIpText = string.IsNullOrWhiteSpace(ip) ? "100.64.0.x" : ip;
-                ActiveProtocolText = OctopusEngine.Current.ActiveProtocol ?? "OBXODKA-STREAM";
+                ActiveProtocolText = OctopusEngine.Current.ActiveProtocol ?? "AUTO";
                 ActiveMtuText = $"{SmartMtuEngine.CurrentMtu} B";
             }
             else if (state is AppVpnState.Disconnected or AppVpnState.Error)
@@ -869,7 +869,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             TotalTrafficText = $"↓ {FormatBytes(rxTotal)}  ·  ↑ {FormatBytes(txTotal)}";
             TotalTrafficShortText = FormatBytes(rxTotal + txTotal);
             ActiveMtuText = $"{SmartMtuEngine.CurrentMtu} B";
-            ActiveProtocolText = OctopusEngine.Current.ActiveProtocol ?? "OBXODKA-STREAM";
+            ActiveProtocolText = OctopusEngine.Current.ActiveProtocol ?? "AUTO";
             if (_connectedAtUtc.HasValue)
             {
                 var elapsed = DateTimeOffset.UtcNow - _connectedAtUtc.Value;
