@@ -1,4 +1,10 @@
 <Project>
+  <!-- Библиотеки ядра всегда собираются как AnyCPU (MSIL), чтобы сборка MAUI (x64) не ломала Avalonia/CLI (MSB3270) -->
+  <PropertyGroup Condition="'$(OutputType)' == 'Library'">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <ProcessorArchitecture>msil</ProcessorArchitecture>
+  </PropertyGroup>
+
   <!-- Строгая проверка обязательных метаданных перед сборкой -->
   <Target Name="ValidateProjectMetadata" BeforeTargets="BeforeBuild">
     <Error Condition="'$(VersionPrefix)' == ''"
