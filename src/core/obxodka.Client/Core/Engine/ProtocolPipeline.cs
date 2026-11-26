@@ -15,12 +15,18 @@ public sealed record XhttpTransportTag : ActiveTransportTag
     public static XhttpTransportTag Instance { get; } = new();
 }
 
+public sealed record RealityTransportTag : ActiveTransportTag
+{
+    public static RealityTransportTag Instance { get; } = new();
+}
+
 //поддерживаемые типы транспортных протоколов туннеля
 public enum TransportProtocolKind
 {
     ObxodkaStream = 0,
     ObxodkaWebSocket = 1,
-    ObxodkaXhttp = 2
+    ObxodkaXhttp = 2,
+    ObxodkaReality = 3
 }
 
 //описание одного шага в круговом маршруте протоколов и серверов
@@ -64,6 +70,7 @@ public static class ProtocolPipelineRegistry
         RegisterFactory(new ObxodkaStreamProtocolFactory());
         RegisterFactory(new ObxodkaWebSocketProtocolFactory());
         RegisterFactory(new ObxodkaXhttpProtocolFactory());
+        RegisterFactory(new ObxodkaRealityProtocolFactory());
     }
 
     //регистрация или замена фабрики конкретного протокола
@@ -110,6 +117,7 @@ public static class ProtocolPipelineRegistry
         {
             "OBXODKA-WS" => WebSocketTransportTag.Instance,
             "OBXODKA-XHTTP" => XhttpTransportTag.Instance,
+            "OBXODKA-REALITY" => RealityTransportTag.Instance,
             _ => new StreamTransportTag(activeRays)
         };
 
@@ -123,7 +131,8 @@ public static class ProtocolPipelineRegistry
         }
 
         if (TryFindFactoryByProtocolName(protocolName, out var customFactory) &&
-            customFactory.Kind is not (TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaWebSocket or TransportProtocolKind.ObxodkaXhttp))
+            customFactory.Kind is not (TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaWebSocket
+                or TransportProtocolKind.ObxodkaXhttp or TransportProtocolKind.ObxodkaReality))
         {
             return customFactory.ShortTag;
         }
@@ -133,7 +142,8 @@ public static class ProtocolPipelineRegistry
         {
             StreamTransportTag stream => $"Stream • {Math.Max(1, stream.ActiveRays)}L",
             WebSocketTransportTag => "WebSocket",
-            XhttpTransportTag => "XHTTP"
+            XhttpTransportTag => "XHTTP",
+            RealityTransportTag => "Reality"
         };
 #pragma warning restore IDE0072
     }
@@ -190,6 +200,20 @@ internal sealed class ObxodkaXhttpProtocolFactory : ITransportProtocolFactory
 
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
         new ObxodkaXhttpTransport(step.Port, step.TargetSni, preferredAssignedIp);
+}
+
+internal sealed class ObxodkaRealityProtocolFactory : ITransportProtocolFactory
+{
+    public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaReality;
+    public string DisplayName => "OBXODKA-REALITY";
+    public string FriendlyName => "Obxodka Reality";
+    public string ShortTag => "Reality";
+    public string TransportSummary => "TLS 1.3 Reality 443";
+    public string Description => "Прямой стелс-протокол с проверкой SessionID до TLS и маскировкой под легальный сайт.";
+    public int Order => 3;
+
+    public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
+        new ObxodkaRealityTransport(step.Port, step.TargetSni, preferredAssignedIp);
 }
 
 //учет заблокированных edge ip cdn (например 188.114.96.1) для мгновенной ротации к другим адресам

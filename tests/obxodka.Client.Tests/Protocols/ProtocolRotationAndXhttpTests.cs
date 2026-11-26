@@ -199,6 +199,7 @@ public sealed class ProtocolRotationAndXhttpTests
     [InlineData("OBXODKA-STREAM", 4, "4L")]
     [InlineData("OBXODKA-WS", 1, "WS")]
     [InlineData("OBXODKA-XHTTP", 1, "XHTTP")]
+    [InlineData("OBXODKA-REALITY", 1, "REALITY")]
     [InlineData("AUTO", 2, "2L")]
     public void ProtocolPipelineRegistryResolveActiveTagExhaustivelyFormatsProtocols(string protocolName, int activeRays, string expected)
     {
@@ -206,7 +207,8 @@ public sealed class ProtocolRotationAndXhttpTests
         {
             StreamTransportTag stream => $"{stream.ActiveRays}L",
             WebSocketTransportTag => "WS",
-            XhttpTransportTag => "XHTTP"
+            XhttpTransportTag => "XHTTP",
+            RealityTransportTag => "REALITY"
         };
 
         Assert.Equal(expected, formatted);

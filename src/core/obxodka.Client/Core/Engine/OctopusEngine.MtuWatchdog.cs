@@ -12,7 +12,7 @@ public sealed partial class OctopusEngine
     {
         Volatile.Write(ref _watchdogArmedTicks, Environment.TickCount64);
         Volatile.Write(ref _lastHealthyRxTicks, Stopwatch.GetTimestamp());
-        if (_transport is ObxodkaWebSocketTransport or ObxodkaXhttpTransport)
+        if (_transport is ObxodkaWebSocketTransport or ObxodkaXhttpTransport or ObxodkaRealityTransport)
         {
             //на облачных edge-каналах не бьем пачками зондов сразу после хэндшейка чтобы не триггерить тспу/waf
             LockEdgeTransportMtu(_transport);

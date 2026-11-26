@@ -292,7 +292,32 @@ public static class SniEngine
             direct.Port, direct.Host, false, false, $"{direct.ServerLabel ?? direct.Host} (XHTTP)", direct.ExpectedCertHash)));
 
         List<ProtocolRouteStep> penalizedDirect = [];
+        List<ProtocolRouteStep> penalizedDirectReality = [];
         List<ProtocolRouteStep> penalizedDirectXhttp = [];
+
+        //стелс-шаги reality на стандартном порту 443 для каждого прямого узла
+        List<ProtocolRouteStep> directRealitySteps = [];
+        foreach (var direct in directStreamSteps)
+        {
+            var realityStep = new ProtocolRouteStep(
+                TransportProtocolKind.ObxodkaReality,
+                direct.Host,
+                direct.Port,
+                null,
+                false,
+                false,
+                $"{direct.ServerLabel ?? direct.Host} (Reality)",
+                direct.ExpectedCertHash);
+
+            if (OctopusEngine.IsNodeByteCapped(direct.Host))
+            {
+                penalizedDirectReality.Add(realityStep);
+            }
+            else
+            {
+                directRealitySteps.Add(realityStep);
+            }
+        }
 
         //резервный xhttp напрямую к origin ip, если прямой узел еще не заблокирован, выносим в конец кольца после щитов
         List<ProtocolRouteStep> directXhttpSteps = [];
@@ -308,7 +333,8 @@ public static class SniEngine
             }
         }
 
-        List<ProtocolRouteStep> ring = [with(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
+        List<ProtocolRouteStep> ring =
+            [with(directStreamSteps.Count + directRealitySteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
 
         if (!forceWebSocket)
         {
@@ -323,6 +349,8 @@ public static class SniEngine
                     ring.Add(step);
                 }
             }
+
+            ring.AddRange(directRealitySteps);
         }
 
         ring.AddRange(shieldWsSteps);
@@ -334,6 +362,7 @@ public static class SniEngine
         }
 
         ring.AddRange(penalizedDirectXhttp);
+        ring.AddRange(penalizedDirectReality);
         ring.AddRange(penalizedDirect);
 
         return ring;

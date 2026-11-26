@@ -440,6 +440,36 @@ public sealed partial class OctopusEngine
         }
     }
 
+    //динамическая регистрация найденных чистых anycast-адресов cdn в таблице маршрутов и wfp-фильтре ос
+    internal async Task RegisterExternalEdgeAddressesAsync(IPAddress[] edgeAddresses, CancellationToken ct = default)
+    {
+        if (edgeAddresses.Length == 0)
+        {
+            return;
+        }
+
+        RegisterServerIpAddresses(edgeAddresses);
+        var hook = EnsureExternalHostRoutesAsync;
+        if (hook is null)
+        {
+            return;
+        }
+
+        List<string> v4Strings = [with(edgeAddresses.Length)];
+        foreach (var addr in edgeAddresses)
+        {
+            if (addr.AddressFamily == AddressFamily.InterNetwork)
+            {
+                v4Strings.Add(addr.ToString());
+            }
+        }
+
+        if (v4Strings.Count > 0)
+        {
+            await hook([.. v4Strings], ct).ConfigureAwait(false);
+        }
+    }
+
     //безопасная очистка неудачного транспорта конкретной попытки кольца
     private async Task DisposeAttemptTransportAsync(IVpnTransport? transport)
     {
@@ -677,7 +707,11 @@ public sealed partial class OctopusEngine
                 var nextStep = _rotationRing[candidateIdx];
 
                 //если прямой узел не отвечает в префлайте или попал под лимит тспу, пропускаем прямые шаги и чередуем щиты
-                if (nextStep is { IsShield: false, Kind: TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaXhttp } &&
+                if (nextStep is
+                    {
+                        IsShield: false,
+                        Kind: TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaXhttp or TransportProtocolKind.ObxodkaReality
+                    } &&
                     IsNodeByteCapped(nextStep.Host))
                 {
                     continue;
