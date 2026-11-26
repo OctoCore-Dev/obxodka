@@ -138,7 +138,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         ActiveServerFlag = string.IsNullOrWhiteSpace(flag) ? null : flag.Trim();
     }
 
-    //единая сборка строки хендшейка с криптографической подписью ecdsa p-256 сертификата устройства
+    //единая сборка строки хендшейка с криптографической подписью ecdsa p-256 сертификата устройства и опциональным бюджетом hydra
     public string BuildAuthenticatedHandshakeString(
         string thumbprint,
         string? assignedIp,
@@ -146,12 +146,17 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
         int mtu,
         uint sessionSeed,
         long timestampUnixSeconds,
-        bool includePublicKey = false)
+        bool includePublicKey = false,
+        int hydraSocketBudgetBytes = 0)
     {
         var proof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, ray, sessionSeed, timestampUnixSeconds);
         var core = string.IsNullOrEmpty(assignedIp)
             ? $"{thumbprint}|R:{ray}|M:{mtu}|K:{sessionSeed:X8}|T:{timestampUnixSeconds}|P:{proof}"
             : $"{thumbprint}|{assignedIp}|R:{ray}|M:{mtu}|K:{sessionSeed:X8}|T:{timestampUnixSeconds}|P:{proof}";
+        if (hydraSocketBudgetBytes > 0)
+        {
+            core = $"{core}|H:{hydraSocketBudgetBytes}";
+        }
 
         var cert = Volatile.Read(ref _clientCert);
         if (cert is null)

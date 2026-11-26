@@ -21,7 +21,7 @@ public sealed class ProtocolRotationAndXhttpTests
             var ring = SniEngine.BuildProtocolRotationRing(servers, AppConfig.PrimaryDomain, 443, null, false);
 
             Assert.True(ring.Count >= 3);
-            Assert.Equal(TransportProtocolKind.ObxodkaStream, ring[0].Kind);
+            Assert.Equal(TransportProtocolKind.ObxodkaReality, ring[0].Kind);
             Assert.Equal(AppConfig.DirectServerIp, ring[0].Host);
             Assert.False(ring[0].IsShield);
             Assert.Equal("TESTHASH_MAIN==", OctopusEngine.DirectOriginCertHash);

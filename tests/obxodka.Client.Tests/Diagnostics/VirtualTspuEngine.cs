@@ -187,7 +187,7 @@ public sealed class VirtualTspuEngine
     }
 
     //извлечение sni из tls clienthello
-    private static bool TryExtractTlsSni(ReadOnlySpan<byte> record, out string sni)
+    public static bool TryExtractTlsSni(ReadOnlySpan<byte> record, out string sni)
     {
         sni = string.Empty;
         if (record.Length < 43 || record[0] != 0x16)
