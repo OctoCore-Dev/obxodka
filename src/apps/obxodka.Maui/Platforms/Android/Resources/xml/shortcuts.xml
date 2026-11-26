@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <shortcut
+    android:shortcutId="connect_vpn"
+    android:enabled="true"
+    android:icon="@drawable/notification_icon"
+    android:shortcutShortLabel="@string/shortcut_connect_short"
+    android:shortcutLongLabel="@string/shortcut_connect_long">
+    <intent
+      android:action="com.octocore.obxodka.ACTION_CONNECT_VPN"
+      android:targetPackage="com.octocore.obxodka"
+      android:targetClass="obxodka.AssistantActionActivity" />
+    <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+      <parameter-binding
+        android:key="feature"
+        android:value="@array/assistant_connect_phrases" />
+    </capability-binding>
+  </shortcut>
+
+  <shortcut
+    android:shortcutId="disconnect_vpn"
+    android:enabled="true"
+    android:icon="@drawable/notification_icon"
+    android:shortcutShortLabel="@string/shortcut_disconnect_short"
+    android:shortcutLongLabel="@string/shortcut_disconnect_long">
+    <intent
+      android:action="com.octocore.obxodka.ACTION_DISCONNECT_VPN"
+      android:targetPackage="com.octocore.obxodka"
+      android:targetClass="obxodka.AssistantActionActivity" />
+    <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+      <parameter-binding
+        android:key="feature"
+        android:value="@array/assistant_disconnect_phrases" />
+    </capability-binding>
+  </shortcut>
+
+  <shortcut
+    android:shortcutId="status_vpn"
+    android:enabled="true"
+    android:icon="@drawable/notification_icon"
+    android:shortcutShortLabel="@string/shortcut_status_short"
+    android:shortcutLongLabel="@string/shortcut_status_long">
+    <intent
+      android:action="com.octocore.obxodka.ACTION_STATUS_VPN"
+      android:targetPackage="com.octocore.obxodka"
+      android:targetClass="obxodka.AssistantActionActivity" />
+    <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+      <parameter-binding
+        android:key="feature"
+        android:value="@array/assistant_status_phrases" />
+    </capability-binding>
+  </shortcut>
+
+  <capability android:name="actions.intent.OPEN_APP_FEATURE">
+    <intent
+      android:action="android.intent.action.VIEW"
+      android:targetPackage="com.octocore.obxodka"
+      android:targetClass="obxodka.AssistantActionActivity">
+      <url-template android:value="obxodka://assistant?feature={feature}" />
+      <parameter
+        android:name="feature"
+        android:key="feature" />
+    </intent>
+  </capability>
+
+</shortcuts>

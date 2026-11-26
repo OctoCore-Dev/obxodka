@@ -182,6 +182,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Border
@@ -473,8 +474,121 @@
                     </Border>
 
                     <Border
-                        x:Name="SpeedTestCard"
+                        x:Name="VoiceAssistantCard"
                         Grid.Row="7"
+                        Grid.Column="0"
+                        Padding="16,14"
+                        IsVisible="{OnPlatform Android=True,
+                                               Default=False}"
+                        MinimumHeightRequest="66"
+                        Style="{StaticResource SettingsRowCard}">
+                        <VerticalStackLayout Spacing="12">
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12">
+                                <mi:MauiIcon
+                                    Grid.Column="0"
+                                    Icon="{mi:Fluent Icon=Mic24}"
+                                    IconColor="{DynamicResource Accent}"
+                                    IconSize="22"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Spacing="2"
+                                    VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Label
+                                            FontFamily="{DynamicResource AppFontBold}"
+                                            FontSize="{OnIdiom Desktop=13.5,
+                                                               Default=15}"
+                                            LineBreakMode="TailTruncation"
+                                            Text="Голосовой помощник"
+                                            VerticalOptions="Center" />
+                                        <Border
+                                            x:Name="VoiceAssistantBadgeBorder"
+                                            Padding="8,2"
+                                            BackgroundColor="{DynamicResource AccentDim}"
+                                            Stroke="{DynamicResource Accent}"
+                                            StrokeShape="RoundRectangle 6"
+                                            StrokeThickness="1"
+                                            VerticalOptions="Center">
+                                            <Label
+                                                x:Name="VoiceAssistantBadgeLabel"
+                                                FontFamily="{DynamicResource AppFontBold}"
+                                                FontSize="10.5"
+                                                Text="Google Gemini"
+                                                TextColor="{DynamicResource Accent}" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+                                    <Label
+                                        x:Name="VoiceAssistantStatusLabel"
+                                        FontSize="{OnIdiom Desktop=11.5,
+                                                           Default=12}"
+                                        LineBreakMode="WordWrap"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Управление VPN голосом без открытия приложения." />
+                                </VerticalStackLayout>
+                                <Switch
+                                    x:Name="VoiceAssistantToggle"
+                                    Grid.Column="2"
+                                    IsToggled="True"
+                                    Toggled="OnVoiceAssistantToggled"
+                                    VerticalOptions="Center" />
+                            </Grid>
+
+                            <Border
+                                x:Name="VoiceAssistantCommandsPanel"
+                                Padding="12,10"
+                                BackgroundColor="{DynamicResource BgElevated}"
+                                Stroke="{DynamicResource BorderSubtle}"
+                                StrokeShape="RoundRectangle 10"
+                                StrokeThickness="1">
+                                <VerticalStackLayout Spacing="6">
+                                    <Label
+                                        x:Name="VoiceAssistantHintLabel"
+                                        FontSize="12"
+                                        LineBreakMode="WordWrap"
+                                        Style="{StaticResource LabelMuted}"
+                                        Text="Скажите «Окей, Гугл» и одну из команд:" />
+                                    <Label
+                                        x:Name="VoiceAssistantCommandsLabel"
+                                        FontSize="12.5"
+                                        LineBreakMode="WordWrap"
+                                        TextColor="{DynamicResource TextPrimary}" />
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border
+                                x:Name="OpenAssistantSettingsButton"
+                                Padding="14,10"
+                                BackgroundColor="{DynamicResource BgElevated}"
+                                IsVisible="False"
+                                Stroke="{DynamicResource Primary}"
+                                StrokeShape="RoundRectangle 10"
+                                StrokeThickness="1">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnOpenAssistantSettingsTapped" />
+                                </Border.GestureRecognizers>
+                                <HorizontalStackLayout
+                                    HorizontalOptions="Center"
+                                    Spacing="8">
+                                    <mi:MauiIcon
+                                        Icon="{mi:Fluent Icon=Settings24}"
+                                        IconColor="{DynamicResource Primary}"
+                                        IconSize="16"
+                                        VerticalOptions="Center" />
+                                    <Label
+                                        FontFamily="{DynamicResource AppFontBold}"
+                                        FontSize="12.5"
+                                        Text="Открыть настройки ассистента Android"
+                                        TextColor="{DynamicResource Primary}"
+                                        VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border
+                        x:Name="SpeedTestCard"
+                        Grid.Row="8"
                         Grid.Column="0"
                         Padding="16,14"
                         MinimumHeightRequest="66"
@@ -530,7 +644,7 @@
 
                     <Border
                         x:Name="ThemesSettingsCard"
-                        Grid.Row="8"
+                        Grid.Row="9"
                         Grid.Column="0"
                         Padding="16,14"
                         MinimumHeightRequest="66"
