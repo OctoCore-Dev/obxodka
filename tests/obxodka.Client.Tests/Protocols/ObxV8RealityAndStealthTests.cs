@@ -220,4 +220,104 @@ public sealed class ObxV8RealityAndStealthTests
         Assert.Equal(6, batch.Length);
         Assert.All(batch, ip => Assert.False(CleanEdgeScanner.IsThrottledDefaultEdgeIp(ip)));
     }
+
+    [Fact]
+    public async Task Tls13ClientHello_AlwaysEmitsUniqueExtensionsAndMatchingGreaseKeyShareAsync()
+    {
+        for (var iteration = 0; iteration < 64; iteration++)
+        {
+            var captured = new MemoryStream(1024);
+            using var probeStream = new CaptureOnlyStream(captured);
+            try
+            {
+                _ = await Tls13CryptoStream.ConnectClientAsync(
+                    probeStream,
+                    "cdn.jsdelivr.net",
+                    ReadOnlyMemory<byte>.Empty,
+                    null,
+                    leaveInnerOpen: true,
+                    CancellationToken.None);
+            }
+            catch (EndOfStreamException)
+            {
+                //поток возвращает eof сразу после записи clienthello
+            }
+
+            var record = captured.ToArray();
+            Assert.True(record.Length > 100);
+            Assert.Equal(0x16, record[0]);
+
+            var msg = record.AsSpan(5);
+            var off = 4 + 2 + 32; // type+len + version + random
+            var sidLen = msg[off++];
+            off += sidLen;
+            var ciphersLen = (msg[off] << 8) | msg[off + 1];
+            off += 2 + ciphersLen;
+            var compLen = msg[off++];
+            off += compLen;
+            var extTotalLen = (msg[off] << 8) | msg[off + 1];
+            off += 2;
+            var extEnd = off + extTotalLen;
+
+            var seenExtTypes = new HashSet<ushort>();
+            var supportedGroups = new HashSet<ushort>();
+            List<ushort> keyShareGroups = [];
+
+            while (off + 4 <= extEnd)
+            {
+                var extType = (ushort)((msg[off] << 8) | msg[off + 1]);
+                var extLen = (msg[off + 2] << 8) | msg[off + 3];
+                off += 4;
+                Assert.True(seenExtTypes.Add(extType), $"Duplicate TLS extension 0x{extType:X4} on iteration {iteration}.");
+
+                var body = msg.Slice(off, extLen);
+                if (extType == 0x000a && body.Length >= 2)
+                {
+                    var listLen = (body[0] << 8) | body[1];
+                    for (var p = 2; p + 2 <= 2 + listLen; p += 2)
+                    {
+                        _ = supportedGroups.Add((ushort)((body[p] << 8) | body[p + 1]));
+                    }
+                }
+                else if (extType == 0x0033 && body.Length >= 2)
+                {
+                    var sharesLen = (body[0] << 8) | body[1];
+                    var p = 2;
+                    while (p + 4 <= 2 + sharesLen)
+                    {
+                        var group = (ushort)((body[p] << 8) | body[p + 1]);
+                        var kLen = (body[p + 2] << 8) | body[p + 3];
+                        keyShareGroups.Add(group);
+                        p += 4 + kLen;
+                    }
+                }
+
+                off += extLen;
+            }
+
+            Assert.NotEmpty(keyShareGroups);
+            Assert.All(keyShareGroups, g => Assert.Contains(g, supportedGroups));
+        }
+    }
+
+    private sealed class CaptureOnlyStream(MemoryStream sink) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => sink.Length;
+        public override long Position { get => sink.Position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public override int Read(byte[] buffer, int offset, int count) => 0;
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromResult(0);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => sink.Write(buffer, offset, count);
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            sink.Write(buffer.Span);
+            return ValueTask.CompletedTask;
+        }
+    }
 }

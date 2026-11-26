@@ -215,9 +215,10 @@ public static class SniEngine
             ? configuredSni
             : serverIp;
 
+        //порт 443 на прямом узле обслуживает l4 reality-шлюз, поэтому прямой http2 stream сразу идет на 8443/2053
         int[] portCandidates = serverPort == 443
-            ? [443, 8443, 2053]
-            : [serverPort, 443, 8443];
+            ? [8443, 2053, 443]
+            : [serverPort, 8443, 2053];
 
         var result = new List<SniStreamCandidate>(portCandidates.Length + 1);
         var attemptIndex = 0;

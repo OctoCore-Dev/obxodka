@@ -524,10 +524,22 @@ public sealed class Tls13CryptoStream : Stream
         sessionId32.CopyTo(buf.AsSpan(offset, 32));
         offset += 32;
 
+        //уникальные grease значения для соблюдения rfc 8446 и исключения tls alert 50 decode_error
+        var greaseCipher = TlsGreaseHelper.GetRandomGrease();
+        var greaseExt1 = TlsGreaseHelper.GetRandomGrease();
+        var greaseExt2 = TlsGreaseHelper.GetRandomGrease();
+        while (greaseExt2 == greaseExt1)
+        {
+            greaseExt2 = TlsGreaseHelper.GetRandomGrease();
+        }
+
+        var greaseGroup = TlsGreaseHelper.GetRandomGrease();
+        var greaseVersion = TlsGreaseHelper.GetRandomGrease();
+
         //ciphersuites chromium (grease + tls 1.3 + ecdhe fallback для ja4 идентичности с chrome)
         ReadOnlySpan<ushort> ciphers =
         [
-            TlsGreaseHelper.GetRandomGrease(),
+            greaseCipher,
             0x1301,
             0x1302,
             0x1303,
@@ -553,7 +565,7 @@ public sealed class Tls13CryptoStream : Stream
         var extLenPos = offset;
         offset += 2;
 
-        WriteExt(buf, ref offset, TlsGreaseHelper.GetRandomGrease(), []);
+        WriteExt(buf, ref offset, greaseExt1, []);
 
         if (!string.IsNullOrWhiteSpace(sniHost) && !IPAddress.TryParse(sniHost, out _))
         {
@@ -569,10 +581,10 @@ public sealed class Tls13CryptoStream : Stream
         WriteExt(buf, ref offset, 0x0017, []);
         WriteExt(buf, ref offset, 0xff01, [0x00]);
 
-        //supported_groups (grease + x25519 + secp256r1 + secp384r1)
+        //supported_groups (единый greaseGroup с key_share по rfc 8446 + x25519 + secp256r1 + secp384r1)
         Span<byte> groupsBody = stackalloc byte[10];
         BinaryPrimitives.WriteUInt16BigEndian(groupsBody[..2], 8);
-        BinaryPrimitives.WriteUInt16BigEndian(groupsBody.Slice(2, 2), TlsGreaseHelper.GetRandomGrease());
+        BinaryPrimitives.WriteUInt16BigEndian(groupsBody.Slice(2, 2), greaseGroup);
         BinaryPrimitives.WriteUInt16BigEndian(groupsBody.Slice(4, 2), 0x001d);
         BinaryPrimitives.WriteUInt16BigEndian(groupsBody.Slice(6, 2), 0x0017);
         BinaryPrimitives.WriteUInt16BigEndian(groupsBody.Slice(8, 2), 0x0018);
@@ -600,10 +612,10 @@ public sealed class Tls13CryptoStream : Stream
 
         WriteExt(buf, ref offset, 0x0012, []); // signed_certificate_timestamp
 
-        //key_share: grease (1b) + x25519 (32b)
+        //key_share: тот же greaseGroup (1b) + x25519 (32b)
         Span<byte> ksBody = stackalloc byte[43];
         BinaryPrimitives.WriteUInt16BigEndian(ksBody[..2], 41);
-        BinaryPrimitives.WriteUInt16BigEndian(ksBody.Slice(2, 2), TlsGreaseHelper.GetRandomGrease());
+        BinaryPrimitives.WriteUInt16BigEndian(ksBody.Slice(2, 2), greaseGroup);
         BinaryPrimitives.WriteUInt16BigEndian(ksBody.Slice(4, 2), 1);
         ksBody[6] = 0x00;
         BinaryPrimitives.WriteUInt16BigEndian(ksBody.Slice(7, 2), 0x001d);
@@ -616,13 +628,13 @@ public sealed class Tls13CryptoStream : Stream
         //supported_versions (grease + tls 1.3 + tls 1.2)
         Span<byte> verBody = stackalloc byte[7];
         verBody[0] = 6;
-        BinaryPrimitives.WriteUInt16BigEndian(verBody.Slice(1, 2), TlsGreaseHelper.GetRandomGrease());
+        BinaryPrimitives.WriteUInt16BigEndian(verBody.Slice(1, 2), greaseVersion);
         BinaryPrimitives.WriteUInt16BigEndian(verBody.Slice(3, 2), 0x0304);
         BinaryPrimitives.WriteUInt16BigEndian(verBody.Slice(5, 2), 0x0303);
         WriteExt(buf, ref offset, 0x002b, verBody);
 
         WriteExt(buf, ref offset, 0x4469, [0x00, 0x03, 0x02, 0x68, 0x32]); // ALPS h2
-        WriteExt(buf, ref offset, TlsGreaseHelper.GetRandomGrease(), [0x00]);
+        WriteExt(buf, ref offset, greaseExt2, [0x00]);
 
         //выравнивание размера clienthello до стандартных 512 байт chromium (extension 0x0015 padding)
         var targetHandshakeTotal = 512;
