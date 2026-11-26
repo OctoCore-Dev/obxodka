@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="shortcut_connect_short">Включить VPN</string>
+  <string name="shortcut_connect_long">Включить VPN в Обходке</string>
+  <string name="shortcut_disconnect_short">Выключить VPN</string>
+  <string name="shortcut_disconnect_long">Выключить VPN в Обходке</string>
+  <string name="shortcut_status_short">Статус VPN</string>
+  <string name="shortcut_status_long">Проверить статус Обходки</string>
+
+  <string-array name="assistant_connect_phrases">
+    <item>connect</item>
+    <item>connect vpn</item>
+    <item>включи vpn</item>
+    <item>включи vpn в обходке</item>
+    <item>подключи обходку</item>
+  </string-array>
+
+  <string-array name="assistant_disconnect_phrases">
+    <item>disconnect</item>
+    <item>disconnect vpn</item>
+    <item>выключи vpn</item>
+    <item>выключи vpn в обходке</item>
+    <item>отключи обходку</item>
+  </string-array>
+
+  <string-array name="assistant_status_phrases">
+    <item>status</item>
+    <item>vpn status</item>
+    <item>статус</item>
+    <item>проверь статус обходки</item>
+  </string-array>
+</resources>

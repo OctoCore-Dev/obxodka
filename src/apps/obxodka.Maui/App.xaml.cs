@@ -10,6 +10,17 @@ using Window = Microsoft.Maui.Controls.Window;
 
 namespace obxodka;
 
+//тип отложенного действия при переходе из фоновой плитки или голосового ассистента в ui
+internal enum BackgroundVpnActionKind
+{
+    None = 0,
+    NoInternet = 1,
+    NoBalance = 2,
+    RequireAuth = 3,
+    RequireVpnPermission = 4,
+    AssistantDisabled = 5
+}
+
 internal sealed partial class App
 {
     private static int s_shutdownInitiated;
@@ -52,6 +63,7 @@ internal sealed partial class App
 
     public static (string Email, string Code)? PendingDeepLinkLogin { get; set; }
     public static bool PendingTileAction { get; set; }
+    public static BackgroundVpnActionKind PendingBackgroundAction { get; set; }
     public static bool IsShutdownCompleted { get; private set; }
 
 #if WINDOWS
@@ -62,6 +74,19 @@ internal sealed partial class App
     public static event Action? WindowDeactivated;
     public static event Action<bool>? WindowVisibilityChanged;
     public static event Action<string, string>? DeepLinkLoginReceived;
+    public static event Action<BackgroundVpnActionKind>? BackgroundActionReceived;
+
+    //регистрация фонового действия из плитки или голосового помощника для показа диалога в ui
+    public static void HandleBackgroundAction(BackgroundVpnActionKind action)
+    {
+        if (action == BackgroundVpnActionKind.None)
+        {
+            return;
+        }
+
+        PendingBackgroundAction = action;
+        MainThread.BeginInvokeOnMainThread(() => BackgroundActionReceived?.Invoke(action));
+    }
 
     public static bool TryParseDeepLinkLogin(string? rawUri, out string email, out string code)
     {

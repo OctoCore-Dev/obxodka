@@ -31,6 +31,7 @@ namespace obxodka;
     DataScheme = "https",
     DataHost = "qr",
     DataPathPrefix = "/qr")]
+[MetaData("android.app.shortcuts", Resource = "@xml/shortcuts")]
 [SupportedOSPlatform("android30.0")]
 public sealed class MainActivity : MauiAppCompatActivity
 {
@@ -66,10 +67,14 @@ public sealed class MainActivity : MauiAppCompatActivity
 
         base.OnCreate(savedInstanceState);
 
+        AndroidBackgroundVpnController.EnsureStateHooked(ApplicationContext ?? this);
+
         if (Intent?.DataString is { Length: > 0 } initialUri)
         {
             App.HandleDeepLink(initialUri);
         }
+
+        DispatchBackgroundIntentAction(Intent);
 
         _ = Window?.DecorView.Post(() =>
         {
@@ -121,6 +126,19 @@ public sealed class MainActivity : MauiAppCompatActivity
         if (intent?.DataString is { Length: > 0 } dataUri)
         {
             App.HandleDeepLink(dataUri);
+        }
+
+        DispatchBackgroundIntentAction(intent);
+    }
+
+    //передача фонового действия из плитки шторки или голосового ассистента в главное окно
+    private static void DispatchBackgroundIntentAction(Intent? intent)
+    {
+        var rawAction = intent?.GetStringExtra(AndroidBackgroundVpnController.ExtraBackgroundAction);
+        var action = AndroidBackgroundVpnController.ParseBackgroundAction(rawAction);
+        if (action != BackgroundVpnActionKind.None)
+        {
+            App.HandleBackgroundAction(action);
         }
     }
 

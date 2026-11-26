@@ -32,6 +32,12 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         RuAutoBypassCard.IsVisible = false;
         SyncTimeZoneCard.IsVisible = false;
 #endif
+#if ANDROID
+        VoiceAssistantCard.IsVisible = true;
+        RefreshVoiceAssistantStatus();
+#else
+        VoiceAssistantCard.IsVisible = false;
+#endif
 
         UpdateSelectionUi();
     }
@@ -160,11 +166,15 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
             Grid.SetColumn(RunOnStartupCard, 0);
             Grid.SetColumnSpan(RunOnStartupCard, 2);
 
-            Grid.SetRow(SpeedTestCard, 4);
+            Grid.SetRow(VoiceAssistantCard, 4);
+            Grid.SetColumn(VoiceAssistantCard, 0);
+            Grid.SetColumnSpan(VoiceAssistantCard, 2);
+
+            Grid.SetRow(SpeedTestCard, 5);
             Grid.SetColumn(SpeedTestCard, 0);
             Grid.SetColumnSpan(SpeedTestCard, 2);
 
-            Grid.SetRow(ThemesSettingsCard, 5);
+            Grid.SetRow(ThemesSettingsCard, 6);
             Grid.SetColumn(ThemesSettingsCard, 0);
             Grid.SetColumnSpan(ThemesSettingsCard, 2);
         }
@@ -183,6 +193,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
                 RuAutoBypassCard,
                 SyncTimeZoneCard,
                 RunOnStartupCard,
+                VoiceAssistantCard,
                 SpeedTestCard,
                 ThemesSettingsCard
             ];
@@ -212,6 +223,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
             RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
             RuAutoBypassToggle.IsToggled = Preferences.Get(AppPreferenceKeys.BypassRuSites, true);
             SyncTimeZoneToggle.IsToggled = Preferences.Get(AppPreferenceKeys.SyncTimeZoneWithServer, false);
+#elif ANDROID
+            VoiceAssistantToggle.IsToggled = Preferences.Get(AppPreferenceKeys.VoiceAssistantEnabled, true);
 #endif
         }
         finally
@@ -371,6 +384,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         SyncSwitchesFromPreferences();
 #if WINDOWS
         _ = SyncWindowsStartupStateAsync();
+#elif ANDROID
+        RefreshVoiceAssistantStatus();
 #endif
         if (_vpnService is not null)
         {
@@ -379,6 +394,101 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 
         UpdateSelectionUi();
     }
+
+    //сохранение настройки управления vpn через голосовых ассистентов android
+    private void OnVoiceAssistantToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.VoiceAssistantEnabled, e.Value);
+#if ANDROID
+        RefreshVoiceAssistantStatus();
+#endif
+    }
+
+    //открытие системного экрана настройки голосового помощника android
+    private void OnOpenAssistantSettingsTapped(object? sender, TappedEventArgs e)
+    {
+#if ANDROID
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
+            AndroidVoiceAssistantDetector.OpenAndroidAssistantSettings(Android.App.Application.Context);
+        }
+#endif
+    }
+
+#if ANDROID
+    //автоопределение установленного и системного голосового помощника и обновление карточки подсказок
+    private void RefreshVoiceAssistantStatus()
+    {
+        if (!OperatingSystem.IsAndroidVersionAtLeast(30) || VoiceAssistantBadgeLabel is null)
+        {
+            return;
+        }
+
+        var detection = AndroidVoiceAssistantDetector.Detect(Android.App.Application.Context);
+        var isVoiceEnabled = Preferences.Get(AppPreferenceKeys.VoiceAssistantEnabled, true);
+
+        VoiceAssistantBadgeLabel.Text = detection.BadgeTitle;
+        var accentColor = CyanColor;
+        var successColor = EmeraldColor;
+        var warningColor = Application.Current?.Resources.TryGetValue("Warning", out var w) == true && w is Color wc
+            ? wc
+            : Color.FromArgb("#F59E0B");
+
+        switch (detection.Kind)
+        {
+            case DetectedVoiceAssistantKind.GoogleGemini:
+            case DetectedVoiceAssistantKind.GoogleAssistant:
+                VoiceAssistantBadgeBorder.Stroke = accentColor;
+                VoiceAssistantBadgeBorder.BackgroundColor = accentColor.WithAlpha(0.14f);
+                VoiceAssistantBadgeLabel.TextColor = accentColor;
+                VoiceAssistantStatusLabel.Text = isVoiceEnabled
+                    ? "Голосовое управление активно через Google Gemini."
+                    : "Голосовое управление выключено в настройках Обходки.";
+                VoiceAssistantHintLabel.Text =
+                    "Вы можете управлять VPN голосом через Gemini. Скажите «Окей, Гугл» или «Хей, Гугл» и одну из команд:";
+                VoiceAssistantCommandsLabel.Text =
+                    "• «Включи VPN в Обходке» / «Подключи Обходку»\n" +
+                    "• «Выключи VPN в Обходке» / «Отключи Обходку»\n" +
+                    "• «Проверь статус Обходки»";
+                VoiceAssistantCommandsPanel.IsVisible = true;
+                OpenAssistantSettingsButton.IsVisible = false;
+                break;
+
+            case DetectedVoiceAssistantKind.SamsungBixby:
+                VoiceAssistantBadgeBorder.Stroke = successColor;
+                VoiceAssistantBadgeBorder.BackgroundColor = successColor.WithAlpha(0.14f);
+                VoiceAssistantBadgeLabel.TextColor = successColor;
+                VoiceAssistantStatusLabel.Text = isVoiceEnabled
+                    ? "Голосовое управление активно через Samsung Bixby."
+                    : "Голосовое управление выключено в настройках Обходки.";
+                VoiceAssistantHintLabel.Text = detection.HasBixbyRoutines
+                    ? "Скажите «Hi, Bixby» или добавьте действие Обходки в Bixby Routines:"
+                    : "Скажите «Hi, Bixby» и одну из команд:";
+                VoiceAssistantCommandsLabel.Text =
+                    "• «Включи VPN в Обходке» / «Подключи Обходку»\n" +
+                    "• «Выключи VPN в Обходке» / «Отключи Обходку»\n" +
+                    "• «Проверь статус Обходки»\n" +
+                    "• Bixby Routines: быстрый запуск ярлыков «Включить VPN» / «Выключить VPN»";
+                VoiceAssistantCommandsPanel.IsVisible = true;
+                OpenAssistantSettingsButton.IsVisible = false;
+                break;
+
+            default:
+                VoiceAssistantBadgeBorder.Stroke = warningColor;
+                VoiceAssistantBadgeBorder.BackgroundColor = warningColor.WithAlpha(0.14f);
+                VoiceAssistantBadgeLabel.TextColor = warningColor;
+                VoiceAssistantStatusLabel.Text = "На вашем устройстве не настроен голосовой помощник.";
+                VoiceAssistantCommandsPanel.IsVisible = false;
+                OpenAssistantSettingsButton.IsVisible = true;
+                break;
+        }
+    }
+#endif
 
     //каскадная анимация появления карточек
     public async Task PlayEntranceAnimationAsync()

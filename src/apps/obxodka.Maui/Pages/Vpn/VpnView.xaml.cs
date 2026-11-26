@@ -247,6 +247,27 @@ public sealed partial class VpnView : IDisposable, IAdaptivePage
         _ = RefreshServerListAsync();
 
         SubscribeEvents();
+        SyncFromLiveVpnState();
+    }
+
+    //мгновенная ssot-синхронизация интерфейса с живым состоянием туннеля при открытии окна после фонового пуска
+    public void SyncFromLiveVpnState()
+    {
+        if (_disposed || _vpnService is null)
+        {
+            return;
+        }
+
+        var liveState = _vpnService.CurrentState;
+        if (liveState == AppVpnState.Disconnected && OctopusEngine.Current.IsConnected)
+        {
+            liveState = AppVpnState.Connected;
+        }
+
+        if (liveState != AppVpnState.Disconnected)
+        {
+            HandleAppVpnStateChanged(liveState);
+        }
     }
 
     //подписка на события состояния vpn и сетевого ядра

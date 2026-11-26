@@ -17,6 +17,9 @@ public static class AppPreferenceKeys
     public const string UseAdblockDns = "use_adblock_dns";
     public const string AdblockLastSyncTicks = "adblock_last_sync_ticks";
     public const string UseTelemetry = "use_telemetry";
+    public const string VoiceAssistantEnabled = "voice_assistant_enabled";
+    public const string SelectedServerIp = "selected_server_ip";
+    public const string VpnDisclosureAccepted = "VpnDisclosureAccepted";
 
     //сессия пользователя, подписка и локальный кэш
     public const string UserEmail = "user_email";

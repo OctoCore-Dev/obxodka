@@ -203,8 +203,16 @@ public sealed partial class MainPage
             {
                 if (_activeTab != "auth")
                 {
+                    SyncLiveBackgroundVpnState();
+                    if (_activeTab == "configuration")
+                    {
+                        _tabContentConfiguration?.OnAppearing();
+                    }
+
                     await SyncBalanceFromServerAsync();
                 }
+
+                await HandlePendingBackgroundActionAsync();
             }
             catch
             {

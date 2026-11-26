@@ -180,6 +180,7 @@ internal static class MauiProgram
     private static void RegisterAndroidServices(IServiceCollection services)
     {
         var orchestrator = AndroidVpnService.Orchestrator;
+        AndroidBackgroundVpnController.EnsureStateHooked(Application.Context);
         _ = services.AddSingleton<IVpnService>(_ => orchestrator);
         _ = services.AddSingleton<IAppManager, AppManager>();
         _ = services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();
