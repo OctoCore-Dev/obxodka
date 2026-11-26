@@ -61,7 +61,7 @@ public sealed partial class VpnView
                 AppVpnState.Disconnected or AppVpnState.Error => "Нет подключения",
                 AppVpnState.Disconnecting => VpnStatusMessages.Disconnecting,
                 AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Connected =>
-                    ProtocolPipelineRegistry.FormatLiveStatusBadge(OctopusEngine.Current.ActiveProtocol, OctopusEngine.Current.ActiveRays),
+                    ProtocolPipelineRegistry.FormatLiveStatusBadge(OctopusEngine.Current.ActiveProtocol),
                 _ => "Нет подключения"
             };
         });

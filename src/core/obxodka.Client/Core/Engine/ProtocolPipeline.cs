@@ -1,9 +1,7 @@
 namespace obxodka.Core;
 
-//закрытая иерархия активного транспорта для типобезопасного отображения лучей в c# 15
+//закрытая иерархия активного транспорта для типобезопасного отображения в c# 15
 public closed record ActiveTransportTag;
-
-public sealed record StreamTransportTag(int ActiveRays) : ActiveTransportTag;
 
 public sealed record WebSocketTransportTag : ActiveTransportTag
 {
@@ -23,7 +21,6 @@ public sealed record RealityTransportTag : ActiveTransportTag
 //поддерживаемые типы транспортных протоколов туннеля
 public enum TransportProtocolKind
 {
-    ObxodkaStream = 0,
     ObxodkaWebSocket = 1,
     ObxodkaXhttp = 2,
     ObxodkaReality = 3
@@ -69,10 +66,9 @@ public static class ProtocolPipelineRegistry
 
     static ProtocolPipelineRegistry()
     {
-        RegisterFactory(new ObxodkaStreamProtocolFactory());
+        RegisterFactory(new ObxodkaRealityProtocolFactory());
         RegisterFactory(new ObxodkaWebSocketProtocolFactory());
         RegisterFactory(new ObxodkaXhttpProtocolFactory());
-        RegisterFactory(new ObxodkaRealityProtocolFactory());
     }
 
     //разбор пользовательского имени или алиаса протокола в канонический идентификатор ssot
@@ -87,11 +83,8 @@ public static class ProtocolPipelineRegistry
         var trimmed = rawProtocol.Trim();
         switch (trimmed.ToLowerInvariant())
         {
-            case "auto" or "авто" or "default":
+            case "auto" or "авто" or "default" or "stream" or "h2" or "http2" or "obxodka-stream":
                 normalizedProtocol = AutoProtocolId;
-                return true;
-            case "stream" or "h2" or "http2" or "obxodka-stream":
-                normalizedProtocol = "OBXODKA-STREAM";
                 return true;
             case "ws" or "wss" or "websocket" or "cloudflare" or "obxodka-ws":
                 normalizedProtocol = "OBXODKA-WS";
@@ -205,17 +198,16 @@ public static class ProtocolPipelineRegistry
     }
 
     //разрешение активного тега транспорта для ui без строковых костылей
-    public static ActiveTransportTag ResolveActiveTag(string? protocolName, int activeRays) =>
+    public static ActiveTransportTag ResolveActiveTag(string? protocolName) =>
         protocolName switch
         {
             "OBXODKA-WS" => WebSocketTransportTag.Instance,
             "OBXODKA-XHTTP" => XhttpTransportTag.Instance,
-            "OBXODKA-REALITY" => RealityTransportTag.Instance,
-            _ => new StreamTransportTag(activeRays)
+            _ => RealityTransportTag.Instance
         };
 
     //форматирование краткого бейджа активного протокола для верхней плашки ui
-    public static string FormatLiveStatusBadge(string? protocolName, int activeRays)
+    public static string FormatLiveStatusBadge(string? protocolName)
     {
         if (string.IsNullOrWhiteSpace(protocolName) ||
             string.Equals(protocolName, "AUTO", StringComparison.OrdinalIgnoreCase))
@@ -224,16 +216,15 @@ public static class ProtocolPipelineRegistry
         }
 
         if (TryFindFactoryByProtocolName(protocolName, out var customFactory) &&
-            customFactory.Kind is not (TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaWebSocket
+            customFactory.Kind is not (TransportProtocolKind.ObxodkaWebSocket
                 or TransportProtocolKind.ObxodkaXhttp or TransportProtocolKind.ObxodkaReality))
         {
             return customFactory.ShortTag;
         }
 
 #pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
-        return ResolveActiveTag(protocolName, activeRays) switch
+        return ResolveActiveTag(protocolName) switch
         {
-            StreamTransportTag stream => $"Stream • {Math.Max(1, stream.ActiveRays)}L",
             WebSocketTransportTag => "WebSocket",
             XhttpTransportTag => "XHTTP",
             RealityTransportTag => "Reality"
@@ -251,20 +242,6 @@ public static class ProtocolPipelineRegistry
         transport.ProtectSockets(OctopusEngine.Current.ProtectSocket);
         return transport;
     }
-}
-
-internal sealed class ObxodkaStreamProtocolFactory : ITransportProtocolFactory
-{
-    public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaStream;
-    public string DisplayName => "OBXODKA-STREAM";
-    public string FriendlyName => "Obxodka Stream";
-    public string ShortTag => "Stream";
-    public string TransportSummary => "HTTP/2 TLS 443";
-    public string Description => "Многолучевой защищённый дуплексный поток с минимальной задержкой и обходом DPI.";
-    public int Order => 0;
-
-    public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
-        new ObxodkaStreamTransport(step.Port, step.TargetSni, preferredAssignedIp);
 }
 
 internal sealed class ObxodkaWebSocketProtocolFactory : ITransportProtocolFactory
@@ -303,7 +280,7 @@ internal sealed class ObxodkaRealityProtocolFactory : ITransportProtocolFactory
     public string ShortTag => "Reality";
     public string TransportSummary => "TLS 1.3 Reality 443";
     public string Description => "Прямой стелс-протокол с проверкой SessionID до TLS и маскировкой под легальный сайт.";
-    public int Order => 3;
+    public int Order => 0;
 
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
         new ObxodkaRealityTransport(step.Port, step.TargetSni, preferredAssignedIp);

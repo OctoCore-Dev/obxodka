@@ -140,26 +140,9 @@ public sealed partial class OctopusEngine
             }
             else
             {
-                if (await transport.ProbeMtuAsync(SmartMtuEngine.DefaultMtu, ct).ConfigureAwait(false))
-                {
-                    optimalMtu = SmartMtuEngine.DefaultMtu;
-                }
-                else if (await transport.ProbeMtuAsync(SmartMtuEngine.MinMtu, ct).ConfigureAwait(false))
-                {
-                    optimalMtu = SmartMtuEngine.MinMtu;
-                }
-                else
-                {
-                    //даже минимальный зонд 1200 байт завис после прокачки окна — признак блокировки тспу по объему байт
-                    if (transport is ObxodkaStreamTransport &&
-                        !ct.IsCancellationRequested &&
-                        await TryEscalateToShieldAsync("PostHandshakeMtuBurstFreeze", ct).ConfigureAwait(false))
-                    {
-                        return SmartMtuEngine.CurrentMtu;
-                    }
-
-                    optimalMtu = SmartMtuEngine.MinMtu;
-                }
+                optimalMtu = await transport.ProbeMtuAsync(SmartMtuEngine.DefaultMtu, ct).ConfigureAwait(false)
+                    ? SmartMtuEngine.DefaultMtu
+                    : SmartMtuEngine.MinMtu;
             }
 
             SmartMtuEngine.CurrentMtu = optimalMtu;
@@ -226,20 +209,16 @@ public sealed partial class OctopusEngine
                         var elapsedMs = Environment.TickCount64 - armedTicks;
                         var bytesSentDuringStall = currentSent - rxStallStartSent;
 
-                        //ранний эхо-зонд при застое rx для быстрой проверки канала (на облачных каналах зондируем на 3с и 5с)
-                        var isDirectStream = _transport is ObxodkaStreamTransport;
-                        if (ShouldSendWatchdogPing(isDirectStream, deadTicks))
+                        //ранний эхо-зонд при застое rx для быстрой проверки канала (зондируем на 3с и 5с)
+                        if (ShouldSendWatchdogPing(deadTicks))
                         {
                             _ = _transport?.SendPingProbeAsync();
                         }
 
-                        //раннее переключение по круговому кольцу: для прямого потока при тспу 5с, для облачных щитов 9с с подтвержденным провалом пинга
-                        if (ShouldRotateForRxStall(isDirectStream, deadTicks, currentSent, bytesSentDuringStall))
+                        //раннее переключение по круговому кольцу при подтвержденном провале входящего трафика
+                        if (ShouldRotateForRxStall(deadTicks, bytesSentDuringStall))
                         {
-                            var reason = isDirectStream
-                                ? "DirectStreamByteCapFreeze"
-                                : "MidSessionRxStall";
-                            var rotated = await TryRotateProtocolAsync(reason, token).ConfigureAwait(false);
+                            var rotated = await TryRotateProtocolAsync("MidSessionRxStall", token).ConfigureAwait(false);
                             if (rotated)
                             {
                                 deadTicks = 0;
@@ -253,11 +232,11 @@ public sealed partial class OctopusEngine
                         var isInitialBlackhole = currentReceived < 5000 &&
                                                  elapsedMs is >= 10000 and < 60000 &&
                                                  (currentSent > 12000 || bytesSentDuringStall > 8192) &&
-                                                 deadTicks >= (isDirectStream ? 35 : 55);
+                                                 deadTicks >= 55;
 
                         var isDead = isInitialBlackhole ||
-                                     bytesSentDuringStall > 32768 && deadTicks >= (isDirectStream ? 45 : 65) ||
-                                     currentReceived < 5000 && deadTicks >= (isDirectStream ? 55 : 70) ||
+                                     bytesSentDuringStall > 32768 && deadTicks >= 65 ||
+                                     currentReceived < 5000 && deadTicks >= 70 ||
                                      deadTicks >= 90;
 
                         if (isDead)
@@ -373,14 +352,10 @@ public sealed partial class OctopusEngine
     }
 
     //проверка момента отправки активного эхо-зонда при застое входящего трафика
-    private static bool ShouldSendWatchdogPing(bool isDirectStream, int deadTicks) =>
-        isDirectStream
-            ? deadTicks == 20 || deadTicks >= 25 && deadTicks % 15 == 0
-            : deadTicks is 15 or 25 || deadTicks >= 35 && deadTicks % 15 == 0;
+    private static bool ShouldSendWatchdogPing(int deadTicks) =>
+        deadTicks is 15 or 25 || deadTicks >= 35 && deadTicks % 15 == 0;
 
     //проверка необходимости ранней ротации протокола при зависании входящего трафика
-    private static bool ShouldRotateForRxStall(bool isDirectStream, int deadTicks, long currentSent, long bytesSentDuringStall) =>
-        isDirectStream
-            ? deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192)
-            : deadTicks >= 55 || deadTicks >= 45 && bytesSentDuringStall >= 4096;
+    private static bool ShouldRotateForRxStall(int deadTicks, long bytesSentDuringStall) =>
+        deadTicks >= 55 || deadTicks >= 45 && bytesSentDuringStall >= 4096;
 }

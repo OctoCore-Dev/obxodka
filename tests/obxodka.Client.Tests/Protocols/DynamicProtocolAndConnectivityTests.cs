@@ -118,17 +118,18 @@ public sealed class DynamicProtocolAndConnectivityTests
             OctopusEngine.DynamicSslPublicKeyHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
         }
 
-        var transport = new ObxodkaStreamTransport();
+        using var transport = new ObxodkaRealityTransport();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         var ex = await Record.ExceptionAsync(() => transport.ConnectAsync(AppConfig.DirectServerIp, "TEST_THUMBPRINT", cts.Token));
 
         Assert.True(
-            ex is null or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException or SocketException,
-            $"Expected cancellation, got: {ex}");
+            ex is null or OperationCanceledException or TaskCanceledException or HttpRequestException or IOException or SocketException
+                or AuthenticationException,
+            $"Expected cancellation or network error, got: {ex}");
     }
 
     [Fact]
-    public async Task LiveStreamEchoTestAsync()
+    public async Task LiveRealityEchoTestAsync()
     {
         string expectedHash;
         try
@@ -145,7 +146,7 @@ public sealed class DynamicProtocolAndConnectivityTests
 
         OctopusEngine.DynamicSslPublicKeyHash = expectedHash;
 
-        var transport = new ObxodkaStreamTransport();
+        using var transport = new ObxodkaRealityTransport();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         string ip;
         try
@@ -154,7 +155,7 @@ public sealed class DynamicProtocolAndConnectivityTests
             ip = res.ip;
         }
         catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException
-                                       or HttpRequestException or IOException)
+                                       or HttpRequestException or IOException or AuthenticationException)
         {
             return;
         }

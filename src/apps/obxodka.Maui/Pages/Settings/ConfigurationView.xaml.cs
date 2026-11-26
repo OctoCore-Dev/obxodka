@@ -529,12 +529,12 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         }
 
         var liveBadge = isConnected
-            ? ProtocolPipelineRegistry.FormatLiveStatusBadge(engine.ActiveProtocol, engine.ActiveRays)
+            ? ProtocolPipelineRegistry.FormatLiveStatusBadge(engine.ActiveProtocol)
             : isAutoMode
                 ? "Авто • Умный подбор"
                 : highlightedFactory is not null
                     ? $"{highlightedFactory.FriendlyName} • {highlightedFactory.TransportSummary}"
-                    : "Obxodka Stream • HTTP/2";
+                    : "Obxodka Reality • TLS 1.3";
 
         CurrentSelectionLabel.Text = blockV6 ? $"{liveBadge} • IPv4 Only" : liveBadge;
 
@@ -550,9 +550,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         }
         else if (highlightedFactory is not null)
         {
-            ActiveProtocolTitleLabel.Text = isConnected && highlightedFactory.Kind == TransportProtocolKind.ObxodkaStream
-                ? $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary} • {Math.Max(1, engine.ActiveRays)}L)"
-                : $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary})";
+            ActiveProtocolTitleLabel.Text = $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary})";
             ActiveProtocolDescLabel.Text = highlightedFactory.Description;
         }
 
@@ -653,11 +651,9 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
             var isSelected = isConnected
                 ? highlightedFactory is not null && factory.Kind == highlightedFactory.Kind
                 : !isAutoMode && highlightedFactory is not null && factory.Kind == highlightedFactory.Kind;
-            var labelText = isSelected && isConnected && factory.Kind == TransportProtocolKind.ObxodkaStream
-                ? $"{factory.ShortTag} • {Math.Max(1, OctopusEngine.Current.ActiveRays)}L"
-                : factory.Kind == TransportProtocolKind.ObxodkaReality
-                    ? $"{factory.ShortTag} (V8)"
-                    : factory.ShortTag;
+            var labelText = factory.Kind == TransportProtocolKind.ObxodkaReality
+                ? $"{factory.ShortTag} (V9)"
+                : factory.ShortTag;
 
             AddProtocolPill(
                 labelText,

@@ -128,7 +128,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(TransportProtocolKind.ObxodkaStream)]
+    [InlineData(TransportProtocolKind.ObxodkaReality)]
     [InlineData(TransportProtocolKind.ObxodkaWebSocket)]
     [InlineData(TransportProtocolKind.ObxodkaXhttp)]
     public void ProtocolPipelineRegistry_BuiltInFactories_CreateDistinctTransports(TransportProtocolKind kind)
