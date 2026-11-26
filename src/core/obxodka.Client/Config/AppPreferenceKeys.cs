@@ -6,6 +6,7 @@ public static class AppPreferenceKeys
     //настройки VPN-туннеля и маршрутизации
     public const string AutoReconnect = "AutoReconnect";
     public const string KillSwitch = "KillSwitch";
+    public const string PreferredProtocol = "PreferredProtocol";
     public const string ForceWebSocket = "ForceWebSocket";
     public const string BlockIpv6 = "BlockIpv6";
     public const string BypassRuSites = "obxodka_win_preset_rutlds";

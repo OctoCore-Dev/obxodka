@@ -31,7 +31,7 @@ public static class CliCommandParser
         ["--version"] = "version"
     };
 
-    private static readonly HashSet<string> s_valueOptions = new(["mtu", "email", "code", "server", "port"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> s_valueOptions = new(["mtu", "email", "code", "server", "port", "protocol", "proto"], StringComparer.OrdinalIgnoreCase);
 
     //разбор массива аргументов в нормализованную команду
     public static CliParsedCommand Parse(string[] args)

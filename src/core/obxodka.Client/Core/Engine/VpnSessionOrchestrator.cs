@@ -341,8 +341,13 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                 ? _fallbackServers
                 : [new VpnServerDto(serverIp, serverPort, "", true, 0)];
 
+            var preferredProtocol = ProtocolPipelineRegistry.GetPreferredProtocol();
             var forceWebSocket = PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
-            var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, null, forceWebSocket);
+            var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, null, forceWebSocket, preferredProtocol);
+            if (!string.Equals(preferredProtocol, ProtocolPipelineRegistry.AutoProtocolId, StringComparison.OrdinalIgnoreCase))
+            {
+                AppLogger.Log($"[VPN-ORCHESTRATOR] Manual protocol preference active: {preferredProtocol} ({ring.Count} route step(s))");
+            }
             if (ring.Count == 0)
             {
                 throw new InvalidOperationException("Нет доступных маршрутов или протоколов для подключения.");

@@ -402,6 +402,24 @@ public sealed class CliApp : IDisposable
             return 1;
         }
 
+        var requestedProtocol = cmd.GetOption("protocol") ?? cmd.GetOption("proto");
+        string? previousProtocol = null;
+        if (!string.IsNullOrWhiteSpace(requestedProtocol))
+        {
+            if (!ProtocolPipelineRegistry.TryParsePreferredProtocol(requestedProtocol, out var normalizedProtocol))
+            {
+                CliAnsiUi.PrintError($"Неизвестный протокол '{requestedProtocol}'. Доступны: auto, stream, ws, xhttp, reality");
+                return 2;
+            }
+
+            previousProtocol = ProtocolPipelineRegistry.GetPreferredProtocol();
+            _ = ProtocolPipelineRegistry.SetPreferredProtocol(normalizedProtocol);
+        }
+
+        using var protocolRestoreScope = previousProtocol is not null
+            ? new ProtocolRestoreScope(previousProtocol)
+            : null;
+
         ApplyConnectFlagsToPreferences(cmd);
 
         var (ok, servers, err) = cmd.IsJson
@@ -881,9 +899,18 @@ public sealed class CliApp : IDisposable
             if (cmd.PositionalArgs.Count >= 2)
             {
                 var name = cmd.PositionalArgs[1];
+                if (string.Equals(name, "protocol", StringComparison.OrdinalIgnoreCase))
+                {
+                    var proto = ProtocolPipelineRegistry.GetPreferredProtocol();
+                    Console.WriteLine(cmd.IsJson
+                        ? $"{{\"protocol\":\"{proto}\"}}"
+                        : $"  {CliAnsiUi.Paint("protocol", CliAnsiUi.Cyan)} = {CliAnsiUi.PaintBold(proto, CliAnsiUi.Green)}");
+                    return 0;
+                }
+
                 if (!s_configKeys.TryGetValue(name, out var meta))
                 {
-                    CliAnsiUi.PrintError($"Неизвестный ключ '{name}'. Доступны: {string.Join(", ", s_configKeys.Keys)}");
+                    CliAnsiUi.PrintError($"Неизвестный ключ '{name}'. Доступны: protocol, {string.Join(", ", s_configKeys.Keys)}");
                     return 2;
                 }
 
@@ -896,6 +923,13 @@ public sealed class CliApp : IDisposable
 
             var map = new Dictionary<string, string>(StringComparer.Ordinal);
             List<string[]> rows = [];
+            var currentProto = ProtocolPipelineRegistry.GetPreferredProtocol();
+            map["protocol"] = currentProto;
+            rows.Add(
+            [
+                CliAnsiUi.PaintBold("protocol", CliAnsiUi.Cyan),
+                CliAnsiUi.PaintBold(currentProto, CliAnsiUi.Green)
+            ]);
             foreach (var (name, meta) in s_configKeys)
             {
                 var val = PlatformServices.Preferences.Get(meta.Key, meta.DefaultBool);
@@ -923,9 +957,22 @@ public sealed class CliApp : IDisposable
         {
             var name = cmd.PositionalArgs[1];
             var rawVal = cmd.PositionalArgs[2];
+            if (string.Equals(name, "protocol", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!ProtocolPipelineRegistry.TryParsePreferredProtocol(rawVal, out var normalizedProto))
+                {
+                    CliAnsiUi.PrintError($"Неизвестный протокол '{rawVal}'. Доступны: auto, stream, ws, xhttp, reality");
+                    return 2;
+                }
+
+                _ = ProtocolPipelineRegistry.SetPreferredProtocol(normalizedProto);
+                CliAnsiUi.PrintSuccess($"protocol = {normalizedProto}");
+                return 0;
+            }
+
             if (!s_configKeys.TryGetValue(name, out var meta))
             {
-                CliAnsiUi.PrintError($"Неизвестный ключ '{name}'. Доступны: {string.Join(", ", s_configKeys.Keys)}");
+                CliAnsiUi.PrintError($"Неизвестный ключ '{name}'. Доступны: protocol, {string.Join(", ", s_configKeys.Keys)}");
                 return 2;
             }
 
@@ -935,12 +982,20 @@ public sealed class CliApp : IDisposable
                 return 2;
             }
 
-            PlatformServices.Preferences.Set(meta.Key, parsedBool);
+            if (string.Equals(name, "force-websocket", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = ProtocolPipelineRegistry.SetPreferredProtocol(parsedBool ? "OBXODKA-WS" : ProtocolPipelineRegistry.AutoProtocolId);
+            }
+            else
+            {
+                PlatformServices.Preferences.Set(meta.Key, parsedBool);
+            }
+
             CliAnsiUi.PrintSuccess($"{name} = {parsedBool.ToString().ToLowerInvariant()}");
             return 0;
         }
 
-        CliAnsiUi.PrintError("Использование: obx config get [key] | obx config set <key> <true|false>");
+        CliAnsiUi.PrintError("Использование: obx config get [key] | obx config set <key> <value>");
         return 2;
     }
 
@@ -1324,12 +1379,18 @@ public sealed class CliApp : IDisposable
                 [CliAnsiUi.PaintBold("completion powershell|bash|zsh", CliAnsiUi.Cyan), "—", "Скрипт автодополнения оболочки"]
             ]);
         Console.WriteLine();
-        CliAnsiUi.PrintInfo($"Флаги connect: {CliAnsiUi.Paint("--kill-switch  --adblock  --block-ipv6  --mtu <n>  --json", CliAnsiUi.White)}");
+        CliAnsiUi.PrintInfo($"Флаги connect: {CliAnsiUi.Paint("--protocol <auto|stream|ws|xhttp|reality>  --kill-switch  --adblock  --block-ipv6  --mtu <n>  --json", CliAnsiUi.White)}");
     }
 
     private sealed class AdapterScope(ITunnelPlatformAdapter adapter, IDisposable? disposable) : IDisposable
     {
         public ITunnelPlatformAdapter Adapter { get; } = adapter;
         public void Dispose() => disposable?.Dispose();
+    }
+
+    //гарантированный откат временного переопределения --protocol после завершения сессии connect
+    private sealed class ProtocolRestoreScope(string previousProtocol) : IDisposable
+    {
+        public void Dispose() => _ = ProtocolPipelineRegistry.SetPreferredProtocol(previousProtocol);
     }
 }
