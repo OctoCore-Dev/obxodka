@@ -79,7 +79,9 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         {
             try
             {
+#pragma warning disable RS0030 //синхронный колбэк завершения процесса обязан успеть откатить маршруты и wfp
                 _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+#pragma warning restore RS0030
             }
             catch
             {
@@ -116,7 +118,9 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         CancelRoamingUnsafe();
         try
         {
+#pragma warning disable RS0030 //синхронный dispose гарантирует остановку туннеля и очистку маршрутов ос
             _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+#pragma warning restore RS0030
         }
         catch
         {

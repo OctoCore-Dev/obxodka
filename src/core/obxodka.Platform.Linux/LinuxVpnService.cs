@@ -323,7 +323,9 @@ public sealed class LinuxVpnService : ITunnelPlatformAdapter, IDisposable
                             break;
                         }
 
+#pragma warning disable RS0030 //выделенный системный поток чтения tun linux выдерживает короткую паузу при пустом чтении
                         Thread.Sleep(5);
+#pragma warning restore RS0030
                         continue;
                     }
 

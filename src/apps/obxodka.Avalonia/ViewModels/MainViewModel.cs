@@ -738,7 +738,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (_orchestrator is not null && _orchestrator.IsRunning)
             {
+#pragma warning disable RS0030 //синхронное закрытие окна ждет остановку туннеля и откат маршрутов ос
                 _ = _orchestrator.StopVpnAsync().Wait(TimeSpan.FromSeconds(4));
+#pragma warning restore RS0030
             }
         }
         catch

@@ -40,21 +40,21 @@ public sealed record ProtocolRouteStep(
 //контракт расширяемой фабрики транспортных протоколов
 public interface ITransportProtocolFactory
 {
-    public TransportProtocolKind Kind { get; }
+    TransportProtocolKind Kind { get; }
 
-    public string DisplayName { get; }
+    string DisplayName { get; }
 
-    public string FriendlyName => DisplayName;
+    string FriendlyName => DisplayName;
 
-    public string ShortTag => FriendlyName;
+    string ShortTag => FriendlyName;
 
-    public string TransportSummary => DisplayName;
+    string TransportSummary => DisplayName;
 
-    public string Description => string.Empty;
+    string Description => string.Empty;
 
-    public int Order => (int)Kind;
+    int Order => (int)Kind;
 
-    public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp);
+    IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp);
 }
 
 //глобальный реестр фабрик протоколов для простого подключения новых транспортов в будущем

@@ -29,7 +29,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public void DetectConflictingVpnAndPreflightDelegateToPlatformAdapter()
+    public async Task DetectConflictingVpnAndPreflightDelegateToPlatformAdapterAsync()
     {
         _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns("WireGuard");
         _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync("No uplink");
@@ -37,7 +37,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
         using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, false);
 
         Assert.Equal("WireGuard", orchestrator.DetectConflictingVpn());
-        Assert.Equal("No uplink", orchestrator.RunNetworkPreflightAsync().GetAwaiter().GetResult());
+        Assert.Equal("No uplink", await orchestrator.RunNetworkPreflightAsync());
     }
 
     [Fact]

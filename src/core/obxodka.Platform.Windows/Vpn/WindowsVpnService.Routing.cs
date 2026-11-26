@@ -148,8 +148,8 @@ public sealed partial class WindowsVpnService
             Win32NetworkHelper.DeleteIpv6Routes((uint)tunIfIndex, ("::", 1), ("8000::", 1), ("2001::", 32));
         }
 
-        await DisableDnsLeakProtectionAsync();
-        await RestoreAdapterDnsBackupAsync();
+        await DisableDnsLeakProtectionAsync().ConfigureAwait(false);
+        await RestoreAdapterDnsBackupAsync().ConfigureAwait(false);
         ResetSavedPhysicalGateway();
 
         try

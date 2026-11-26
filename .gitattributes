@@ -1,11 +1,11 @@
 # =============================================================================
-# Master .gitattributes for C# / .NET / Cross-Platform (Windows + WSL)
+# Эталонный .gitattributes для C# / .NET / кроссплатформенной разработки (Windows + WSL)
 # =============================================================================
 
-# Default: Git automatically detects text vs binary
+# По умолчанию: Git сам определяет текстовые и бинарные файлы
 * text=auto
 
-# C# and .NET Solution/Project files -> strictly CRLF
+# Файлы C# и решений/проектов .NET -> строго CRLF
 *.cs text diff=csharp eol=crlf
 *.csx text diff=csharp eol=crlf
 *.xaml text eol=crlf
@@ -19,8 +19,9 @@
 *.slnx text eol=crlf
 *.config text eol=crlf
 *.editorconfig text eol=crlf
+.globalconfig text eol=crlf
 
-# Web, JSON and Configs -> CRLF
+# Веб, JSON и конфиги -> CRLF
 *.json text eol=crlf
 *.xml text eol=crlf
 *.md text eol=crlf
@@ -29,14 +30,14 @@
 *.resw text eol=crlf
 *.resx text eol=crlf
 
-# Windows Scripts -> CRLF
+# Скрипты Windows -> CRLF
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 *.psm1 text eol=crlf
 *.psd1 text eol=crlf
 
-# Linux and Container files -> strictly LF
+# Linux и контейнеры -> строго LF
 *.sh text eol=lf
 Dockerfile* text eol=lf
 *.dockerfile text eol=lf
@@ -45,9 +46,8 @@ Caddyfile* text eol=lf
 *.yml text eol=lf
 .gitignore text eol=lf
 .gitattributes text eol=lf
-.globalconfig text eol=crlf
 
-# Binary Assets -> raw binary, never touch or convert
+# Бинарные ассеты -> сырые бинарники, никогда не менять окончания строк
 *.png binary
 *.jpg binary
 *.jpeg binary

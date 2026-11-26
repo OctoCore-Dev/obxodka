@@ -50,7 +50,7 @@ public static class DnsAdBlockRuleManager
 
         try
         {
-            var lines = await File.ReadAllLinesAsync(cacheFilePath, cancellationToken);
+            var lines = await File.ReadAllLinesAsync(cacheFilePath, cancellationToken).ConfigureAwait(false);
             var domains = ParseRuleLines(lines);
             if (domains.Count > 0)
             {
@@ -80,7 +80,7 @@ public static class DnsAdBlockRuleManager
             }
 
             var tempPath = $"{cacheFilePath}.tmp.{Guid.NewGuid():N}";
-            await File.WriteAllLinesAsync(tempPath, domains, cancellationToken);
+            await File.WriteAllLinesAsync(tempPath, domains, cancellationToken).ConfigureAwait(false);
             File.Move(tempPath, cacheFilePath, true);
             return true;
         }
@@ -109,32 +109,36 @@ public static class DnsAdBlockRuleManager
 
         try
         {
-            using var response = await client.GetAsync(targetUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await client.GetAsync(targetUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 return false;
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            List<string> lines = [with(1024)];
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using (stream.ConfigureAwait(false))
             {
-                lines.Add(line);
-            }
+                using var reader = new StreamReader(stream);
 
-            var domains = ParseRuleLines(lines);
-            if (domains.Count < 10)
-            {
-                return false;
-            }
+                List<string> lines = [with(1024)];
+                while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+                {
+                    lines.Add(line);
+                }
 
-            DnsAdBlocker.UpdateBlockedDomains(domains, true);
+                var domains = ParseRuleLines(lines);
+                if (domains.Count < 10)
+                {
+                    return false;
+                }
 
-            if (!string.IsNullOrWhiteSpace(cacheFilePath))
-            {
-                _ = await SaveCacheAsync(cacheFilePath, domains, cancellationToken);
+                DnsAdBlocker.UpdateBlockedDomains(domains, true);
+
+                if (!string.IsNullOrWhiteSpace(cacheFilePath))
+                {
+                    _ = await SaveCacheAsync(cacheFilePath, domains, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             return true;

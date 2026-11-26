@@ -345,7 +345,9 @@ internal sealed partial class App
             {
                 var vpnService = IPlatformApplication.Current?.Services.GetService<IVpnService>();
                 var stopTask = vpnService?.StopVpnAsync() ?? Task.CompletedTask;
+#pragma warning disable RS0030 //синхронный колбэк завершения процесса ждет остановку vpn и откат маршрутов
                 _ = stopTask.Wait(TimeSpan.FromSeconds(2));
+#pragma warning restore RS0030
             }
             catch
             {

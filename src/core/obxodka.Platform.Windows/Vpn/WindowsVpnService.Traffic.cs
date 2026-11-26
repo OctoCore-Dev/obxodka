@@ -75,7 +75,7 @@ public sealed partial class WindowsVpnService
 
         try
         {
-            await tcs.Task;
+            await tcs.Task.ConfigureAwait(false);
         }
         finally
         {

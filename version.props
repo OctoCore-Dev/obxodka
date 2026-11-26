@@ -1,11 +1,25 @@
 <Project>
   <PropertyGroup>
+    <!-- Автоматическое определение имени решения из корневого *.slnx -->
+    <_SlnxFiles>$([System.String]::Join(';', $([System.IO.Directory]::GetFiles('$(MSBuildThisFileDirectory)', '*.slnx'))))</_SlnxFiles>
+    <_FirstSlnx Condition="'$(_SlnxFiles)' != ''">$(_SlnxFiles.Split(';')[0])</_FirstSlnx>
+    <SolutionTitle Condition="'$(_FirstSlnx)' != ''">$([System.IO.Path]::GetFileNameWithoutExtension('$(_FirstSlnx)'))</SolutionTitle>
+
+    <!-- Версия приложения и метаданные сборки (AppVersion / AppBuildNumber используются CI, MSIX, Google Play и Inno Setup) -->
     <AppVersion>6.4.0</AppVersion>
     <AppBuildNumber>108</AppBuildNumber>
+    <VersionPrefix>$(AppVersion)</VersionPrefix>
     <Version>$(AppVersion)</Version>
     <PackageVersion>$(AppVersion)</PackageVersion>
     <ApplicationDisplayVersion>$(AppVersion)</ApplicationDisplayVersion>
     <ApplicationVersion>50$(AppBuildNumber)</ApplicationVersion>
     <AppxPackageVersion>$(AppVersion).0</AppxPackageVersion>
+
+    <Authors>$(SolutionTitle)</Authors>
+    <Company>OctoCore</Company>
+    <Product>$(MSBuildProjectName)</Product>
+    <Copyright>Copyright (c) $([System.DateTime]::UtcNow.Year) $(Company)</Copyright>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
 </Project>

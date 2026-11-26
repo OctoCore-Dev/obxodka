@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>$(NetTargetFramework)</TargetFramework>
+    <TargetFramework>$(NetCoreTfm)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -30,7 +30,6 @@
     <InternalsVisibleTo Include="obxodka.Avalonia"/>
     <InternalsVisibleTo Include="obxodka.Platform.Windows"/>
     <InternalsVisibleTo Include="obxodka.Platform.Linux"/>
-    <InternalsVisibleTo Include="obxodka.Client.Tests"/>
     <InternalsVisibleTo Include="obxodka.Benchmarks"/>
   </ItemGroup>
 

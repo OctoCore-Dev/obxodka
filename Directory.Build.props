@@ -1,41 +1,20 @@
 <Project>
-  <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')"/>
-  <Import Project="$(MSBuildThisFileDirectory)sdk.props" Condition="Exists('$(MSBuildThisFileDirectory)sdk.props')"/>
-  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.local" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.local')"/>
+  <Import Project="$(MSBuildThisFileDirectory)sdk.props" Condition="Exists('$(MSBuildThisFileDirectory)sdk.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)version.props" Condition="Exists('$(MSBuildThisFileDirectory)version.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.local" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.local')" />
+
+  <!-- Чистая и переносимая структура артефактов сборки через переменные окружения (без хардкода путей) -->
   <PropertyGroup>
     <IsWindows Condition="'$([MSBuild]::IsOSPlatform(&quot;Windows&quot;))' == 'true' or '$(OS)' == 'Windows_NT'">true</IsWindows>
-
-    <!-- Корневые пути под разные среды -->
-    <WorkspaceCodeRoot Condition="'$(IsWindows)' == 'true'">$(USERPROFILE)/code/</WorkspaceCodeRoot>
-    <WorkspaceCodeRoot Condition="'$(IsWindows)' != 'true' and Exists('/mnt/c/Users/irovb/code/')">/mnt/c/Users/irovb/code/</WorkspaceCodeRoot>
-    <WorkspaceCodeRoot Condition="'$(WorkspaceCodeRoot)' == '' and '$(HOME)' != ''">$(HOME)/code/</WorkspaceCodeRoot>
-
-    <ProjectCacheSubDir Condition="'$(WorkspaceCodeRoot)' != '' and $([System.String]::Copy('$(MSBuildProjectDirectory)/').StartsWith('$(WorkspaceCodeRoot)'))">$([System.String]::Copy('$(MSBuildProjectDirectory)').Substring('$([System.String]::Copy('$(WorkspaceCodeRoot)').Length)'))</ProjectCacheSubDir>
-    <ProjectCacheSubDir Condition="'$(ProjectCacheSubDir)' == ''">$(MSBuildProjectName)</ProjectCacheSubDir>
-
-    <!-- Кеш под Windows -->
-    <CustomCachePath Condition="'$(BUILD_CACHE_PATH)' != ''">$(BUILD_CACHE_PATH)/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == '' and '$(IsWindows)' == 'true'">C:/BuildCache/$(ProjectCacheSubDir)</CustomCachePath>
-
-    <!-- Кеш под Linux / WSL -->
-    <CustomCachePath Condition="'$(IsWindows)' != 'true' and '$(HOME)' != ''">$(HOME)/.cache/build/$(ProjectCacheSubDir)</CustomCachePath>
-    <CustomCachePath Condition="'$(CustomCachePath)' == ''">$(MSBuildProjectDirectory)/.artifacts</CustomCachePath>
-
-    <!-- Корневой путь для пакетов -->
-    <PackageRoot Condition="'$(IsWindows)' == 'true'">$(USERPROFILE)/Documents/Package/</PackageRoot>
-    <PackageRoot Condition="'$(IsWindows)' != 'true' and Exists('/mnt/c/Users/irovb/Documents/Package/')">/mnt/c/Users/irovb/Documents/Package/</PackageRoot>
-    <PackageRoot Condition="'$(PackageRoot)' == '' and '$(HOME)' != ''">$(HOME)/Package/</PackageRoot>
-    <PackageRoot Condition="'$(PackageRoot)' == ''">$(MSBuildProjectDirectory)/Package/</PackageRoot>
+    <UseArtifactsOutput Condition="'$(UseArtifactsOutput)' == ''">true</UseArtifactsOutput>
+    <ArtifactsPath Condition="'$(ArtifactsPath)' == '' and '$(BUILD_CACHE_PATH)' != ''">$(BUILD_CACHE_PATH)/$([System.IO.Path]::GetFileName('$(MSBuildThisFileDirectory.TrimEnd(&quot;\/&quot;))'))</ArtifactsPath>
+    <ArtifactsPath Condition="'$(ArtifactsPath)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <PackageRoot Condition="'$(PackageRoot)' == '' and '$(OBXODKA_PACKAGE_ROOT)' != ''">$(OBXODKA_PACKAGE_ROOT)</PackageRoot>
+    <PackageRoot Condition="'$(PackageRoot)' == '' and '$(PACKAGE_ROOT)' != ''">$(PACKAGE_ROOT)</PackageRoot>
+    <PackageRoot Condition="'$(PackageRoot)' == ''">$(ArtifactsPath)/publish</PackageRoot>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <UseArtifactsOutput>true</UseArtifactsOutput>
-    <ArtifactsPath>$(CustomCachePath)</ArtifactsPath>
-    <BaseOutputPath>$(CustomCachePath)/bin/</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(CustomCachePath)/obj/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>$(CustomCachePath)/obj/</MSBuildProjectExtensionsPath>
-  </PropertyGroup>
-
+  <!-- Базовые настройки компилятора и анализаторов C# / .NET 11 -->
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -44,33 +23,63 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Features>strict;runtime-async=on</Features>
-    <WarningLevel>9999</WarningLevel>
-    <Version Condition="'$(Version)' == ''">4.8.6</Version>
-    <IsTrimmable Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</IsTrimmable>
-    <EnableTrimAnalyzer Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">true</EnableTrimAnalyzer>
-    <JsonSerializerIsReflectionEnabledByDefault Condition="'$(PublishAot)' != 'true' and '$(PublishTrimmed)' != 'true'">true</JsonSerializerIsReflectionEnabledByDefault>
-    <JsonSerializerIsReflectionEnabledByDefault Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">false</JsonSerializerIsReflectionEnabledByDefault>
-    <GITHUB_ACTIONS Condition="'$(GITHUB_ACTIONS)' == ''">false</GITHUB_ACTIONS>
-    <PackageMode Condition="'$(PackageMode)' == ''">MSIX</PackageMode>
-    <NoWarn>$(NoWarn);SigningCertificateNoCertSpecified;</NoWarn>
-    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
-    <DefineConstants Condition="'$(IsTestingBuild)' == 'true'">$(DefineConstants);TESTING_BUILD</DefineConstants>
-  </PropertyGroup>
-
-  <PropertyGroup>
+    <Deterministic>true</Deterministic>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
     <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
-    <Deterministic>true</Deterministic>
+
+    <!-- Аудит безопасности цепочки поставок NuGet и централизованные lock-файлы по проектам (кроме кросс-ОС MAUI) -->
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>high</NuGetAuditLevel>
+    <RestorePackagesWithLockFile Condition="'$(RestorePackagesWithLockFile)' == '' and '$(MSBuildProjectName)' != 'obxodka.Maui'">true</RestorePackagesWithLockFile>
+    <NuGetLockFilePath Condition="'$(RestorePackagesWithLockFile)' == 'true'">$(MSBuildThisFileDirectory).nuget/locks/$(MSBuildProjectName).packages.lock.json</NuGetLockFilePath>
+
+    <!-- Автоматический символ проекта для единого корневого GlobalUsings.cs (#if OBXODKA_CLIENT) -->
+    <DefineConstants>$(DefineConstants);$(MSBuildProjectName.Replace('.', '_').Replace('-', '_').Replace(' ', '_').ToUpperInvariant())</DefineConstants>
+    <DefineConstants Condition="'$(IsTestingBuild)' == 'true'">$(DefineConstants);TESTING_BUILD</DefineConstants>
+
+    <!-- Специфика клиентской упаковки Windows MSIX -->
+    <GITHUB_ACTIONS Condition="'$(GITHUB_ACTIONS)' == ''">false</GITHUB_ACTIONS>
+    <PackageMode Condition="'$(PackageMode)' == ''">MSIX</PackageMode>
+    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+
+    <NoWarn>$(NoWarn);SYSLIB5007;IDE0058;SigningCertificateNoCertSpecified</NoWarn>
   </PropertyGroup>
 
-  <Target Name="EnsureBuildCacheDir" BeforeTargets="BeforeBuild;Restore" Condition="'$(IsWindows)' == 'true' and !Exists('C:\BuildCache')">
-    <MakeDir Directories="C:\BuildCache" ContinueOnError="true"/>
-  </Target>
+  <!-- Воспроизводимые сборки в CI (GitHub Actions и другие CI-системы) -->
+  <PropertyGroup Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <RestoreLockedMode Condition="'$(RestorePackagesWithLockFile)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
 
-  <Target Name="SyncSharedConfigFiles" BeforeTargets="BeforeBuild" Condition="'$(IsWindows)' == 'true' and Exists('$(USERPROFILE)\code\sync_configs.ps1')">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(USERPROFILE)\code\sync_configs.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" IgnoreExitCode="true"/>
-  </Target>
+  <!-- Строгий анализ Native AOT и Trimming при их включении в проекте -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer Condition="'$(PublishAot)' == 'true'">true</EnableAotAnalyzer>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <!-- Проекты UI-приложений (MAUI / Avalonia): await должен возвращаться в UI SynchronizationContext -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'obxodka.Maui' or '$(MSBuildProjectName)' == 'obxodka.Avalonia'">
+    <NoWarn>$(NoWarn);CA2007</NoWarn>
+  </PropertyGroup>
+
+  <!-- Проекты тестов и бенчмарков: автоматическое отключение лишнего библиотечного шума -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests')) or $(MSBuildProjectName.EndsWith('.Benchmarks'))">
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA2007;CA1707;CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!-- Единый корневой файл GlobalUsings.cs (obxodka.Shared хранит свой файл ради совместимости с VpnServer) -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'obxodka.Shared' and Exists('$(MSBuildThisFileDirectory)GlobalUsings.cs')">
+    <Compile Include="$(MSBuildThisFileDirectory)GlobalUsings.cs" Link="GlobalUsings.cs" />
+  </ItemGroup>
+
+  <!-- Запрет опасных API на этапе компиляции (BannedSymbols.txt) -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)BannedSymbols.txt')">
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Link="BannedSymbols.txt" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

@@ -695,7 +695,7 @@ public sealed class ApiService(HttpClient client)
         }
 
         var (success, data, error) = await SendRequestAsync<object, PaymentLinkResponse>(
-            HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, true, ct);
+            HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, true, ct).ConfigureAwait(false);
 
         if (success && data is { Url: { Length: > 0 } paymentUrl })
         {
