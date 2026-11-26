@@ -116,7 +116,6 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
     }
 
     //запуск проверки обновлений и отображение диалога пользователю
-    [Obsolete("Obsolete")]
     public async Task CheckForUpdatesAsync(bool manualCheck = false)
     {
         try
@@ -392,7 +391,6 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
         }
     }
 
-    [Obsolete("Obsolete")]
     private static AuthenticodeCheckStatus CheckAuthenticodeSignature(string filePath)
     {
         try
@@ -415,8 +413,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 return AuthenticodeCheckStatus.InvalidSignature;
             }
 
-            using var rawCert = X509Certificate.CreateFromSignedFile(filePath);
-            using var cert = new X509Certificate2(rawCert);
+            using var cert = X509CertificateLoader.LoadCertificateFromFile(filePath);
 
             AppLogger.Log(
                 $"[AUTHENTICODE] Installer is signed by '{cert.Subject}', Thumbprint: {cert.Thumbprint}, Valid: {cert.NotBefore:d} - {cert.NotAfter:d}");
@@ -473,7 +470,6 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
     }
 
     //загрузка верификация sha256 и запуск установщика обновления с github
-    [Obsolete("Obsolete")]
     private static async Task DownloadAndInstallGitHubUpdateAsync(string? url, string version, string? expectedSha256)
     {
         if (!IsTrustedUpdateUri(url, out var updateUri))
@@ -490,7 +486,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
 
         if (updateUri.AbsolutePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            var updateDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "obxodka", "updates");
+            var updateDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "obxodka", "updates");
             _ = Directory.CreateDirectory(updateDir);
             var safeVersion = string.Concat(version.Where(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_'));
             if (string.IsNullOrEmpty(safeVersion))
@@ -498,7 +494,7 @@ public sealed partial class WindowsAppUpdaterService : IAppUpdaterService
                 safeVersion = "latest";
             }
 
-            var installerPath = Path.Combine(updateDir, $"Obxodka-Setup-v{safeVersion}.exe");
+            var installerPath = Path.Join(updateDir, $"Obxodka-Setup-v{safeVersion}.exe");
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, updateUri);

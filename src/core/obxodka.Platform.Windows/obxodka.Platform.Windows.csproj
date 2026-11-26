@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(NetCoreTfm)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>obxodka.Platforms.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\obxodka.Client\obxodka.Client.csproj"/>
+    <ProjectReference Include="..\obxodka.Shared\obxodka.Shared.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Engine\**\*">
+      <Link>Engine\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PackagePath>Engine</PackagePath>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="obxodka"/>
+    <InternalsVisibleTo Include="obxodka.Maui"/>
+    <InternalsVisibleTo Include="obxodka.Avalonia"/>
+    <InternalsVisibleTo Include="obxodka.Client.Tests"/>
+  </ItemGroup>
+
+</Project>

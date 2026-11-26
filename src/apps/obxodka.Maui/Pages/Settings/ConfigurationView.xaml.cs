@@ -9,6 +9,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 
     private IVpnService? _vpnService;
     private bool _isProtocolSubscribed;
+    private bool _isProtocolSelectionLocked;
     private bool? _isWideSettingsGrid;
     private bool _isUpdating;
 
@@ -32,6 +33,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         RuAutoBypassCard.IsVisible = false;
         SyncTimeZoneCard.IsVisible = false;
 #endif
+        //карточка голосового помощника временно скрыта в ui до открытия сторонних appfunctions в google gemini
+        VoiceAssistantCard.IsVisible = false;
 
         UpdateSelectionUi();
     }
@@ -160,11 +163,15 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
             Grid.SetColumn(RunOnStartupCard, 0);
             Grid.SetColumnSpan(RunOnStartupCard, 2);
 
-            Grid.SetRow(SpeedTestCard, 4);
+            Grid.SetRow(VoiceAssistantCard, 4);
+            Grid.SetColumn(VoiceAssistantCard, 0);
+            Grid.SetColumnSpan(VoiceAssistantCard, 2);
+
+            Grid.SetRow(SpeedTestCard, 5);
             Grid.SetColumn(SpeedTestCard, 0);
             Grid.SetColumnSpan(SpeedTestCard, 2);
 
-            Grid.SetRow(ThemesSettingsCard, 5);
+            Grid.SetRow(ThemesSettingsCard, 6);
             Grid.SetColumn(ThemesSettingsCard, 0);
             Grid.SetColumnSpan(ThemesSettingsCard, 2);
         }
@@ -183,6 +190,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
                 RuAutoBypassCard,
                 SyncTimeZoneCard,
                 RunOnStartupCard,
+                VoiceAssistantCard,
                 SpeedTestCard,
                 ThemesSettingsCard
             ];
@@ -204,7 +212,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         {
             AutoReconnectToggle.IsToggled = Preferences.Get(AppPreferenceKeys.AutoReconnect, true);
             KillSwitchToggle.IsToggled = Preferences.Get(AppPreferenceKeys.KillSwitch, false);
-            ForceCloudflareToggle.IsToggled = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+            var preferredProtocol = ProtocolPipelineRegistry.GetPreferredProtocol();
+            ForceCloudflareToggle.IsToggled = string.Equals(preferredProtocol, "OBXODKA-WS", StringComparison.OrdinalIgnoreCase);
             var blockIpv6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
             BlockIpv6Toggle.IsToggled = blockIpv6;
             OctopusEngine.Current.Pipeline.BlockIpv6Traffic = blockIpv6;
@@ -212,6 +221,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
             RunOnStartupToggle.IsToggled = Preferences.Get(AppPreferenceKeys.RunOnStartup, false);
             RuAutoBypassToggle.IsToggled = Preferences.Get(AppPreferenceKeys.BypassRuSites, true);
             SyncTimeZoneToggle.IsToggled = Preferences.Get(AppPreferenceKeys.SyncTimeZoneWithServer, false);
+#elif ANDROID
+            VoiceAssistantToggle.IsToggled = Preferences.Get(AppPreferenceKeys.VoiceAssistantEnabled, true);
 #endif
         }
         finally
@@ -246,7 +257,7 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
             return;
         }
 
-        Preferences.Set(AppPreferenceKeys.ForceWebSocket, e.Value);
+        _ = ProtocolPipelineRegistry.SetPreferredProtocol(e.Value ? "OBXODKA-WS" : ProtocolPipelineRegistry.AutoProtocolId);
         UpdateSelectionUi();
     }
 
@@ -340,8 +351,11 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
     private void ApplyVpnLockState(AppVpnState state)
     {
         var isLocked = state is AppVpnState.Connected or AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Disconnecting;
+        _isProtocolSelectionLocked = isLocked;
         VpnActiveLockBanner.IsVisible = isLocked;
         var lockTip = isLocked ? "Отключите VPN для изменения" : null;
+
+        RegisteredProtocolsLayout?.Opacity = isLocked ? 0.62 : 1.0;
 
         SetLockedSettingRow(ForceCloudflareCard, ForceCloudflareToggle, isLocked, lockTip);
         SetLockedSettingRow(BlockIpv6Card, BlockIpv6Toggle, isLocked, lockTip);
@@ -371,6 +385,8 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         SyncSwitchesFromPreferences();
 #if WINDOWS
         _ = SyncWindowsStartupStateAsync();
+#elif ANDROID
+        RefreshVoiceAssistantStatus();
 #endif
         if (_vpnService is not null)
         {
@@ -379,6 +395,101 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
 
         UpdateSelectionUi();
     }
+
+    //сохранение настройки управления vpn через голосовых ассистентов android
+    private void OnVoiceAssistantToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        Preferences.Set(AppPreferenceKeys.VoiceAssistantEnabled, e.Value);
+#if ANDROID
+        RefreshVoiceAssistantStatus();
+#endif
+    }
+
+    //открытие системного экрана настройки голосового помощника android
+    private void OnOpenAssistantSettingsTapped(object? sender, TappedEventArgs e)
+    {
+#if ANDROID
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
+            AndroidVoiceAssistantDetector.OpenAndroidAssistantSettings(Android.App.Application.Context);
+        }
+#endif
+    }
+
+#if ANDROID
+    //автоопределение установленного и системного голосового помощника и обновление карточки подсказок
+    private void RefreshVoiceAssistantStatus()
+    {
+        if (!OperatingSystem.IsAndroidVersionAtLeast(30) || VoiceAssistantBadgeLabel is null)
+        {
+            return;
+        }
+
+        var detection = AndroidVoiceAssistantDetector.Detect(Android.App.Application.Context);
+        var isVoiceEnabled = Preferences.Get(AppPreferenceKeys.VoiceAssistantEnabled, true);
+
+        VoiceAssistantBadgeLabel.Text = detection.BadgeTitle;
+        var accentColor = CyanColor;
+        var successColor = EmeraldColor;
+        var warningColor = Application.Current?.Resources.TryGetValue("Warning", out var w) == true && w is Color wc
+            ? wc
+            : Color.FromArgb("#F59E0B");
+
+        switch (detection.Kind)
+        {
+            case DetectedVoiceAssistantKind.GoogleGemini:
+            case DetectedVoiceAssistantKind.GoogleAssistant:
+                VoiceAssistantBadgeBorder.Stroke = accentColor;
+                VoiceAssistantBadgeBorder.BackgroundColor = accentColor.WithAlpha(0.14f);
+                VoiceAssistantBadgeLabel.TextColor = accentColor;
+                VoiceAssistantStatusLabel.Text = isVoiceEnabled
+                    ? "Голосовое управление активно через Google Gemini."
+                    : "Голосовое управление выключено в настройках Обходки.";
+                VoiceAssistantHintLabel.Text =
+                    "Вы можете управлять VPN голосом через Gemini. Скажите «Окей, Гугл» или «Хей, Гугл» и одну из команд:";
+                VoiceAssistantCommandsLabel.Text =
+                    "• «Включи VPN в Обходке» / «Подключи Обходку»\n" +
+                    "• «Выключи VPN в Обходке» / «Отключи Обходку»\n" +
+                    "• «Проверь статус Обходки»";
+                VoiceAssistantCommandsPanel.IsVisible = true;
+                OpenAssistantSettingsButton.IsVisible = false;
+                break;
+
+            case DetectedVoiceAssistantKind.SamsungBixby:
+                VoiceAssistantBadgeBorder.Stroke = successColor;
+                VoiceAssistantBadgeBorder.BackgroundColor = successColor.WithAlpha(0.14f);
+                VoiceAssistantBadgeLabel.TextColor = successColor;
+                VoiceAssistantStatusLabel.Text = isVoiceEnabled
+                    ? "Голосовое управление активно через Samsung Bixby."
+                    : "Голосовое управление выключено в настройках Обходки.";
+                VoiceAssistantHintLabel.Text = detection.HasBixbyRoutines
+                    ? "Скажите «Hi, Bixby» или добавьте действие Обходки в Bixby Routines:"
+                    : "Скажите «Hi, Bixby» и одну из команд:";
+                VoiceAssistantCommandsLabel.Text =
+                    "• «Включи VPN в Обходке» / «Подключи Обходку»\n" +
+                    "• «Выключи VPN в Обходке» / «Отключи Обходку»\n" +
+                    "• «Проверь статус Обходки»\n" +
+                    "• Bixby Routines: быстрый запуск ярлыков «Включить VPN» / «Выключить VPN»";
+                VoiceAssistantCommandsPanel.IsVisible = true;
+                OpenAssistantSettingsButton.IsVisible = false;
+                break;
+
+            default:
+                VoiceAssistantBadgeBorder.Stroke = warningColor;
+                VoiceAssistantBadgeBorder.BackgroundColor = warningColor.WithAlpha(0.14f);
+                VoiceAssistantBadgeLabel.TextColor = warningColor;
+                VoiceAssistantStatusLabel.Text = "На вашем устройстве не настроен голосовой помощник.";
+                VoiceAssistantCommandsPanel.IsVisible = false;
+                OpenAssistantSettingsButton.IsVisible = true;
+                break;
+        }
+    }
+#endif
 
     //каскадная анимация появления карточек
     public async Task PlayEntranceAnimationAsync()
@@ -389,11 +500,13 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         await this.PlayCardsEntranceAsync(30, 240);
     }
 
-    //динамическая синхронизация карточки и чипов протоколов с реестром ядра ProtocolPipelineRegistry
+    //динамическая синхронизация карточки и интерактивных чипов выбора протокола с реестром ядра ProtocolPipelineRegistry
     private void UpdateSelectionUi()
     {
         var factories = ProtocolPipelineRegistry.GetRegisteredFactories();
-        var forceWs = Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
+        var preferredProtocol = ProtocolPipelineRegistry.GetPreferredProtocol();
+        var isAutoMode = string.Equals(preferredProtocol, ProtocolPipelineRegistry.AutoProtocolId, StringComparison.OrdinalIgnoreCase);
+        var hasManualKind = ProtocolPipelineRegistry.TryResolvePreferredKind(preferredProtocol, out var manualKind);
         var blockV6 = Preferences.Get(AppPreferenceKeys.BlockIpv6, false);
         var engine = OctopusEngine.Current;
         var vpnState = _vpnService?.CurrentState ?? (engine.IsConnected ? AppVpnState.Connected : AppVpnState.Disconnected);
@@ -406,9 +519,9 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         {
             highlightedFactory = liveFactory;
         }
-        else if (forceWs && ProtocolPipelineRegistry.TryGetFactory(TransportProtocolKind.ObxodkaWebSocket, out var wsFactory))
+        else if (hasManualKind && ProtocolPipelineRegistry.TryGetFactory(manualKind, out var manualFactory))
         {
-            highlightedFactory = wsFactory;
+            highlightedFactory = manualFactory;
         }
         else if (factories.Count > 0)
         {
@@ -416,23 +529,28 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         }
 
         var liveBadge = isConnected
-            ? ProtocolPipelineRegistry.FormatLiveStatusBadge(engine.ActiveProtocol, engine.ActiveRays)
-            : highlightedFactory is not null
-                ? $"{highlightedFactory.FriendlyName} • {highlightedFactory.TransportSummary}"
-                : "Obxodka Stream • HTTP/2";
+            ? ProtocolPipelineRegistry.FormatLiveStatusBadge(engine.ActiveProtocol)
+            : isAutoMode
+                ? "Авто • Умный подбор"
+                : highlightedFactory is not null
+                    ? $"{highlightedFactory.FriendlyName} • {highlightedFactory.TransportSummary}"
+                    : "Obxodka Reality • TLS 1.3";
 
         CurrentSelectionLabel.Text = blockV6 ? $"{liveBadge} • IPv4 Only" : liveBadge;
 
         var chainNames = string.Join(" → ", factories.Select(f => f.ShortTag));
-        ProtocolSubtitleLabel.Text = forceWs
-            ? $"Принудительный облачный режим через WebSocket CDN. Доступные транспорты ядра: {chainNames}."
-            : $"Автоматический круговой конвейер транспортов: {chainNames}.";
+        ProtocolSubtitleLabel.Text = isAutoMode
+            ? $"Автоматический подбор (рекомендуется): {chainNames}. Нажмите на протокол ниже для ручного выбора."
+            : $"Зафиксирован протокол {highlightedFactory?.FriendlyName ?? preferredProtocol}. Нажмите «Авто», чтобы вернуть умную ротацию.";
 
-        if (highlightedFactory is not null)
+        if (!isConnected && !isNegotiating && isAutoMode)
         {
-            ActiveProtocolTitleLabel.Text = isConnected && highlightedFactory.Kind == TransportProtocolKind.ObxodkaStream
-                ? $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary} • {Math.Max(1, engine.ActiveRays)}L)"
-                : $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary})";
+            ActiveProtocolTitleLabel.Text = "Автоматический выбор (Рекомендуется)";
+            ActiveProtocolDescLabel.Text = "Умный конвейер автоматически подбирает лучший рабочий транспорт и мгновенно переключается при блокировках.";
+        }
+        else if (highlightedFactory is not null)
+        {
+            ActiveProtocolTitleLabel.Text = $"{highlightedFactory.FriendlyName} ({highlightedFactory.TransportSummary})";
             ActiveProtocolDescLabel.Text = highlightedFactory.Description;
         }
 
@@ -461,19 +579,42 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         }
         else
         {
-            ActiveProtocolBadgeLabel.Text = forceWs ? "ПРИНУДИТ." : "АВТО";
+            ActiveProtocolBadgeLabel.Text = isAutoMode ? "АВТО" : "ВЫБРАН";
             ActiveProtocolBadgeLabel.TextColor = accentColor;
             ActiveProtocolBadgeBorder.BackgroundColor = accentDim;
             ActiveProtocolBadgeBorder.Stroke = accentColor;
         }
 
-        RenderRegisteredProtocolPills(factories, highlightedFactory, isConnected);
+        RenderRegisteredProtocolPills(factories, highlightedFactory, isAutoMode, isConnected);
     }
 
-    //динамическая отрисовка списка всех зарегистрированных в ядре транспортов без фиксированной высоты (winui 3 safe)
+    //сохранение вручную выбранного протокола из чипа настроек
+    private void SelectPreferredProtocol(string protocolId)
+    {
+        if (_isProtocolSelectionLocked)
+        {
+            return;
+        }
+
+        var normalized = ProtocolPipelineRegistry.SetPreferredProtocol(protocolId);
+        _isUpdating = true;
+        try
+        {
+            ForceCloudflareToggle.IsToggled = string.Equals(normalized, "OBXODKA-WS", StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            _isUpdating = false;
+        }
+
+        UpdateSelectionUi();
+    }
+
+    //динамическая отрисовка интерактивных чипов выбора протокола без фиксированной высоты (winui 3 safe)
     private void RenderRegisteredProtocolPills(
         IReadOnlyList<ITransportProtocolFactory> factories,
         ITransportProtocolFactory? highlightedFactory,
+        bool isAutoMode,
         bool isConnected)
     {
         if (RegisteredProtocolsLayout is null)
@@ -494,36 +635,77 @@ public sealed partial class ConfigurationView : IDisposable, IAdaptivePage
         var accent = isConnected ? EmeraldColor : CyanColor;
         var accentBg = accent.WithAlpha(0.16f);
 
+        AddProtocolPill(
+            "Авто ★",
+            ProtocolPipelineRegistry.AutoProtocolId,
+            isAutoMode && !isConnected,
+            isAutoMode && isConnected ? CyanColor : accent,
+            isAutoMode && isConnected ? CyanColor.WithAlpha(0.14f) : accentBg,
+            "Автоматический подбор (рекомендуется) — умная ротация всех транспортов при блокировках.",
+            bgElevated,
+            borderSubtle,
+            textMuted);
+
         foreach (var factory in factories)
         {
-            var isSelected = highlightedFactory is not null && factory.Kind == highlightedFactory.Kind;
-            var labelText = isSelected && isConnected && factory.Kind == TransportProtocolKind.ObxodkaStream
-                ? $"{factory.ShortTag} • {Math.Max(1, OctopusEngine.Current.ActiveRays)}L"
+            var isSelected = isConnected
+                ? highlightedFactory is not null && factory.Kind == highlightedFactory.Kind
+                : !isAutoMode && highlightedFactory is not null && factory.Kind == highlightedFactory.Kind;
+            var labelText = factory.Kind == TransportProtocolKind.ObxodkaReality
+                ? $"{factory.ShortTag} (V9)"
                 : factory.ShortTag;
 
-            var pillLabel = new Label
-            {
-                Text = labelText,
-                FontSize = 11,
-                TextColor = isSelected ? accent : textMuted,
-                VerticalOptions = LayoutOptions.Center
-            };
-            pillLabel.SetDynamicResource(Label.FontFamilyProperty, isSelected ? "AppFontBold" : "AppFontMedium");
-
-            var pill = new Border
-            {
-                Margin = new Thickness(0, 0, 6, 4),
-                Padding = new Thickness(9, 4),
-                BackgroundColor = isSelected ? accentBg : bgElevated,
-                Stroke = isSelected ? accent : borderSubtle,
-                StrokeThickness = 1,
-                StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(8) },
-                VerticalOptions = LayoutOptions.Center,
-                Content = pillLabel
-            };
-            ToolTipProperties.SetText(pill, $"{factory.FriendlyName} ({factory.TransportSummary}) — {factory.Description}");
-            RegisteredProtocolsLayout.Children.Add(pill);
+            AddProtocolPill(
+                labelText,
+                factory.DisplayName,
+                isSelected,
+                accent,
+                accentBg,
+                $"{factory.FriendlyName} ({factory.TransportSummary}) — {factory.Description}",
+                bgElevated,
+                borderSubtle,
+                textMuted);
         }
+    }
+
+    private void AddProtocolPill(
+        string text,
+        string protocolId,
+        bool isHighlighted,
+        Color highlightColor,
+        Color highlightBg,
+        string tooltip,
+        Color bgElevated,
+        Color borderSubtle,
+        Color textMuted)
+    {
+        var pillLabel = new Label
+        {
+            Text = text,
+            FontSize = 11.5,
+            TextColor = isHighlighted ? highlightColor : textMuted,
+            VerticalOptions = LayoutOptions.Center
+        };
+        pillLabel.SetDynamicResource(Label.FontFamilyProperty, isHighlighted ? "AppFontBold" : "AppFontMedium");
+
+        var pill = new Border
+        {
+            Margin = new Thickness(0, 0, 6, 6),
+            Padding = new Thickness(10, 6),
+            BackgroundColor = isHighlighted ? highlightBg : bgElevated,
+            Stroke = isHighlighted ? highlightColor : borderSubtle,
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(8) },
+            VerticalOptions = LayoutOptions.Center,
+            Content = pillLabel
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) => SelectPreferredProtocol(protocolId);
+        pill.GestureRecognizers.Add(tap);
+
+        ToolTipProperties.SetText(pill, _isProtocolSelectionLocked ? "Отключите VPN для изменения протокола" : tooltip);
+        RegisteredProtocolsLayout.Children.Add(pill);
     }
 
     //применение цветов фона и границ карточек настроек

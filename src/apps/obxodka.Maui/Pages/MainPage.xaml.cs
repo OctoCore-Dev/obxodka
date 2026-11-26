@@ -131,6 +131,9 @@ public sealed partial class MainPage : IDisposable
         App.DeepLinkLoginReceived -= OnDeepLinkLoginReceived;
         App.DeepLinkLoginReceived += OnDeepLinkLoginReceived;
 
+        App.BackgroundActionReceived -= OnBackgroundActionReceived;
+        App.BackgroundActionReceived += OnBackgroundActionReceived;
+
         App.WindowActivated -= OnWindowActivated;
         App.WindowActivated += OnWindowActivated;
         App.WindowDeactivated -= OnWindowDeactivated;
@@ -214,7 +217,9 @@ public sealed partial class MainPage : IDisposable
             {
                 await Task.Delay(350).ConfigureAwait(false);
                 System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+#pragma warning disable RS0030 //явное уплотнение loh после выгрузки тяжелых ресурсов темы
                 GC.Collect(2, GCCollectionMode.Optimized, false);
+#pragma warning restore RS0030
             }
             catch
             {
@@ -237,6 +242,7 @@ public sealed partial class MainPage : IDisposable
         App.WindowDeactivated -= OnWindowDeactivated;
         App.WindowVisibilityChanged -= OnWindowVisibilityChanged;
         App.DeepLinkLoginReceived -= OnDeepLinkLoginReceived;
+        App.BackgroundActionReceived -= OnBackgroundActionReceived;
 
         _tabContentVpn?.UnsubscribeEvents();
         VpnService.OnForceLogoutRequested -= HandleForceLogout;
@@ -532,13 +538,17 @@ public sealed partial class MainPage : IDisposable
                         if (_activeTab == "vpn")
                         {
                             ApplySessionBalance(session);
+                            SyncLiveBackgroundVpnState();
                             HandlePendingTileAction();
+                            await HandlePendingBackgroundActionAsync();
                             await SyncBalanceFromServerAsync(session);
                         }
                         else
                         {
                             await SwitchToAppAfterAuthAsync(session);
+                            SyncLiveBackgroundVpnState();
                             HandlePendingTileAction();
+                            await HandlePendingBackgroundActionAsync();
                         }
                     }
                     else
@@ -554,6 +564,8 @@ public sealed partial class MainPage : IDisposable
                         {
                             _ = _tabContentAuth?.PlayEntranceAnimationAsync();
                         }
+
+                        await HandlePendingBackgroundActionAsync();
 
                         if (App.PendingDeepLinkLogin is not { } pendingLogin || _tabContentAuth is null)
                         {
@@ -621,6 +633,100 @@ public sealed partial class MainPage : IDisposable
 
         App.PendingTileAction = false;
         (EnsureTabCreated("vpn") as VpnView)?.TriggerTileToggle();
+    }
+
+    //синхронизация интерфейса и таймера часов при возврате в приложение, когда vpn уже работает в фоне
+    private void SyncLiveBackgroundVpnState()
+    {
+        var liveState = VpnService.CurrentState;
+        if (liveState == AppVpnState.Connected || OctopusEngine.Current.IsConnected)
+        {
+            NotifyVpnConnected();
+        }
+
+        _tabContentVpn?.SyncFromLiveVpnState();
+    }
+
+    //реакция на приход фонового действия из плитки шторки или голосового ассистента при уже открытом окне
+    private void OnBackgroundActionReceived(BackgroundVpnActionKind _) =>
+        MainThread.BeginInvokeOnMainThread(async void () =>
+        {
+            try
+            {
+                await HandlePendingBackgroundActionAsync();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogWarning($"[MAINPAGE BG ACTION ERROR] {ex.Message}");
+            }
+        });
+
+    //показ целевого neo-диалога или запуск системного разрешения vpn по запросу из фона
+    private async Task HandlePendingBackgroundActionAsync()
+    {
+        var action = App.PendingBackgroundAction;
+        if (action == BackgroundVpnActionKind.None)
+        {
+            return;
+        }
+
+        App.PendingBackgroundAction = BackgroundVpnActionKind.None;
+
+        switch (action)
+        {
+            case BackgroundVpnActionKind.NoInternet:
+                await NeoAlert.ShowAsync(
+                    "Нет подключения к сети",
+                    "Отсутствует подключение к сети (Wi-Fi или мобильная сеть отключены).\n\nПожалуйста, проверьте доступ в интернет и повторите попытку.",
+                    "Понятно");
+                break;
+
+            case BackgroundVpnActionKind.NoBalance:
+                var openPayment = await NeoAlert.ShowConfirmAsync(
+                    "Закончилось время",
+                    "У вас закончилось доступное время баланса.\n\nПополните баланс, чтобы снова включить VPN.",
+                    "Пополнить баланс",
+                    "Отмена");
+                if (openPayment && _activeTab != "auth")
+                {
+                    await SwitchTabAsync("payment");
+                }
+
+                break;
+
+            case BackgroundVpnActionKind.RequireAuth:
+                await NeoAlert.ShowAsync(
+                    "Требуется вход",
+                    "Войдите в аккаунт Obxodka, чтобы включать VPN из шторки быстрых настроек или голосовой командой.",
+                    "Понятно");
+                break;
+
+            case BackgroundVpnActionKind.RequireVpnPermission:
+                if (_activeTab != "auth")
+                {
+                    if (_activeTab != "vpn")
+                    {
+                        await SwitchTabAsync("vpn");
+                    }
+
+                    (EnsureTabCreated("vpn") as VpnView)?.TriggerTileToggle();
+                }
+
+                break;
+
+            case BackgroundVpnActionKind.AssistantDisabled:
+                var openSettings = await NeoAlert.ShowConfirmAsync(
+                    "Голосовой помощник отключён",
+                    "Управление VPN через Google Gemini и Samsung Bixby сейчас выключено в настройках приложения.\n\nОткрыть настройки Обходки?",
+                    "Открыть настройки",
+                    "Отмена");
+                if (openSettings && _activeTab != "auth")
+                {
+                    await SwitchTabAsync("configuration");
+                }
+
+                break;
+        }
     }
 
     private async Task HandleLogoutClickAsync()

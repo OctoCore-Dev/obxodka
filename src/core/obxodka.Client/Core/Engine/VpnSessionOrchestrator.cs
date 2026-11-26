@@ -79,7 +79,9 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         {
             try
             {
+#pragma warning disable RS0030 //синхронный колбэк завершения процесса обязан успеть откатить маршруты и wfp
                 _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+#pragma warning restore RS0030
             }
             catch
             {
@@ -116,7 +118,9 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         CancelRoamingUnsafe();
         try
         {
+#pragma warning disable RS0030 //синхронный dispose гарантирует остановку туннеля и очистку маршрутов ос
             _ = StopVpnAsync().Wait(TimeSpan.FromSeconds(2));
+#pragma warning restore RS0030
         }
         catch
         {
@@ -262,6 +266,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch (ObjectDisposedException)
             {
+                //семафор уже освобожден при завершении сервиса
             }
 
             return;
@@ -286,14 +291,16 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             var oldSessionCts = Interlocked.Exchange(ref _sessionCts, activeCts);
             if (oldSessionCts is not null)
             {
-                try
+                using (oldSessionCts)
                 {
-                    await oldSessionCts.CancelAsync().ConfigureAwait(false);
-                    oldSessionCts.Dispose();
-                }
-                catch
-                {
-                    // ignored
+                    try
+                    {
+                        await oldSessionCts.CancelAsync().ConfigureAwait(false);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        //игнорируем уже освобожденный токен
+                    }
                 }
             }
 
@@ -341,8 +348,13 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
                 ? _fallbackServers
                 : [new VpnServerDto(serverIp, serverPort, "", true, 0)];
 
+            var preferredProtocol = ProtocolPipelineRegistry.GetPreferredProtocol();
             var forceWebSocket = PlatformServices.Preferences.Get(AppPreferenceKeys.ForceWebSocket, false);
-            var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, null, forceWebSocket);
+            var ring = SniEngine.BuildProtocolRotationRing(serversToTry, serverIp, serverPort, null, forceWebSocket, preferredProtocol);
+            if (!string.Equals(preferredProtocol, ProtocolPipelineRegistry.AutoProtocolId, StringComparison.OrdinalIgnoreCase))
+            {
+                AppLogger.Log($"[VPN-ORCHESTRATOR] Manual protocol preference active: {preferredProtocol} ({ring.Count} route step(s))");
+            }
             if (ring.Count == 0)
             {
                 throw new InvalidOperationException("Нет доступных маршрутов или протоколов для подключения.");
@@ -451,6 +463,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch (ObjectDisposedException)
             {
+                //семафор уже освобожден при завершении сервиса
             }
         }
     }
@@ -548,6 +561,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch (OperationCanceledException)
             {
+                //отмена цикла роуминга при остановке или переподключении
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -925,14 +939,11 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
         lock (_routesLock)
         {
-            foreach (var ip in ips)
+            foreach (var ip in ips.Where(ip => IPAddress.TryParse(ip, out var parsed) &&
+                                               parsed.AddressFamily == AddressFamily.InterNetwork &&
+                                               !_serverIpsToRoute.Contains(ip)))
             {
-                if (IPAddress.TryParse(ip, out var parsed) &&
-                    parsed.AddressFamily == AddressFamily.InterNetwork &&
-                    !_serverIpsToRoute.Contains(ip))
-                {
-                    _serverIpsToRoute.Add(ip);
-                }
+                _serverIpsToRoute.Add(ip);
             }
         }
 
@@ -1059,17 +1070,16 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
         var cts = Interlocked.Exchange(ref _sessionCts, null);
         if (cts is not null)
         {
-            try
+            using (cts)
             {
-                await cts.CancelAsync().ConfigureAwait(false);
-            }
-            catch
-            {
-                // ignored
-            }
-            finally
-            {
-                cts.Dispose();
+                try
+                {
+                    await cts.CancelAsync().ConfigureAwait(false);
+                }
+                catch (ObjectDisposedException)
+                {
+                    //игнорируем уже освобожденный токен
+                }
             }
         }
     }

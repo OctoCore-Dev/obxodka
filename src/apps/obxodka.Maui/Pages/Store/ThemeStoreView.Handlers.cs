@@ -303,7 +303,7 @@ public sealed partial class ThemeStoreView
         var rounded = Math.Round(e.NewValue, 2);
         LabelCardOpacityValue.Text = $"{(int)Math.Round(rounded * 100)}%";
 
-        if (_themeManager == null || !(Math.Abs(_themeManager.CardOpacity - rounded) >= 0.01))
+        if (_themeManager == null || Math.Abs(_themeManager.CardOpacity - rounded) < 0.01)
         {
             return;
         }
@@ -329,7 +329,7 @@ public sealed partial class ThemeStoreView
         var rounded = Math.Round(e.NewValue, 2);
         LabelGlowIntensityValue.Text = $"{(int)Math.Round(rounded * 100)}%";
 
-        if (_themeManager == null || !(Math.Abs(_themeManager.GlowIntensity - rounded) >= 0.01))
+        if (_themeManager == null || Math.Abs(_themeManager.GlowIntensity - rounded) < 0.01)
         {
             return;
         }
@@ -384,12 +384,9 @@ public sealed partial class ThemeStoreView
         CardVfxSettings.BackgroundColor = cardBgColor;
         UpdateFilterChipsUi();
 
-        foreach (var child in ThemesContainer.Children)
+        foreach (var cardBorder in ThemesContainer.Children.OfType<Border>())
         {
-            if (child is Border cardBorder)
-            {
-                cardBorder.BackgroundColor = cardBgColor;
-            }
+            cardBorder.BackgroundColor = cardBgColor;
         }
     }
 

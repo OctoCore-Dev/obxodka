@@ -1,9 +1,7 @@
 namespace obxodka.Core;
 
-//закрытая иерархия активного транспорта для типобезопасного отображения лучей в c# 15
+//закрытая иерархия активного транспорта для типобезопасного отображения в c# 15
 public closed record ActiveTransportTag;
-
-public sealed record StreamTransportTag(int ActiveRays) : ActiveTransportTag;
 
 public sealed record WebSocketTransportTag : ActiveTransportTag
 {
@@ -15,12 +13,17 @@ public sealed record XhttpTransportTag : ActiveTransportTag
     public static XhttpTransportTag Instance { get; } = new();
 }
 
+public sealed record RealityTransportTag : ActiveTransportTag
+{
+    public static RealityTransportTag Instance { get; } = new();
+}
+
 //поддерживаемые типы транспортных протоколов туннеля
 public enum TransportProtocolKind
 {
-    ObxodkaStream = 0,
     ObxodkaWebSocket = 1,
-    ObxodkaXhttp = 2
+    ObxodkaXhttp = 2,
+    ObxodkaReality = 3
 }
 
 //описание одного шага в круговом маршруте протоколов и серверов
@@ -37,33 +40,123 @@ public sealed record ProtocolRouteStep(
 //контракт расширяемой фабрики транспортных протоколов
 public interface ITransportProtocolFactory
 {
-    public TransportProtocolKind Kind { get; }
+    TransportProtocolKind Kind { get; }
 
-    public string DisplayName { get; }
+    string DisplayName { get; }
 
-    public string FriendlyName => DisplayName;
+    string FriendlyName => DisplayName;
 
-    public string ShortTag => FriendlyName;
+    string ShortTag => FriendlyName;
 
-    public string TransportSummary => DisplayName;
+    string TransportSummary => DisplayName;
 
-    public string Description => string.Empty;
+    string Description => string.Empty;
 
-    public int Order => (int)Kind;
+    int Order => (int)Kind;
 
-    public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp);
+    IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp);
 }
 
 //глобальный реестр фабрик протоколов для простого подключения новых транспортов в будущем
 public static class ProtocolPipelineRegistry
 {
+    public const string AutoProtocolId = "AUTO";
+
     private static readonly ConcurrentDictionary<TransportProtocolKind, ITransportProtocolFactory> s_factories = new();
 
     static ProtocolPipelineRegistry()
     {
-        RegisterFactory(new ObxodkaStreamProtocolFactory());
+        RegisterFactory(new ObxodkaRealityProtocolFactory());
         RegisterFactory(new ObxodkaWebSocketProtocolFactory());
         RegisterFactory(new ObxodkaXhttpProtocolFactory());
+    }
+
+    //разбор пользовательского имени или алиаса протокола в канонический идентификатор ssot
+    public static bool TryParsePreferredProtocol(string? rawProtocol, out string normalizedProtocol)
+    {
+        if (string.IsNullOrWhiteSpace(rawProtocol))
+        {
+            normalizedProtocol = AutoProtocolId;
+            return true;
+        }
+
+        var trimmed = rawProtocol.Trim();
+        switch (trimmed.ToLowerInvariant())
+        {
+            case "auto" or "авто" or "default" or "stream" or "h2" or "http2" or "obxodka-stream":
+                normalizedProtocol = AutoProtocolId;
+                return true;
+            case "ws" or "wss" or "websocket" or "cloudflare" or "obxodka-ws":
+                normalizedProtocol = "OBXODKA-WS";
+                return true;
+            case "xhttp" or "split-http" or "splithttp" or "obxodka-xhttp":
+                normalizedProtocol = "OBXODKA-XHTTP";
+                return true;
+            case "reality" or "v8" or "obx-v8" or "obxodka-reality":
+                normalizedProtocol = "OBXODKA-REALITY";
+                return true;
+        }
+
+        if (TryFindFactoryByProtocolName(trimmed, out var factory))
+        {
+            normalizedProtocol = factory.DisplayName;
+            return true;
+        }
+
+        normalizedProtocol = AutoProtocolId;
+        return false;
+    }
+
+    //нормализация предпочтительного протокола с безопасным откатом в auto
+    public static string NormalizePreferredProtocol(string? rawProtocol) =>
+        TryParsePreferredProtocol(rawProtocol, out var normalized) ? normalized : AutoProtocolId;
+
+    //чтение выбранного протокола из единого хранилища настроек с обратной совместимостью по forcewebsocket
+    public static string GetPreferredProtocol(IPreferencesService? preferences = null)
+    {
+        var prefs = preferences ?? PlatformServices.Preferences;
+        var stored = prefs.Get(AppPreferenceKeys.PreferredProtocol, string.Empty);
+        return !string.IsNullOrWhiteSpace(stored)
+            ? NormalizePreferredProtocol(stored)
+            : prefs.Get(AppPreferenceKeys.ForceWebSocket, false)
+                ? "OBXODKA-WS"
+                : AutoProtocolId;
+    }
+
+    //сохранение выбранного протокола и синхронизация старого флага forcewebsocket
+    public static string SetPreferredProtocol(string? protocolId, IPreferencesService? preferences = null)
+    {
+        var prefs = preferences ?? PlatformServices.Preferences;
+        var normalized = NormalizePreferredProtocol(protocolId);
+        prefs.Set(AppPreferenceKeys.PreferredProtocol, normalized);
+        prefs.Set(AppPreferenceKeys.ForceWebSocket, string.Equals(normalized, "OBXODKA-WS", StringComparison.OrdinalIgnoreCase));
+        return normalized;
+    }
+
+    //преобразование выбранного протокола в конкретный тип транспорта или false для автоматической ротации
+    public static bool TryResolvePreferredKind(string? preferredProtocol, out TransportProtocolKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(preferredProtocol))
+        {
+            kind = default;
+            return false;
+        }
+
+        var normalized = NormalizePreferredProtocol(preferredProtocol);
+        if (string.Equals(normalized, AutoProtocolId, StringComparison.OrdinalIgnoreCase))
+        {
+            kind = default;
+            return false;
+        }
+
+        if (TryFindFactoryByProtocolName(normalized, out var factory))
+        {
+            kind = factory.Kind;
+            return true;
+        }
+
+        kind = default;
+        return false;
     }
 
     //регистрация или замена фабрики конкретного протокола
@@ -105,16 +198,16 @@ public static class ProtocolPipelineRegistry
     }
 
     //разрешение активного тега транспорта для ui без строковых костылей
-    public static ActiveTransportTag ResolveActiveTag(string? protocolName, int activeRays) =>
+    public static ActiveTransportTag ResolveActiveTag(string? protocolName) =>
         protocolName switch
         {
             "OBXODKA-WS" => WebSocketTransportTag.Instance,
             "OBXODKA-XHTTP" => XhttpTransportTag.Instance,
-            _ => new StreamTransportTag(activeRays)
+            _ => RealityTransportTag.Instance
         };
 
     //форматирование краткого бейджа активного протокола для верхней плашки ui
-    public static string FormatLiveStatusBadge(string? protocolName, int activeRays)
+    public static string FormatLiveStatusBadge(string? protocolName)
     {
         if (string.IsNullOrWhiteSpace(protocolName) ||
             string.Equals(protocolName, "AUTO", StringComparison.OrdinalIgnoreCase))
@@ -123,17 +216,18 @@ public static class ProtocolPipelineRegistry
         }
 
         if (TryFindFactoryByProtocolName(protocolName, out var customFactory) &&
-            customFactory.Kind is not (TransportProtocolKind.ObxodkaStream or TransportProtocolKind.ObxodkaWebSocket or TransportProtocolKind.ObxodkaXhttp))
+            customFactory.Kind is not (TransportProtocolKind.ObxodkaWebSocket
+                or TransportProtocolKind.ObxodkaXhttp or TransportProtocolKind.ObxodkaReality))
         {
             return customFactory.ShortTag;
         }
 
 #pragma warning disable IDE0072 // C# 15 closed hierarchy is compiler-exhaustive (CS8509)
-        return ResolveActiveTag(protocolName, activeRays) switch
+        return ResolveActiveTag(protocolName) switch
         {
-            StreamTransportTag stream => $"Stream • {Math.Max(1, stream.ActiveRays)}L",
             WebSocketTransportTag => "WebSocket",
-            XhttpTransportTag => "XHTTP"
+            XhttpTransportTag => "XHTTP",
+            RealityTransportTag => "Reality"
         };
 #pragma warning restore IDE0072
     }
@@ -148,20 +242,6 @@ public static class ProtocolPipelineRegistry
         transport.ProtectSockets(OctopusEngine.Current.ProtectSocket);
         return transport;
     }
-}
-
-internal sealed class ObxodkaStreamProtocolFactory : ITransportProtocolFactory
-{
-    public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaStream;
-    public string DisplayName => "OBXODKA-STREAM";
-    public string FriendlyName => "Obxodka Stream";
-    public string ShortTag => "Stream";
-    public string TransportSummary => "HTTP/2 TLS 443";
-    public string Description => "Многолучевой защищённый дуплексный поток с минимальной задержкой и обходом DPI.";
-    public int Order => 0;
-
-    public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
-        new ObxodkaStreamTransport(step.Port, step.TargetSni, preferredAssignedIp);
 }
 
 internal sealed class ObxodkaWebSocketProtocolFactory : ITransportProtocolFactory
@@ -190,6 +270,20 @@ internal sealed class ObxodkaXhttpProtocolFactory : ITransportProtocolFactory
 
     public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
         new ObxodkaXhttpTransport(step.Port, step.TargetSni, preferredAssignedIp);
+}
+
+internal sealed class ObxodkaRealityProtocolFactory : ITransportProtocolFactory
+{
+    public TransportProtocolKind Kind => TransportProtocolKind.ObxodkaReality;
+    public string DisplayName => "OBXODKA-REALITY";
+    public string FriendlyName => "Obxodka Reality";
+    public string ShortTag => "Reality";
+    public string TransportSummary => "TLS 1.3 Reality 443";
+    public string Description => "Прямой стелс-протокол с проверкой SessionID до TLS и маскировкой под легальный сайт.";
+    public int Order => 0;
+
+    public IVpnTransport CreateTransport(ProtocolRouteStep step, string? preferredAssignedIp) =>
+        new ObxodkaRealityTransport(step.Port, step.TargetSni, preferredAssignedIp);
 }
 
 //учет заблокированных edge ip cdn (например 188.114.96.1) для мгновенной ротации к другим адресам

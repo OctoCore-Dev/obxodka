@@ -184,12 +184,9 @@ public sealed partial class MainPage
     //единая рассылка актуального снимка геометрии всем открытым вкладкам
     private void BroadcastViewportToTabs()
     {
-        foreach (var child in MainContentContainer.Children)
+        foreach (var adaptivePage in MainContentContainer.Children.OfType<IAdaptivePage>())
         {
-            if (child is IAdaptivePage adaptivePage)
-            {
-                adaptivePage.ApplyViewport(_currentViewport);
-            }
+            adaptivePage.ApplyViewport(_currentViewport);
         }
     }
 

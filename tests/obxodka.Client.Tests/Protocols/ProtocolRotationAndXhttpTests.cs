@@ -6,7 +6,7 @@ namespace obxodka.Client.Tests.Protocols;
 public sealed class ProtocolRotationAndXhttpTests
 {
     [Fact]
-    public void BuildProtocolRotationRingStartsWithObxodkaStreamThenWsThenXhttp()
+    public void BuildProtocolRotationRingStartsWithObxodkaRealityThenWsThenXhttp()
     {
         var prevCert = OctopusEngine.DirectOriginCertHash;
         OctopusEngine.ClearByteCappedNodes();
@@ -21,7 +21,7 @@ public sealed class ProtocolRotationAndXhttpTests
             var ring = SniEngine.BuildProtocolRotationRing(servers, AppConfig.PrimaryDomain, 443, null, false);
 
             Assert.True(ring.Count >= 3);
-            Assert.Equal(TransportProtocolKind.ObxodkaStream, ring[0].Kind);
+            Assert.Equal(TransportProtocolKind.ObxodkaReality, ring[0].Kind);
             Assert.Equal(AppConfig.DirectServerIp, ring[0].Host);
             Assert.False(ring[0].IsShield);
             Assert.Equal("TESTHASH_MAIN==", OctopusEngine.DirectOriginCertHash);
@@ -59,7 +59,7 @@ public sealed class ProtocolRotationAndXhttpTests
             Assert.Equal(TransportProtocolKind.ObxodkaWebSocket, ring[0].Kind);
             Assert.Equal(TransportProtocolKind.ObxodkaXhttp, ring[1].Kind);
             Assert.True(ring[1].IsShield);
-            Assert.Equal(TransportProtocolKind.ObxodkaStream, ring[^1].Kind);
+            Assert.Equal(TransportProtocolKind.ObxodkaReality, ring[^1].Kind);
             var directXhttpIndex = ring.FindIndex(s => s.Kind == TransportProtocolKind.ObxodkaXhttp && !s.IsShield);
             Assert.True(directXhttpIndex > 1);
         }
@@ -96,8 +96,8 @@ public sealed class ProtocolRotationAndXhttpTests
     [Fact]
     public void ProtocolPipelineRegistryResolvesBuiltInsAndCustomFactories()
     {
-        Assert.True(ProtocolPipelineRegistry.TryGetFactory(TransportProtocolKind.ObxodkaStream, out var streamFactory));
-        Assert.Equal("OBXODKA-STREAM", streamFactory.DisplayName);
+        Assert.True(ProtocolPipelineRegistry.TryGetFactory(TransportProtocolKind.ObxodkaReality, out var realityFactory));
+        Assert.Equal("OBXODKA-REALITY", realityFactory.DisplayName);
 
         Assert.True(ProtocolPipelineRegistry.TryGetFactory(TransportProtocolKind.ObxodkaWebSocket, out var wsFactory));
         Assert.Equal("OBXODKA-WS", wsFactory.DisplayName);
@@ -170,43 +170,39 @@ public sealed class ProtocolRotationAndXhttpTests
     }
 
     [Fact]
-    public void SniEngineBuildXhttpAndStreamCandidatesFollowPriorityRules()
+    public void SniEngineBuildXhttpCandidatesFollowPriorityRules()
     {
         var xhttpCandidates = SniEngine.BuildXhttpCandidates(AppConfig.PrimaryDomain, 443, null);
         Assert.NotEmpty(xhttpCandidates);
         Assert.Contains("octocore.dev", xhttpCandidates[0].ServerHost, StringComparison.OrdinalIgnoreCase);
-
-        var streamCandidates = SniEngine.BuildStreamCandidates(AppConfig.DirectServerIp, 443, null);
-        Assert.Equal(4, streamCandidates.Count);
-        Assert.True(streamCandidates[0].EnableDpiBypass);
     }
 
     [Fact]
     public void VpnStatusMessagesFormatsProtocolRotationStatuses()
     {
-        Assert.Equal("Obxodka Stream", VpnStatusMessages.FormatProtocolName("OBXODKA-STREAM"));
+        Assert.Equal("Obxodka Reality", VpnStatusMessages.FormatProtocolName("OBXODKA-REALITY"));
         Assert.Equal("Cloudflare WS", VpnStatusMessages.FormatProtocolName("OBXODKA-WS", true));
         Assert.Equal("Cloudflare XHTTP", VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP", true));
         Assert.Equal("Direct XHTTP", VpnStatusMessages.FormatProtocolName("OBXODKA-XHTTP"));
         Assert.Contains("Cloudflare WS", VpnStatusMessages.TryingProtocol("Cloudflare WS", 2, 4), StringComparison.Ordinal);
-        Assert.Contains("Cloudflare XHTTP", VpnStatusMessages.ProtocolUnavailableSwitching("Obxodka Stream", "Cloudflare XHTTP"),
+        Assert.Contains("Cloudflare XHTTP", VpnStatusMessages.ProtocolUnavailableSwitching("Obxodka Reality", "Cloudflare XHTTP"),
             StringComparison.Ordinal);
         Assert.Contains("Direct XHTTP", VpnStatusMessages.RotatingProtocol("Direct XHTTP"), StringComparison.Ordinal);
         Assert.Contains("Cloudflare WS", VpnStatusMessages.ProtocolSwitched("Cloudflare WS"), StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("OBXODKA-STREAM", 4, "4L")]
-    [InlineData("OBXODKA-WS", 1, "WS")]
-    [InlineData("OBXODKA-XHTTP", 1, "XHTTP")]
-    [InlineData("AUTO", 2, "2L")]
-    public void ProtocolPipelineRegistryResolveActiveTagExhaustivelyFormatsProtocols(string protocolName, int activeRays, string expected)
+    [InlineData("OBXODKA-WS", "WS")]
+    [InlineData("OBXODKA-XHTTP", "XHTTP")]
+    [InlineData("OBXODKA-REALITY", "REALITY")]
+    [InlineData("AUTO", "REALITY")]
+    public void ProtocolPipelineRegistryResolveActiveTagExhaustivelyFormatsProtocols(string protocolName, string expected)
     {
-        var formatted = ProtocolPipelineRegistry.ResolveActiveTag(protocolName, activeRays) switch
+        var formatted = ProtocolPipelineRegistry.ResolveActiveTag(protocolName) switch
         {
-            StreamTransportTag stream => $"{stream.ActiveRays}L",
             WebSocketTransportTag => "WS",
-            XhttpTransportTag => "XHTTP"
+            XhttpTransportTag => "XHTTP",
+            RealityTransportTag => "REALITY"
         };
 
         Assert.Equal(expected, formatted);

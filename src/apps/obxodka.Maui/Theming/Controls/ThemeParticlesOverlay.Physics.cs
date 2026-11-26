@@ -157,7 +157,7 @@ public sealed partial class ThemeParticlesOverlay
                 Y = (float)(_random.NextDouble() * height),
                 SpeedX = speedX * _speedMultiplier * depth,
                 SpeedY = speedY * _speedMultiplier * depth,
-                Rotation = rotSpeed == 0f ? _particleTypeName == "rain" ? 12f : 0f : (float)(_random.NextDouble() * 360),
+                Rotation = MathF.Abs(rotSpeed) < 0.0001f ? _particleTypeName == "rain" ? 12f : 0f : (float)(_random.NextDouble() * 360),
                 RotationSpeed = rotSpeed,
                 Size = baseSize * _sizeMultiplier * depth,
                 Depth = depth,
@@ -398,7 +398,7 @@ public sealed partial class ThemeParticlesOverlay
                     {
                         p.Y = -25;
                         p.X = (float)(_random.NextDouble() * (w + 100) - 50);
-                        if (p.RotationSpeed != 0f)
+                        if (MathF.Abs(p.RotationSpeed) > 0.0001f)
                         {
                             p.Rotation = (float)(_random.NextDouble() * 360);
                         }

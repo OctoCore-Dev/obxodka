@@ -468,48 +468,6 @@ public sealed class StealthProtocolTests
     }
 
     [Fact]
-    public void RayInspectorDetectsAsymmetricBlackholeAndMigratesRay()
-    {
-        var inspector = new RayInspector();
-        var now = Stopwatch.GetTimestamp();
-
-        inspector.RecordTx(0, now - (long)(Stopwatch.Frequency * 0.2));
-        inspector.RecordRx(0, now - (long)(Stopwatch.Frequency * 2.5));
-
-        inspector.RecordTx(1, now - (long)(Stopwatch.Frequency * 0.1));
-        inspector.RecordRx(1, now - (long)(Stopwatch.Frequency * 0.1));
-
-        var detected = inspector.DetectAsymmetricBlackhole(0, now, out var fallbackRay);
-        Assert.True(detected);
-        Assert.Equal(1, fallbackRay);
-    }
-
-    [Fact]
-    public void RayInspectorNeverRoutesUserDataToInspectorRay2()
-    {
-        var inspector = new RayInspector();
-        var now = Stopwatch.GetTimestamp();
-
-        // Ray 0 мертв (молчал 5 секунд), Ray 1 жив, Ray 2 (инспектор) жив
-        inspector.RecordRx(0, now - (long)(Stopwatch.Frequency * 5.0));
-        inspector.RecordRx(1, now - (long)(Stopwatch.Frequency * 0.1));
-        inspector.RecordRx(2, now - (long)(Stopwatch.Frequency * 0.1));
-
-        PacketRouter.SelectRaysFromHealth(
-            true,
-            inspector.GetAliveMask(now),
-            1,
-            0,
-            out var primaryRay,
-            out var duplicateRay);
-
-        Assert.Equal(1, primaryRay);
-        // ВАЖНО: Ray 2 - это Control Plane! Он не должен принимать пользовательские данные,
-        // поэтому дублировать некуда (второй рабочий Data-луч Ray 0 мертв -> duplicateRay == -1):
-        Assert.Equal(-1, duplicateRay);
-    }
-
-    [Fact]
     public void PacketRouterThreeRaysRoutesGamingUdpBetweenDataRays()
     {
         var robloxUdp = new byte[800];
@@ -523,69 +481,6 @@ public sealed class StealthProtocolTests
         Assert.Equal(0, primaryRay);
         // Хеджирование идет строго во второй рабочий Data-луч (Ray 1), но НИКОГДА в инспектор Ray 2:
         Assert.Equal(1, secondaryRay);
-    }
-
-    [Fact]
-    public void RayInspectorAdaptiveMtuDownshiftAndStepLogging()
-    {
-        var inspector = new RayInspector();
-        Assert.True(inspector.TryDownshiftMtu(1400, out var mtu1));
-        Assert.Equal(1360, mtu1);
-
-        Assert.True(inspector.TryDownshiftMtu(mtu1, out var mtu2));
-        Assert.Equal(1300, mtu2);
-
-        Assert.True(inspector.TryDownshiftMtu(mtu2, out var mtu3));
-        Assert.Equal(1280, mtu3);
-
-        Assert.True(inspector.TryDownshiftMtu(mtu3, out var mtu4));
-        Assert.Equal(1240, mtu4);
-
-        Assert.True(inspector.TryDownshiftMtu(mtu4, out var mtu5));
-        Assert.Equal(1200, mtu5);
-
-        Assert.False(inspector.TryDownshiftMtu(mtu5, out var mtu6));
-        Assert.Equal(1200, mtu6);
-
-        var steps = inspector.GetDiagnosticSteps();
-        Assert.Contains("1400 -> 1360", steps);
-        Assert.Contains("1360 -> 1300", steps);
-        Assert.Contains("1300 -> 1280", steps);
-        Assert.Contains("1280 -> 1240", steps);
-        Assert.Contains("1240 -> 1200", steps);
-    }
-
-    [Fact]
-    public void RayInspectorDetectsMtuBlackhole()
-    {
-        var inspector = new RayInspector();
-        var now = Stopwatch.GetTimestamp();
-
-        inspector.RecordRx(0, now);
-        for (var i = 0; i < 25; i++)
-        {
-            inspector.RecordDataTx();
-        }
-
-        Assert.False(inspector.DetectMtuBlackhole(now));
-        Assert.False(inspector.DetectMtuBlackhole(now));
-        Assert.True(inspector.DetectMtuBlackhole(now));
-
-        inspector.RecordDataRx();
-        Assert.False(inspector.DetectMtuBlackhole(now));
-    }
-
-    [Fact]
-    public async Task RayInspectorRateLimitsIncidentReportsAsync()
-    {
-        var inspector = new RayInspector();
-        inspector.RecordStep("Initial step");
-
-        _ = await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
-        var secondAttempt =
-            await inspector.ReportIncidentIfExhaustedAsync("TestReason", "example.com", 443, 1280, apiBaseUrl: "http://127.0.0.1:59999");
-
-        Assert.False(secondAttempt);
     }
 
     [Fact]
@@ -851,73 +746,11 @@ public sealed class StealthProtocolTests
     }
 
     [Fact]
-    public void SniEngineFiltersInternalBrandHostAndBuildsCandidates()
+    public void SniEngineFiltersInternalBrandHost()
     {
         Assert.True(SniEngine.IsInternalBrandHost("vpn.obxodka.one"));
         Assert.True(SniEngine.IsInternalBrandHost("node.octocore.net"));
         Assert.False(SniEngine.IsInternalBrandHost("login.live.com"));
-
-        var candidates = SniEngine.BuildStreamCandidates("70.34.201.253", 443, "vpn.obxodka.one");
-        Assert.NotEmpty(candidates);
-        Assert.All(candidates, c => Assert.False(SniEngine.IsInternalBrandHost(c.TargetHost)));
-    }
-
-    [Fact]
-    public void SniEngineStreamRouteAndSliceWindowReturnRealisticValues()
-    {
-        var route0 = SniEngine.GetStreamRoute(0, 1, out var mime0);
-        var route1 = SniEngine.GetStreamRoute(0, 2, out var mime1);
-        Assert.NotEqual(route0, route1);
-        Assert.False(string.IsNullOrWhiteSpace(mime0));
-        Assert.False(string.IsNullOrWhiteSpace(mime1));
-        Assert.NotEqual("application/octet-stream", mime0);
-        Assert.NotEqual("application/octet-stream", RoutingHello.GetStreamResponseContentType(route0));
-
-        SniEngine.CalculateStreamSliceWindow(0, out var maxTicks0, out var maxBytes0);
-        SniEngine.CalculateStreamSliceWindow(1, out var maxTicks1, out var maxBytes1);
-        Assert.True(maxTicks0 > 0);
-        Assert.True(maxTicks1 > maxTicks0 / 2);
-        Assert.InRange(maxBytes0, 24L * 1024 * 1024, 64L * 1024 * 1024);
-        Assert.InRange(maxBytes1, 32L * 1024 * 1024, 64L * 1024 * 1024);
-    }
-
-    [Fact]
-    public void RayInspectorIgnoresIdleSilenceAndMulticastForMtuBlackhole()
-    {
-        var inspector = new RayInspector();
-        var now = Stopwatch.GetTimestamp();
-        inspector.RecordRx(0, now);
-
-        //активный обмен трафиком с успешным приемом
-        for (var i = 0; i < 30; i++)
-        {
-            inspector.RecordDataTx();
-        }
-
-        inspector.RecordDataRx(1200);
-
-        //простой 5 секунд + фоновые мультикаст пакеты ос и мелкие ack не должны вызывать ложный mtu блэкхол
-        var idleTs = now + Stopwatch.Frequency * 5;
-        inspector.RecordRx(0, idleTs);
-
-        var mdnsIpv4 = new byte[700];
-        mdnsIpv4[0] = 0x45;
-        mdnsIpv4[16] = 224;
-        mdnsIpv4[19] = 251;
-
-        var smallAck = new byte[52];
-        smallAck[0] = 0x45;
-        smallAck[16] = 8;
-
-        for (var i = 0; i < 20; i++)
-        {
-            inspector.RecordDataTx(mdnsIpv4);
-            inspector.RecordDataTx(smallAck);
-        }
-
-        Assert.False(inspector.DetectMtuBlackhole(idleTs));
-        Assert.False(inspector.DetectMtuBlackhole(idleTs));
-        Assert.False(inspector.DetectMtuBlackhole(idleTs));
     }
 
     [Fact]
@@ -1011,7 +844,7 @@ public sealed class StealthProtocolTests
     [InlineData("UPPERCASE_ID")]
     public void ThemeStorageServiceResolveSafeThemeDirectoryRejectsTraversalAndInvalidIds(string? unsafeId)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        var tempRoot = Path.Join(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
         try
         {
             var storage = new ThemeStorageService(tempRoot);
@@ -1030,7 +863,7 @@ public sealed class StealthProtocolTests
     [Fact]
     public void ThemeStorageServiceResolveSafeThemeDirectoryAcceptsValidKebabCaseId()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
+        var tempRoot = Path.Join(Path.GetTempPath(), $"obx-theme-test-{Guid.NewGuid():N}");
         try
         {
             var storage = new ThemeStorageService(tempRoot);
@@ -1068,8 +901,8 @@ public sealed class StealthProtocolTests
         ];
 
         var ring = SniEngine.BuildProtocolRotationRing(servers, "185.10.20.30", 443, null, false);
-        var nlStep = ring.FirstOrDefault(s => s.Host == "185.10.20.30" && s.Kind == TransportProtocolKind.ObxodkaStream);
-        var deStep = ring.FirstOrDefault(s => s.Host == "185.10.20.31" && s.Kind == TransportProtocolKind.ObxodkaStream);
+        var nlStep = ring.FirstOrDefault(s => s.Host == "185.10.20.30" && s.Kind == TransportProtocolKind.ObxodkaReality);
+        var deStep = ring.FirstOrDefault(s => s.Host == "185.10.20.31" && s.Kind == TransportProtocolKind.ObxodkaReality);
 
         Assert.NotNull(nlStep);
         Assert.NotNull(deStep);

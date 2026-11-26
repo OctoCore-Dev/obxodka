@@ -6,6 +6,7 @@ public static class AppPreferenceKeys
     //настройки VPN-туннеля и маршрутизации
     public const string AutoReconnect = "AutoReconnect";
     public const string KillSwitch = "KillSwitch";
+    public const string PreferredProtocol = "PreferredProtocol";
     public const string ForceWebSocket = "ForceWebSocket";
     public const string BlockIpv6 = "BlockIpv6";
     public const string BypassRuSites = "obxodka_win_preset_rutlds";
@@ -17,6 +18,9 @@ public static class AppPreferenceKeys
     public const string UseAdblockDns = "use_adblock_dns";
     public const string AdblockLastSyncTicks = "adblock_last_sync_ticks";
     public const string UseTelemetry = "use_telemetry";
+    public const string VoiceAssistantEnabled = "voice_assistant_enabled";
+    public const string SelectedServerIp = "selected_server_ip";
+    public const string VpnDisclosureAccepted = "VpnDisclosureAccepted";
 
     //сессия пользователя, подписка и локальный кэш
     public const string UserEmail = "user_email";

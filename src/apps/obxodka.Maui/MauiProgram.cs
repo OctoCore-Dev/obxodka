@@ -78,6 +78,7 @@ internal static class MauiProgram
                 new WindowsCertificateAuditService(),
                 new WindowsNotificationService());
 
+            WindowsVpnService.SyncSplitTunnelPolicy = AppManager.SyncPolicyFromPreferences;
             builder.Services.AddSingleton<ITunnelPlatformAdapter, WindowsVpnService>();
             builder.Services.AddSingleton<IVpnService>(sp => new VpnSessionOrchestrator(sp.GetRequiredService<ITunnelPlatformAdapter>()));
             builder.Services.AddSingleton<IAppManager, AppManager>();
@@ -110,9 +111,9 @@ internal static class MauiProgram
             try
             {
                 AppLogger.LogError("[MAUI STARTUP ERROR]", ex);
-                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
+                var dir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obxodka");
                 Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
+                File.AppendAllText(Path.Join(dir, "startup_error.log"), $"[{DateTime.UtcNow:O}] {ex}\r\n\r\n");
             }
             catch
             {
@@ -179,6 +180,7 @@ internal static class MauiProgram
     private static void RegisterAndroidServices(IServiceCollection services)
     {
         var orchestrator = AndroidVpnService.Orchestrator;
+        AndroidBackgroundVpnController.EnsureStateHooked(Application.Context);
         _ = services.AddSingleton<IVpnService>(_ => orchestrator);
         _ = services.AddSingleton<IAppManager, AppManager>();
         _ = services.AddSingleton<IAppUpdaterService, AndroidAppUpdaterService>();

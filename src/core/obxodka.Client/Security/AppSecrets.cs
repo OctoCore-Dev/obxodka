@@ -3,10 +3,13 @@ namespace obxodka.Config;
 //ключи хэши ssl pinning и маскированные пароли
 public static class AppSecrets
 {
-    //резервные хэши ключей для ротации сертификатов
+    //основной sha-256 spki пин корневого сертификата сервера для прямого ip подключения
+    public const string DirectServerSpkiPin = "I9ti16bUDaenKqn5JpI4bYHLLLM3BHMNQ3eK0I0Q7oY=";
+
+    //резервные sha-256 хэши открытого ключа для ротации сертификатов (без слабого sha-1)
     public static readonly string[] BackupPublicKeyHashes =
     [
-        "CBDEBFDE826F40C6BF0F77525522E624C7A624BC",
+        DirectServerSpkiPin,
         "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="
     ];
 

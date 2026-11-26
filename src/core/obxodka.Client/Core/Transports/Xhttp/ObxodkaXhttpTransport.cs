@@ -99,14 +99,18 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                 var nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 var downSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
                 var downKey = ObxodkaFraming.DeriveSessionKey(thumbprint, 0, downSeed);
-                var downProof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, 0, downSeed, nowSec);
-                var hsStr = string.IsNullOrEmpty(_assignedIp)
-                    ? $"{thumbprint}|R:0|M:{SmartMtuEngine.CurrentMtu}|K:{downSeed:X8}|T:{nowSec}|P:{downProof}"
-                    : $"{thumbprint}|{_assignedIp}|R:0|M:{SmartMtuEngine.CurrentMtu}|K:{downSeed:X8}|T:{nowSec}|P:{downProof}";
+                var hsStr = OctopusEngine.Current.BuildAuthenticatedHandshakeString(
+                    thumbprint,
+                    _assignedIp,
+                    0,
+                    SmartMtuEngine.CurrentMtu,
+                    downSeed,
+                    nowSec,
+                    includePublicKey: true);
 
                 var uriBuilder = new UriBuilder("https", candidate.ConnectHost, candidate.Port, candidate.Path)
                 {
-                    Query = $"cid={cid}&_t={nowSec}&_x=1"
+                    Query = $"v={cid}"
                 };
 
                 using var req = new HttpRequestMessage(HttpMethod.Get, uriBuilder.Uri);
@@ -114,16 +118,17 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                 req.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
                 RoutingHello.ApplyBrowserHeaders(req, candidate.BrowserProfile);
                 req.Headers.Host = candidate.HostHeader;
-                _ = req.Headers.TryAddWithoutValidation("X-Obx-Mode", "down");
-                _ = req.Headers.TryAddWithoutValidation("X-Obx-Handshake", hsStr);
+                _ = req.Headers.TryAddWithoutValidation("Cookie", ObxodkaFraming.PackStealthCookieHeader("down", hsStr, nowSec));
                 _ = req.Headers.TryAddWithoutValidation("Cache-Control", "no-store");
 
                 AppLogger.Log(
                     $"[OBXODKA-XHTTP] Connecting downlink GET to {uriBuilder.Uri} (SNI={ActiveSni}, Profile={ActiveBrowserProfile})...");
                 downResp = await downInvoker.SendAsync(req, linkedCts.Token).ConfigureAwait(false);
                 var contentType = downResp.Content.Headers.ContentType?.MediaType;
-                if (!downResp.IsSuccessStatusCode ||
-                    !string.Equals(contentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
+                var validStreamType = string.Equals(contentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(contentType, "application/x-protobuf", StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(contentType, "video/mp4", StringComparison.OrdinalIgnoreCase);
+                if (!downResp.IsSuccessStatusCode || !validStreamType)
                 {
                     throw new InvalidOperationException(
                         $"Endpoint returned HTTP {(int)downResp.StatusCode} ({contentType ?? "unknown"}) instead of XHTTP stream.");
@@ -255,7 +260,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linkedCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
-            await using var reg = linkedCts.Token.Register(() => _ = tcs.TrySetResult(0));
+            using var reg = linkedCts.Token.Register(() => _ = tcs.TrySetResult(0));
 
             var returnedLen = await tcs.Task.ConfigureAwait(false);
             return returnedLen >= payloadLen;
@@ -363,22 +368,17 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                 profile),
             ConnectCallback = async (context, cToken) =>
             {
-                IPAddress[] candidateIps;
-                if (isDirectIp && literalIp is not null)
-                {
-                    candidateIps = [literalIp];
-                }
-                else if (pinToActiveIp &&
-                         Volatile.Read(ref _lastConnectedRemoteIp) is { } pinnedIpStr &&
-                         IPAddress.TryParse(pinnedIpStr, out var pinnedIp))
-                {
-                    candidateIps = [pinnedIp];
-                }
-                else
-                {
-                    var resolved = await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken).ConfigureAwait(false);
-                    candidateIps = EdgeEndpointHealth.FilterAndRotate(resolved);
-                }
+                var candidateIps = isDirectIp && literalIp is not null
+                    ? [literalIp]
+                    : pinToActiveIp &&
+                      Volatile.Read(ref _lastConnectedRemoteIp) is { } pinnedIpStr &&
+                      IPAddress.TryParse(pinnedIpStr, out var pinnedIp)
+                        ? [pinnedIp]
+                        : await CleanEdgeScanner.ResolveCleanShieldCandidatesAsync(
+                                targetSni,
+                                context.DnsEndPoint.Port,
+                                cToken)
+                            .ConfigureAwait(false);
 
                 Socket? connectedSocket = null;
                 Exception? lastSocketEx = null;
@@ -494,58 +494,64 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
 
         try
         {
-            while (!ct.IsCancellationRequested)
+            using (response)
             {
-                var readCount = await stream.ReadAsync(rxBuf.AsMemory(rxFilled, rxBuf.Length - rxFilled), ct).ConfigureAwait(false);
-                if (readCount <= 0)
+                while (!ct.IsCancellationRequested)
                 {
-                    break;
-                }
-
-                rxFilled += readCount;
-
-                while (rxFilled - rxOffset >= ObxodkaFraming.HeaderSize)
-                {
-                    var headerSpan = rxBuf.AsSpan(rxOffset, ObxodkaFraming.HeaderSize);
-                    if (!ObxodkaFraming.TryDecodeHeader(headerSpan, out var totalLen, out var payloadLen, out var command, out var salt,
-                            sessionKey))
-                    {
-                        AppLogger.LogError("[OBXODKA-XHTTP] Frame header decode error, closing.");
-                        return;
-                    }
-
-                    if (rxFilled - rxOffset < totalLen)
+                    var readCount = await stream.ReadAsync(rxBuf.AsMemory(rxFilled, rxBuf.Length - rxFilled), ct).ConfigureAwait(false);
+                    if (readCount <= 0)
                     {
                         break;
                     }
 
-                    var payloadSpan = rxBuf.AsSpan(rxOffset + ObxodkaFraming.HeaderSize, payloadLen);
-                    if (command != ObxodkaFraming.CmdChaff && payloadLen > 0)
+                    rxFilled += readCount;
+
+                    while (rxFilled - rxOffset >= ObxodkaFraming.HeaderSize)
                     {
-                        ObxodkaFraming.UnmaskPayload(payloadSpan, salt, sessionKey);
+                        var headerSpan = rxBuf.AsSpan(rxOffset, ObxodkaFraming.HeaderSize);
+                        if (!ObxodkaFraming.TryDecodeHeader(headerSpan, out var totalLen, out var payloadLen, out var command, out var salt,
+                                sessionKey))
+                        {
+                            AppLogger.LogError("[OBXODKA-XHTTP] Frame header decode error, closing.");
+                            return;
+                        }
+
+                        if (rxFilled - rxOffset < totalLen)
+                        {
+                            break;
+                        }
+
+                        var payloadSpan = rxBuf.AsSpan(rxOffset + ObxodkaFraming.HeaderSize, payloadLen);
+                        if (command != ObxodkaFraming.CmdChaff && payloadLen > 0)
+                        {
+                            ObxodkaFraming.UnmaskPayload(payloadSpan, salt, sessionKey);
+                        }
+
+                        rxOffset += totalLen;
+
+                        HandleDecodedDownlinkFrame(command, payloadSpan, payloadLen);
                     }
 
-                    rxOffset += totalLen;
+                    if (rxOffset <= 0)
+                    {
+                        continue;
+                    }
 
-                    HandleDecodedDownlinkFrame(command, payloadSpan, payloadLen);
+                    var remaining = rxFilled - rxOffset;
+                    if (remaining > 0)
+                    {
+                        rxBuf.AsSpan(rxOffset, remaining).CopyTo(rxBuf);
+                    }
+
+                    rxFilled = remaining;
+                    rxOffset = 0;
                 }
-
-                if (rxOffset <= 0)
-                {
-                    continue;
-                }
-
-                var remaining = rxFilled - rxOffset;
-                if (remaining > 0)
-                {
-                    rxBuf.AsSpan(rxOffset, remaining).CopyTo(rxBuf);
-                }
-
-                rxFilled = remaining;
-                rxOffset = 0;
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            //штатная остановка цикла чтения downlink
+        }
         catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
                                        or InvalidOperationException)
         {
@@ -553,7 +559,6 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         }
         finally
         {
-            response.Dispose();
             ArrayPool<byte>.Shared.Return(rxBuf);
             if (!_ipTcs.Task.IsCompleted)
             {
@@ -579,10 +584,9 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                     var parts = info[3..].Split('|');
                     var assignedIp = parts[0];
                     var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                    foreach (var part in parts)
+                    foreach (var part in parts.Where(static part => part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase)))
                     {
-                        if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                            int.TryParse(part[4..], out var sMtu) &&
+                        if (int.TryParse(part[4..], out var sMtu) &&
                             sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                         {
                             OnMtuUpdated?.Invoke(sMtu);
@@ -692,7 +696,11 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         string thumbprint,
         CancellationToken ct)
     {
-        var coalesceBuf = ArrayPool<byte>.Shared.Rent(131072);
+        const int maxConcurrentPosts = 3;
+        const int batchBufferSize = 131072;
+        using var inflightGate = new SemaphoreSlim(maxConcurrentPosts, maxConcurrentPosts);
+        var inflightTasks = new List<Task>(maxConcurrentPosts * 2);
+        long uplinkTxBytes = 0;
 
         try
         {
@@ -704,68 +712,127 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                     break;
                 }
 
-                var coalescedLen = 0;
-                var batchCount = 0;
-                var item = firstItem;
-                var hasItem = true;
+                var coalesceBuf = ArrayPool<byte>.Shared.Rent(batchBufferSize);
+                var ownershipPassed = false;
 
-                var nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                var postSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
-                var postKey = ObxodkaFraming.DeriveSessionKey(thumbprint, 0, postSeed);
-                var postProof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, 0, postSeed, nowSec);
-                var hsStr = $"{thumbprint}|R:0|M:{SmartMtuEngine.CurrentMtu}|K:{postSeed:X8}|T:{nowSec}|P:{postProof}";
-
-                while (hasItem)
+                try
                 {
-                    var packet = item.buffer;
-                    var length = item.length;
+                    var coalescedLen = 0;
+                    var batchCount = 0;
+                    var item = firstItem;
+                    var hasItem = true;
 
-                    if (packet is not null && length > 0)
+                    var nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    var postSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
+                    var postKey = ObxodkaFraming.DeriveSessionKey(thumbprint, 0, postSeed);
+                    var hsStr = OctopusEngine.Current.BuildAuthenticatedHandshakeString(
+                        thumbprint,
+                        null,
+                        0,
+                        SmartMtuEngine.CurrentMtu,
+                        postSeed,
+                        nowSec);
+
+                    while (hasItem)
                     {
-                        try
+                        var packet = item.buffer;
+                        var length = item.length;
+
+                        if (packet is not null && length > 0)
                         {
-                            var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset,
-                                out var payloadLength);
-                            var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, SmartMtuEngine.CurrentMtu);
-                            var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
-
-                            if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
+                            try
                             {
-                                await PostBatchAsync(upClient, baseEndpoint, hostHeader, profile, hsStr,
-                                    coalesceBuf.AsMemory(0, coalescedLen), ct).ConfigureAwait(false);
-                                coalescedLen = 0;
-                                postSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
-                                postKey = ObxodkaFraming.DeriveSessionKey(thumbprint, 0, postSeed);
-                                postProof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, 0, postSeed, nowSec);
-                                hsStr = $"{thumbprint}|R:0|M:{SmartMtuEngine.CurrentMtu}|K:{postSeed:X8}|T:{nowSec}|P:{postProof}";
+                                var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset,
+                                    out var payloadLength);
+                                var payloadSpan = payloadLength > 0 ? packet.AsSpan(payloadOffset, payloadLength) : ReadOnlySpan<byte>.Empty;
+                                var isEarly = Interlocked.Read(ref uplinkTxBytes) + coalescedLen < ObxodkaFraming.EarlyStageWindowBytes;
+                                var paddingLen = InnerTlsMorpher.CalculateAntiMlPadding(payloadSpan, cmd, SmartMtuEngine.CurrentMtu, isEarly);
+                                var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
+
+                                if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
+                                {
+                                    await inflightGate.WaitAsync(ct).ConfigureAwait(false);
+                                    _ = Interlocked.Add(ref uplinkTxBytes, coalescedLen);
+                                    var dispatchedBuf = coalesceBuf;
+                                    var dispatchedLen = coalescedLen;
+                                    var dispatchedHs = hsStr;
+                                    var dispatchedTs = nowSec;
+                                    _ = inflightTasks.RemoveAll(static t => t.IsCompleted);
+                                    inflightTasks.Add(DispatchPostBatchAsync(
+                                        upClient,
+                                        baseEndpoint,
+                                        hostHeader,
+                                        profile,
+                                        dispatchedHs,
+                                        dispatchedTs,
+                                        dispatchedBuf,
+                                        dispatchedLen,
+                                        inflightGate,
+                                        ct));
+
+                                    coalesceBuf = ArrayPool<byte>.Shared.Rent(batchBufferSize);
+                                    coalescedLen = 0;
+                                    nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                                    postSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
+                                    postKey = ObxodkaFraming.DeriveSessionKey(thumbprint, 0, postSeed);
+                                    hsStr = OctopusEngine.Current.BuildAuthenticatedHandshakeString(
+                                        thumbprint,
+                                        null,
+                                        0,
+                                        SmartMtuEngine.CurrentMtu,
+                                        postSeed,
+                                        nowSec);
+                                }
+
+                                if (totalLen <= coalesceBuf.Length)
+                                {
+                                    ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd, payloadSpan, paddingLen,
+                                        postKey);
+                                    coalescedLen += totalLen;
+                                }
                             }
-
-                            var payloadSpan = payloadLength > 0 ? packet.AsSpan(payloadOffset, payloadLength) : ReadOnlySpan<byte>.Empty;
-                            if (totalLen <= coalesceBuf.Length)
+                            finally
                             {
-                                ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd, payloadSpan, paddingLen,
-                                    postKey);
-                                coalescedLen += totalLen;
+                                ArrayPool<byte>.Shared.Return(packet);
                             }
                         }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(packet);
-                        }
+
+                        batchCount++;
+                        hasItem = batchCount < 64 && _txQueue.TryDequeue(out item);
                     }
 
-                    batchCount++;
-                    hasItem = batchCount < 64 && _txQueue.TryDequeue(out item);
+                    if (coalescedLen > 0)
+                    {
+                        await inflightGate.WaitAsync(ct).ConfigureAwait(false);
+                        _ = Interlocked.Add(ref uplinkTxBytes, coalescedLen);
+                        ownershipPassed = true;
+                        _ = inflightTasks.RemoveAll(static t => t.IsCompleted);
+                        inflightTasks.Add(DispatchPostBatchAsync(
+                            upClient,
+                            baseEndpoint,
+                            hostHeader,
+                            profile,
+                            hsStr,
+                            nowSec,
+                            coalesceBuf,
+                            coalescedLen,
+                            inflightGate,
+                            ct));
+                    }
                 }
-
-                if (coalescedLen > 0)
+                finally
                 {
-                    await PostBatchAsync(upClient, baseEndpoint, hostHeader, profile, hsStr, coalesceBuf.AsMemory(0, coalescedLen), ct)
-                        .ConfigureAwait(false);
+                    if (!ownershipPassed)
+                    {
+                        ArrayPool<byte>.Shared.Return(coalesceBuf);
+                    }
                 }
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            //штатная остановка цикла отправки uplink
+        }
         catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
                                        or InvalidOperationException or OperationCanceledException)
         {
@@ -774,7 +841,67 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(coalesceBuf);
+            if (inflightTasks.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(inflightTasks).ConfigureAwait(false);
+                }
+                catch
+                {
+                    //ошибки фоновых пакетов уже обработаны в DispatchPostBatchAsync
+                }
+            }
+        }
+    }
+
+    //асинхронная отправка сформированного батча в параллельном слоте http2 с гарантированным возвратом буфера в пул
+    private async Task DispatchPostBatchAsync(
+        HttpClient upClient,
+        Uri baseEndpoint,
+        string hostHeader,
+        TlsBrowserProfile profile,
+        string hsHeader,
+        long timestampSec,
+        byte[] rentedBuffer,
+        int bodyLength,
+        SemaphoreSlim slotGate,
+        CancellationToken ct)
+    {
+        try
+        {
+            await PostBatchAsync(
+                    upClient,
+                    baseEndpoint,
+                    hostHeader,
+                    profile,
+                    hsHeader,
+                    timestampSec,
+                    rentedBuffer.AsMemory(0, bodyLength),
+                    ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            //штатная остановка цикла отправки uplink
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
+                                       or InvalidOperationException or OperationCanceledException)
+        {
+            AppLogger.LogWarning($"[OBXODKA-XHTTP] Parallel uplink POST failed: {ex.Message}");
+            NotifyDropOnce();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rentedBuffer);
+            try
+            {
+                _ = slotGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                //семафор слотов уже освобожден при закрытии транспорта
+            }
         }
     }
 
@@ -784,6 +911,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         string hostHeader,
         TlsBrowserProfile profile,
         string hsHeader,
+        long timestampSec,
         ReadOnlyMemory<byte> body,
         CancellationToken ct)
     {
@@ -793,9 +921,8 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         req.Content = new ReadOnlyMemoryContent(body);
         RoutingHello.ApplyBrowserHeaders(req, profile);
         req.Headers.Host = hostHeader;
-        _ = req.Headers.TryAddWithoutValidation("X-Obx-Mode", "up");
-        _ = req.Headers.TryAddWithoutValidation("X-Obx-Handshake", hsHeader);
-        req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        _ = req.Headers.TryAddWithoutValidation("Cookie", ObxodkaFraming.PackStealthCookieHeader("up", hsHeader, timestampSec));
+        req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
 
         using var resp = await upClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
@@ -810,7 +937,8 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         {
             try
             {
-                await Task.Delay(5000, ct).ConfigureAwait(false);
+                var jitteredDelayMs = RandomNumberGenerator.GetInt32(4100, 7600);
+                await Task.Delay(jitteredDelayMs, ct).ConfigureAwait(false);
                 await SendPingProbeAsync().ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -819,6 +947,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
             }
             catch (Exception ex) when (ex is IOException or HttpRequestException or ObjectDisposedException or InvalidOperationException)
             {
+                //ошибка отдельного пинга игнорируется до следующей итерации
             }
         }
     }

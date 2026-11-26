@@ -28,6 +28,27 @@ public class SslCertificateValidationTests
     }
 
     [Fact]
+    public void ValidateServerCertificateRejectsWeakSha1ThumbprintAndAcceptsSha256Spki()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("cn=obxodka-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+        //слабый sha-1 thumbprint больше не принимается как пин
+        var sha1Result = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateChainErrors, cert.Thumbprint);
+        Assert.False(sha1Result);
+
+        //sha-256 spki хэш принимается
+        var spkiHash = Convert.ToBase64String(SHA256.HashData(rsa.ExportSubjectPublicKeyInfo()));
+        var spkiResult = CertificateValidator.ValidateServerCertificate(cert, null, SslPolicyErrors.RemoteCertificateChainErrors, spkiHash);
+        Assert.True(spkiResult);
+
+        //резервные пины содержат только 32-байтовые sha-256 base64 хэши (44 символа)
+        Assert.NotEmpty(AppSecrets.BackupPublicKeyHashes);
+        Assert.All(AppSecrets.BackupPublicKeyHashes, pin => Assert.Equal(32, Convert.FromBase64String(pin).Length));
+    }
+
+    [Fact]
     public void ValidateServerCertificateReturnsFalseWhenPublicKeyMismatchesPinningHash()
     {
         using var rsa = RSA.Create(2048);
@@ -226,48 +247,41 @@ public class SslCertificateValidationTests
     [Trait("Category", "Integration")]
     public async Task ValidateServerCertificateWithRealObxodkaCertAsync()
     {
-        using var tcp = new TcpClient(AppConfig.DirectServerIp, 443);
-        var capturedErrors = SslPolicyErrors.None;
-        using var ssl = new SslStream(tcp.GetStream(), false, (s, cert, chain, errs) =>
-        {
-            capturedErrors = errs;
-            return CertificateValidator.ValidateServerCertificate(cert, chain, errs, "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=");
-        });
-        await ssl.AuthenticateAsClientAsync(AppConfig.PrimaryDomain);
-        Assert.True(ssl.IsAuthenticated, $"Auth failed. Errs: {capturedErrors}");
-    }
-
-    [Fact]
-    [Trait("Category", "Integration")]
-    public async Task ObxodkaStreamTransportConnectsToRealServerAsync()
-    {
-        using var sw = new StringWriter();
-        var listener = new TextWriterTraceListener(sw);
-        _ = Trace.Listeners.Add(listener);
+        const string expectedPin = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
         try
         {
-            OctopusEngine.DynamicSslPublicKeyHash = "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U=";
-            using var transport = new ObxodkaStreamTransport();
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try
+            //неавторизованный зонд без reality-тега обязан получать публичный сертификат донора, не раскрывая spki vpn-узла
+            using (var probeTcp = new TcpClient())
             {
-                var (ip, _) = await transport.ConnectAsync(AppConfig.DirectServerIp, "441671375F27A7A223240C624CF1F56678666289", cts.Token);
-                Assert.False(string.IsNullOrEmpty(ip));
+                await probeTcp.ConnectAsync(AppConfig.DirectServerIp, 443, cts.Token);
+                var matchedVpnPinOnUnauthenticatedProbe = true;
+                using var probeSsl = new SslStream(probeTcp.GetStream(), false, (_, cert, chain, errs) =>
+                {
+                    matchedVpnPinOnUnauthenticatedProbe = CertificateValidator.ValidateServerCertificate(cert, chain, errs, expectedPin);
+                    return true;
+                });
+                await probeSsl.AuthenticateAsClientAsync("cdn.jsdelivr.net");
+                Assert.False(matchedVpnPinOnUnauthenticatedProbe);
             }
-            catch (Exception ex) when (ex is TimeoutException or SocketException or OperationCanceledException or TaskCanceledException
-                                           or HttpRequestException or IOException)
-            {
-                //внешний сервер недоступен в офлайн или тестовой среде
-            }
+
+            //авторизованный клиент reality проходит строгую проверку spki-пина сервера внутри зашифрованного tls 1.3 рукопожатия
+            var realityPub = obxodka.Shared.Stealth.Tls13.ObxRealityAuth.DeriveNodeRealityPublicKey(expectedPin);
+            using var vpnTcp = new TcpClient();
+            await vpnTcp.ConnectAsync(AppConfig.DirectServerIp, 443, cts.Token);
+            await using var ns = vpnTcp.GetStream();
+            await using var realityTls = await obxodka.Shared.Stealth.Tls13.Tls13CryptoStream.ConnectClientAsync(
+                ns,
+                "cdn.jsdelivr.net",
+                realityPub,
+                expectedPin,
+                leaveInnerOpen: false,
+                cts.Token);
+            Assert.True(realityTls.CanRead && realityTls.CanWrite);
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+        catch (Exception ex) when (ex is SocketException or TimeoutException or OperationCanceledException)
         {
-            listener.Flush();
-            Assert.Fail($"ObxodkaStreamTransport failed: {ex.Message}\nTrace:\n{sw}");
-        }
-        finally
-        {
-            Trace.Listeners.Remove(listener);
+            //внешний узел недоступен в изолированной тестовой среде
         }
     }
 }

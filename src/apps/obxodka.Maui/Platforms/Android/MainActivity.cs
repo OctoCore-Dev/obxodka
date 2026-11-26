@@ -31,6 +31,7 @@ namespace obxodka;
     DataScheme = "https",
     DataHost = "qr",
     DataPathPrefix = "/qr")]
+[MetaData("android.app.shortcuts", Resource = "@xml/shortcuts")]
 [SupportedOSPlatform("android30.0")]
 public sealed class MainActivity : MauiAppCompatActivity
 {
@@ -66,10 +67,14 @@ public sealed class MainActivity : MauiAppCompatActivity
 
         base.OnCreate(savedInstanceState);
 
+        AndroidBackgroundVpnController.EnsureStateHooked(ApplicationContext ?? this);
+
         if (Intent?.DataString is { Length: > 0 } initialUri)
         {
             App.HandleDeepLink(initialUri);
         }
+
+        DispatchBackgroundIntentAction(Intent);
 
         _ = Window?.DecorView.Post(() =>
         {
@@ -121,6 +126,19 @@ public sealed class MainActivity : MauiAppCompatActivity
         if (intent?.DataString is { Length: > 0 } dataUri)
         {
             App.HandleDeepLink(dataUri);
+        }
+
+        DispatchBackgroundIntentAction(intent);
+    }
+
+    //передача фонового действия из плитки шторки или голосового ассистента в главное окно
+    private static void DispatchBackgroundIntentAction(Intent? intent)
+    {
+        var rawAction = intent?.GetStringExtra(AndroidBackgroundVpnController.ExtraBackgroundAction);
+        var action = AndroidBackgroundVpnController.ParseBackgroundAction(rawAction);
+        if (action != BackgroundVpnActionKind.None)
+        {
+            App.HandleBackgroundAction(action);
         }
     }
 
@@ -208,8 +226,8 @@ public sealed class MainActivity : MauiAppCompatActivity
 
                         if (accepted && !IsFinishing && !IsDestroyed)
                         {
-                            using var intent = new Intent(Settings.ActionRequestIgnoreBatteryOptimizations)
-                                .SetData(Uri.Parse($"package:{pkgName}"));
+                            using var intent = new Intent(Settings.ActionRequestIgnoreBatteryOptimizations);
+                            _ = intent.SetData(Uri.Parse($"package:{pkgName}"));
                             StartActivity(intent);
                         }
                     }
@@ -237,7 +255,7 @@ public sealed class MainActivity : MauiAppCompatActivity
 
         if (Platform.CurrentActivity is not MainActivity activity || activity.IsFinishing || activity.IsDestroyed)
         {
-            StartActualService(Platform.AppContext);
+            StartActualService(Android.App.Application.Context);
             return;
         }
 
@@ -254,9 +272,12 @@ public sealed class MainActivity : MauiAppCompatActivity
         }
     }
 
+    private static void CompletePendingVpnPermission(bool granted) =>
+        _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(granted);
+
     protected override void OnDestroy()
     {
-        _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(false);
+        CompletePendingVpnPermission(false);
         base.OnDestroy();
     }
 
@@ -273,12 +294,12 @@ public sealed class MainActivity : MauiAppCompatActivity
                 AndroidVpnService.Orchestrator.ReportError("Пользователь отклонил запрос на подключение");
                 break;
             case VpnCustomRequestCode:
-                _ = Interlocked.Exchange(ref s_vpnPermTcs, null)?.TrySetResult(resultCode == Result.Ok);
+                CompletePendingVpnPermission(resultCode == Result.Ok);
                 break;
         }
     }
 
-    private static void StartActualService(Context context)
+    internal static void StartActualService(Context context)
     {
         using var intent = new Intent(context, typeof(OctopusVpnService));
         _ = intent.SetAction("START");

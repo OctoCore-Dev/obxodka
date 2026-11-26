@@ -88,7 +88,7 @@ public sealed partial class ObxodkaWebSocketTransport
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linkedCts.CancelAfter(TimeSpan.FromMilliseconds(1200));
-            await using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
+            using var reg = linkedCts.Token.Register(() => tcs.TrySetResult(0));
 
             var returnedLen = await tcs.Task.ConfigureAwait(false);
             return returnedLen >= payloadLen;
@@ -232,7 +232,8 @@ public sealed partial class ObxodkaWebSocketTransport
         {
             try
             {
-                await Task.Delay(5000, ct).ConfigureAwait(false);
+                var jitteredDelayMs = RandomNumberGenerator.GetInt32(4100, 7600);
+                await Task.Delay(jitteredDelayMs, ct).ConfigureAwait(false);
                 await SendPingProbeAsync().ConfigureAwait(false);
             }
             catch (OperationCanceledException)

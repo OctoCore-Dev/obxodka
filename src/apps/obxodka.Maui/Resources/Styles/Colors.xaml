@@ -31,6 +31,7 @@
     <Color x:Key="TextSecondary">#D2D2D2</Color>
     <Color x:Key="TextMuted">#9E9E9E</Color>
     <Color x:Key="TextOnPrimary">#FFFFFF</Color>
+    <Color x:Key="TextOnSuccess">#FFFFFF</Color>
 
     <Color x:Key="BorderSubtle">#383838</Color>
     <Color x:Key="BorderMedium">#484848</Color>

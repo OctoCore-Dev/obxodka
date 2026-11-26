@@ -285,57 +285,47 @@ public sealed partial class VpnView
 
         _ = Task.Run(async () =>
         {
+            ButtonAnimatedClip? idleClip = null;
+            ButtonAnimatedClip? connClip = null;
+            ButtonAnimatedClip? activeClip = null;
+            ButtonAnimatedClip? errorClip = null;
             try
             {
-                var idleClip = !string.IsNullOrEmpty(idleCandidate) && File.Exists(idleCandidate)
+                idleClip = !string.IsNullOrEmpty(idleCandidate) && File.Exists(idleCandidate)
                     ? ButtonAnimatedClip.Load(idleCandidate, 180, token)
                     : null;
                 if (token.IsCancellationRequested)
                 {
-                    idleClip?.Dispose();
                     return;
                 }
 
-                var connClip = !string.IsNullOrEmpty(connCandidate) && File.Exists(connCandidate)
+                connClip = !string.IsNullOrEmpty(connCandidate) && File.Exists(connCandidate)
                     ? ButtonAnimatedClip.Load(connCandidate, 180, token)
                     : null;
                 if (token.IsCancellationRequested)
                 {
-                    idleClip?.Dispose();
-                    connClip?.Dispose();
                     return;
                 }
 
-                var activeClip = !string.IsNullOrEmpty(activeCandidate) && File.Exists(activeCandidate)
+                activeClip = !string.IsNullOrEmpty(activeCandidate) && File.Exists(activeCandidate)
                     ? ButtonAnimatedClip.Load(activeCandidate, 180, token)
                     : null;
                 if (token.IsCancellationRequested)
                 {
-                    idleClip?.Dispose();
-                    connClip?.Dispose();
-                    activeClip?.Dispose();
                     return;
                 }
 
-                var errorClip = !string.IsNullOrEmpty(errorCandidate) && File.Exists(errorCandidate)
+                errorClip = !string.IsNullOrEmpty(errorCandidate) && File.Exists(errorCandidate)
                     ? ButtonAnimatedClip.Load(errorCandidate, 180, token)
                     : null;
                 if (token.IsCancellationRequested)
                 {
-                    idleClip?.Dispose();
-                    connClip?.Dispose();
-                    activeClip?.Dispose();
-                    errorClip?.Dispose();
                     return;
                 }
 
                 var hasLoadedAnim = idleClip != null || connClip != null || activeClip != null || errorClip != null;
                 if (!hasLoadedAnim || token.IsCancellationRequested)
                 {
-                    idleClip?.Dispose();
-                    connClip?.Dispose();
-                    activeClip?.Dispose();
-                    errorClip?.Dispose();
                     return;
                 }
 
@@ -343,10 +333,6 @@ public sealed partial class VpnView
                 {
                     if (token.IsCancellationRequested)
                     {
-                        idleClip?.Dispose();
-                        connClip?.Dispose();
-                        activeClip?.Dispose();
-                        errorClip?.Dispose();
                         return;
                     }
 
@@ -363,6 +349,10 @@ public sealed partial class VpnView
                     _buttonAnimatedConnecting = connClip;
                     _buttonAnimatedActive = activeClip;
                     _buttonAnimatedError = errorClip;
+                    idleClip = null;
+                    connClip = null;
+                    activeClip = null;
+                    errorClip = null;
 
                     var currentState = _vpnService.CurrentState;
                     await UpdateCustomButtonStateAsync(currentState);
@@ -371,6 +361,13 @@ public sealed partial class VpnView
             catch (Exception ex)
             {
                 AppLogger.LogError($"[VpnView] Ошибка фоновой загрузки анимации кнопки: {ex.Message}", ex);
+            }
+            finally
+            {
+                idleClip?.Dispose();
+                connClip?.Dispose();
+                activeClip?.Dispose();
+                errorClip?.Dispose();
             }
         }, token);
     }

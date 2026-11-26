@@ -1,25 +1,54 @@
 <Project>
-  <PropertyGroup Condition="'$(IsWindows)' == 'true' and '$(DOTNET_RUNNING_IN_CONTAINER)' != 'true' and '$(CI)' != 'true'">
+  <!-- Библиотеки ядра всегда собираются как AnyCPU (MSIL), чтобы сборка MAUI (x64) не ломала Avalonia/CLI (MSB3270) -->
+  <PropertyGroup Condition="'$(OutputType)' == 'Library'">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <ProcessorArchitecture>msil</ProcessorArchitecture>
+  </PropertyGroup>
+
+  <!-- Строгая проверка обязательных метаданных перед сборкой -->
+  <Target Name="ValidateProjectMetadata" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(VersionPrefix)' == ''"
+           Text="Не указан &lt;VersionPrefix&gt; в version.props!" />
+    <Error Condition="'$(Authors)' == ''"
+           Text="Не найден файл *.slnx в корне решения (поле &lt;Authors&gt; пустое). Создайте .slnx или задайте Authors в version.props!" />
+    <Error Condition="'$(Company)' == ''"
+           Text="Не указана &lt;Company&gt; в version.props!" />
+    <Error Condition="'$(IsPackable)' != 'false' and '$(PackageLicenseExpression)' == '' and '$(PackageLicenseFile)' == ''"
+           Text="Не указана лицензия проекта (&lt;PackageLicenseExpression&gt; или &lt;PackageLicenseFile&gt;)! Задайте её в .csproj или version.props." />
+  </Target>
+
+  <!-- Автоматическое открытие internal-членов для соответствующих сборок Tests и Benchmarks -->
+  <ItemGroup Condition="'$(IsPackable)' != 'false' and !$(MSBuildProjectName.EndsWith('.Tests')) and !$(MSBuildProjectName.EndsWith('.Benchmarks'))">
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>$(MSBuildProjectName).Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>$(MSBuildProjectName).Benchmarks</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- Локальное распределение сборок (MSIX / GooglePlay AAB+APK / EXE) через переменную PackageRoot -->
+  <PropertyGroup Condition="'$(IsWindows)' == 'true' and '$(DOTNET_RUNNING_IN_CONTAINER)' != 'true' and '$(CI)' != 'true' and '$(GITHUB_ACTIONS)' != 'true'">
     <IsMauiProject Condition="'$(UseMaui)' == 'true' or $(MSBuildProjectName.EndsWith('.Maui'))">true</IsMauiProject>
     <PackageMode Condition="'$(PackageMode)' == '' and '$(IsMauiProject)' == 'true'">MSIX</PackageMode>
     <PackageMode Condition="'$(PackageMode)' == '' and '$(IsMauiProject)' != 'true'">None</PackageMode>
-    <AppxPackageDir Condition="'$(AppxPackageDir)' == '' and '$(PackageMode)' == 'MSIX'">$(PackageRoot)AppPackages\$(MSBuildProjectName)\</AppxPackageDir>
-    <PublishDir Condition="'$(PublishDir)' == '' and $(TargetFramework.Contains('-android'))">$(PackageRoot)GooglePlay\$(MSBuildProjectName)\</PublishDir>
-    <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' == 'MSIX' and !$(TargetFramework.Contains('-android'))">$(PackageRoot)Msix\$(MSBuildProjectName)\</PublishDir>
-    <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' != 'MSIX' and !$(TargetFramework.Contains('-android')) and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTrimmable)' == 'true')">$(PackageRoot)exe\$(MSBuildProjectName)\</PublishDir>
+    <AppxPackageDir Condition="'$(AppxPackageDir)' == '' and '$(PackageMode)' == 'MSIX'">$(PackageRoot)/AppPackages/$(MSBuildProjectName)/</AppxPackageDir>
+    <PublishDir Condition="'$(PublishDir)' == '' and $(TargetFramework.Contains('-android'))">$(PackageRoot)/GooglePlay/$(MSBuildProjectName)/</PublishDir>
+    <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' == 'MSIX' and !$(TargetFramework.Contains('-android'))">$(PackageRoot)/Msix/$(MSBuildProjectName)/</PublishDir>
+    <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' != 'MSIX' and !$(TargetFramework.Contains('-android')) and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTrimmable)' == 'true')">$(PackageRoot)/exe/$(MSBuildProjectName)/</PublishDir>
   </PropertyGroup>
 
   <Target Name="RedirectPublishDirToPackage"
-          Condition="'$(IsWindows)' == 'true' and '$(DOTNET_RUNNING_IN_CONTAINER)' != 'true' and '$(CI)' != 'true'"
+          Condition="'$(IsWindows)' == 'true' and '$(DOTNET_RUNNING_IN_CONTAINER)' != 'true' and '$(CI)' != 'true' and '$(GITHUB_ACTIONS)' != 'true'"
           BeforeTargets="PrepareForPublish;ComputeAndCopyFilesToPublishDirectory;Publish">
     <PropertyGroup>
-      <PublishDir Condition="'$(PublishDir)' == '' and $(TargetFramework.Contains('-android'))">$(PackageRoot)GooglePlay\$(MSBuildProjectName)\</PublishDir>
-      <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' == 'MSIX' and !$(TargetFramework.Contains('-android'))">$(PackageRoot)Msix\$(MSBuildProjectName)\</PublishDir>
-      <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' != 'MSIX' and !$(TargetFramework.Contains('-android')) and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTrimmable)' == 'true')">$(PackageRoot)exe\$(MSBuildProjectName)\</PublishDir>
+      <PublishDir Condition="'$(PublishDir)' == '' and $(TargetFramework.Contains('-android'))">$(PackageRoot)/GooglePlay/$(MSBuildProjectName)/</PublishDir>
+      <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' == 'MSIX' and !$(TargetFramework.Contains('-android'))">$(PackageRoot)/Msix/$(MSBuildProjectName)/</PublishDir>
+      <PublishDir Condition="'$(PublishDir)' == '' and '$(PackageMode)' != 'MSIX' and !$(TargetFramework.Contains('-android')) and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTrimmable)' == 'true')">$(PackageRoot)/exe/$(MSBuildProjectName)/</PublishDir>
     </PropertyGroup>
   </Target>
 
-  <!-- Auto-sync version in SVG assets from version.props -->
+  <!-- Автосинхронизация версии в SVG-баннере из version.props -->
   <Target Name="SyncSvgVersionFromProps"
           BeforeTargets="BeforeBuild"
           Condition="'$(MSBuildProjectName)' == 'obxodka.Client' and Exists('$(MSBuildThisFileDirectory).github\assets\animated_header.svg') and Exists('$(MSBuildThisFileDirectory)version.props')"
@@ -27,9 +56,9 @@
           Outputs="$(MSBuildThisFileDirectory).github\assets\animated_header.svg">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\sync_version_assets.ps1&quot; -RootDir &quot;$(MSBuildThisFileDirectory)&quot;"
           Condition="'$(OS)' == 'Windows_NT'"
-          ContinueOnError="true"/>
+          ContinueOnError="true" />
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools/sync_version_assets.ps1&quot; -RootDir &quot;$(MSBuildThisFileDirectory)&quot;"
           Condition="'$(OS)' != 'Windows_NT'"
-          ContinueOnError="true"/>
+          ContinueOnError="true" />
   </Target>
 </Project>

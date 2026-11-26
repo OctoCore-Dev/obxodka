@@ -122,18 +122,15 @@ public static partial class ThemeAudioService
 
             if (s_sfxPool != null)
             {
-                foreach (var player in s_sfxPool)
+                foreach (var player in s_sfxPool.Where(static player => player is not null))
                 {
-                    if (player != null)
+                    try
                     {
-                        try
-                        {
-                            player.Volume = clamped;
-                        }
-                        catch
-                        {
-                            //подавление ошибок медиаплеера
-                        }
+                        player!.Volume = clamped;
+                    }
+                    catch
+                    {
+                        //подавление ошибок медиаплеера
                     }
                 }
             }
@@ -175,7 +172,7 @@ public static partial class ThemeAudioService
             var folder = Path.GetDirectoryName(clickPath);
             if (!string.IsNullOrEmpty(folder))
             {
-                var candidate = Path.Combine(folder, "click.wav");
+                var candidate = Path.Join(folder, "click.wav");
                 if (File.Exists(candidate) && !string.Equals(Path.GetFullPath(candidate), Path.GetFullPath(connectPath),
                         StringComparison.OrdinalIgnoreCase))
                 {
@@ -194,7 +191,7 @@ public static partial class ThemeAudioService
                 var folder = Path.GetDirectoryName(clickPath);
                 if (!string.IsNullOrEmpty(folder))
                 {
-                    var candidate = Path.Combine(folder, "click.wav");
+                    var candidate = Path.Join(folder, "click.wav");
                     if (File.Exists(candidate) && new FileInfo(candidate).Length <= 90000)
                     {
                         return candidate;
@@ -228,7 +225,7 @@ public static partial class ThemeAudioService
                 cache = Path.GetTempPath();
             }
 
-            var path = Path.Combine(cache, "obxodka_default_click.wav");
+            var path = Path.Join(cache, "obxodka_default_click.wav");
             if (!File.Exists(path) || new FileInfo(path).Length < 100)
             {
                 GenerateDefaultClickWav(path);

@@ -74,7 +74,7 @@ internal sealed partial class ButtonAnimatedClip : IDisposable
             }
 
             var count = codec.FrameCount;
-            var clip = new ButtonAnimatedClip();
+            ButtonAnimatedClip? clip = new();
             try
             {
                 var frameInfos = codec.FrameInfo;
@@ -85,7 +85,6 @@ internal sealed partial class ButtonAnimatedClip : IDisposable
                 {
                     if (ct.IsCancellationRequested)
                     {
-                        clip.Dispose();
                         return null;
                     }
 
@@ -97,8 +96,6 @@ internal sealed partial class ButtonAnimatedClip : IDisposable
                         var res = codec.GetPixels(info, bmp.GetPixels(), opts);
                         if (res is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
                         {
-                            bmp.Dispose();
-                            bmp = null;
                             continue;
                         }
 
@@ -128,13 +125,11 @@ internal sealed partial class ButtonAnimatedClip : IDisposable
                     return result;
                 }
 
-                clip.Dispose();
                 return null;
             }
-            catch
+            finally
             {
                 clip?.Dispose();
-                throw;
             }
         }
         catch (Exception ex)

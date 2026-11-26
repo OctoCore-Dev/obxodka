@@ -502,18 +502,18 @@ public sealed partial class VpnView
                     _ = card.BounceClickAsync();
                     var wasConnected = _vpnService.CurrentState == AppVpnState.Connected;
                     _selectedServer = server;
-                    Preferences.Set("selected_server_ip", (string?)server.Ip);
-                    Preferences.Set("selected_server_location", (string?)server.Location);
+                    Preferences.Set("selected_server_ip", server.Ip);
+                    Preferences.Set("selected_server_location", server.Location);
                     Preferences.Set("selected_server_provider", GetServerProvider(server));
                     Preferences.Set("selected_server_flag", GetServerFlag(server));
                     if (!string.IsNullOrEmpty(server.Role))
                     {
-                        Preferences.Set("selected_server_role", (string?)server.Role);
+                        Preferences.Set("selected_server_role", server.Role);
                     }
 
                     if (!string.IsNullOrEmpty(server.CertHash))
                     {
-                        Preferences.Set("selected_server_cert_hash", (string?)server.CertHash);
+                        Preferences.Set("selected_server_cert_hash", server.CertHash);
                     }
 
                     UpdateSelectedServerDisplay();

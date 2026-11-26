@@ -4,44 +4,44 @@ namespace obxodka.Core.Transports;
 public interface IVpnTransport : IDisposable, IAsyncDisposable
 {
     //имя активного протокола
-    public string ProtocolName { get; }
+    string ProtocolName { get; }
 
     //флаг активности соединения
-    public bool IsConnected { get; }
+    bool IsConnected { get; }
 
     //событие приема входящего сетевого пакета
-    public event Action<byte[], int>? OnPacketReceived;
+    event Action<byte[], int>? OnPacketReceived;
 
     //событие обновления сетевого пинга
-    public event Action<long>? OnPingUpdated;
+    event Action<long>? OnPingUpdated;
 
     //событие обрыва соединения
-    public event Action? OnConnectionDropped;
+    event Action? OnConnectionDropped;
 
     //событие согласования или изменения mtu
-    public event Action<int>? OnMtuUpdated;
+    event Action<int>? OnMtuUpdated;
 
     //подключение к серверу и получение назначенного ip адреса
-    public Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct);
+    Task<(string ip, string ip6)> ConnectAsync(string serverIp, string thumbprint, CancellationToken ct);
 
     //отправка исходящего пакета из пула памяти
-    public void SendPacketFromPool(byte[] packet, int length);
+    void SendPacketFromPool(byte[] packet, int length);
 
     //отправка сигнала корректного отключения
-    public Task SendDisconnectSignalAsync();
+    Task SendDisconnectSignalAsync();
 
     //отправка системного эхо зонда для замера пинга
-    public Task SendPingProbeAsync();
+    Task SendPingProbeAsync();
 
     //проверка проходимости mtu заданного размера
-    public Task<bool> ProbeMtuAsync(int size, CancellationToken ct) => Task.FromResult(true);
+    Task<bool> ProbeMtuAsync(int size, CancellationToken ct) => Task.FromResult(true);
 
     //пакетный замер максимального рабочего mtu
-    public Task<int[]> MeasureBurstMtuAsync(CancellationToken ct) => Task.FromResult<int[]>([]);
+    Task<int[]> MeasureBurstMtuAsync(CancellationToken ct) => Task.FromResult<int[]>([]);
 
     //синхронизация значения mtu с сервером
-    public Task SendMtuSyncAsync(int mtu) => Task.CompletedTask;
+    Task SendMtuSyncAsync(int mtu) => Task.CompletedTask;
 
     //защита сокетов от зацикливания vpn маршрута
-    public void ProtectSockets(Action<Socket> protectAction);
+    void ProtectSockets(Action<Socket> protectAction);
 }

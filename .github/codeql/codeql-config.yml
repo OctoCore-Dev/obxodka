@@ -1,0 +1,16 @@
+name: "Obxodka Security & Quality Config"
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+query-filters:
+  # исключаем только шумные quality-замечания и ложные срабатывания парсера xaml sourcegen;
+  # все правила безопасности (security-extended и security-and-quality) остаются активными на 100%
+  - exclude:
+      id:
+        - cs/catch-of-all-exceptions
+        - cs/call-to-unmanaged-code
+        - cs/unmanaged-code
+        - cs/useless-assignment-to-local
+        - cs/local-not-disposed
+        - cs/missed-using-statement
+        - cs/missed-readonly-modifier

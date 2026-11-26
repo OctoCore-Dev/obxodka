@@ -1,0 +1,21 @@
+P:System.Threading.Tasks.Task`1.Result;Используйте 'await' вместо блокирующего .Result
+M:System.Threading.Tasks.Task.Wait;Используйте 'await' вместо блокирующего .Wait()
+M:System.Threading.Tasks.Task.Wait(System.Int32);Используйте 'await' с WaitAsync() вместо блокирующего .Wait()
+M:System.Threading.Tasks.Task.Wait(System.TimeSpan);Используйте 'await' с WaitAsync() вместо блокирующего .Wait()
+M:System.Threading.Tasks.Task.Wait(System.Threading.CancellationToken);Используйте 'await' с WaitAsync() вместо блокирующего .Wait()
+M:System.Threading.Tasks.Task.Wait(System.Int32,System.Threading.CancellationToken);Используйте 'await' с WaitAsync() вместо блокирующего .Wait()
+M:System.Runtime.CompilerServices.TaskAwaiter.GetResult;Используйте 'await' вместо .GetAwaiter().GetResult()
+M:System.Runtime.CompilerServices.TaskAwaiter`1.GetResult;Используйте 'await' вместо .GetAwaiter().GetResult()
+M:System.Threading.Thread.Sleep(System.Int32);Используйте 'await Task.Delay(...)' вместо блокирующего Thread.Sleep
+M:System.Threading.Thread.Sleep(System.TimeSpan);Используйте 'await Task.Delay(...)' вместо блокирующего Thread.Sleep
+M:System.Threading.Thread.Abort;Thread.Abort небезопасен и не поддерживается — используйте CancellationToken
+T:System.Net.WebClient;Используйте HttpClient / IHttpClientFactory вместо устаревшего WebClient
+T:System.Net.HttpWebRequest;Используйте HttpClient / IHttpClientFactory вместо устаревшего HttpWebRequest
+T:System.Net.ServicePointManager;Используйте SocketsHttpHandler вместо глобального ServicePointManager
+T:System.Runtime.Serialization.Formatters.Binary.BinaryFormatter;BinaryFormatter небезопасен и удалён — используйте System.Text.Json
+T:System.Collections.ArrayList;Используйте обобщённый List<T> вместо ArrayList с упаковкой (boxing)
+T:System.Collections.Hashtable;Используйте обобщённый Dictionary<TKey, TValue> вместо Hashtable с упаковкой (boxing)
+M:System.Security.Cryptography.MD5.Create;MD5 криптографически сломан — используйте SHA256 или SHA512
+M:System.Security.Cryptography.SHA1.Create;SHA1 криптографически слаб — используйте SHA256 или SHA512
+M:System.GC.Collect;Избегайте ручного вызова GC.Collect() — сократите аллокации или используйте ArrayPool/Span
+N:Newtonsoft.Json;Используйте System.Text.Json вместо Newtonsoft.Json

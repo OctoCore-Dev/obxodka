@@ -61,7 +61,7 @@ public sealed partial class VpnView
                 AppVpnState.Disconnected or AppVpnState.Error => "Нет подключения",
                 AppVpnState.Disconnecting => VpnStatusMessages.Disconnecting,
                 AppVpnState.Connecting or AppVpnState.Reconnecting or AppVpnState.Connected =>
-                    ProtocolPipelineRegistry.FormatLiveStatusBadge(OctopusEngine.Current.ActiveProtocol, OctopusEngine.Current.ActiveRays),
+                    ProtocolPipelineRegistry.FormatLiveStatusBadge(OctopusEngine.Current.ActiveProtocol),
                 _ => "Нет подключения"
             };
         });
@@ -661,20 +661,17 @@ public sealed partial class VpnView
                 }
 
                 var conflictingVpn = _vpnService.DetectConflictingVpn();
-                if (!string.IsNullOrEmpty(conflictingVpn))
+                if (!string.IsNullOrEmpty(conflictingVpn) && ParentPage is not null)
                 {
-                    if (ParentPage is not null)
-                    {
-                        var proceed = await ParentPage.DisplayAlertAsync(
-                            "Сторонний VPN",
-                            $"Обнаружен сторонний VPN ({conflictingVpn}).\n\nЕсли вы уже отключили тот VPN, Обходка автоматически нейтрализует оставшийся адаптер и подключится.\n\nПродолжить?",
-                            "Продолжить",
-                            "Отмена");
+                    var proceed = await ParentPage.DisplayAlertAsync(
+                        "Сторонний VPN",
+                        $"Обнаружен сторонний VPN ({conflictingVpn}).\n\nЕсли вы уже отключили тот VPN, Обходка автоматически нейтрализует оставшийся адаптер и подключится.\n\nПродолжить?",
+                        "Продолжить",
+                        "Отмена");
 
-                        if (!proceed)
-                        {
-                            return;
-                        }
+                    if (!proceed)
+                    {
+                        return;
                     }
                 }
 
@@ -694,13 +691,11 @@ public sealed partial class VpnView
                 }
 
                 var (success, servers, _) = await _apiService.GetServersAsync();
-                if (!success || servers is null || servers.Count == 0)
+                if ((!success || servers is null || servers.Count == 0) &&
+                    AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
                 {
-                    if (AppConfig.ApiBaseUrl != AppConfig.DefaultApiBaseUrl)
-                    {
-                        AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
-                        (success, servers, _) = await _apiService.GetServersAsync();
-                    }
+                    AppConfig.ApiBaseUrl = AppConfig.DefaultApiBaseUrl;
+                    (success, servers, _) = await _apiService.GetServersAsync();
                 }
 
                 if ((!success || servers is null || servers.Count == 0) && _cachedServers.Count > 0)

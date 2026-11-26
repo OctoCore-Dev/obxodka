@@ -2,39 +2,205 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:obxodka.Avalonia.ViewModels"
         xmlns:views="using:obxodka.Avalonia.Views"
-        xmlns:controls="using:obxodka.Avalonia.Controls"
-        xmlns:conv="using:obxodka.Avalonia.Converters"
         x:Class="obxodka.Avalonia.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Title="obxodka"
-        Width="1150"
-        Height="750"
-        MinWidth="950"
-        MinHeight="620"
-        CanResize="True"
+        Title="Obxodka"
+        Width="1060" Height="680"
+        MinWidth="860" MinHeight="580"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource BgBaseBrush}"
-        Icon="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png">
+        Background="{StaticResource BgBaseBrush}">
+  <Grid>
+    <!-- Экран входа -->
+    <views:AuthView IsVisible="{Binding !IsLoggedIn}"/>
 
-    <Grid>
-        <!-- App Grid: Sidebar + Main Content -->
-        <Grid ColumnDefinitions="Auto, *">
-            <!-- Sidebar (visible unless on auth tab) -->
-            <views:DesktopSidebarView Grid.Column="0"
-                                      IsVisible="{Binding IsSidebarVisible}" />
-
-            <!-- Main Content Container -->
-            <Grid Grid.Column="1">
-                <views:VpnView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=vpn}" />
-                <views:ProfileView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=profile}" />
-                <views:ConfigurationView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=configuration}" />
-                <views:DevicesView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=devices}" />
-                <views:AuthView IsVisible="{Binding CurrentTab, Converter={x:Static conv:StringEqualsConverter.Instance}, ConverterParameter=auth}" />
+    <!-- Рабочая область 1-в-1 с MainPage + DesktopSidebarView -->
+    <Grid IsVisible="{Binding IsLoggedIn}" ColumnDefinitions="Auto,*">
+      <!-- Плавающий сайдбар DesktopSidebarView (Margin 12,12,0,12, CornerRadius 12, Width 76/216) -->
+      <Border Grid.Column="0"
+              Width="{Binding SidebarWidth}"
+              Margin="12,12,0,12"
+              Padding="10,16"
+              Background="{StaticResource BgSurfaceBrush}"
+              BorderBrush="{StaticResource BorderSubtleBrush}"
+              BorderThickness="1"
+              CornerRadius="12">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <!-- Шапка логотипа appiconfg.png 30x30 + OBXODKA + ChevronLeft -->
+          <Button Grid.Row="0" Classes="nav-btn" Command="{Binding ToggleSidebarCommand}" Height="42" Margin="0,0,0,20">
+            <Grid ColumnDefinitions="56,*,Auto">
+              <Image Grid.Column="0" Source="avares://obxodka.Avalonia/Assets/AppIcon/appiconfg.png"
+                     Width="30" Height="30" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="OBXODKA"
+                         FontFamily="{StaticResource AppFontTitle}" FontSize="17" LetterSpacing="1.4"
+                         Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"
+                         IsVisible="{Binding IsSidebarExpanded}"/>
+              <PathIcon Grid.Column="2" Data="{StaticResource IconChevronLeft20}" Width="14" Height="14"
+                        Foreground="{StaticResource TextMutedBrush}" Margin="0,0,10,0"
+                        IsVisible="{Binding IsSidebarExpanded}"/>
             </Grid>
-        </Grid>
+          </Button>
 
-        <!-- NeoDialog Overlay (Alerts, confirmations) -->
-        <controls:NeoDialog />
+          <!-- Пункты навигации с векторными Fluent PathIcon и синим индикатором 3x18 -->
+          <StackPanel Grid.Row="1" Spacing="4">
+            <Button Classes="nav-btn" Classes.active="{Binding IsVpnTab}"
+                    Command="{Binding SelectTabCommand}" CommandParameter="vpn" ToolTip.Tip="VPN">
+              <Grid ColumnDefinitions="56,*">
+                <Border Grid.Column="0" Width="3" Height="18" CornerRadius="1.5"
+                        Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left"
+                        IsVisible="{Binding IsVpnTab}"/>
+                <PathIcon Grid.Column="0" Data="{StaticResource IconShield24}" Width="20" Height="20"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="VPN" FontFamily="{StaticResource AppFontMedium}" FontSize="13.5"
+                           VerticalAlignment="Center" IsVisible="{Binding IsSidebarExpanded}"/>
+              </Grid>
+            </Button>
+
+            <Button Classes="nav-btn" Classes.active="{Binding IsProfileTab}"
+                    Command="{Binding SelectTabCommand}" CommandParameter="profile" ToolTip.Tip="Профиль">
+              <Grid ColumnDefinitions="56,*">
+                <Border Grid.Column="0" Width="3" Height="18" CornerRadius="1.5"
+                        Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left"
+                        IsVisible="{Binding IsProfileTab}"/>
+                <PathIcon Grid.Column="0" Data="{StaticResource IconPerson24}" Width="20" Height="20"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Профиль" FontFamily="{StaticResource AppFontMedium}" FontSize="13.5"
+                           VerticalAlignment="Center" IsVisible="{Binding IsSidebarExpanded}"/>
+              </Grid>
+            </Button>
+
+            <Button Classes="nav-btn" Classes.active="{Binding IsDevicesTab}"
+                    Command="{Binding SelectTabCommand}" CommandParameter="devices" ToolTip.Tip="Устройства">
+              <Grid ColumnDefinitions="56,*">
+                <Border Grid.Column="0" Width="3" Height="18" CornerRadius="1.5"
+                        Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left"
+                        IsVisible="{Binding IsDevicesTab}"/>
+                <PathIcon Grid.Column="0" Data="{StaticResource IconDevices24}" Width="20" Height="20"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Устройства" FontFamily="{StaticResource AppFontMedium}" FontSize="13.5"
+                           VerticalAlignment="Center" IsVisible="{Binding IsSidebarExpanded}"/>
+              </Grid>
+            </Button>
+
+            <Button Classes="nav-btn" Classes.active="{Binding IsSettingsTab}"
+                    Command="{Binding SelectTabCommand}" CommandParameter="settings" ToolTip.Tip="Настройки">
+              <Grid ColumnDefinitions="56,*">
+                <Border Grid.Column="0" Width="3" Height="18" CornerRadius="1.5"
+                        Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left"
+                        IsVisible="{Binding IsSettingsTab}"/>
+                <PathIcon Grid.Column="0" Data="{StaticResource IconSettings24}" Width="20" Height="20"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Настройки" FontFamily="{StaticResource AppFontMedium}" FontSize="13.5"
+                           VerticalAlignment="Center" IsVisible="{Binding IsSidebarExpanded}"/>
+              </Grid>
+            </Button>
+
+            <Button Classes="nav-btn" Classes.active="{Binding IsSplitTab}"
+                    Command="{Binding SelectTabCommand}" CommandParameter="split" ToolTip.Tip="Split Tunnel">
+              <Grid ColumnDefinitions="56,*">
+                <Border Grid.Column="0" Width="3" Height="18" CornerRadius="1.5"
+                        Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left"
+                        IsVisible="{Binding IsSplitTab}"/>
+                <PathIcon Grid.Column="0" Data="{StaticResource IconSplit24}" Width="20" Height="20"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Split Tunnel" FontFamily="{StaticResource AppFontMedium}" FontSize="13.5"
+                           VerticalAlignment="Center" IsVisible="{Binding IsSidebarExpanded}"/>
+              </Grid>
+            </Button>
+          </StackPanel>
+
+          <!-- Подвал сайдбара -->
+          <TextBlock Grid.Row="2" Text="{Binding AppVersionText}" FontSize="11"
+                     Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+        </Grid>
+      </Border>
+
+      <!-- Правая рабочая область -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*">
+        <!-- Баннер ошибок и предупреждений -->
+        <Border Grid.Row="0" Margin="28,16,28,0" Padding="14,10" CornerRadius="10"
+                Background="{StaticResource BgElevatedBrush}"
+                BorderBrush="{StaticResource WarningBrush}" BorderThickness="1"
+                IsVisible="{Binding IsBannerVisible}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBlock Text="{Binding BannerMessage}" TextWrapping="Wrap" FontSize="12.5"
+                       Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Classes="ghost-btn" Command="{Binding CloseBannerCommand}" Padding="6">
+              <PathIcon Data="{StaticResource IconDismiss16}" Width="12" Height="12"/>
+            </Button>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+          <views:VpnView IsVisible="{Binding IsVpnTab}"/>
+          <views:ProfileView IsVisible="{Binding IsProfileTab}"/>
+          <views:DevicesView IsVisible="{Binding IsDevicesTab}"/>
+          <views:ConfigurationView IsVisible="{Binding IsSettingsTab}"/>
+          <views:SplitView IsVisible="{Binding IsSplitTab}"/>
+        </Grid>
+      </Grid>
     </Grid>
 
+    <!-- Модальное окно выбора сервера 1-в-1 с ServerModalCard (CornerRadius=20, Width=420) -->
+    <Border Background="{StaticResource BgOverlayBrush}" IsVisible="{Binding IsServerPickerOpen}">
+      <Border Classes="neo-card" Width="420" MaxHeight="540" Padding="20" CornerRadius="20"
+              BorderBrush="{StaticResource BorderMediumBrush}" BorderThickness="1.2"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <PathIcon Data="{StaticResource IconServer24}" Width="18" Height="18"
+                        Foreground="{StaticResource AccentBrush}"/>
+              <TextBlock Text="Выбор сервера" FontFamily="{StaticResource AppFontTitle}" FontSize="17"
+                         Foreground="{StaticResource TextPrimaryBrush}"/>
+            </StackPanel>
+            <Button Grid.Column="1" Classes="subtle-btn" CornerRadius="14" Padding="8"
+                    Command="{Binding ToggleServerPickerCommand}">
+              <PathIcon Data="{StaticResource IconDismiss16}" Width="12" Height="12"
+                        Foreground="{StaticResource TextSecondaryBrush}"/>
+            </Button>
+          </Grid>
+
+          <TextBlock Grid.Row="1" Text="Выберите оптимальную локацию для подключения:"
+                     FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+
+          <ScrollViewer Grid.Row="2">
+            <ItemsControl ItemsSource="{Binding Servers}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ServerListItem">
+                  <Button Classes="subtle-btn" Margin="0,0,0,8" Padding="14,10" CornerRadius="12"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ChooseServerCommand}"
+                          CommandParameter="{Binding}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="{Binding Location}" FontFamily="{StaticResource AppFontBold}" FontSize="13.5"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Border Padding="5,1" CornerRadius="4" Background="{StaticResource AccentDimBrush}"
+                                  BorderBrush="{StaticResource AccentBrush}" BorderThickness="0.6">
+                            <TextBlock Text="{Binding Provider}" FontSize="9.5" Foreground="{StaticResource AccentBrush}"/>
+                          </Border>
+                          <TextBlock Text="{Binding Endpoint}" FontSize="11.5" Foreground="{StaticResource TextMutedBrush}"
+                                     VerticalAlignment="Center"/>
+                        </StackPanel>
+                      </StackPanel>
+                      <Border Grid.Column="1" Padding="8,4" CornerRadius="10" VerticalAlignment="Center"
+                              Background="{StaticResource SuccessDimBrush}"
+                              BorderBrush="{StaticResource SuccessBrush}" BorderThickness="0.8">
+                        <TextBlock Text="{Binding PingText}" FontFamily="{StaticResource AppFontBold}" FontSize="11.5"
+                                   Foreground="{StaticResource SuccessBrush}"/>
+                      </Border>
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <Button Grid.Row="3" Classes="subtle-btn" Height="40" Content="Обновить список"
+                  Command="{Binding RefreshServersCommand}" HorizontalAlignment="Stretch"/>
+        </Grid>
+      </Border>
+    </Border>
+  </Grid>
 </Window>

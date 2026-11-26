@@ -33,7 +33,6 @@ permissions:
   contents: read
 
 env:
-  BUILD_CACHE_PATH: "C:/BuildCache"
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
@@ -74,6 +73,20 @@ jobs:
           echo "============================================================"
           dotnet build src/core/obxodka.Shared/obxodka.Shared.csproj -c Release
           dotnet build src/core/obxodka.Client/obxodka.Client.csproj -c Release
+          dotnet build src/core/obxodka.Platform.Windows/obxodka.Platform.Windows.csproj -c Release
+          dotnet build src/core/obxodka.Platform.Linux/obxodka.Platform.Linux.csproj -c Release
+          dotnet build src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release
+          dotnet build src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj -c Release
+
+      - name: "[SMOKE-CLI] Linux CLI Binary Smoke Test"
+        run: |
+          echo "============================================================"
+          echo "  [CLI] TESTING OBXODKA CLI ON UBUNTU LINUX"
+          echo "============================================================"
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- version
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- config get --json
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- status --json
+          dotnet run --project src/apps/obxodka.Cli/obxodka.Cli.csproj -c Release --no-build -- completion bash | head -n 5
 
       - name: "[POLICY-ANDROID] Android Manifest & Google Play Security Audit"
         run: |
@@ -136,7 +149,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -187,11 +200,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: "[CACHE-DIR] Ensure Windows Build Cache"
-        if: matrix.os == 'windows-latest'
+      - name: "[CACHE-DIR] Ensure Build Cache Directory"
         shell: pwsh
+        env:
+          BUILD_CACHE_PATH: ${{ runner.temp }}/build-cache
         run: |
-          New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
+          New-Item -ItemType Directory -Path $env:BUILD_CACHE_PATH -Force | Out-Null
+          "BUILD_CACHE_PATH=$env:BUILD_CACHE_PATH" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: "[SETUP-JAVA] Setup Java JDK 21 (Android only)"
         if: matrix.id == 'android'
@@ -209,7 +224,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ matrix.os == 'windows-latest' && '~/.nuget/packages' || '~/.nuget/packages' }}
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -257,7 +272,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 

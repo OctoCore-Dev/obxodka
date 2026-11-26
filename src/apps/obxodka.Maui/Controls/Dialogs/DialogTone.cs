@@ -1,7 +1,7 @@
 namespace obxodka.Controls.Dialogs;
 
 //закрытая иерархия тонов диалога с проверкой полноты перебора в компиляторе c# 15
-public closed record DialogTone
+public closed class DialogTone
 {
     public static DialogTone Update { get; } = new DialogUpdateTone();
     public static DialogTone Delete { get; } = new DialogDeleteTone();
@@ -11,14 +11,14 @@ public closed record DialogTone
     public static DialogTone Info { get; } = new DialogInfoTone();
 }
 
-public sealed record DialogUpdateTone : DialogTone;
+public sealed class DialogUpdateTone : DialogTone;
 
-public sealed record DialogDeleteTone : DialogTone;
+public sealed class DialogDeleteTone : DialogTone;
 
-public sealed record DialogErrorTone : DialogTone;
+public sealed class DialogErrorTone : DialogTone;
 
-public sealed record DialogWarningTone : DialogTone;
+public sealed class DialogWarningTone : DialogTone;
 
-public sealed record DialogSuccessTone : DialogTone;
+public sealed class DialogSuccessTone : DialogTone;
 
-public sealed record DialogInfoTone : DialogTone;
+public sealed class DialogInfoTone : DialogTone;

@@ -479,12 +479,19 @@ public sealed partial class DesktopSidebarView
     }
 
     //проверка активности пункта меню для hover-подсветки
-    private bool IsNavItemActive(Border border) =>
-        _currentTab == "vpn" && border == SideNavVpn ||
-        _currentTab == "profile" && border == SideNavProfile ||
-        _currentTab is "configuration" or "themes" && border == SideNavConfiguration ||
-        _currentTab == "devices" && border == SideNavDevices ||
-        _currentTab == "split" && border == SideNavSplit;
+    private bool IsNavItemActive(Border border)
+    {
+        var activeBorder = _currentTab switch
+        {
+            "vpn" => SideNavVpn,
+            "profile" => SideNavProfile,
+            "configuration" or "themes" => SideNavConfiguration,
+            "devices" => SideNavDevices,
+            "split" => SideNavSplit,
+            _ => null
+        };
+        return ReferenceEquals(border, activeBorder);
+    }
 
     //выбор вкладки vpn
     private void OnNavVpnTapped(object? sender, TappedEventArgs e)

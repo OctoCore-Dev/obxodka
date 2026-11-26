@@ -660,7 +660,9 @@ public sealed partial class OctopusVpnService : VpnService
 
                 try
                 {
+#pragma warning disable RS0030 //выделенный системный поток чтения tun android не использует threadpool
                     if (!reader.WaitToReadAsync(ct).AsTask().GetAwaiter().GetResult())
+#pragma warning restore RS0030
                     {
                         break;
                     }
@@ -929,7 +931,7 @@ public sealed partial class OctopusVpnService : VpnService
                     _ = Instance?.SetUnderlyingNetworks([network]);
                 }
 
-                if ((_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId) || _hadLostNetwork)
+                if (_lastActiveNetworkId != -1 && _lastActiveNetworkId != netId || _hadLostNetwork)
                 {
                     var now = Environment.TickCount64;
                     var elapsed = now - Volatile.Read(ref _lastReconnectTicks);

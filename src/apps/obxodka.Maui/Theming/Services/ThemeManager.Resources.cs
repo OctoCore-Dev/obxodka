@@ -104,6 +104,12 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "PrimaryLight2", parsedPrimary);
                 SetResourceValue(appResources, "PrimaryDim", parsedPrimary.WithAlpha(0.22f));
                 SetResourceValue(appResources, "PrimaryGlow", parsedPrimary.WithAlpha(0.35f));
+
+                var onPrimaryHex = ThemeValidator.ChooseContrastingTextHex(manifest.Core.Colors.Primary);
+                if (Color.TryParse(onPrimaryHex, out var textOnPrimary))
+                {
+                    SetResourceValue(appResources, "TextOnPrimary", textOnPrimary);
+                }
             }
 
             if (!string.IsNullOrEmpty(manifest.Core.Colors.PrimaryBright) &&
@@ -146,7 +152,9 @@ public sealed partial class ThemeManager
 
             if (primaryColor is not null)
             {
-                var stop2 = accentColor ?? primaryColor.AddLuminosity(0.18f);
+                var stop2 = accentColor != primaryColor
+                    ? accentColor
+                    : primaryColor.AddLuminosity(0.18f);
                 var gradStops = new GradientStopCollection
                 {
                     new GradientStop(primaryColor, 0.0f),
@@ -200,7 +208,7 @@ public sealed partial class ThemeManager
                     if (Color.TryParse(surfCustomStops[i], out var ssc))
                     {
                         var offset = (float)i / (surfCustomStops.Count - 1);
-                        surfaceStops.Add(new GradientStop(ssc, offset));
+                        surfaceStops.Add(new GradientStop(ssc.WithAlpha((float)userOpacity), offset));
                     }
                 }
             }
@@ -283,6 +291,12 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "Success", successColor);
                 SetResourceValue(appResources, "SuccessBrush", new SolidColorBrush(successColor));
                 SetResourceValue(appResources, "SuccessDim", successColor.WithAlpha(0.15f));
+
+                var onSuccessHex = ThemeValidator.ChooseContrastingTextHex(manifest.Core.Colors.Success);
+                if (Color.TryParse(onSuccessHex, out var textOnSuccess))
+                {
+                    SetResourceValue(appResources, "TextOnSuccess", textOnSuccess);
+                }
             }
 
             if (!string.IsNullOrEmpty(manifest.Core.Colors.Warning) && Color.TryParse(manifest.Core.Colors.Warning, out var warningColor))
@@ -298,7 +312,7 @@ public sealed partial class ThemeManager
                 SetResourceValue(appResources, "ErrorDim", errorColor.WithAlpha(0.15f));
             }
 
-            var purpleColor = accentColor ?? primaryColor ?? Color.FromArgb("#9F6FF0");
+            var purpleColor = accentColor ?? Color.FromArgb("#9F6FF0");
             SetResourceValue(appResources, "Purple", purpleColor);
             SetResourceValue(appResources, "PurpleDim", purpleColor.WithAlpha(0.20f));
             SetResourceValue(appResources, "PurpleLight", purpleColor.AddLuminosity(0.10f));
@@ -418,6 +432,7 @@ public sealed partial class ThemeManager
             SetResourceValue(appResources, "TextSecondary", textSecondary);
             SetResourceValue(appResources, "TextMuted", textMuted);
             SetResourceValue(appResources, "TextOnPrimary", textOnPrimary);
+            SetResourceValue(appResources, "TextOnSuccess", textOnPrimary);
 
             SetResourceValue(appResources, "SolidBorderDark", solidBorder);
             SetResourceValue(appResources, "BorderSubtle", borderSubtle);
@@ -508,6 +523,27 @@ public sealed partial class ThemeManager
             var surfaceWithAlpha = baseSurface.WithAlpha((float)effectiveOpacity);
             SetResourceValue(appResources, "BgSurface", surfaceWithAlpha);
             SetResourceValue(appResources, "BgSurfaceBrush", new SolidColorBrush(surfaceWithAlpha));
+
+            var surfaceGradStops = new GradientStopCollection
+            {
+                new GradientStop(surfaceWithAlpha, 0.0f),
+                new GradientStop(surfaceWithAlpha.AddLuminosity(0.06f), 1.0f)
+            };
+            if (ActiveTheme?.Core.Gradients?.SurfaceGradient?.Stops is { Count: >= 2 } customSurfaceStops)
+            {
+                surfaceGradStops.Clear();
+                for (var i = 0; i < customSurfaceStops.Count; i++)
+                {
+                    if (Color.TryParse(customSurfaceStops[i], out var ssc))
+                    {
+                        var offset = (float)i / (customSurfaceStops.Count - 1);
+                        surfaceGradStops.Add(new GradientStop(ssc.WithAlpha((float)effectiveOpacity), offset));
+                    }
+                }
+            }
+
+            SetResourceValue(appResources, "SurfaceGradientBrush",
+                new LinearGradientBrush(surfaceGradStops, new Point(0, 0), new Point(0, 1)));
 
             var baseElevated = ActiveTheme?.Core.Colors.BgElevated != null &&
                                Color.TryParse(ActiveTheme.Core.Colors.BgElevated, out var parsedElevated)

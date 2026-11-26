@@ -1,6 +1,6 @@
 namespace obxodka.Avalonia.Views;
 
-public partial class ProfileView : UserControl
+public sealed partial class ProfileView : UserControl
 {
     public ProfileView() => InitializeComponent();
 }

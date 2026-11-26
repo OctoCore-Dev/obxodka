@@ -4,14 +4,14 @@ namespace obxodka.Client.Telemetry;
 public interface ITelemetryService
 {
     //включена ли отправка отчетов в настройках
-    public bool IsTelemetryEnabled { get; }
+    bool IsTelemetryEnabled { get; }
 
     //отправка лога сбоев прошлой сессии при запуске
-    public ValueTask FlushPreviousSessionCrashLogAsync(CancellationToken ct = default);
+    ValueTask FlushPreviousSessionCrashLogAsync(CancellationToken ct = default);
 
     //запись ошибки в очередь отправки
-    public ValueTask TrackErrorAsync(string message, Exception? ex = null, CancellationToken ct = default);
+    ValueTask TrackErrorAsync(string message, Exception? ex = null, CancellationToken ct = default);
 
     //запись фатального падения приложения
-    public ValueTask TrackFatalCrashAsync(string message, string? stackTrace = null, CancellationToken ct = default);
+    ValueTask TrackFatalCrashAsync(string message, string? stackTrace = null, CancellationToken ct = default);
 }

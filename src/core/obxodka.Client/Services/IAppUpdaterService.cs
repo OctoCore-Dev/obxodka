@@ -14,8 +14,8 @@ public sealed record StoreUpdateInfo(
 public interface IAppUpdaterService
 {
     //проверка обновлений
-    public Task CheckForUpdatesAsync(bool manualCheck = false);
+    Task CheckForUpdatesAsync(bool manualCheck = false);
 
     //получение информации о версии из стора
-    public Task<StoreUpdateInfo> CheckVersionAsync();
+    Task<StoreUpdateInfo> CheckVersionAsync();
 }

@@ -169,10 +169,13 @@ public sealed partial class ObxodkaWebSocketTransport(
                 var sessionSeed = (uint)RandomNumberGenerator.GetInt32(1, int.MaxValue);
                 _candidateSessionKey = ObxodkaFraming.DeriveSessionKey(thumbprint, 0, sessionSeed);
                 Volatile.Write(ref _sessionKey, 0u);
-                var hsProof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, 0, sessionSeed, nowSec);
-                var handshakeStr = string.IsNullOrEmpty(_assignedIp)
-                    ? $"{thumbprint}|R:0|M:{SmartMtuEngine.CurrentMtu}|K:{sessionSeed:X8}|T:{nowSec}|P:{hsProof}"
-                    : $"{thumbprint}|{_assignedIp}|R:0|M:{SmartMtuEngine.CurrentMtu}|K:{sessionSeed:X8}|T:{nowSec}|P:{hsProof}";
+                var handshakeStr = OctopusEngine.Current.BuildAuthenticatedHandshakeString(
+                    thumbprint,
+                    _assignedIp,
+                    0,
+                    SmartMtuEngine.CurrentMtu,
+                    sessionSeed,
+                    nowSec);
                 var hsPayload = Encoding.UTF8.GetBytes(handshakeStr);
                 var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
                 try
@@ -243,8 +246,7 @@ public sealed partial class ObxodkaWebSocketTransport(
             {
                 var candidateIps = isDirectIp && literalIp is not null
                     ? [literalIp]
-                    : EdgeEndpointHealth.FilterAndRotate(await ApiService.ResolveAllHostsAntiPoisonAsync(targetSni, cToken)
-                        .ConfigureAwait(false));
+                    : await CleanEdgeScanner.ResolveCleanShieldCandidatesAsync(targetSni, port, cToken).ConfigureAwait(false);
 
                 Socket? connectedSocket = null;
                 Exception? lastSocketEx = null;

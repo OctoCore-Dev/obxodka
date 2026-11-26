@@ -68,11 +68,7 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public Func<string[], CancellationToken, Task>? EnsureExternalHostRoutesAsync { get; set; }
 
     //число активных лучей туннеля
-    public int ActiveRays
-    {
-        get => (_transport as ObxodkaStreamTransport)?.ActiveRayCount ?? field;
-        private set;
-    } = 2;
+    public int ActiveRays { get; private set; } = 1;
 
     //флаг активности соединения
     public bool IsConnected => _transport is { IsConnected: true };
@@ -109,12 +105,11 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     public string ActiveProtocolDisplayName { get; private set; } = "Obxodka";
 
     //активное имя sni маскировки
-    public string ActiveSni => (_transport as ObxodkaStreamTransport)?.ActiveSni ??
+    public string ActiveSni => (_transport as ObxodkaRealityTransport)?.ActiveSni ??
                                (_transport as ObxodkaWebSocketTransport)?.ActiveSni ?? string.Empty;
 
     //активный браузерный профиль маскировки tls (ssot)
     public TlsBrowserProfile ActiveBrowserProfile =>
-        (_transport as ObxodkaStreamTransport)?.ActiveBrowserProfile ??
         (_transport as ObxodkaWebSocketTransport)?.ActiveBrowserProfile ??
         TlsBrowserProfile.Chrome;
 
@@ -135,6 +130,60 @@ public sealed partial class OctopusEngine : IDisposable, IAsyncDisposable
     {
         ActiveServerLocation = string.IsNullOrWhiteSpace(location) ? null : location.Trim();
         ActiveServerFlag = string.IsNullOrWhiteSpace(flag) ? null : flag.Trim();
+    }
+
+    //единая сборка строки хендшейка с криптографической подписью ecdsa p-256 сертификата устройства и опциональным бюджетом hydra
+    public string BuildAuthenticatedHandshakeString(
+        string thumbprint,
+        string? assignedIp,
+        int ray,
+        int mtu,
+        uint sessionSeed,
+        long timestampUnixSeconds,
+        bool includePublicKey = false,
+        int hydraSocketBudgetBytes = 0)
+    {
+        var proof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, ray, sessionSeed, timestampUnixSeconds);
+        var core = string.IsNullOrEmpty(assignedIp)
+            ? $"{thumbprint}|R:{ray}|M:{mtu}|K:{sessionSeed:X8}|T:{timestampUnixSeconds}|P:{proof}"
+            : $"{thumbprint}|{assignedIp}|R:{ray}|M:{mtu}|K:{sessionSeed:X8}|T:{timestampUnixSeconds}|P:{proof}";
+        if (hydraSocketBudgetBytes > 0)
+        {
+            core = $"{core}|H:{hydraSocketBudgetBytes}";
+        }
+
+        var cert = Volatile.Read(ref _clientCert);
+        if (cert is null)
+        {
+            return core;
+        }
+
+        try
+        {
+            using var ecdsa = cert.GetECDsaPrivateKey();
+            if (ecdsa is null)
+            {
+                return core;
+            }
+
+            var sig = ObxodkaFraming.SignHandshakeEcdsa(ecdsa, thumbprint, ray, sessionSeed, timestampUnixSeconds);
+            if (string.IsNullOrEmpty(sig))
+            {
+                return core;
+            }
+
+            if (!includePublicKey)
+            {
+                return $"{core}|S:{sig}";
+            }
+
+            var spki = System.Buffers.Text.Base64Url.EncodeToString(ecdsa.ExportSubjectPublicKeyInfo());
+            return $"{core}|S:{sig}|PK:{spki}";
+        }
+        catch (Exception ex) when (ex is CryptographicException or ObjectDisposedException)
+        {
+            return core;
+        }
     }
 
     //активный целевой sni для маскировки tls

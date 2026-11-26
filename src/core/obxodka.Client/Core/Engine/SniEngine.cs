@@ -6,13 +6,6 @@ public readonly record struct SniTransportStrategy(
     string? EffectiveSni,
     bool ClearDynamicPinning);
 
-//кандидат подключения для многолучевого http2 транспорта
-public readonly record struct SniStreamCandidate(
-    string TargetHost,
-    int Port,
-    bool EnableDpiBypass,
-    TlsBrowserProfile BrowserProfile);
-
 //кандидат подключения для websocket транспорта
 public readonly record struct SniWebSocketCandidate(
     string ServerHost,
@@ -207,36 +200,23 @@ public static class SniEngine
         return new SniTransportStrategy(isWebSocketMode, effectiveSni, isShield);
     }
 
-    //формирование списка кандидатов sni и портов для http2 транспорта (dpi bypass в приоритете для быстрого старта в рф)
-    public static List<SniStreamCandidate> BuildStreamCandidates(string serverIp, int serverPort, string? configuredSni)
-    {
-        //для прямого подключения zero-sni: целевой хост равен ip сервера (без отправки sni в tls)
-        var targetHost = !string.IsNullOrWhiteSpace(configuredSni) && !IsInternalBrandHost(configuredSni)
-            ? configuredSni
-            : serverIp;
-
-        int[] portCandidates = serverPort == 443
-            ? [443, 8443, 2053]
-            : [serverPort, 443, 8443];
-
-        var result = new List<SniStreamCandidate>(portCandidates.Length + 1);
-        var attemptIndex = 0;
-
-        result.AddRange(portCandidates.Select(port =>
-            new SniStreamCandidate(targetHost, port, true, RoutingHello.GetProfileForAttempt(attemptIndex++))));
-
-        //резервный прямой поток на случай если сегментация clienthello не требуется сетью
-        result.Add(new SniStreamCandidate(targetHost, portCandidates[0], false, RoutingHello.GetProfileForAttempt(attemptIndex)));
-        return result;
-    }
-
-    //формирование кругового маршрута протоколов: obxodka stream -> websocket -> xhttp -> резервные узлы -> по кругу
+    //формирование кругового маршрута протоколов: reality -> websocket -> xhttp -> резервные узлы -> по кругу
     public static List<ProtocolRouteStep> BuildProtocolRotationRing(
         IReadOnlyList<VpnServerDto>? servers,
         string? primaryHost,
         int primaryPort,
         string? configuredSni,
-        bool forceWebSocket)
+        bool forceWebSocket) =>
+        BuildProtocolRotationRing(servers, primaryHost, primaryPort, configuredSni, forceWebSocket, null);
+
+    //формирование кругового маршрута с учетом ручного выбора протокола пользователя (auto или конкретный транспорт)
+    public static List<ProtocolRouteStep> BuildProtocolRotationRing(
+        IReadOnlyList<VpnServerDto>? servers,
+        string? primaryHost,
+        int primaryPort,
+        string? configuredSni,
+        bool forceWebSocket,
+        string? preferredProtocol)
     {
         List<VpnServerDto> normalizedServers = servers is { Count: > 0 }
             ? [.. servers]
@@ -250,7 +230,7 @@ public static class SniEngine
             break;
         }
 
-        List<ProtocolRouteStep> directStreamSteps = [];
+        List<(string Host, int Port, string? Label, string? CertHash)> directOrigins = [];
         List<ProtocolRouteStep> shieldWsSteps = [];
         List<ProtocolRouteStep> shieldXhttpSteps = [];
         var seenDirectHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -287,12 +267,36 @@ public static class SniEngine
             true,
             "Cloudflare XHTTP"));
 
-        //резервный xhttp и ws напрямую к origin ip на случай полной блокировки всех cdn в регионе
-        shieldXhttpSteps.AddRange(directStreamSteps.Select(direct => new ProtocolRouteStep(TransportProtocolKind.ObxodkaXhttp, direct.Host,
-            direct.Port, direct.Host, false, false, $"{direct.ServerLabel ?? direct.Host} (XHTTP)", direct.ExpectedCertHash)));
+        //резервный xhttp напрямую к origin ip на случай полной блокировки всех cdn в регионе
+        shieldXhttpSteps.AddRange(directOrigins.Select(direct => new ProtocolRouteStep(TransportProtocolKind.ObxodkaXhttp, direct.Host,
+            direct.Port, direct.Host, false, false, $"{direct.Label ?? direct.Host} (XHTTP)", direct.CertHash)));
 
-        List<ProtocolRouteStep> penalizedDirect = [];
+        List<ProtocolRouteStep> penalizedDirectReality = [];
         List<ProtocolRouteStep> penalizedDirectXhttp = [];
+
+        //стелс-шаги reality на стандартном порту 443 для каждого прямого узла
+        List<ProtocolRouteStep> directRealitySteps = [];
+        foreach (var (host, port, label, certHash) in directOrigins)
+        {
+            var realityStep = new ProtocolRouteStep(
+                TransportProtocolKind.ObxodkaReality,
+                host,
+                port,
+                null,
+                false,
+                false,
+                $"{label ?? host} (Reality)",
+                certHash);
+
+            if (OctopusEngine.IsNodeByteCapped(host))
+            {
+                penalizedDirectReality.Add(realityStep);
+            }
+            else
+            {
+                directRealitySteps.Add(realityStep);
+            }
+        }
 
         //резервный xhttp напрямую к origin ip, если прямой узел еще не заблокирован, выносим в конец кольца после щитов
         List<ProtocolRouteStep> directXhttpSteps = [];
@@ -308,21 +312,28 @@ public static class SniEngine
             }
         }
 
-        List<ProtocolRouteStep> ring = [with(directStreamSteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count)];
+        List<ProtocolRouteStep> ring =
+            [with(directRealitySteps.Count + shieldWsSteps.Count + shieldXhttpSteps.Count + penalizedDirectReality.Count)];
+
+        if (ProtocolPipelineRegistry.TryResolvePreferredKind(preferredProtocol, out var preferredKind))
+        {
+            List<ProtocolRouteStep> manualSteps = preferredKind switch
+            {
+                TransportProtocolKind.ObxodkaReality => [.. directRealitySteps, .. penalizedDirectReality],
+                TransportProtocolKind.ObxodkaWebSocket => [.. shieldWsSteps],
+                TransportProtocolKind.ObxodkaXhttp => [.. directXhttpSteps, .. penalizedDirectXhttp],
+                _ => []
+            };
+
+            if (manualSteps.Count > 0)
+            {
+                return manualSteps;
+            }
+        }
 
         if (!forceWebSocket)
         {
-            foreach (var step in directStreamSteps)
-            {
-                if (OctopusEngine.IsNodeByteCapped(step.Host))
-                {
-                    penalizedDirect.Add(step);
-                }
-                else
-                {
-                    ring.Add(step);
-                }
-            }
+            ring.AddRange(directRealitySteps);
         }
 
         ring.AddRange(shieldWsSteps);
@@ -334,7 +345,7 @@ public static class SniEngine
         }
 
         ring.AddRange(penalizedDirectXhttp);
-        ring.AddRange(penalizedDirect);
+        ring.AddRange(penalizedDirectReality);
 
         return ring;
 
@@ -345,13 +356,9 @@ public static class SniEngine
                 return;
             }
 
-            directStreamSteps.Add(new ProtocolRouteStep(
-                TransportProtocolKind.ObxodkaStream,
+            directOrigins.Add((
                 host,
                 port > 0 ? port : 443,
-                null,
-                false,
-                false,
                 label,
                 !string.IsNullOrWhiteSpace(certHash) ? certHash : OctopusEngine.DirectOriginCertHash));
         }
@@ -519,23 +526,5 @@ public static class SniEngine
                 routePath,
                 profile));
         }
-    }
-
-    //выбор маскировочного пути и заголовка content-type для очередного цикла http2 потока
-    public static string GetStreamRoute(int ray, int cycleIndex, out string requestContentType)
-    {
-        var path = s_streamPaths[Math.Abs(ray + cycleIndex) % s_streamPaths.Length];
-        requestContentType = RoutingHello.GetStreamRequestContentType(path);
-        return path;
-    }
-
-    //расчет параметров нарезки сессии по времени и объему данных для имитации чанков облака и видеопотока
-    public static void CalculateStreamSliceWindow(int ray, out long maxDurationTicks, out long maxSliceBytes)
-    {
-        var durationSeconds = 55 + ray * 25 + RandomNumberGenerator.GetInt32(10, 36);
-        maxDurationTicks = (long)(durationSeconds * (double)Stopwatch.Frequency);
-
-        var baseMegabytes = 24 + ray * 8 + RandomNumberGenerator.GetInt32(0, 17);
-        maxSliceBytes = baseMegabytes * 1024L * 1024L;
     }
 }

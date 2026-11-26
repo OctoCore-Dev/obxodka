@@ -73,11 +73,10 @@ public sealed partial class ObxodkaWebSocketTransport
                                     var parts = info[3..].Split('|');
                                     var assignedIp = parts[0];
                                     var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                                    foreach (var part in parts)
+                                    foreach (var part in parts.Where(static part => part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase)))
                                     {
-                                        if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                                            int.TryParse(part[4..], out var sMtu) &&
-                                            sMtu >= SmartMtuEngine.MinMtu && sMtu <= SmartMtuEngine.MaxMtu)
+                                        if (int.TryParse(part[4..], out var sMtu) &&
+                                            sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                                         {
                                             OnMtuUpdated?.Invoke(sMtu);
                                         }
@@ -134,12 +133,9 @@ public sealed partial class ObxodkaWebSocketTransport
                                         OnPingUpdated?.Invoke(rtt);
                                     }
 
-                                    if (_pendingMtuProbes.TryRemove(sentTicks, out var probeTcs))
+                                    if (_pendingMtuProbes.TryRemove(sentTicks, out var probeTcs) && probeTcs is not null)
                                     {
-                                        if (probeTcs != null)
-                                        {
-                                            _ = probeTcs.TrySetResult(payloadLen);
-                                        }
+                                        _ = probeTcs.TrySetResult(payloadLen);
                                     }
                                 }
 
@@ -218,6 +214,7 @@ public sealed partial class ObxodkaWebSocketTransport
     private async Task WriterLoopAsync(ClientWebSocket ws, CancellationToken ct)
     {
         var coalesceBuf = ArrayPool<byte>.Shared.Rent(131072);
+        long wsTxBytes = 0;
 
         try
         {
@@ -245,18 +242,20 @@ public sealed partial class ObxodkaWebSocketTransport
                         {
                             var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset,
                                 out var payloadLength);
+                            var payloadSpan = payloadLength > 0 ? packet.AsSpan(payloadOffset, payloadLength) : ReadOnlySpan<byte>.Empty;
 
-                            var paddingLen = ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, SmartMtuEngine.CurrentMtu);
+                            var isEarly = wsTxBytes + coalescedLen < ObxodkaFraming.EarlyStageWindowBytes;
+                            var paddingLen = InnerTlsMorpher.CalculateAntiMlPadding(payloadSpan, cmd, SmartMtuEngine.CurrentMtu, isEarly);
                             var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
 
                             if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
                             {
                                 await ws.SendAsync(coalesceBuf.AsMemory(0, coalescedLen), WebSocketMessageType.Binary, true, ct)
                                     .ConfigureAwait(false);
+                                wsTxBytes += coalescedLen;
                                 coalescedLen = 0;
                             }
 
-                            var payloadSpan = payloadLength > 0 ? packet.AsSpan(payloadOffset, payloadLength) : ReadOnlySpan<byte>.Empty;
                             if (totalLen <= coalesceBuf.Length)
                             {
                                 ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd, payloadSpan, paddingLen,
@@ -271,6 +270,7 @@ public sealed partial class ObxodkaWebSocketTransport
                                     ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd, payloadSpan, paddingLen, _sessionKey);
                                     await ws.SendAsync(frame.AsMemory(0, totalLen), WebSocketMessageType.Binary, true, ct)
                                         .ConfigureAwait(false);
+                                    wsTxBytes += totalLen;
                                 }
                                 finally
                                 {
@@ -291,6 +291,7 @@ public sealed partial class ObxodkaWebSocketTransport
                 if (coalescedLen > 0)
                 {
                     await ws.SendAsync(coalesceBuf.AsMemory(0, coalescedLen), WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
+                    wsTxBytes += coalescedLen;
                 }
             }
         }

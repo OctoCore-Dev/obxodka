@@ -293,7 +293,7 @@ public sealed partial class ThemeStorageService
                 $"[ThemeSecurity] Размер ресурса '{cleanRelPath}' ({len} байт) превышает лимит {maxAllowedSize} байт!");
         }
 
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+        using var responseStream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
 
         //чтение первых 64 байт для валидации magic-bytes перед записью
         var headerBuffer = new byte[64];
@@ -322,7 +322,7 @@ public sealed partial class ThemeStorageService
 
         try
         {
-            await using var fileStream = new FileStream(fullDest, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true);
+            using var fileStream = new FileStream(fullDest, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true);
             await fileStream.WriteAsync(headerBuffer.AsMemory(0, headerRead), ct).ConfigureAwait(false);
 
             long totalRead = headerRead;

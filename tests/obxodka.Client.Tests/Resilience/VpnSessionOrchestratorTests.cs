@@ -10,8 +10,9 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
 
     public VpnSessionOrchestratorTests()
     {
-        _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns((string?)null);
-        _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync((string?)null);
+        string? noConflict = null;
+        _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns(noConflict);
+        _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync(noConflict);
         _adapterMock.Setup(a => a.PreparePermissionsAndStartServiceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _adapterMock.Setup(a => a.CleanupBeforeConnectAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _adapterMock.Setup(a => a.PrepareBypassHostsAsync(It.IsAny<string[]>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -28,7 +29,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public void DetectConflictingVpnAndPreflightDelegateToPlatformAdapter()
+    public async Task DetectConflictingVpnAndPreflightDelegateToPlatformAdapterAsync()
     {
         _adapterMock.Setup(a => a.DetectConflictingVpn()).Returns("WireGuard");
         _adapterMock.Setup(a => a.RunNetworkPreflightAsync()).ReturnsAsync("No uplink");
@@ -36,7 +37,7 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
         using var orchestrator = new VpnSessionOrchestrator(_adapterMock.Object, OctopusEngine.Current, false);
 
         Assert.Equal("WireGuard", orchestrator.DetectConflictingVpn());
-        Assert.Equal("No uplink", orchestrator.RunNetworkPreflightAsync().GetAwaiter().GetResult());
+        Assert.Equal("No uplink", await orchestrator.RunNetworkPreflightAsync());
     }
 
     [Fact]
@@ -127,16 +128,15 @@ public sealed class VpnSessionOrchestratorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(TransportProtocolKind.ObxodkaStream)]
+    [InlineData(TransportProtocolKind.ObxodkaReality)]
     [InlineData(TransportProtocolKind.ObxodkaWebSocket)]
     [InlineData(TransportProtocolKind.ObxodkaXhttp)]
     public void ProtocolPipelineRegistry_BuiltInFactories_CreateDistinctTransports(TransportProtocolKind kind)
     {
-        var transport = ProtocolPipelineRegistry.CreateTransport(
+        using var transport = ProtocolPipelineRegistry.CreateTransport(
             new ProtocolRouteStep(kind, "127.0.0.1", 443, "example.com", false, false));
 
         Assert.NotNull(transport);
-        transport.Dispose();
     }
 
     [Theory]

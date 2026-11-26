@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Obxodka VPN
+Comment=Высокоскоростной защищённый VPN-клиент (Octopus Core)
+Exec=/usr/local/bin/obxodka-desktop
+Icon=obxodka
+Terminal=false
+Type=Application
+Categories=Network;Security;
+StartupWMClass=obxodka-desktop

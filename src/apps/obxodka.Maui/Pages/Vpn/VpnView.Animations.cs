@@ -322,7 +322,7 @@ public sealed partial class VpnView
                 _loaderStopwatch.Reset();
             }
 
-            ButtonEffectsCanvas?.InvalidateSurface();
+            ButtonEffectsCanvas.InvalidateSurface();
         }
     }
 
@@ -435,7 +435,7 @@ public sealed partial class VpnView
         using var builder = new SKPathBuilder();
         for (var i = 0; i < sides; i++)
         {
-            var a = (float)(i * 2 * Math.PI / sides - Math.PI / 2);
+            var a = (float)(i * 2.0 * Math.PI / sides - Math.PI / 2.0);
             var x = r * MathF.Cos(a);
             var y = r * MathF.Sin(a);
             if (i == 0)
@@ -867,7 +867,7 @@ public sealed partial class VpnView
             canvas.Restore();
         }
 
-        if (!(_shockwaveProgress >= 0f))
+        if (_shockwaveProgress < 0f)
         {
             return;
         }
@@ -885,7 +885,7 @@ public sealed partial class VpnView
         _shockwavePaint.StrokeWidth = Math.Max(1f, 5f * (1f - p));
         canvas.DrawCircle(cx, cy, waveR1, _shockwavePaint);
 
-        if (!(p > 0.15f))
+        if (p <= 0.15f)
         {
             return;
         }

@@ -60,7 +60,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUILD_CACHE_PATH: "C:/BuildCache"
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
@@ -193,7 +192,9 @@ jobs:
       - name: "[SETUP] Ensure Build Cache Directory"
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
+          $cacheDir = Join-Path $env:RUNNER_TEMP "build-cache"
+          New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+          "BUILD_CACHE_PATH=$cacheDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
@@ -204,7 +205,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -256,7 +257,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -341,9 +342,13 @@ jobs:
         id: find-pkgs
         run: |
           mkdir -p ./android-dist
-          AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
+          SEARCH_DIRS=("./artifacts" "$HOME/.cache" "/home/runner/.cache" ".")
+          if [ -n "${BUILD_CACHE_PATH:-}" ]; then
+            SEARCH_DIRS=("$BUILD_CACHE_PATH" "${SEARCH_DIRS[@]}")
+          fi
+          AAB_FILE=$(find "${SEARCH_DIRS[@]}" -type f -name "*Signed.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
           if [ -z "$AAB_FILE" ]; then
-            AAB_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
+            AAB_FILE=$(find "${SEARCH_DIRS[@]}" -type f -name "*.aab" 2>/dev/null | grep -v "/obj/" | head -n 1)
           fi
           if [ -z "$AAB_FILE" ]; then
             echo "::error::[ERROR] No AAB bundle found!"
@@ -352,9 +357,9 @@ jobs:
           cp "$AAB_FILE" ./android-dist/Obxodka-Release.aab
           echo "[INFO] Located AAB: $AAB_FILE -> ./android-dist/Obxodka-Release.aab"
 
-          APK_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*Signed.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
+          APK_FILE=$(find "${SEARCH_DIRS[@]}" -type f -name "*Signed.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
           if [ -z "$APK_FILE" ]; then
-            APK_FILE=$(find "$HOME/.cache" /home/runner/.cache "$HOME/cache" /home/runner/cache . bin/Release -type f -name "*.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
+            APK_FILE=$(find "${SEARCH_DIRS[@]}" -type f -name "*.apk" 2>/dev/null | grep -v "/obj/" | head -n 1)
           fi
           if [ -n "$APK_FILE" ]; then
             cp "$APK_FILE" ./android-dist/Obxodka-Android.apk
@@ -392,7 +397,9 @@ jobs:
       - name: "[SETUP] Ensure Build Cache Directory"
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "C:\BuildCache" -Force | Out-Null
+          $cacheDir = Join-Path $env:RUNNER_TEMP "build-cache"
+          New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+          "BUILD_CACHE_PATH=$cacheDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: "[SETUP] .NET 11 SDK"
         uses: actions/setup-dotnet@v6
@@ -403,7 +410,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -445,7 +452,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path "./win-dist" -Force | Out-Null
-          $pkg = Get-ChildItem -Path "src/apps/obxodka.Maui/AppPackages", "AppPackages", "bin\Release", "C:\BuildCache" -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
+          $searchPaths = @("src/apps/obxodka.Maui/AppPackages", "AppPackages", "artifacts")
+          if ($env:BUILD_CACHE_PATH) { $searchPaths += $env:BUILD_CACHE_PATH }
+          $pkg = Get-ChildItem -Path $searchPaths -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "\\obj\\" -and $_.Name -notmatch "scale-" } | Select-Object -First 1
           if (-not $pkg) {
             $pkg = Get-ChildItem -Recurse -File -Include "*.msixupload", "*.appxupload", "*.msixbundle", "*.msix" | Where-Object { $_.FullName -notmatch "\\obj\\" } | Select-Object -First 1
           }
@@ -550,8 +559,9 @@ jobs:
           }
 
           # Clean MSIX intermediate/output artifacts so unpackaged build never inherits packaged state
-          Remove-Item "C:\BuildCache\obxodka.Maui\obj\release_net11.0-windows10.0.19041.0_win-x64" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "C:\BuildCache\obxodka.Maui\bin\release_net11.0-windows10.0.19041.0_win-x64" -Recurse -Force -ErrorAction SilentlyContinue
+          $artifactsRoot = if ($env:BUILD_CACHE_PATH) { Join-Path $env:BUILD_CACHE_PATH "obxodka" } else { "artifacts" }
+          Remove-Item (Join-Path $artifactsRoot "obj/obxodka.Maui") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $artifactsRoot "bin/obxodka.Maui") -Recurse -Force -ErrorAction SilentlyContinue
 
           Write-Host "[INFO] Publishing unpackaged Windows binary v$ver..." -ForegroundColor Cyan
           dotnet publish src/apps/obxodka.Maui/obxodka.Maui.csproj -f net11.0-windows10.0.19041.0 -c Release `

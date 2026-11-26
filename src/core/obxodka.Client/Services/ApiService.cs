@@ -93,8 +93,8 @@ public sealed class ApiService(HttpClient client)
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
-            //для прямого подключения к ip отключаем подставной sni и не смешиваем пин туннеля с api
-            SslOptions = SslOptionsFactory.Create(dynamicPinningHash: ""),
+            //для прямого подключения к ip включаем строгий sha-256 spki пиннинг нашего корневого сертификата
+            SslOptions = SslOptionsFactory.Create(dynamicPinningHash: AppSecrets.DirectServerSpkiPin),
             ConnectCallback = async (context, cToken) =>
             {
                 var targetIp = IPAddress.TryParse(context.DnsEndPoint.Host, out var parsedHostIp)
@@ -163,25 +163,52 @@ public sealed class ApiService(HttpClient client)
         SslOptions = SslOptionsFactory.Create(dynamicPinningHash: ""),
         ConnectCallback = async (context, cToken) =>
         {
-            var resolvedIp = await ResolveHostAntiPoisonAsync(context.DnsEndPoint.Host, cToken).ConfigureAwait(false);
-            var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+            var host = context.DnsEndPoint.Host;
+            var port = context.DnsEndPoint.Port;
+            var candidates = SniEngine.IsInternalBrandHost(host)
+                ? await CleanEdgeScanner.ResolveCleanShieldCandidatesAsync(host, port, cToken).ConfigureAwait(false)
+                : [await ResolveHostAntiPoisonAsync(host, cToken).ConfigureAwait(false)];
+
+            Exception? lastEx = null;
+            for (var i = 0; i < candidates.Length; i++)
             {
-                NoDelay = true
-            };
-            OctopusEngine.Current.ProtectSocket(socket);
-            try
-            {
-                await socket.ConnectAsync(new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), cToken).ConfigureAwait(false);
-                var netStream = new NetworkStream(socket, true);
-                return !IPAddress.IsLoopback(resolvedIp)
-                    ? DpiBypassStream.CreateForProfile(netStream, TlsBrowserProfile.Chrome, true, true)
-                    : netStream;
+                var resolvedIp = candidates[i];
+                var socket = new Socket(resolvedIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+                {
+                    NoDelay = true
+                };
+                OctopusEngine.Current.ProtectSocket(socket);
+                try
+                {
+                    if (candidates.Length > 1 && i + 1 < candidates.Length)
+                    {
+                        using var perIpCts = CancellationTokenSource.CreateLinkedTokenSource(cToken);
+                        perIpCts.CancelAfter(TimeSpan.FromMilliseconds(1600));
+                        await socket.ConnectAsync(new IPEndPoint(resolvedIp, port), perIpCts.Token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await socket.ConnectAsync(new IPEndPoint(resolvedIp, port), cToken).ConfigureAwait(false);
+                    }
+
+                    var netStream = new NetworkStream(socket, true);
+                    return !IPAddress.IsLoopback(resolvedIp)
+                        ? DpiBypassStream.CreateForProfile(netStream, TlsBrowserProfile.Chrome, true, true)
+                        : netStream;
+                }
+                catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException)
+                {
+                    lastEx = ex;
+                    EdgeEndpointHealth.MarkUnhealthy(resolvedIp.ToString(), 60);
+                    socket.Dispose();
+                    if (cToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                }
             }
-            catch
-            {
-                socket.Dispose();
-                throw;
-            }
+
+            throw lastEx ?? new SocketException((int)SocketError.HostUnreachable);
         }
     };
 
@@ -191,6 +218,7 @@ public sealed class ApiService(HttpClient client)
         if (string.IsNullOrWhiteSpace(host))
         {
             s_dohCache.Clear();
+            CleanEdgeScanner.InvalidateCache();
             return;
         }
 
@@ -242,9 +270,8 @@ public sealed class ApiService(HttpClient client)
         var dohResolvers = DnsDefaults.DohResolvers;
         List<IPAddress> results = [with(4)];
 
-        foreach (var t in dohResolvers)
+        foreach (var dohUrl in dohResolvers.Select(t => DnsDefaults.BuildDohQueryUrl(t, host)))
         {
-            var dohUrl = DnsDefaults.BuildDohQueryUrl(t, host);
             try
             {
                 using var dohCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -334,7 +361,7 @@ public sealed class ApiService(HttpClient client)
             throw new SocketException((int)SocketError.HostNotFound);
         }
 
-        IPAddress[] fallbackArr = [IPAddress.Parse(AppConfig.DirectServerIp)];
+        var fallbackArr = CleanEdgeScanner.GenerateProbeBatch(4);
         s_dohCache[host] = (fallbackArr, Stopwatch.GetTimestamp() + Stopwatch.Frequency * 30);
         return fallbackArr;
     }
@@ -668,7 +695,7 @@ public sealed class ApiService(HttpClient client)
         }
 
         var (success, data, error) = await SendRequestAsync<object, PaymentLinkResponse>(
-            HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, true, ct);
+            HttpMethod.Get, url, null, null, AppJsonContext.Default.PaymentLinkResponse, true, ct).ConfigureAwait(false);
 
         if (success && data is { Url: { Length: > 0 } paymentUrl })
         {

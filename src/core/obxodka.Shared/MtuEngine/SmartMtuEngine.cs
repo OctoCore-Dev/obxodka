@@ -4,7 +4,7 @@ namespace obxodka.Shared.MtuEngine;
 public static class SmartMtuEngine
 {
     public const int DefaultMtu = 1280;
-    public const int InitialMtu = 1420;
+    public const int InitialMtu = 1360;
     public const int MinMtu = 1200;
     public const int MaxMtu = 1500;
 

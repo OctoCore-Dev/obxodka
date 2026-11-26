@@ -4,11 +4,11 @@ namespace obxodka.Services;
 public interface IAppManager
 {
     //список установленных программ
-    public Task<List<AppInfoItem>> GetInstalledAppsAsync();
+    Task<List<AppInfoItem>> GetInstalledAppsAsync();
 
     //список пакетов в обход vpn
-    public List<string> GetBypassedPackages();
+    List<string> GetBypassedPackages();
 
     //сохранение списка пакетов в обход vpn
-    public void SaveBypassedPackages(List<string> packages);
+    void SaveBypassedPackages(List<string> packages);
 }
