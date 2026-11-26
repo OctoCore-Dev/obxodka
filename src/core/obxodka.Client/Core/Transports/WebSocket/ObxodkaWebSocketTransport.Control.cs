@@ -232,7 +232,8 @@ public sealed partial class ObxodkaWebSocketTransport
         {
             try
             {
-                await Task.Delay(5000, ct).ConfigureAwait(false);
+                var jitteredDelayMs = RandomNumberGenerator.GetInt32(4100, 7600);
+                await Task.Delay(jitteredDelayMs, ct).ConfigureAwait(false);
                 await SendPingProbeAsync().ConfigureAwait(false);
             }
             catch (OperationCanceledException)

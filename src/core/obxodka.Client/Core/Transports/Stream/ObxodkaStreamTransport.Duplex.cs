@@ -259,10 +259,13 @@ public sealed partial class ObxodkaStreamTransport
 
                 try
                 {
-                    var hsProof = ObxodkaFraming.ComputeHandshakeProof(thumbprint, ray, sessionSeed, nowSec);
-                    var handshakeStr = string.IsNullOrEmpty(_assignedIp)
-                        ? $"{thumbprint}|R:{ray}|M:{SmartMtuEngine.CurrentMtu}|K:{sessionSeed:X8}|T:{nowSec}|P:{hsProof}"
-                        : $"{thumbprint}|{_assignedIp}|R:{ray}|M:{SmartMtuEngine.CurrentMtu}|K:{sessionSeed:X8}|T:{nowSec}|P:{hsProof}";
+                    var handshakeStr = OctopusEngine.Current.BuildAuthenticatedHandshakeString(
+                        thumbprint,
+                        _assignedIp,
+                        ray,
+                        SmartMtuEngine.CurrentMtu,
+                        sessionSeed,
+                        nowSec);
                     var hsPayload = Encoding.UTF8.GetBytes(handshakeStr);
                     var hsFrame = ObxodkaFraming.Pack(ObxodkaFraming.CmdHandshake, hsPayload, out var hsTotalLen);
                     try
@@ -300,6 +303,7 @@ public sealed partial class ObxodkaStreamTransport
 
                         var coalescedLen = 0;
                         var batchCount = 0;
+                        var hasInnerTls = false;
                         var item = firstItem;
                         var hasItem = true;
 
@@ -312,10 +316,22 @@ public sealed partial class ObxodkaStreamTransport
                                 {
                                     var cmd = TransportFrameControlMapper.ClassifyOutgoingPacket(packet, length, out var payloadOffset,
                                         out var payloadLength);
+                                    var pktPayloadSpan = payloadLength > 0
+                                        ? packet.AsSpan(payloadOffset, payloadLength)
+                                        : ReadOnlySpan<byte>.Empty;
+
+                                    if (!hasInnerTls && cmd == ObxodkaFraming.CmdData &&
+                                        InnerTlsMorpher.IsInnerTlsControlOrHandshake(pktPayloadSpan))
+                                    {
+                                        hasInnerTls = true;
+                                    }
 
                                     var isEarly = rayTxBytes + coalescedLen < ObxodkaFraming.EarlyStageWindowBytes;
-                                    var paddingLen =
-                                        ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, SmartMtuEngine.CurrentMtu, isEarly);
+                                    var paddingLen = InnerTlsMorpher.CalculateAntiMlPadding(
+                                        pktPayloadSpan,
+                                        cmd,
+                                        SmartMtuEngine.CurrentMtu,
+                                        isEarly);
                                     var totalLen = ObxodkaFraming.HeaderSize + payloadLength + paddingLen;
 
                                     if (coalescedLen + totalLen > coalesceBuf.Length && coalescedLen > 0)
@@ -330,7 +346,7 @@ public sealed partial class ObxodkaStreamTransport
                                     if (totalLen <= coalesceBuf.Length)
                                     {
                                         ObxodkaFraming.WriteFrame(coalesceBuf.AsSpan(coalescedLen, totalLen), cmd,
-                                            packet.AsSpan(payloadOffset, payloadLength), paddingLen, txKey);
+                                            pktPayloadSpan, paddingLen, txKey);
                                         coalescedLen += totalLen;
                                     }
                                     else
@@ -339,7 +355,7 @@ public sealed partial class ObxodkaStreamTransport
                                         try
                                         {
                                             ObxodkaFraming.WriteFrame(frame.AsSpan(0, totalLen), cmd,
-                                                packet.AsSpan(payloadOffset, payloadLength), paddingLen, txKey);
+                                                pktPayloadSpan, paddingLen, txKey);
                                             await stream.WriteAsync(frame.AsMemory(0, totalLen), pumpToken).ConfigureAwait(false);
                                             rayTxBytes += totalLen;
                                             _ = Interlocked.Add(ref raySharedBytes, totalLen);
@@ -362,7 +378,20 @@ public sealed partial class ObxodkaStreamTransport
 
                         if (coalescedLen > 0)
                         {
-                            await stream.WriteAsync(coalesceBuf.AsMemory(0, coalescedLen), pumpToken).ConfigureAwait(false);
+                            var splitPoint = hasInnerTls ? InnerTlsMorpher.ComputeIrregularRecordSplit(coalescedLen) : 0;
+                            if (splitPoint > 0)
+                            {
+                                await stream.WriteAsync(coalesceBuf.AsMemory(0, splitPoint), pumpToken).ConfigureAwait(false);
+                                await stream.FlushAsync(pumpToken).ConfigureAwait(false);
+                                await Task.Delay(RandomNumberGenerator.GetInt32(2, 6), pumpToken).ConfigureAwait(false);
+                                await stream.WriteAsync(coalesceBuf.AsMemory(splitPoint, coalescedLen - splitPoint), pumpToken)
+                                    .ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                await stream.WriteAsync(coalesceBuf.AsMemory(0, coalescedLen), pumpToken).ConfigureAwait(false);
+                            }
+
                             rayTxBytes += coalescedLen;
                             _ = Interlocked.Add(ref raySharedBytes, coalescedLen);
                         }

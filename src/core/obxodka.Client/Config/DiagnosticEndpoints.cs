@@ -8,14 +8,13 @@ public static class DiagnosticEndpoints
     [
         "https://ya.ru/favicon.ico",
         "https://77.88.8.8/",
-        "https://www.google.com/generate_204"
+        "https://vk.com/favicon.ico"
     ];
 
     //файлы для замера скорости скачивания
     public static readonly string[] SpeedTestDownloadCandidates =
     [
         "https://speedtest.selectel.ru/100MB",
-        "https://mirror.yandex.ru/debian/ls-lR.gz",
-        "https://proof.ovh.net/files/100Mb.dat"
+        "https://mirror.yandex.ru/debian/ls-lR.gz"
     ];
 }

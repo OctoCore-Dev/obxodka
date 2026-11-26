@@ -75,6 +75,7 @@ public static class VpnStatusMessages
             "OBXODKA-STREAM" or "ObxodkaStream" => "Obxodka Stream",
             "OBXODKA-WS" or "ObxodkaWebSocket" => isShield ? "Cloudflare WS" : "WebSocket",
             "OBXODKA-XHTTP" or "ObxodkaXhttp" => isShield ? "Cloudflare XHTTP" : "Direct XHTTP",
+            "OBXODKA-REALITY" or "ObxodkaReality" => "Obxodka Reality",
             _ => string.IsNullOrWhiteSpace(protocolName) ? "Obxodka" : protocolName
         };
 

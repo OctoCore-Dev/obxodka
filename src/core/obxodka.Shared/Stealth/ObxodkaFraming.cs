@@ -96,6 +96,164 @@ public static class ObxodkaFraming
         return Convert.ToHexString(digest[..8]);
     }
 
+    //подпись параметров хендшейка закрытым ключом ecdsa p-256 клиентского сертификата устройства
+    public static string SignHandshakeEcdsa(
+        ECDsa? ecdsa,
+        string? thumbprint,
+        int ray,
+        uint sessionSeed,
+        long timestampUnixSeconds)
+    {
+        if (ecdsa is null || string.IsNullOrWhiteSpace(thumbprint))
+        {
+            return string.Empty;
+        }
+
+        var formatted = $"OBX-V8-SIG:{thumbprint.Trim().ToUpperInvariant()}:{ray}:{sessionSeed:X8}:{timestampUnixSeconds}";
+        Span<byte> msgBytes = stackalloc byte[256];
+        var msgLen = Encoding.UTF8.GetBytes(formatted, msgBytes);
+        Span<byte> sigBuf = stackalloc byte[128];
+        return ecdsa.TrySignData(msgBytes[..msgLen], sigBuf, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation, out var sigLen)
+            ? System.Buffers.Text.Base64Url.EncodeToString(sigBuf[..sigLen])
+            : string.Empty;
+    }
+
+    //проверка подписи ecdsa p-256 параметров хендшейка по открытому ключу spki устройства
+    public static bool VerifyHandshakeEcdsa(
+        ReadOnlySpan<byte> spkiDer,
+        string? thumbprint,
+        int ray,
+        uint sessionSeed,
+        long timestampUnixSeconds,
+        string? signatureBase64Url)
+    {
+        if (spkiDer.IsEmpty || string.IsNullOrWhiteSpace(thumbprint) || string.IsNullOrWhiteSpace(signatureBase64Url))
+        {
+            return false;
+        }
+
+        Span<byte> sigBytes = stackalloc byte[128];
+        if (!System.Buffers.Text.Base64Url.TryDecodeFromChars(signatureBase64Url.AsSpan().Trim(), sigBytes, out var sigLen) ||
+            sigLen is < 64 or > 132)
+        {
+            return false;
+        }
+
+        var formatted = $"OBX-V8-SIG:{thumbprint.Trim().ToUpperInvariant()}:{ray}:{sessionSeed:X8}:{timestampUnixSeconds}";
+        Span<byte> msgBytes = stackalloc byte[256];
+        var msgLen = Encoding.UTF8.GetBytes(formatted, msgBytes);
+
+        try
+        {
+            using var ecdsa = ECDsa.Create();
+            ecdsa.ImportSubjectPublicKeyInfo(spkiDer, out _);
+            return ecdsa.VerifyData(
+                msgBytes[..msgLen],
+                sigBytes[..sigLen],
+                HashAlgorithmName.SHA256,
+                DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+    }
+
+    //упаковка режима и хендшейка в маскированный заголовок cookie под стандартные маркеры cdn и аналитики
+    public static string PackStealthCookieHeader(string mode, string rawHandshake, long timestampUnixSeconds)
+    {
+        var combined = $"{mode}|{rawHandshake}";
+        var byteCount = Encoding.UTF8.GetByteCount(combined);
+        var rented = ArrayPool<byte>.Shared.Rent(byteCount);
+        try
+        {
+            var written = Encoding.UTF8.GetBytes(combined, rented);
+            var nonce = (ushort)RandomNumberGenerator.GetInt32(1, 65536);
+            var n0 = (byte)(nonce >> 8);
+            var n1 = (byte)(nonce & 0xFF);
+
+            for (var i = 0; i < written; i++)
+            {
+                rented[i] ^= (byte)(s_baseMask[i % s_baseMask.Length] ^ ((i & 1) == 0 ? n0 : n1));
+            }
+
+            var encoded = System.Buffers.Text.Base64Url.EncodeToString(rented.AsSpan(0, written));
+            var gaId = RandomNumberGenerator.GetInt32(100000000, 999999999);
+            return $"_cfuvid={nonce:x4}.{encoded}; _ga=GA1.1.{gaId}.{timestampUnixSeconds}";
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    //извлечение и демаскировка режима и хендшейка из стандартного заголовка cookie
+    public static bool TryUnpackStealthCookieHeader(string? cookieHeader, out string mode, out string rawHandshake)
+    {
+        mode = string.Empty;
+        rawHandshake = string.Empty;
+        if (string.IsNullOrWhiteSpace(cookieHeader))
+        {
+            return false;
+        }
+
+        const string marker = "_cfuvid=";
+        var idx = cookieHeader.IndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0)
+        {
+            return false;
+        }
+
+        var valueStart = idx + marker.Length;
+        var semiIdx = cookieHeader.IndexOf(';', valueStart);
+        var tokenSpan = (semiIdx >= 0 ? cookieHeader.AsSpan(valueStart, semiIdx - valueStart) : cookieHeader.AsSpan(valueStart)).Trim();
+
+        var dotIdx = tokenSpan.IndexOf('.');
+        if (dotIdx != 4 ||
+            !ushort.TryParse(tokenSpan[..4], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var nonce))
+        {
+            return false;
+        }
+
+        var encodedPart = tokenSpan[5..];
+        if (encodedPart.IsEmpty || encodedPart.Length > 3072)
+        {
+            return false;
+        }
+
+        var maxDecoded = encodedPart.Length;
+        var rented = ArrayPool<byte>.Shared.Rent(maxDecoded);
+        try
+        {
+            if (!System.Buffers.Text.Base64Url.TryDecodeFromChars(encodedPart, rented, out var decodedLen) || decodedLen < 4)
+            {
+                return false;
+            }
+
+            var n0 = (byte)(nonce >> 8);
+            var n1 = (byte)(nonce & 0xFF);
+            for (var i = 0; i < decodedLen; i++)
+            {
+                rented[i] ^= (byte)(s_baseMask[i % s_baseMask.Length] ^ ((i & 1) == 0 ? n0 : n1));
+            }
+
+            var unpacked = Encoding.UTF8.GetString(rented, 0, decodedLen);
+            var sep = unpacked.IndexOf('|');
+            if (sep <= 0 || sep >= unpacked.Length - 1)
+            {
+                return false;
+            }
+
+            mode = unpacked[..sep].Trim();
+            rawHandshake = unpacked[(sep + 1)..].Trim();
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
     //маскирование полезной нагрузки кадра с солью через аппаратные векторные инструкции
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void MaskPayload(Span<byte> payload, byte salt)
