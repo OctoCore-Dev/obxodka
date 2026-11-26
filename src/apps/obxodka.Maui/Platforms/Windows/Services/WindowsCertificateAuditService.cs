@@ -123,13 +123,11 @@ public sealed class WindowsCertificateAuditService : ICertificateAuditService
                     var isKnownThumbprint = s_knownRussianRootThumbprints.Contains(thumbprint);
                     var matchesPattern = false;
 
-                    if (!isKnownThumbprint)
+                    if (!isKnownThumbprint &&
+                        s_suspiciousPatterns.Any(pattern => issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
+                                                            subject.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
                     {
-                        if (s_suspiciousPatterns.Any(pattern => issuer.Contains(pattern, StringComparison.OrdinalIgnoreCase) ||
-                                                                subject.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            matchesPattern = true;
-                        }
+                        matchesPattern = true;
                     }
 
                     if (!isKnownThumbprint && !matchesPattern)

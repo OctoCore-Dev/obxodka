@@ -127,12 +127,9 @@ public sealed class PriorityPacketQueue(int maxCapacity = 2000) : IDisposable
     {
         try
         {
-            if (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0))
+            if (Volatile.Read(ref _disposed) == 0 && _semaphore.Wait(0) && TryPopFair(out item))
             {
-                if (TryPopFair(out item))
-                {
-                    return true;
-                }
+                return true;
             }
         }
         catch (ObjectDisposedException)

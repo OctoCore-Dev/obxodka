@@ -83,7 +83,11 @@ public sealed partial class ConfigurationView
                                 pingMs = pingMs == 0 ? pingSw.ElapsedMilliseconds : Math.Min(pingMs, pingSw.ElapsedMilliseconds);
                             }
                         }
-                        catch when (!token.IsCancellationRequested) { }
+                        catch (Exception ex) when (!token.IsCancellationRequested &&
+                                                   ex is HttpRequestException or IOException or SocketException or TaskCanceledException)
+                        {
+                            //переходим к следующему зеркалу замера скорости
+                        }
                     }
 
                     if (token.IsCancellationRequested)
@@ -117,7 +121,11 @@ public sealed partial class ConfigurationView
                             activeUrl = candidate;
                             break;
                         }
-                        catch when (!token.IsCancellationRequested) { }
+                        catch (Exception ex) when (!token.IsCancellationRequested &&
+                                                   ex is HttpRequestException or IOException or SocketException or TaskCanceledException)
+                        {
+                            //переходим к следующему зеркалу замера скорости
+                        }
                     }
 
                     activeUrl ??= "https://speedtest.selectel.ru/100MB";
@@ -197,6 +205,7 @@ public sealed partial class ConfigurationView
             }
             catch (OperationCanceledException)
             {
+                //замер скорости отменен пользователем
             }
             catch (Exception ex)
             {

@@ -262,6 +262,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch (ObjectDisposedException)
             {
+                //семафор уже освобожден при завершении сервиса
             }
 
             return;
@@ -458,6 +459,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch (ObjectDisposedException)
             {
+                //семафор уже освобожден при завершении сервиса
             }
         }
     }
@@ -555,6 +557,7 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
             }
             catch (OperationCanceledException)
             {
+                //отмена цикла роуминга при остановке или переподключении
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -932,14 +935,11 @@ public sealed class VpnSessionOrchestrator : IVpnService, IDisposable
 
         lock (_routesLock)
         {
-            foreach (var ip in ips)
+            foreach (var ip in ips.Where(ip => IPAddress.TryParse(ip, out var parsed) &&
+                                               parsed.AddressFamily == AddressFamily.InterNetwork &&
+                                               !_serverIpsToRoute.Contains(ip)))
             {
-                if (IPAddress.TryParse(ip, out var parsed) &&
-                    parsed.AddressFamily == AddressFamily.InterNetwork &&
-                    !_serverIpsToRoute.Contains(ip))
-                {
-                    _serverIpsToRoute.Add(ip);
-                }
+                _serverIpsToRoute.Add(ip);
             }
         }
 

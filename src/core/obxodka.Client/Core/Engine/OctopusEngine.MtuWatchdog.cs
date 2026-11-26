@@ -228,19 +228,13 @@ public sealed partial class OctopusEngine
 
                         //ранний эхо-зонд при застое rx для быстрой проверки канала (на облачных каналах зондируем на 3с и 5с)
                         var isDirectStream = _transport is ObxodkaStreamTransport;
-                        var sendActivePing = isDirectStream
-                            ? deadTicks == 20 || deadTicks >= 25 && deadTicks % 15 == 0
-                            : deadTicks == 15 || deadTicks == 25 || deadTicks >= 35 && deadTicks % 15 == 0;
-                        if (sendActivePing)
+                        if (ShouldSendWatchdogPing(isDirectStream, deadTicks))
                         {
                             _ = _transport?.SendPingProbeAsync();
                         }
 
                         //раннее переключение по круговому кольцу: для прямого потока при тспу 5с, для облачных щитов 9с с подтвержденным провалом пинга
-                        var shouldRotateEarly = isDirectStream
-                            ? deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192)
-                            : deadTicks >= 45 && bytesSentDuringStall >= 4096 || deadTicks >= 55;
-                        if (shouldRotateEarly)
+                        if (ShouldRotateForRxStall(isDirectStream, deadTicks, currentSent, bytesSentDuringStall))
                         {
                             var reason = isDirectStream
                                 ? "DirectStreamByteCapFreeze"
@@ -377,4 +371,16 @@ public sealed partial class OctopusEngine
             }
         }, token);
     }
+
+    //проверка момента отправки активного эхо-зонда при застое входящего трафика
+    private static bool ShouldSendWatchdogPing(bool isDirectStream, int deadTicks) =>
+        isDirectStream
+            ? deadTicks == 20 || deadTicks >= 25 && deadTicks % 15 == 0
+            : deadTicks is 15 or 25 || deadTicks >= 35 && deadTicks % 15 == 0;
+
+    //проверка необходимости ранней ротации протокола при зависании входящего трафика
+    private static bool ShouldRotateForRxStall(bool isDirectStream, int deadTicks, long currentSent, long bytesSentDuringStall) =>
+        isDirectStream
+            ? deadTicks >= 25 && (currentSent >= 16384 || bytesSentDuringStall >= 8192)
+            : deadTicks >= 55 || deadTicks >= 45 && bytesSentDuringStall >= 4096;
 }

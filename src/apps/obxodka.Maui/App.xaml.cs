@@ -46,12 +46,10 @@ internal sealed partial class App
 
                 var lastSyncTicks = Preferences.Default.Get(AppPreferenceKeys.AdblockLastSyncTicks, 0L);
                 var lastSync = new DateTime(lastSyncTicks, DateTimeKind.Utc);
-                if (DateTime.UtcNow - lastSync > TimeSpan.FromHours(24))
+                if (DateTime.UtcNow - lastSync > TimeSpan.FromHours(24) &&
+                    await DnsAdBlockRuleManager.SyncFromRemoteAsync(cacheFilePath: cacheFile))
                 {
-                    if (await DnsAdBlockRuleManager.SyncFromRemoteAsync(cacheFilePath: cacheFile))
-                    {
-                        Preferences.Default.Set(AppPreferenceKeys.AdblockLastSyncTicks, DateTime.UtcNow.Ticks);
-                    }
+                    Preferences.Default.Set(AppPreferenceKeys.AdblockLastSyncTicks, DateTime.UtcNow.Ticks);
                 }
             }
             catch
@@ -135,14 +133,8 @@ internal sealed partial class App
         }
 
         var pairs = query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var pair in pairs)
+        foreach (var kv in pairs.Select(static pair => pair.Split('=', 2)).Where(static kv => kv.Length == 2))
         {
-            var kv = pair.Split('=', 2);
-            if (kv.Length != 2)
-            {
-                continue;
-            }
-
             var key = Uri.UnescapeDataString(kv[0]).Trim();
             var val = Uri.UnescapeDataString(kv[1]).Trim();
             if (string.Equals(key, "email", StringComparison.OrdinalIgnoreCase))

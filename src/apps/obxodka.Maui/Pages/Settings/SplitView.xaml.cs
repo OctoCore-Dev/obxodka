@@ -315,6 +315,7 @@ public sealed partial class SplitView : IAdaptivePage
         }
         catch (TaskCanceledException)
         {
+            //поиск отменен новым вводом пользователя
         }
     }
 

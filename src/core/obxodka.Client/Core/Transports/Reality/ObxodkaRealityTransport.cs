@@ -239,6 +239,7 @@ public sealed class ObxodkaRealityTransport(
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
         {
+            //канал уже закрыт или отменен при штатном отключении
         }
         finally
         {
@@ -320,6 +321,7 @@ public sealed class ObxodkaRealityTransport(
         }
         catch (OperationCanceledException)
         {
+            //ожидание прервано отменой измерения mtu
         }
 
         lock (_receivedBurstMtus)
@@ -356,6 +358,7 @@ public sealed class ObxodkaRealityTransport(
         }
         catch (TimeoutException)
         {
+            //сервер не успел подтвердить синхронизацию mtu за отведенное окно
         }
         finally
         {
@@ -409,6 +412,7 @@ public sealed class ObxodkaRealityTransport(
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or ObjectDisposedException)
             {
+                //фоновые циклы уже завершаются при остановке транспорта
             }
         }
 
@@ -449,16 +453,7 @@ public sealed class ObxodkaRealityTransport(
         }
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var succeeded = 0;
-        foreach (var r in results)
-        {
-            if (r > 0)
-            {
-                succeeded++;
-            }
-        }
-
-        return succeeded;
+        return results.Count(static r => r > 0);
 
         async Task<int> WaitSingleProbeAsync(long probeKey, TaskCompletionSource<int> probeTcs, CancellationToken token)
         {
@@ -697,8 +692,9 @@ public sealed class ObxodkaRealityTransport(
             await Task.Delay(250).ConfigureAwait(false);
             await oldLeg.DisposeAsync().ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
         {
+            //старое плечо уже закрыто или сброшено удаленной стороной
         }
     }
 
@@ -728,6 +724,7 @@ public sealed class ObxodkaRealityTransport(
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or SocketException or ObjectDisposedException)
             {
+                //фоновые циклы уже завершаются при остановке транспорта
             }
         }
 
@@ -826,7 +823,10 @@ public sealed class ObxodkaRealityTransport(
                 rxOffset = 0;
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            //штатная остановка цикла чтения плеча
+        }
         catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException or ObjectDisposedException)
         {
             if (!leg.IsRetired && ReferenceEquals(_activeLeg, leg))
@@ -869,10 +869,9 @@ public sealed class ObxodkaRealityTransport(
                     var parts = info[3..].Split('|');
                     var ip4 = parts[0];
                     var ip6 = parts.Length > 1 ? parts[1] : string.Empty;
-                    foreach (var p in parts)
+                    foreach (var p in parts.Where(static p => p.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase)))
                     {
-                        if (p.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                            int.TryParse(p[4..], out var sMtu) &&
+                        if (int.TryParse(p[4..], out var sMtu) &&
                             sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                         {
                             OnMtuUpdated?.Invoke(sMtu);
@@ -1051,7 +1050,10 @@ public sealed class ObxodkaRealityTransport(
                 }
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            //штатная остановка цикла записи транспорта
+        }
         catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
         {
             AppLogger.LogWarning($"[OBXODKA-REALITY] Writer stopped: {ex.Message}");

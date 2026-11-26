@@ -621,12 +621,9 @@ public sealed partial class WindowsVpnService
             if (!string.IsNullOrEmpty(gw) && gw != "0.0.0.0" && !gw.Contains(':'))
             {
                 var physIf = physicalIfIndex > 0 ? (uint)physicalIfIndex : 0u;
-                foreach (var serverIp in serverIps)
+                foreach (var serverIp in serverIps.Where(static serverIp => !string.IsNullOrEmpty(serverIp) && IPAddress.TryParse(serverIp, out _)))
                 {
-                    if (!string.IsNullOrEmpty(serverIp) && IPAddress.TryParse(serverIp, out _))
-                    {
-                        _ = Win32NetworkHelper.AddIpv4Route(serverIp, "255.255.255.255", gw, physIf);
-                    }
+                    _ = Win32NetworkHelper.AddIpv4Route(serverIp, "255.255.255.255", gw, physIf);
                 }
             }
 

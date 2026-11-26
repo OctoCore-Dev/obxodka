@@ -187,12 +187,11 @@ public sealed partial class WindowsVpnService
             //сохраняем исходные dns настройки адаптеров перед лечением (если бекап еще не создан)
             await BackupAdapterDnsIfNeededAsync(targetIndices, GetDnsBackupPath()).ConfigureAwait(false);
 
-            foreach (var idx in targetIndices)
+            foreach (var ifGuid in targetIndices
+                         .Select(static idx => Win32NetworkHelper.TryGetInterfaceGuidByIndex(idx, out var guid) ? (Guid?)guid : null)
+                         .OfType<Guid>())
             {
-                if (Win32NetworkHelper.TryGetInterfaceGuidByIndex(idx, out var ifGuid))
-                {
-                    _ = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, false, "77.88.8.8,1.1.1.1");
-                }
+                _ = Win32NetworkHelper.SetInterfaceDnsServers(ifGuid, false, "77.88.8.8,1.1.1.1");
             }
 
             _ = Win32NetworkHelper.FlushDnsCache();
@@ -289,9 +288,8 @@ public sealed partial class WindowsVpnService
             }
 
             var lines = await File.ReadAllLinesAsync(backupPath).ConfigureAwait(false);
-            foreach (var line in lines)
+            foreach (var parts in lines.Select(static line => line.Split('|')))
             {
-                var parts = line.Split('|');
                 bool isIpv6;
                 int ifIndex;
                 string nicName;

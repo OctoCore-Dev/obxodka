@@ -252,7 +252,7 @@ public sealed class RayInspector
         var minTxWaitMs = Math.Max(150.0, rtt * 2.0);
         var minRxSilenceMs = Math.Max(2000.0, rtt * 4.0);
 
-        if (!(txAge >= minTxWaitMs) || !(txAge < 1500) || !(rxAge > minRxSilenceMs))
+        if (txAge < minTxWaitMs || txAge >= 1500 || rxAge <= minRxSilenceMs)
         {
             return false;
         }
@@ -307,7 +307,7 @@ public sealed class RayInspector
         }
 
         var silenceData = (nowTs - lastDataRx) * 1000.0 / Stopwatch.Frequency;
-        if (!(silenceData > 3500))
+        if (silenceData <= 3500)
         {
             return false;
         }

@@ -110,7 +110,7 @@ public sealed partial class SplitView
         if (scrollY <= 25.0)
         {
             _accumulatedScrollDelta = 0;
-            if (!_isHeaderHidden && !(Math.Abs(HeaderContainer.TranslationY) > 0.5))
+            if (!_isHeaderHidden && Math.Abs(HeaderContainer.TranslationY) <= 0.5)
             {
                 return;
             }
@@ -162,6 +162,7 @@ public sealed partial class SplitView
         }
         catch (OperationCanceledException)
         {
+            //анимация шапки отменена новым событием прокрутки
         }
     }
 

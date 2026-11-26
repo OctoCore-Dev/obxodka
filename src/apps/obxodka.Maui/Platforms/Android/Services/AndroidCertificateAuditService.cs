@@ -137,15 +137,8 @@ public sealed class AndroidCertificateAuditService(Context context) : ICertifica
     //извлечение имени общего сертификата из строки dn
     private static string? ExtractCommonName(string dn)
     {
-        foreach (var part in dn.Split(','))
-        {
-            var trimmed = part.AsSpan().Trim();
-            if (trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
-            {
-                return trimmed[3..].ToString();
-            }
-        }
-
-        return null;
+        return dn.Split(',')
+            .Select(static part => part.Trim())
+            .FirstOrDefault(static trimmed => trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))?[3..];
     }
 }

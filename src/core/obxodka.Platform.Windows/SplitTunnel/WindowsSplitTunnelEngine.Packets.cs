@@ -141,45 +141,50 @@ internal static partial class WindowsSplitTunnelEngine
         adapter.SendPacket(resp);
     }
 
-    //пересчет контрольных сумм заголовков ipv4 и TCP
+    //пересчет контрольных сумм заголовков ipv4 и tcp
     private static void ComputeIpv4AndTcpChecksum(byte[] pkt)
     {
-        uint ipSum = 0;
+        ComputeIpv4HeaderChecksum(pkt);
+        ComputeTcpHeaderChecksum(pkt);
+    }
+
+    //свертка 32-битной суммы до 16-битной контрольной суммы интернета
+    private static ushort FoldChecksum(uint sum)
+    {
+        while (sum >> 16 != 0)
+        {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+
+        return (ushort)~sum;
+    }
+
+    //пересчет контрольной суммы заголовка ipv4
+    private static void ComputeIpv4HeaderChecksum(byte[] pkt)
+    {
+        var ipSum = 0u;
         for (var i = 0; i < 20; i += 2)
         {
             ipSum += (uint)((pkt[i] << 8) | pkt[i + 1]);
         }
 
-        while (ipSum >> 16 != 0)
-        {
-            ipSum = (ipSum & 0xFFFF) + (ipSum >> 16);
-        }
+        var checksum = FoldChecksum(ipSum);
+        pkt[10] = (byte)(checksum >> 8);
+        pkt[11] = (byte)(checksum & 0xFF);
+    }
 
-        ipSum = ~ipSum;
-        pkt[10] = (byte)(ipSum >> 8);
-        pkt[11] = (byte)(ipSum & 0xFF);
-
-        uint tcpSum = 0;
-        tcpSum += (uint)((pkt[12] << 8) | pkt[13]);
-        tcpSum += (uint)((pkt[14] << 8) | pkt[15]);
-        tcpSum += (uint)((pkt[16] << 8) | pkt[17]);
-        tcpSum += (uint)((pkt[18] << 8) | pkt[19]);
-        tcpSum += 6u;
-        tcpSum += 20u;
-
-        for (var i = 20; i < 40; i += 2)
+    //пересчет контрольной суммы заголовка tcp с псевдозаголовком ipv4
+    private static void ComputeTcpHeaderChecksum(byte[] pkt)
+    {
+        var tcpSum = 6u + 20u;
+        for (var i = 12; i < 40; i += 2)
         {
             tcpSum += (uint)((pkt[i] << 8) | pkt[i + 1]);
         }
 
-        while (tcpSum >> 16 != 0)
-        {
-            tcpSum = (tcpSum & 0xFFFF) + (tcpSum >> 16);
-        }
-
-        tcpSum = ~tcpSum;
-        pkt[36] = (byte)(tcpSum >> 8);
-        pkt[37] = (byte)(tcpSum & 0xFF);
+        var checksum = FoldChecksum(tcpSum);
+        pkt[36] = (byte)(checksum >> 8);
+        pkt[37] = (byte)(checksum & 0xFF);
     }
 
     //обертывание ответа dns в ipv4/udp пакет для отправки в wintun

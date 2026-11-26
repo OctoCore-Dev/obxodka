@@ -494,58 +494,64 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
 
         try
         {
-            while (!ct.IsCancellationRequested)
+            using (response)
             {
-                var readCount = await stream.ReadAsync(rxBuf.AsMemory(rxFilled, rxBuf.Length - rxFilled), ct).ConfigureAwait(false);
-                if (readCount <= 0)
+                while (!ct.IsCancellationRequested)
                 {
-                    break;
-                }
-
-                rxFilled += readCount;
-
-                while (rxFilled - rxOffset >= ObxodkaFraming.HeaderSize)
-                {
-                    var headerSpan = rxBuf.AsSpan(rxOffset, ObxodkaFraming.HeaderSize);
-                    if (!ObxodkaFraming.TryDecodeHeader(headerSpan, out var totalLen, out var payloadLen, out var command, out var salt,
-                            sessionKey))
-                    {
-                        AppLogger.LogError("[OBXODKA-XHTTP] Frame header decode error, closing.");
-                        return;
-                    }
-
-                    if (rxFilled - rxOffset < totalLen)
+                    var readCount = await stream.ReadAsync(rxBuf.AsMemory(rxFilled, rxBuf.Length - rxFilled), ct).ConfigureAwait(false);
+                    if (readCount <= 0)
                     {
                         break;
                     }
 
-                    var payloadSpan = rxBuf.AsSpan(rxOffset + ObxodkaFraming.HeaderSize, payloadLen);
-                    if (command != ObxodkaFraming.CmdChaff && payloadLen > 0)
+                    rxFilled += readCount;
+
+                    while (rxFilled - rxOffset >= ObxodkaFraming.HeaderSize)
                     {
-                        ObxodkaFraming.UnmaskPayload(payloadSpan, salt, sessionKey);
+                        var headerSpan = rxBuf.AsSpan(rxOffset, ObxodkaFraming.HeaderSize);
+                        if (!ObxodkaFraming.TryDecodeHeader(headerSpan, out var totalLen, out var payloadLen, out var command, out var salt,
+                                sessionKey))
+                        {
+                            AppLogger.LogError("[OBXODKA-XHTTP] Frame header decode error, closing.");
+                            return;
+                        }
+
+                        if (rxFilled - rxOffset < totalLen)
+                        {
+                            break;
+                        }
+
+                        var payloadSpan = rxBuf.AsSpan(rxOffset + ObxodkaFraming.HeaderSize, payloadLen);
+                        if (command != ObxodkaFraming.CmdChaff && payloadLen > 0)
+                        {
+                            ObxodkaFraming.UnmaskPayload(payloadSpan, salt, sessionKey);
+                        }
+
+                        rxOffset += totalLen;
+
+                        HandleDecodedDownlinkFrame(command, payloadSpan, payloadLen);
                     }
 
-                    rxOffset += totalLen;
+                    if (rxOffset <= 0)
+                    {
+                        continue;
+                    }
 
-                    HandleDecodedDownlinkFrame(command, payloadSpan, payloadLen);
+                    var remaining = rxFilled - rxOffset;
+                    if (remaining > 0)
+                    {
+                        rxBuf.AsSpan(rxOffset, remaining).CopyTo(rxBuf);
+                    }
+
+                    rxFilled = remaining;
+                    rxOffset = 0;
                 }
-
-                if (rxOffset <= 0)
-                {
-                    continue;
-                }
-
-                var remaining = rxFilled - rxOffset;
-                if (remaining > 0)
-                {
-                    rxBuf.AsSpan(rxOffset, remaining).CopyTo(rxBuf);
-                }
-
-                rxFilled = remaining;
-                rxOffset = 0;
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            //штатная остановка цикла чтения downlink
+        }
         catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
                                        or InvalidOperationException)
         {
@@ -553,7 +559,6 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
         }
         finally
         {
-            response.Dispose();
             ArrayPool<byte>.Shared.Return(rxBuf);
             if (!_ipTcs.Task.IsCompleted)
             {
@@ -579,10 +584,9 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                     var parts = info[3..].Split('|');
                     var assignedIp = parts[0];
                     var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                    foreach (var part in parts)
+                    foreach (var part in parts.Where(static part => part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase)))
                     {
-                        if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                            int.TryParse(part[4..], out var sMtu) &&
+                        if (int.TryParse(part[4..], out var sMtu) &&
                             sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                         {
                             OnMtuUpdated?.Invoke(sMtu);
@@ -825,7 +829,10 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                 }
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            //штатная остановка цикла отправки uplink
+        }
         catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
                                        or InvalidOperationException or OperationCanceledException)
         {
@@ -874,7 +881,10 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
                     ct)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            //штатная остановка цикла отправки uplink
+        }
         catch (Exception ex) when (ex is IOException or SocketException or HttpRequestException or ObjectDisposedException
                                        or InvalidOperationException or OperationCanceledException)
         {
@@ -890,6 +900,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
             }
             catch (ObjectDisposedException)
             {
+                //семафор слотов уже освобожден при закрытии транспорта
             }
         }
     }
@@ -936,6 +947,7 @@ public sealed class ObxodkaXhttpTransport(int serverPort = 443, string? configur
             }
             catch (Exception ex) when (ex is IOException or HttpRequestException or ObjectDisposedException or InvalidOperationException)
             {
+                //ошибка отдельного пинга игнорируется до следующей итерации
             }
         }
     }

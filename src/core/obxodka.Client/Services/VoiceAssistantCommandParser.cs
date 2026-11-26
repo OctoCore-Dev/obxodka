@@ -77,14 +77,8 @@ public static class VoiceAssistantCommandParser
         }
 
         var pairs = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var pair in pairs)
+        foreach (var kv in pairs.Select(static pair => pair.Split('=', 2)).Where(static kv => kv.Length == 2))
         {
-            var kv = pair.Split('=', 2);
-            if (kv.Length != 2)
-            {
-                continue;
-            }
-
             var key = Uri.UnescapeDataString(kv[0]).Trim();
             if (!string.Equals(key, "action", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(key, "command", StringComparison.OrdinalIgnoreCase) &&

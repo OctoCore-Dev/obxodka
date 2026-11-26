@@ -229,13 +229,11 @@ internal static partial class WindowsSplitTunnelEngine
                     if (hasApps)
                     {
                         var flowKey = ((ulong)dstIpUint << 32) | ((uint)srcPort << 16) | dstPort;
-                        if (s_checkedUdpFlows.TryAdd(flowKey, 1))
+                        if (s_checkedUdpFlows.TryAdd(flowKey, 1) &&
+                            IsPortOwnedByBypassedProcess(false, srcPort, out var exeName))
                         {
-                            if (IsPortOwnedByBypassedProcess(false, srcPort, out var exeName))
-                            {
-                                PinPhysicalHostRoute(dstIpUint, exeName);
-                                return true;
-                            }
+                            PinPhysicalHostRoute(dstIpUint, exeName);
+                            return true;
                         }
                     }
 
@@ -295,14 +293,13 @@ internal static partial class WindowsSplitTunnelEngine
                                 }
                             }
 
-                            if (hasApps && (payload[0] == 0x16 || payload[0] == (byte)'G' || payload[0] == (byte)'P'))
+                            if (hasApps &&
+                                (payload[0] == 0x16 || payload[0] == (byte)'G' || payload[0] == (byte)'P') &&
+                                IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
                             {
-                                if (IsPortOwnedByBypassedProcess(true, srcPort, out var exeName))
-                                {
-                                    PinPhysicalHostRoute(dstIpUint, exeName);
-                                    SendTcpReset(packet, ihl, adapter);
-                                    return true;
-                                }
+                                PinPhysicalHostRoute(dstIpUint, exeName);
+                                SendTcpReset(packet, ihl, adapter);
+                                return true;
                             }
                         }
                     }
@@ -431,9 +428,8 @@ internal static partial class WindowsSplitTunnelEngine
         BinaryPrimitives.WriteUInt16BigEndian(hdr.Slice(4, 2), 1);
         ms.Write(hdr);
 
-        foreach (var label in labels)
+        foreach (var bytes in labels.Select(Encoding.ASCII.GetBytes))
         {
-            var bytes = Encoding.ASCII.GetBytes(label);
             ms.WriteByte((byte)bytes.Length);
             ms.Write(bytes);
         }

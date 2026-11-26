@@ -544,10 +544,9 @@ public sealed partial class ObxodkaStreamTransport
                             var parts = info[3..].Split('|');
                             var assignedIp = parts[0];
                             var assignedIpV6 = parts.Length > 1 ? parts[1] : string.Empty;
-                            foreach (var part in parts)
+                            foreach (var part in parts.Where(static part => part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase)))
                             {
-                                if (part.StartsWith("MTU:", StringComparison.OrdinalIgnoreCase) &&
-                                    int.TryParse(part[4..], out var sMtu) &&
+                                if (int.TryParse(part[4..], out var sMtu) &&
                                     sMtu is >= SmartMtuEngine.MinMtu and <= SmartMtuEngine.MaxMtu)
                                 {
                                     OnMtuUpdated?.Invoke(sMtu);
@@ -618,12 +617,9 @@ public sealed partial class ObxodkaStreamTransport
                                 OnPingUpdated?.Invoke(elapsedMs);
                             }
 
-                            if (_pendingMtuProbes.TryRemove(sendTs, out var probeTcs))
+                            if (_pendingMtuProbes.TryRemove(sendTs, out var probeTcs) && probeTcs is not null)
                             {
-                                if (probeTcs != null)
-                                {
-                                    _ = probeTcs.TrySetResult(payloadLen);
-                                }
+                                _ = probeTcs.TrySetResult(payloadLen);
                             }
                         }
                         else if (command == ObxodkaFraming.CmdMtuSync)

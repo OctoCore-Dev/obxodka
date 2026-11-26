@@ -1380,9 +1380,14 @@ public sealed class Tls13CryptoStream : Stream
         while (total < buffer.Length)
         {
             var n = await stream.ReadAsync(buffer[total..], ct).ConfigureAwait(false);
+            if (n == 0 && total == 0)
+            {
+                return false;
+            }
+
             if (n == 0)
             {
-                return total == 0 ? false : throw new EndOfStreamException("Truncated TLS 1.3 record header.");
+                throw new EndOfStreamException("Truncated TLS 1.3 record header.");
             }
 
             total += n;
