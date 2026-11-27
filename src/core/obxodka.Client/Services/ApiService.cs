@@ -93,8 +93,8 @@ public sealed class ApiService(HttpClient client)
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
-            //для прямого подключения к ip включаем строгий sha-256 spki пиннинг нашего корневого сертификата
-            SslOptions = SslOptionsFactory.Create(dynamicPinningHash: AppSecrets.DirectServerSpkiPin),
+            //для прямого подключения к ip проверяем резервные sha-256 пины и строгую ca-цепочку доменов obxodka без поломки при ротации let's encrypt
+            SslOptions = SslOptionsFactory.Create(dynamicPinningHash: string.Empty),
             ConnectCallback = async (context, cToken) =>
             {
                 var targetIp = IPAddress.TryParse(context.DnsEndPoint.Host, out var parsedHostIp)
@@ -592,7 +592,7 @@ public sealed class ApiService(HttpClient client)
                                                or InvalidOperationException)
                 {
                     lastEx = ex;
-                    AppLogger.LogError($"[API DIRECT DPI ERROR] {method} {relayIp} ({directHost}): {ex.Message}", ex);
+                    AppLogger.LogWarning($"[API DIRECT DPI WARN] {method} {relayIp} ({directHost}): {ex.Message}");
                 }
             }
         }

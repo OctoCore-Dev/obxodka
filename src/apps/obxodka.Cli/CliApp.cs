@@ -1379,7 +1379,7 @@ public sealed class CliApp : IDisposable
                 [CliAnsiUi.PaintBold("completion powershell|bash|zsh", CliAnsiUi.Cyan), "—", "Скрипт автодополнения оболочки"]
             ]);
         Console.WriteLine();
-        CliAnsiUi.PrintInfo($"Флаги connect: {CliAnsiUi.Paint("--protocol <auto|stream|ws|xhttp|reality>  --kill-switch  --adblock  --block-ipv6  --mtu <n>  --json", CliAnsiUi.White)}");
+        CliAnsiUi.PrintInfo($"Флаги connect: {CliAnsiUi.Paint("--protocol <auto|ws|xhttp|reality>  --kill-switch  --adblock  --block-ipv6  --mtu <n>  --json", CliAnsiUi.White)}");
     }
 
     private sealed class AdapterScope(ITunnelPlatformAdapter adapter, IDisposable? disposable) : IDisposable

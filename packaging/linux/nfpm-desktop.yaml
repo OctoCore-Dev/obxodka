@@ -1,0 +1,72 @@
+name: obxodka-desktop
+arch: "${PKG_ARCH}"
+platform: linux
+version: "${PKG_VERSION}"
+release: "1"
+section: net
+priority: optional
+maintainer: "OctoCore <support@obxodka.one>"
+description: |
+  Obxodka VPN Desktop client (Avalonia UI + Octopus Core).
+  Cross-platform desktop GUI VPN client for Linux with OBX-V9 Hydra, OBX-V8 Chameleon, XHTTP, Reality, WebSocket Shield and L3 TUN routing.
+vendor: OctoCore
+homepage: https://github.com/OctoCore-Dev/obxodka
+license: AGPL-3.0-only
+
+overrides:
+  deb:
+    depends:
+      - libx11-6
+      - libice6
+      - libsm6
+      - libfontconfig1
+      - iproute2
+      - ca-certificates
+    recommends:
+      - libcap2-bin
+  rpm:
+    depends:
+      - libX11
+      - libICE
+      - libSM
+      - fontconfig
+      - iproute
+      - ca-certificates
+    recommends:
+      - libcap
+  archlinux:
+    depends:
+      - libx11
+      - libice
+      - libsm
+      - fontconfig
+      - iproute2
+      - ca-certificates
+      - libcap
+
+contents:
+  - src: "${STAGE_DIR}/"
+    dst: /usr/lib/obxodka-desktop
+  - src: packaging/linux/obxodka-desktop-launcher.sh
+    dst: /usr/bin/obxodka-desktop
+    file_info:
+      mode: 0755
+  - src: src/apps/obxodka.Avalonia/packaging/obxodka.desktop
+    dst: /usr/share/applications/obxodka.desktop
+    file_info:
+      mode: 0644
+  - src: .github/assets/icons/octo.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/obxodka.svg
+    file_info:
+      mode: 0644
+  - src: src/apps/obxodka.Avalonia/Assets/AppIcon/appiconfg.png
+    dst: /usr/share/icons/hicolor/512x512/apps/obxodka.png
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/obxodka-desktop/LICENSE
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/linux/postinstall-desktop.sh

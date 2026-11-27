@@ -51,7 +51,7 @@ public sealed class MainActivity : MauiAppCompatActivity
             {
                 WindowCompat.SetDecorFitsSystemWindows(earlyWindow, false);
 
-                if (OperatingSystem.IsAndroidVersionAtLeast(30))
+                if (OperatingSystem.IsAndroidVersionAtLeast(30) && !OperatingSystem.IsAndroidVersionAtLeast(35))
                 {
 #pragma warning disable CA1422
                     earlyWindow.NavigationBarContrastEnforced = false;
@@ -374,11 +374,15 @@ public sealed class MainActivity : MauiAppCompatActivity
             }
 
             var systemBars = insets.GetInsets(WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
-            var density = Platform.AppContext.Resources?.DisplayMetrics?.Density ?? 1.0f;
+            var density = v?.Context?.Resources?.DisplayMetrics?.Density
+                          ?? Android.App.Application.Context.Resources?.DisplayMetrics?.Density
+                          ?? 1.0f;
             var topDp = (systemBars?.Top ?? 0) / density;
             var bottomDp = (systemBars?.Bottom ?? 0) / density;
+            var leftDp = (systemBars?.Left ?? 0) / density;
+            var rightDp = (systemBars?.Right ?? 0) / density;
 
-            SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp);
+            SafeAreaHelper.NotifyInsetsChanged(topDp, bottomDp, leftDp, rightDp);
 
             //обнуляем только системные панели и вырез, оставляя инсеты клавиатуры (ime) нетронутыми
             using var insetsBuilder = new WindowInsetsCompat.Builder(insets);

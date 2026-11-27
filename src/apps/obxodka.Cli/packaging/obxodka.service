@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/obxodka connect --kill-switch
+ExecStart=/usr/bin/obxodka connect --kill-switch
 KillSignal=SIGTERM
 TimeoutStopSec=15
 Restart=on-failure

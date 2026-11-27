@@ -103,6 +103,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: "[CACHE-DIR] Ensure Build Cache Directory"
+        run: |
+          CACHE_DIR="${RUNNER_TEMP}/build-cache"
+          mkdir -p "$CACHE_DIR"
+          echo "BUILD_CACHE_PATH=$CACHE_DIR" >> "$GITHUB_ENV"
+
       - name: "[SETUP-JAVA] Setup Java JDK 21"
         uses: actions/setup-java@v6
         with:

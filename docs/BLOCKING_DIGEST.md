@@ -4,6 +4,96 @@
 
 ---
 
+## [27.11.2026 23:30 UTC+5] — Мониторинг за 24–48 часов (25–27.11.2026): ночные сбои мобильных сетей РФ, блокировки VPS и DoH/DoT, «эффект 16 КБ» и аудит `AppSecrets.cs` / `AllowedSniPool`
+
+### 1. Сетевые инциденты, фильтрация ТСПУ и действия РКН (25–27 ноября 2026)
+- **Регулярные ночные и региональные сбои мобильного и ШПД-интернета (25–27 ноября 2026)**:
+  - По данным мониторингов («Сбой.рф», DownDetector) и региональных СМИ («Фонтанка», News.ru и др.) 25–27 ноября зафиксирована очередная серия массовых перебоев у **МТС, «МегаФона», «Билайна», Т2 (Tele2)** и **«Ростелекома»** в Москве, Санкт-Петербурге и Ленобласти, Краснодарском крае, Свердловской, Нижегородской, Новосибирской и ряде других областей.
+  - В ночь на 27 ноября зафиксирован резкий всплеск жалоб у абонентов **МТС** в Петербурге и Ленобласти (пропадание мобильного интернета и сбои голосовой связи). Основные причины — превентивные ограничения передачи данных в периоды угроз БПЛА / работы ПВО, локальные повреждения линий связи, а также перенастройки и побочные эффекты работы узлов ТСПУ.
+- **Усиление блокировок зарубежных VPS, «эффект 16 КБ» и поведенческий DPI (`ntc.party`, Habr, ЗаТелеком)**:
+  - На форуме `ntc.party` и в публикациях на Хабре в конце ноября продолжают фиксироваться массовые случаи полной блокировки IP зарубежных VPS и хостинг-провайдеров (**Cloudflare, Hetzner, OVH, DigitalOcean**), а также точечные баны портов и «заморозки» соединений после первых **~16 КБ** трафика (`16кб блокировки`).
+  - Отмечается развитие ML-аналитики на связке АСБИ+ТСПУ: системы выявляют туннели (включая *VLESS+REALITY*, *Hysteria 2*) по статистике длин пакетов, асимметрии потока и ритму служебных таймингов, сокращая срок жизни «нетипичных» IP до часов — 1–3 дней.
+- **Блокировка DoH / DoT-резолверов (`ntc.party`)**:
+  - Участники `ntc.party` фиксируют усиление фильтрации зашифрованного DNS-трафика (**DoH/DoT**) к ведущим зарубежным резолверам (**Google, Cloudflare, Quad9, OpenDNS**), что нарушает штатный резолвинг доменов при старте подключений.
+- **TLS SNI / ClientHello, Cloudflare ECH и порты 443 / 8443**:
+  - Сохраняется жёсткая сигнатурная фильтрация **Cloudflare ECH** (внешний SNI `cloudflare-ech.com` + расширение `encrypted_client_hello`) с тихим сбросом пакетов без `TCP RST`.
+  - Порты `443` и `8443` на мобильных сетях (CGNAT) и ШПД контролируются равнозначно: любое отклонение от браузерных паттернов TLS или аномалия в ритме/размерах пакетов на `8443` ведёт к сбросу (`TCP RST`) или троттлингу.
+- **Статус протоколов и сервисов (25–27 ноября 2026)**:
+  - **WireGuard**: «чистый» WireGuard практически полностью заблокирован по статической сигнатуре handshake на всех крупных операторах; работают только обфусцированные варианты (AmneziaWG и др.) или инкапсуляция.
+  - **Shadowsocks**: неструктурированные потоки без маскировки под HTTPS быстро выявляются эвристиками и поведенческим DPI.
+  - **YouTube и Discord**: остаются под жёсткими ограничениями (отсутствие в НСДИ / замедление YouTube и блокировка Discord); при использовании локальных DPI-утилит (*Zapret*, *ByeDPI*) стабильность снижается из-за «16 КБ» фильтров и деградации мобильных каналов.
+  - **Roblox**: сохраняются периодические сбои подключения к игровым серверам на фоне фильтрации CDN-пулов и мобильных ограничений.
+  - **Apple и Google**: тотальной блокировки нет, но фиксируются сбои DoH/DoT (`8.8.8.8`), а также нестабильность отдельных API и сервисов на мобильных сетях при общих ограничениях передачи данных.
+  - *Примечание по источникам*: проект «РосКомСвобода» ранее прекратил активную операционную деятельность; мониторинг GlobalCheck фиксирует базовую доступность доменов/IP, но не отражает деградацию скорости, «эффект 16 КБ» и ночные ограничения мобильного интернета.
+- **Падение эффективного Path MTU (`ntc.party`, мобильные и ШПД-сети)**:
+  - На мобильных сетях (GTP + CGNAT) и ШПД (PPPoE/VLAN) с фильтрацией ТСПУ сохраняется подавление ICMP `Fragmentation Needed` и проблемы с фрагментацией IP-пакетов. При MTU `1420–1500` соединения уходят в **MTU blackhole** сразу после handshake; рабочие значения на проблемных трассах — `1280–1360` байт.
+
+### 2. Аудит `AppSecrets.cs` и `AllowedSniPool`
+- **Статус файла и пула**: файл `src/core/obxodka.Shared/Config/AppSecrets.cs` в репозитории отсутствует. Актуальный класс находится в `src/core/obxodka.Client/Security/AppSecrets.cs` и содержит только `BackupPublicKeyHashes`, XOR-маскированный ключ `s_obfuscatedSecret` (`InternalPfxPassword`) и обфускацию `obx://` (`EncodeObfuscatedEndpoint` / `DecodeObfuscatedEndpoint`).
+- **Статус `AllowedSniPool`**: полностью удалён из `src/`. В `src/core/obxodka.Client/Core/Engine/SniEngine.cs` для прямого `ObxodkaStream` применяется **Zero-SNI** (`EffectiveSni = null`), а для `ObxodkaWebSocket` / `ObxodkaXhttp` — домены зеркал из `BootstrapConfig.Mirrors` и `AppConfig.PrimaryDomain`. Расширение ECH (`0xfe0d`) в `src/` не формируется.
+- **Прогресс по прошлым рекомендациям (уже исправлено в коде)**:
+  - В `src/core/obxodka.Client/Config/DiagnosticEndpoints.cs` удалены `www.google.com/generate_204` и `proof.ovh.net` — оставлены внутрироссийские узлы (`ya.ru`, `77.88.8.8`, `vk.com`, `speedtest.selectel.ru`, `mirror.yandex.ru`).
+  - В `src/core/obxodka.Shared/MtuEngine/SmartMtuEngine.cs` стартовый `InitialMtu` снижен с `1420` до `1360`.
+  - В `ObxodkaWebSocketTransport.Pumps.cs` (строки 247–248) и `ObxodkaXhttpTransport.cs` (строки 748–749) включён ранний анти-ML паддинг в окне `ObxodkaFraming.EarlyStageWindowBytes` (`isEarly`), а в `ObxodkaXhttpTransport.PingLoopAsync` (строка 941) добавлен джиттер `jitteredDelayMs`.
+- **Оставшиеся уязвимые домены и резолверы в конфигах**:
+  - `src/core/obxodka.Client/Config/DnsDefaults.cs`: `DohResolvers` открывается с `https://cloudflare-dns.com/dns-query`, далее `dns.adguard.com`, `1.1.1.1/dns-query`, `8.8.8.8/resolve` — все они подвержены свежим блокировкам DoH/DoT в РФ (включая `1.1.1.1:443` в `OctopusEngine.Uplink.cs`, строка 70).
+  - `src/core/obxodka.Client/Config/MirrorConfig.cs`: `RemoteServersDiscoveryUrls` по-прежнему опирается только на зарубежные CDN/GitHub (`cdn.jsdelivr.net`, `raw.githubusercontent.com`, `fastly.jsdelivr.net`, `gcore.jsdelivr.net`).
+- **Рекомендуемые замены**:
+  - Сохранять **Zero-SNI** для прямого Origin IP (никаких подставных `*.apple.com`, `google.com`, `cloudflare-ech.com`).
+  - В `DnsDefaults.cs` добавить в `DohResolvers` внутрироссийский DoH-резолвер (например, Яндекс DNS DoH `https://common.dot.dns.yandex.net/dns-query`) с высоким приоритетом при сбоях зарубежных DoH, а в `OctopusEngine.Uplink.cs` не полагаться исключительно на `1.1.1.1:443`.
+  - В `MirrorConfig.cs` добавить резервный discovery-URL для `servers.json` на собственном зеркале/API вне контура GitHub/jsDelivr/Fastly.
+
+### 3. Конкретные действия для кодовой базы Obxodka
+1. **Резервировать DoH и uplink-проверки от блокировки зарубежных резолверов**: в `src/core/obxodka.Client/Config/DnsDefaults.cs` (`DohResolvers`, строки 31–37) добавить российский DoH-резерв (и не ставить `cloudflare-dns.com` единственным/безальтернативным первым шагом при недоступности Cloudflare), а в `src/core/obxodka.Client/Core/Engine/OctopusEngine.Uplink.cs` (строка 70) добавить fallback-цель помимо `1.1.1.1:443` (например, `77.88.8.8:443`).
+2. **Добавить независимый discovery-эндпоинт в `MirrorConfig.cs`**: в `src/core/obxodka.Client/Config/MirrorConfig.cs` (`RemoteServersDiscoveryUrls`, строки 13–19) включить собственное зеркало/API вне `jsdelivr.net` и `raw.githubusercontent.com` на случай волновых TLS-сбоев зарубежных CDN.
+3. **Ускорить реакцию `MtuWatchdog` при мобильных просадках до `1280`**: в `src/core/obxodka.Client/Core/Engine/OctopusEngine.MtuWatchdog.cs` (`ArmTrafficWatchdog`, строка 22) `ScheduleSmartMtuScan(4000)` по-прежнему ждёт 4 секунды на прямом `ObxodkaStream`. При частых мобильных ограничениях (GTP/CGNAT) рассмотреть сокращение задержки до `1500–2000` мс или старт с `1280` при детектировании мобильной сети.
+
+---
+
+## [24.11.2026 19:45 UTC+5] — Мониторинг за 24–48 часов (22–24.11.2026): массовые сбои мобильных сетей РФ, деградация DPI-обхода, фильтрация ECH/SNI/MTU и аудит `AppSecrets.cs` / `AllowedSniPool`
+
+### 1. Сетевые инциденты, фильтрация ТСПУ и действия РКН (22–24 ноября 2026)
+- **Массовые ограничения и сбои мобильного и ШПД-интернета (22–24 ноября 2026)**:
+  - По данным мониторингов («Сбой.рф», DownDetector) и региональных сообщений 22–24 ноября зафиксирована новая волна перебоев связи в десятках субъектов РФ (Москва, Санкт-Петербург, Новосибирская, Свердловская, Нижегородская, Самарская, Челябинская области, Краснодарский край, Татарстан и др.) у операторов **МТС, «МегаФон», «Билайн», Т2 (Tele2), Yota** и на сетях **«Ростелекома»**.
+  - Проявления: полное пропадание мобильной передачи данных либо падение скорости до долей Мбит/с, зависания приложений, банковских сервисов и навигации. Основные причины — превентивные ограничения БС и пропускной способности при режимах воздушной/беспилотной опасности, а также перегрузка и перенастройки фильтрации на узлах ТСПУ.
+- **Поведенческий DPI, «эффект 16 КБ» и короткий срок жизни IP (Habr, `ntc.party`, ЗаТелеком)**:
+  - Сохраняется активная работа поведенческого и ML-анализа на узлах ТСПУ: отслеживаются отпечатки TLS (`JA3`/`JA4`), распределение длин пакетов, ритм соединений и окно первых ~16 КБ трафика после рукопожатия, после чего подозрительные потоки замораживаются или режутся.
+  - Сроки жизни IP-адресов зарубежных VPS (например, Hetzner и др.) при шаблонной настройке одиночных туннелей сократились до нескольких часов — 1–3 дней; отмечаются точечные блокировки конкретных IP при сохранении доступности соседних адресов подсети.
+- **TLS SNI / ClientHello, Cloudflare ECH и порты 443 / 8443**:
+  - На `ntc.party` и Хабре подтверждается жёсткая фильтрация **Cloudflare ECH**: при наличии внешнего SNI `cloudflare-ech.com` и расширения `encrypted_client_hello` ТСПУ выполняет тихий сброс (`drop` / blackhole без `TCP RST`), что приводит к ~минутному зависанию до fallback.
+  - Продолжаются регулярные и волновые сбои/блокировки пулов IP зарубежных CDN и хостингов (Cloudflare, Hetzner, OVH и др.). Порты `443` и `8443` находятся под равнозначным L7/поведенческим контролем ТСПУ.
+- **Статус протоколов и сервисов (22–24 ноября 2026)**:
+  - **WireGuard**: «чистый» WireGuard практически полностью блокируется на этапе первичного UDP handshake по статическим сигнатурам; жизнеспособны только обфусцированные модификации (например, AmneziaWG с junk-пакетами) или инкапсуляция в маскирующий транспорт.
+  - **Shadowsocks**: классические и неструктурированные потоки без обёрток под легитимный веб-трафик быстро выявляются эвристиками, корреляционным анализом и повторными отпечатками `JA3`.
+  - **YouTube и Discord**: сохраняются официальные ограничения и блокировки; 23–24 ноября на фоне общего ухудшения сетей и ужесточения фильтрации ТСПУ пользователи массово сообщали о потере стабильности даже при использовании локальных утилит DPI-обхода (*Zapret*, *ByeDPI*, прокси — скачки пинга и разрывы).
+  - **Roblox**: продолжаются периодические сбои подключения к серверам (включая ошибку `277` и долгую загрузку), усиливающиеся на фоне фильтрации CDN и региональных деградаций связи.
+  - **Apple и Google**: тотальной блокировки на проводном ШПД не зафиксировано, однако на мобильном интернете 23–24 ноября наблюдаются нестабильность, задержки и отказы отдельных сервисов/API из-за общих ограничений передачи данных. Дополнительно в этот период фиксировались сбои доступа к игровым серверам *Rockstar Games* и *Steam*.
+  - *Примечание по источникам*: в сводках правозащитного и телеком-мониторинга (включая публикации «Роскомсвободы», «ЗаТелеком» и GlobalCheck) отмечаются дальнейшее расширение реестров/внесудебных блокировок, рост нагрузки и сбоев в работе ТСПУ (вплоть до кратковременных переходов в `bypass` при перегрузках) и деградация качества связи для абонентов.
+- **Падение эффективного Path MTU (`ntc.party`, ЗаТелеком)**:
+  - Из-за каскадной инкапсуляции (GTP у мобильных операторов, PPPoE/VLAN на ШПД) и промежуточных узлов ТСПУ некалиброванный или завышенный MTU (`1420–1500`) продолжает провоцировать «залипание» соединений после handshake и ломает стратегии десинхронизации/обхода без динамической подгонки под реальный MSS.
+
+### 2. Аудит `AppSecrets.cs` и `AllowedSniPool`
+- **Статус файла и пула**: файл `src/core/obxodka.Shared/Config/AppSecrets.cs` в репозитории отсутствует. Актуальный класс расположен в `src/core/obxodka.Client/Security/AppSecrets.cs` и содержит только `BackupPublicKeyHashes`, XOR-маскированный пароль PFX (`s_obfuscatedSecret`, `s_secretMask`, `InternalPfxPassword`) и методы обфускации `obx://` (`EncodeObfuscatedEndpoint` / `DecodeObfuscatedEndpoint`).
+- **Статус `AllowedSniPool`**: полностью удалён из `src/` (встречается только в исторических отчётах `docs/`).
+  - В `src/core/obxodka.Client/Core/Engine/SniEngine.cs` для прямого `ObxodkaStream` (и прямых узлов) используется **Zero-SNI** (`EffectiveSni = null` в `ResolveTransportStrategy` и `TargetSni: null` в `BuildProtocolRotationRing`), перебор портов `[443, 8443, 2053]` (`BuildStreamCandidates`) и ротация профилей `TlsBrowserProfile`.
+  - Для облачного щита (`ObxodkaWebSocket` / `ObxodkaXhttp`) используются реальные домены зеркал из `BootstrapConfig.Mirrors` и `AppConfig.PrimaryDomain` с приоритетом альтернативных пулов в `GetPrioritizedMirrorHosts()`.
+  - В `src/core/obxodka.Shared/Stealth/ClientHello/ChromiumHello.cs` расширение TLS ECH (`0xfe0d`) не формируется (в `src/` отсутствует).
+- **Уязвимые сторонние домены в смежных конфигах**:
+  - `src/core/obxodka.Client/Config/DiagnosticEndpoints.cs`: `PingEndpoints` содержит `https://www.google.com/generate_204`, а `SpeedTestDownloadCandidates` — `https://proof.ovh.net/files/100Mb.dat` (подвержены мобильной деградации, фильтрации и троттлингу ТСПУ).
+  - `src/core/obxodka.Client/Config/MirrorConfig.cs`: `RemoteServersDiscoveryUrls` опирается исключительно на `cdn.jsdelivr.net`, `raw.githubusercontent.com`, `fastly.jsdelivr.net`, `gcore.jsdelivr.net` (уязвимы к волновым сбоям TLS на зарубежных CDN).
+- **Рекомендуемые замены и политика доменов**:
+  - Не возвращать чужие SNI (`*.apple.com`, `www.google.com`, `dl.google.com`, `gitlab.com`, `epicgames.com`, `cloudflare-ech.com`) на прямые VPS IP — сохранять **Zero-SNI** для прямого Origin IP и собственные домены на альтернативных Edge-пулах для WS/XHTTP.
+  - В `DiagnosticEndpoints.cs` убрать или вынести в последний fallback `www.google.com/generate_204` и `proof.ovh.net`, оставив приоритет внутрироссийским узлам (`https://ya.ru/favicon.ico`, `https://77.88.8.8/`, `https://speedtest.selectel.ru/100MB`, `https://mirror.yandex.ru/debian/ls-lR.gz`; при необходимости добавить нейтральный РФ-чекер уровня `https://vk.com/favicon.ico`).
+  - В `MirrorConfig.cs` добавить резервный discovery-URL для `servers.json` вне контура GitHub/Fastly/jsDelivr (собственное зеркало/API).
+
+### 3. Конкретные действия для кодовой базы Obxodka
+1. **Включить Early-Stage 16 КБ паддинг в WS и XHTTP**: в `src/core/obxodka.Client/Core/Transports/Stream/ObxodkaStreamTransport.Duplex.cs` (строки 307–309) учитывается окно `ObxodkaFraming.EarlyStageWindowBytes` (`isEarly`), тогда как в `src/core/obxodka.Client/Core/Transports/WebSocket/ObxodkaWebSocketTransport.Pumps.cs` (строка 249) и `src/core/obxodka.Client/Core/Transports/Xhttp/ObxodkaXhttpTransport.cs` (строка 729) `ObxodkaFraming.CalculatePaddingLength(cmd, payloadLength, SmartMtuEngine.CurrentMtu)` вызывается без `isEarlySession`. Необходимо считать переданные байты стартового окна и передавать `isEarlySession` в обоих транспортах.
+2. **Убрать фиксированный 5-секундный маяк в XHTTP**: в `src/core/obxodka.Client/Core/Transports/Xhttp/ObxodkaXhttpTransport.cs` (`PingLoopAsync`, строка 813) используется константный `Task.Delay(5000, ct)`. Добавить случайный джиттер (например, `4200–7200` мс) для защиты от поведенческого DPI.
+3. **Снизить стартовый `InitialMtu` для прямого `ObxodkaStream`**: в `src/core/obxodka.Shared/MtuEngine/SmartMtuEngine.cs` (строка 7) задан `InitialMtu = 1420`, а `OctopusEngine.MtuWatchdog.cs` (`ArmTrafficWatchdog`, строка 22) откладывает `ScheduleSmartMtuScan(4000)` на 4 секунды. Понизить `InitialMtu` до `1340–1360` или стартовать с `DefaultMtu = 1280` с быстрой эскалацией вверх, чтобы избежать 4-секундного MTU blackhole на мобильных сетях.
+4. **Обновить `DiagnosticEndpoints.cs` и `MirrorConfig.cs`**: исключить или понизить приоритет `www.google.com/generate_204` и `proof.ovh.net` в `DiagnosticEndpoints.cs` и добавить резервный discovery-эндпоинт вне GitHub/Fastly/jsDelivr в `MirrorConfig.cs`.
+
+---
+
 ## [21.11.2026 17:05 UTC+5] — Мониторинг за 24–48 часов (19–21.11.2026): поведенческий DPI и карантин IP, региональные сбои мобильных сетей РФ, аудит `AppSecrets.cs` / `AllowedSniPool`
 
 ### 1. Сетевые инциденты, фильтрация ТСПУ и действия РКН (19–21 ноября 2026)

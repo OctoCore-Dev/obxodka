@@ -10,6 +10,7 @@ public static class AppSecrets
     public static readonly string[] BackupPublicKeyHashes =
     [
         DirectServerSpkiPin,
+        "Eh281nBJd3g7kh+aY2iUfg6fAIfJ/J56F3bMDg4+0D0=",
         "xZIbvT6/B+lfJmN4F7NEnEF4uZQYdP5sXDKZqsLQS1U="
     ];
 

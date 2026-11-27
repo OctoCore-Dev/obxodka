@@ -6,8 +6,8 @@
     <SolutionTitle Condition="'$(_FirstSlnx)' != ''">$([System.IO.Path]::GetFileNameWithoutExtension('$(_FirstSlnx)'))</SolutionTitle>
 
     <!-- Версия приложения и метаданные сборки (AppVersion / AppBuildNumber используются CI, MSIX, Google Play и Inno Setup) -->
-    <AppVersion>6.4.0</AppVersion>
-    <AppBuildNumber>108</AppBuildNumber>
+    <AppVersion>6.4.1</AppVersion>
+    <AppBuildNumber>115</AppBuildNumber>
     <VersionPrefix>$(AppVersion)</VersionPrefix>
     <Version>$(AppVersion)</Version>
     <PackageVersion>$(AppVersion)</PackageVersion>
