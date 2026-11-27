@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
+PackageIdentifier: OctoCore.Obxodka.Cli
+PackageVersion: ${PKG_VERSION}
+PackageLocale: ru-RU
+Publisher: OctoCore
+PublisherUrl: https://github.com/OctoCore-Dev
+PublisherSupportUrl: https://github.com/OctoCore-Dev/obxodka/issues
+PrivacyUrl: https://github.com/OctoCore-Dev/obxodka/blob/main/PRIVACY_POLICY.md
+Author: OctoCore
+PackageName: Obxodka CLI
+PackageUrl: https://github.com/OctoCore-Dev/obxodka
+License: GNU AGPLv3
+LicenseUrl: https://github.com/OctoCore-Dev/obxodka/blob/main/LICENSE
+Copyright: Copyright (c) OctoCore
+ShortDescription: Кроссплатформенный CLI-клиент Obxodka VPN (OBX-V9 Hydra, OBX-V8 Chameleon, XHTTP, Reality, WebSocket).
+Moniker: obxodka
+Tags:
+  - vpn
+  - cli
+  - stealth
+  - dpi-bypass
+  - wintun
+  - obxodka
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: obxodka.exe
+    PortableCommandAlias: obxodka
+  - RelativeFilePath: obx.cmd
+    PortableCommandAlias: obx
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/OctoCore-Dev/obxodka/releases/download/v${PKG_VERSION}/obxodka-cli-win-x64.zip
+    InstallerSha256: ${INSTALLER_SHA256}
+ManifestType: singleton
+ManifestVersion: 1.6.0

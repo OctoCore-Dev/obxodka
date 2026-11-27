@@ -38,9 +38,23 @@
     <Folder Name="/.docs/">
         <File Path="README.md"/>
         <File Path="LICENSE"/>
-        <File Path="AGENTS.md"/>
         <File Path="PRIVACY_POLICY.md"/>
         <File Path="TERMS_OF_SERVICE.md"/>
+        <File Path="docs/ARCHITECTURE.md"/>
+        <File Path="docs/CLI_AND_LINUX.md"/>
+        <File Path="docs/TROUBLESHOOTING.md"/>
+    </Folder>
+    <Folder Name="/.packaging/">
+        <File Path="packaging/linux/build-repo.sh"/>
+        <File Path="packaging/linux/install.sh"/>
+        <File Path="packaging/linux/nfpm-cli.yaml"/>
+        <File Path="packaging/linux/nfpm-desktop.yaml"/>
+        <File Path="packaging/linux/obxodka-desktop-launcher.sh"/>
+        <File Path="packaging/linux/postinstall-cli.sh"/>
+        <File Path="packaging/linux/postinstall-desktop.sh"/>
+        <File Path="packaging/winget/obx.cmd"/>
+        <File Path="packaging/winget/OctoCore.Obxodka.Cli.yaml"/>
+        <File Path="packaging/winget/README.md"/>
     </Folder>
     <Folder Name="/.github/workflows/">
         <File Path=".github/codeql/codeql-config.yml"/>
