@@ -135,6 +135,91 @@
     <Touch Files="$(_ProguardProjectConfiguration)" AlwaysCreate="true" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')"/>
   </Target>
 
+  <!-- Автоматический сканер JNI-ссылок из слинкованных C#-сборок -> построчные точечные -keep правила для R8 -->
+  <UsingTask TaskName="GenerateJniProguardRulesTask"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll"
+             Condition="'$(Configuration)' == 'Release' and $(TargetFramework.Contains('-android'))">
+    <ParameterGroup>
+      <SearchDirectories ParameterType="System.String" Required="true"/>
+      <OutputFile ParameterType="System.String" Required="true"/>
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System"/>
+      <Using Namespace="System.Collections.Generic"/>
+      <Using Namespace="System.IO"/>
+      <Using Namespace="System.Linq"/>
+      <Using Namespace="System.Text"/>
+      <Using Namespace="System.Text.RegularExpressions"/>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var dirs = SearchDirectories.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(Directory.Exists)
+            .ToArray();
+
+        var classes = new SortedSet<string>(StringComparer.Ordinal);
+        var rx = new Regex(
+            @"(?:androidx|com/microsoft/maui|communitytoolkit|com/google/android/material|com/google/mlkit|com/google/android/gms|com/android/billingclient|skiasharp|plugin/inappbilling)/[a-z0-9_]+(?:/[A-Za-z0-9_/$]+)+",
+            RegexOptions.Compiled);
+
+        foreach (var root in dirs)
+        {
+            foreach (var dll in Directory.EnumerateFiles(root, "*.dll", SearchOption.AllDirectories))
+            {
+                var bytes = File.ReadAllBytes(dll);
+                var ascii = Encoding.ASCII.GetString(bytes);
+                foreach (Match m in rx.Matches(ascii))
+                {
+                    var raw = m.Value.TrimEnd('/');
+                    if (raw.Length < 8 || raw.Length > 220 || raw.Contains("//") || raw.EndsWith("$"))
+                        continue;
+
+                    var cls = raw.Replace('/', '.');
+                    // пропускаем обрезанные фрагменты и артефакты не-имен
+                    if (!char.IsLetter(cls[cls.Length - 1]) && !char.IsDigit(cls[cls.Length - 1]))
+                        continue;
+                    var lastSeg = cls.Substring(cls.LastIndexOf('.') + 1);
+                    if (lastSeg.Length == 0 || !char.IsUpper(lastSeg[0]))
+                        continue;
+
+                    classes.Add(cls);
+                }
+            }
+        }
+
+        var outDir = Path.GetDirectoryName(OutputFile);
+        if (!string.IsNullOrEmpty(outDir))
+            Directory.CreateDirectory(outDir);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("# Auto-generated exact JNI keep rules from linked .NET Android assemblies");
+        sb.AppendLine($"# Total exact JNI classes scanned: {classes.Count}");
+        foreach (var cls in classes)
+        {
+            sb.Append("-keep,allowoptimization class ").Append(cls).AppendLine(" { public protected *; }");
+        }
+
+        File.WriteAllText(OutputFile, sb.ToString(), new UTF8Encoding(false));
+        Log.LogMessage(MessageImportance.High, $"[JNI-R8-SCAN] Generated {classes.Count} exact JNI keep rules -> {OutputFile}");
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="_GenerateJniProguardRules"
+          AfterTargets="_AfterILLinkAdditionalSteps"
+          BeforeTargets="_CalculateProguardConfigurationFiles;_CompileToDalvik"
+          Condition="'$(Configuration)' == 'Release' and '$(AndroidLinkTool)' == 'r8' and $(TargetFramework.Contains('-android'))">
+    <PropertyGroup>
+      <_AutoJniProguardFile>$(IntermediateOutputPath)proguard/proguard_jni_auto.cfg</_AutoJniProguardFile>
+    </PropertyGroup>
+    <GenerateJniProguardRulesTask
+        SearchDirectories="$(IntermediateOutputPath)afterlink;$(IntermediateOutputPath)linked"
+        OutputFile="$(_AutoJniProguardFile)"/>
+    <ItemGroup Condition="Exists('$(_AutoJniProguardFile)')">
+      <ProguardConfiguration Include="$(_AutoJniProguardFile)"/>
+      <FileWrites Include="$(_AutoJniProguardFile)"/>
+    </ItemGroup>
+  </Target>
+
   <!-- Упаковка нативных отладочных символов (.so.dbg) в BUNDLE-METADATA AAB для Google Play Console -->
   <Target Name="_AddNativeDebugSymbolsToBundle"
           AfterTargets="_CreateApplicationSharedLibraries"
