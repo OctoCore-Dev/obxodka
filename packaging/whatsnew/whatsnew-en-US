@@ -1,4 +1,4 @@
-- Fixed Microsoft Store installation error (0x80073CF6) and Windows GUI launch without terminal window.
-- Fixed Android TLS chain & wildcard SAN validation plus XHTTP/WS failover stability against DPI blocks.
-- Major UI performance upgrade: Single Canvas rendering, GPU sidebar, virtualized Split Tunneling, and live traffic graph.
-- Added server timezone sync, WebRTC STUN leak protection, live active protocol indicator, and settings lock while VPN is active.
+- Faster Android builds and startup with R8 DEX optimization, Media3 ProGuard rules, and billing recovery.
+- Improved OBX-V9 Hydra, Reality, XHTTP, and Cloudflare WS resilience against 16-24 KB DPI throttling.
+- Added cross-platform Windows CLI (Winget), Linux CLI, and Avalonia Desktop packages (apt, dnf, pacman).
+- Hardened TLS security, Let's Encrypt backup SPKI pins, and overall stability improvements.

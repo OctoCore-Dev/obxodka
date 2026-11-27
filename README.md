@@ -63,12 +63,24 @@
 
 ### Windows CLI (`winget`)
 ```powershell
+# Установка консольного клиента (добавляет obxodka и wintun.dll)
 winget install OctoCore.Obxodka.Cli
+
+# Автообновление до свежей версии
+winget upgrade OctoCore.Obxodka.Cli
+
+# Быстрый старт (регистрация алиаса obx, вход и подключение)
+obxodka alias --install
 obx login
 obx connect --adblock --kill-switch
 ```
 
-### Linux (Debian / Ubuntu / Fedora / Arch / openSUSE)
+> Также можно скачать портативный архив `obxodka-cli-win-x64.zip` из [GitHub Releases](https://github.com/OctoCore-Dev/obxodka/releases/latest) (для работы Wintun требуется запуск терминала от имени Администратора).
+
+### Linux: CLI (`obxodka`) и Avalonia Desktop (`obxodka-desktop`)
+
+#### Вариант 1 — быстрая установка одной командой (рекомендуется)
+Автоматически определяет дистрибутив (`Ubuntu / Debian / Mint / Fedora / Arch / openSUSE`) и архитектуру (`x86_64 / arm64`), подключает подписанный GPG-репозиторий **`https://pkg.obxodka.one`** и выдаёт права `CAP_NET_ADMIN`:
 ```bash
 # Установить CLI (obxodka + obx + systemd-служба + bash/zsh автодополнение)
 curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh
@@ -76,11 +88,42 @@ curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh
 # Установить CLI + графический клиент Avalonia Desktop (obxodka-desktop)
 curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh -s -- --all
 
-# Установить только Avalonia Desktop GUI
+# Установить только Avalonia Desktop GUI (появится в меню приложений как "Obxodka VPN")
 curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh -s -- --desktop
 ```
 
-> Подробные команды для ручного подключения **APT**, **DNF**, **Pacman**, настройки `systemd`, **Avalonia Desktop** и полный справочник команд `obx` смотрите в **[docs/CLI_AND_LINUX.md](docs/CLI_AND_LINUX.md)**.
+#### Вариант 2 — ручное подключение системных пакетных менеджеров (`apt` / `dnf` / `pacman`)
+<details>
+<summary><b>Развернуть команды для Ubuntu/Debian (apt), Fedora (dnf) и Arch (pacman)</b></summary>
+<br/>
+
+**Debian / Ubuntu / Linux Mint / Pop!_OS (`apt`):**
+```bash
+sudo mkdir -p /usr/share/keyrings
+curl -fsSL https://pkg.obxodka.one/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/obxodka.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/obxodka.gpg] https://pkg.obxodka.one/apt stable main" | sudo tee /etc/apt/sources.list.d/obxodka.list
+sudo apt update && sudo apt install -y obxodka obxodka-desktop
+```
+
+**Fedora / RHEL / Nobara (`dnf`):**
+```bash
+sudo curl -fsSL https://pkg.obxodka.one/rpm/obxodka.repo -o /etc/yum.repos.d/obxodka.repo
+sudo dnf install -y obxodka obxodka-desktop
+```
+
+**Arch Linux / Manjaro / CachyOS (`pacman`):**
+```bash
+curl -fsSL https://pkg.obxodka.one/gpg.key -o /tmp/obxodka.gpg
+sudo pacman-key --add /tmp/obxodka.gpg
+sudo pacman-key --lsign-key "$(gpg --show-keys --with-colons /tmp/obxodka.gpg | awk -F: '/^fpr:/ {print $10; exit}')"
+rm -f /tmp/obxodka.gpg
+printf '\n[obxodka]\nServer = https://pkg.obxodka.one/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Sy obxodka obxodka-desktop
+```
+
+</details>
+
+> После подключения системного репозитория обновления приходят через обычные `apt upgrade` / `dnf upgrade` / `pacman -Syu`. Полный справочник команд `obx`, настройка `systemd` и ручная установка `.deb`/`.rpm`/`.pkg.tar.zst`/`.tar.gz` — в **[docs/CLI_AND_LINUX.md](docs/CLI_AND_LINUX.md)**.
 
 ---
 

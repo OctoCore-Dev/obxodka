@@ -1238,11 +1238,12 @@ jobs:
     needs: [ check-version, build-cli, create-release ]
     runs-on: ubuntu-latest
     if: |
+      always() &&
       (needs.check-version.outputs.should_release != 'false') &&
       (needs.build-cli.result == 'success') &&
       (needs.create-release.result == 'success') &&
-      (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores == true)) &&
-      (inputs.dry_run != true)
+      (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && (inputs.publish_to_stores == true || inputs.publish_to_stores == 'true'))) &&
+      (inputs.dry_run != true && inputs.dry_run != 'true')
     outputs:
       deploy_state: ${{ steps.winget-status.outputs.deploy_state }}
     steps:
@@ -1300,11 +1301,12 @@ jobs:
     needs: [ check-version, build-cli, build-linux-desktop, create-release ]
     runs-on: ubuntu-latest
     if: |
+      always() &&
       (needs.check-version.outputs.should_release != 'false') &&
       (needs.build-cli.result == 'success' || needs.build-linux-desktop.result == 'success') &&
       (needs.create-release.result == 'success') &&
-      (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores == true)) &&
-      (inputs.dry_run != true)
+      (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && (inputs.publish_to_stores == true || inputs.publish_to_stores == 'true'))) &&
+      (inputs.dry_run != true && inputs.dry_run != 'true')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
