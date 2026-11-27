@@ -144,12 +144,12 @@ public sealed partial class OctopusEngine
             if (deltaTx <= 0)
             {
                 EmitStatus(VpnStatusMessages.TxTransmissionFailed);
-                AppLogger.LogError("[PROBE TIMEOUT] Outgoing transmission failed (TX=0). Sockets or local firewall blocked packets.");
+                AppLogger.LogWarning("[PROBE TIMEOUT] Outgoing transmission failed (TX=0). Sockets or local firewall blocked packets.");
             }
             else if (deltaRx <= 0)
             {
                 EmitStatus(VpnStatusMessages.RxResponseTimeout(deltaTx));
-                AppLogger.LogError(
+                AppLogger.LogWarning(
                     $"[PROBE TIMEOUT] Server downlink verification failed after {timeout.TotalSeconds:F1}s! Sent {deltaTx}B across {probeCycle} probe cycles, but received 0 bytes from server.");
             }
 
