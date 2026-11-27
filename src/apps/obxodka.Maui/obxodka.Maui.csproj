@@ -56,10 +56,13 @@
     <SupportedOSPlatformVersion>30.0</SupportedOSPlatformVersion>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <UseNativeHttpHandler>true</UseNativeHttpHandler>
+    <AndroidZipAlignment>16</AndroidZipAlignment>
     <AndroidPackageFormat Condition="'$(Configuration)' == 'Release'">aab</AndroidPackageFormat>
     <AndroidPackageFormat Condition="'$(Configuration)' != 'Release'">apk</AndroidPackageFormat>
     <AndroidLinkTool Condition="'$(Configuration)' == 'Release'">r8</AndroidLinkTool>
     <AndroidEnableShrinking Condition="'$(Configuration)' == 'Release'">true</AndroidEnableShrinking>
+    <AndroidR8ObfuscationMode Condition="'$(Configuration)' == 'Release'">private-members</AndroidR8ObfuscationMode>
+    <AndroidStripNativeLibraries Condition="'$(Configuration)' == 'Release'">true</AndroidStripNativeLibraries>
     <JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' != 'true'">8G</JavaMaximumHeapSize>
     <JavaMaximumHeapSize Condition="'$(GITHUB_ACTIONS)' == 'true'">4G</JavaMaximumHeapSize>
   </PropertyGroup>
@@ -130,6 +133,22 @@
   <Target Name="_EnsureProguardProjectReferencesExists" BeforeTargets="_CompileToDalvik" Condition="$(TargetFramework.Contains('-android'))">
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_ProguardProjectConfiguration)'))" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')"/>
     <Touch Files="$(_ProguardProjectConfiguration)" AlwaysCreate="true" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')"/>
+  </Target>
+
+  <!-- Упаковка нативных отладочных символов (.so.dbg) в BUNDLE-METADATA AAB для Google Play Console -->
+  <Target Name="_AddNativeDebugSymbolsToBundle"
+          AfterTargets="_CreateApplicationSharedLibraries"
+          BeforeTargets="_BuildApkEmbed"
+          Condition="'$(Configuration)' == 'Release' and '$(AndroidPackageFormat)' == 'aab' and $(TargetFramework.Contains('-android'))">
+    <ItemGroup>
+      <_NativeDbgSymbol Include="$(_AndroidApplicationSharedLibraryPath)arm64-v8a/libxamarin-app.dbg.so"
+                        Condition="Exists('$(_AndroidApplicationSharedLibraryPath)arm64-v8a/libxamarin-app.dbg.so')"
+                        MetaPath="com.android.tools.build.debugsymbols/arm64-v8a/libxamarin-app.so.dbg"/>
+      <_NativeDbgSymbol Include="$(_AndroidApplicationSharedLibraryPath)armeabi-v7a/libxamarin-app.dbg.so"
+                        Condition="Exists('$(_AndroidApplicationSharedLibraryPath)armeabi-v7a/libxamarin-app.dbg.so')"
+                        MetaPath="com.android.tools.build.debugsymbols/armeabi-v7a/libxamarin-app.so.dbg"/>
+      <AndroidAppBundleMetaDataFile Include="@(_NativeDbgSymbol->'%(MetaPath):%(FullPath)')"/>
+    </ItemGroup>
   </Target>
 
 </Project>

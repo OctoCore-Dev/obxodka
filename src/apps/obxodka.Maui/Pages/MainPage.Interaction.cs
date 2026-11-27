@@ -210,6 +210,12 @@ public sealed partial class MainPage
                     }
 
                     await SyncBalanceFromServerAsync();
+#if ANDROID
+                    if (OperatingSystem.IsAndroidVersionAtLeast(30))
+                    {
+                        _ = AndroidBillingRecoveryService.RecoverPendingPurchasesAsync(_apiService, TriggerBalanceSyncAsync);
+                    }
+#endif
                 }
 
                 await HandlePendingBackgroundActionAsync();

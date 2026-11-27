@@ -48,6 +48,10 @@ public sealed partial class PaymentView : IAdaptivePage
         ResetPaymentView();
 #if ANDROID
         _ = RefreshGooglePlayCatalogAsync();
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
+            _ = AndroidBillingRecoveryService.RecoverPendingPurchasesAsync(_apiService, _parent.TriggerBalanceSyncAsync, force: true);
+        }
 #endif
     }
 

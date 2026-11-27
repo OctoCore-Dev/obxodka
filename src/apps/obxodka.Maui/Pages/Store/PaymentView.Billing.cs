@@ -149,7 +149,7 @@ public sealed partial class PaymentView
 
         try
         {
-            await s_googleBillingGate.WaitAsync();
+            await AndroidBillingRecoveryService.Gate.WaitAsync();
             try
             {
                 var billing = CrossInAppBilling.Current;
@@ -190,15 +190,8 @@ public sealed partial class PaymentView
 
                                 if (success)
                                 {
-                                    try
-                                    {
-                                        _ = await billing.ConsumePurchaseAsync(purchase.ProductId, token);
-                                    }
-                                    catch (Exception consumeEx)
-                                    {
-                                        //потребление покупки в Google Play может завершиться позже
-                                        AppLogger.LogWarning($"[BILLING CONSUME WARNING] {consumeEx.Message}");
-                                    }
+                                    //потребление только после подтверждения на сервере с проверкой результата и ретраями
+                                    _ = await AndroidBillingRecoveryService.ConsumeWithRetryAsync(billing, purchase.ProductId, token);
 
                                     await _parent.DisplayAlertAsync(StoreMessages.PaymentSuccessTitle, StoreMessages.PaymentSuccessBody,
                                         AccountMessages.ButtonOk);
@@ -237,7 +230,7 @@ public sealed partial class PaymentView
             }
             finally
             {
-                _ = s_googleBillingGate.Release();
+                _ = AndroidBillingRecoveryService.Gate.Release();
             }
         }
         catch (Exception ex)
@@ -388,7 +381,6 @@ public sealed partial class PaymentView
         return false;
     }
 #if ANDROID
-    private static readonly SemaphoreSlim s_googleBillingGate = new(1, 1);
     private Dictionary<string, InAppBillingProduct>? _googleProductCatalog;
     private int _isGooglePurchaseInProgress;
 
@@ -411,7 +403,7 @@ public sealed partial class PaymentView
             return;
         }
 
-        await s_googleBillingGate.WaitAsync();
+        await AndroidBillingRecoveryService.Gate.WaitAsync();
         try
         {
             cached = _googleProductCatalog;
@@ -459,7 +451,7 @@ public sealed partial class PaymentView
         }
         finally
         {
-            _ = s_googleBillingGate.Release();
+            _ = AndroidBillingRecoveryService.Gate.Release();
         }
     }
 

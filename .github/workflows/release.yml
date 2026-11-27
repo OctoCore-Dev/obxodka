@@ -370,6 +370,74 @@ jobs:
           sha256sum * > SHA256SUMS-android.txt
           cat SHA256SUMS-android.txt
 
+      - name: "[AUDIT] Verify AAB 16KB ELF Alignment, R8 >= 25%, and Debug Symbols"
+        run: |
+          python3 - <<'PY'
+          import json, struct, sys, zipfile
+
+          aab = "./android-dist/Obxodka-Release.aab"
+          with zipfile.ZipFile(aab, "r") as z:
+              names = set(z.namelist())
+
+              # 1. R8 DEX metrics (>= 25% Play Console requirement)
+              r8_path = "BUNDLE-METADATA/com.android.tools/r8.json"
+              if r8_path not in names:
+                  print(f"::error::Missing {r8_path} inside AAB!")
+                  sys.exit(1)
+              r8 = json.loads(z.read(r8_path).decode("utf-8"))
+              stats = r8.get("stats", {})
+              opt = 100.0 - float(stats.get("noOptimizationPercentage", 100.0))
+              shk = 100.0 - float(stats.get("noShrinkingPercentage", 100.0))
+              obf = 100.0 - float(stats.get("noObfuscationPercentage", 100.0))
+              dex_mb = sum(d.get("sizeInBytes", 0) for d in r8.get("dexFiles", [])) / (1024 * 1024)
+              print(f"[R8] DEX={dex_mb:.2f}MB | Optimization={opt:.2f}% | Shrinking={shk:.2f}% | Obfuscation={obf:.2f}%")
+              if opt < 25.0 or shk < 25.0 or obf < 25.0:
+                  print(f"::error::R8 metrics below Play Console 25% threshold! opt={opt:.2f}%, shrink={shk:.2f}%, obf={obf:.2f}%")
+                  sys.exit(1)
+
+              # 2. 16 KB ELF alignment check for all 64-bit native .so libraries
+              bad_elf = []
+              ok_elf = 0
+              for info in z.infolist():
+                  if not info.filename.endswith(".so"):
+                      continue
+                  if "arm64-v8a" not in info.filename and "x86_64" not in info.filename:
+                      continue
+                  data = z.read(info.filename)
+                  if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2:
+                      continue
+                  e_phoff = struct.unpack("<Q", data[32:40])[0]
+                  e_phentsize = struct.unpack("<H", data[54:56])[0]
+                  e_phnum = struct.unpack("<H", data[56:58])[0]
+                  min_align = None
+                  for idx in range(e_phnum):
+                      off = e_phoff + idx * e_phentsize
+                      ph = data[off:off+e_phentsize]
+                      if len(ph) < 56:
+                          break
+                      if struct.unpack("<I", ph[0:4])[0] == 1:
+                          al = struct.unpack("<Q", ph[48:56])[0]
+                          if min_align is None or al < min_align:
+                              min_align = al
+                  if min_align is not None and min_align < 16384:
+                      bad_elf.append((info.filename, min_align))
+                  else:
+                      ok_elf += 1
+              print(f"[16KB] 64-bit .so ELF check: OK={ok_elf}, BAD={len(bad_elf)}")
+              if bad_elf:
+                  for fn, al in bad_elf:
+                      print(f"::error::Unaligned 64-bit .so ({al}B < 16384B): {fn}")
+                  sys.exit(1)
+
+              # 3. Native debug symbols + ProGuard mapping presence
+              has_map = "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map" in names
+              dbg_syms = [n for n in names if n.startswith("BUNDLE-METADATA/com.android.tools.build.debugsymbols/")]
+              print(f"[SYMBOLS] proguard.map={has_map}, native debug symbols={len(dbg_syms)} ({dbg_syms})")
+              if not has_map or not dbg_syms:
+                  print("::error::Missing proguard.map or native debug symbols inside AAB BUNDLE-METADATA!")
+                  sys.exit(1)
+          PY
+
       - name: "[ARTIFACT] Upload Android Dist Package"
         uses: actions/upload-artifact@v7
         with:

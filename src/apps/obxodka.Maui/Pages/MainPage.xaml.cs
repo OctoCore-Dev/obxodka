@@ -550,6 +550,12 @@ public sealed partial class MainPage : IDisposable
                             HandlePendingTileAction();
                             await HandlePendingBackgroundActionAsync();
                         }
+#if ANDROID
+                        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+                        {
+                            _ = AndroidBillingRecoveryService.RecoverPendingPurchasesAsync(_apiService, TriggerBalanceSyncAsync);
+                        }
+#endif
                     }
                     else
                     {
