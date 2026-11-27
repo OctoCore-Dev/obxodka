@@ -1052,7 +1052,6 @@ jobs:
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:DebugType=None -p:DebugSymbols=false -p:RestoreLockedMode=false \
             -o ./stage-win-x64
-          cp packaging/winget/obx.cmd ./stage-win-x64/obx.cmd
           mkdir -p ./stage-win-x64/Engine
           cp src/core/obxodka.Platform.Windows/Engine/wintun.dll ./stage-win-x64/Engine/wintun.dll
           cp LICENSE ./stage-win-x64/LICENSE
@@ -1060,12 +1059,15 @@ jobs:
           rmdir ./stage-win-x64/packaging 2>/dev/null || true
           (cd ./stage-win-x64 && zip -r9 "../cli-dist/obxodka-cli-win-x64.zip" .)
 
-          # генерация манифеста winget из шаблона
+          # генерация multi-file манифестов winget (version + installer + en-US + ru-RU)
           WIN_ZIP_SHA256="$(sha256sum ./cli-dist/obxodka-cli-win-x64.zip | awk '{print toupper($1)}')"
-          PKG_VERSION="$PKG_VERSION" INSTALLER_SHA256="$WIN_ZIP_SHA256" \
-            envsubst '${PKG_VERSION} ${INSTALLER_SHA256}' \
-            < packaging/winget/OctoCore.Obxodka.Cli.yaml \
-            > ./cli-dist/OctoCore.Obxodka.Cli.yaml
+          mkdir -p ./cli-dist/winget-manifests
+          for mf in packaging/winget/manifests/*.yaml; do
+            PKG_VERSION="$PKG_VERSION" INSTALLER_SHA256="$WIN_ZIP_SHA256" \
+              envsubst '${PKG_VERSION} ${INSTALLER_SHA256}' \
+              < "$mf" \
+              > "./cli-dist/winget-manifests/$(basename "$mf")"
+          done
 
           echo "[CLI] Публикация linux-x64..."
           dotnet publish src/apps/obxodka.Cli/obxodka.Cli.csproj \
@@ -1094,13 +1096,16 @@ jobs:
           tar -czf "./cli-dist/obxodka-cli-linux-arm64.tar.gz" -C ./stage-linux-arm64 .
 
           echo "[CLI] Сборка нативных пакетов Linux (.deb / .rpm / .pkg.tar.zst)..."
-          PKG_ARCH=amd64 STAGE_DIR=./stage-linux-x64 nfpm package -f packaging/linux/nfpm-cli.yaml -p deb -t ./cli-dist/
-          PKG_ARCH=amd64 STAGE_DIR=./stage-linux-x64 nfpm package -f packaging/linux/nfpm-cli.yaml -p rpm -t ./cli-dist/
-          PKG_ARCH=amd64 STAGE_DIR=./stage-linux-x64 nfpm package -f packaging/linux/nfpm-cli.yaml -p archlinux -t ./cli-dist/
-
-          PKG_ARCH=arm64 STAGE_DIR=./stage-linux-arm64 nfpm package -f packaging/linux/nfpm-cli.yaml -p deb -t ./cli-dist/
-          PKG_ARCH=arm64 STAGE_DIR=./stage-linux-arm64 nfpm package -f packaging/linux/nfpm-cli.yaml -p rpm -t ./cli-dist/
-          PKG_ARCH=arm64 STAGE_DIR=./stage-linux-arm64 nfpm package -f packaging/linux/nfpm-cli.yaml -p archlinux -t ./cli-dist/
+          for pair in "amd64:./stage-linux-x64" "arm64:./stage-linux-arm64"; do
+            IFS=':' read -r arch stage <<< "$pair"
+            PKG_VERSION="$PKG_VERSION" PKG_ARCH="$arch" STAGE_DIR="$stage" \
+              envsubst '${PKG_VERSION} ${PKG_ARCH} ${STAGE_DIR}' \
+              < packaging/linux/nfpm-cli.yaml \
+              > "/tmp/nfpm-cli-${arch}.yaml"
+            nfpm package -f "/tmp/nfpm-cli-${arch}.yaml" -p deb -t ./cli-dist/
+            nfpm package -f "/tmp/nfpm-cli-${arch}.yaml" -p rpm -t ./cli-dist/
+            nfpm package -f "/tmp/nfpm-cli-${arch}.yaml" -p archlinux -t ./cli-dist/
+          done
 
           ls -lh ./cli-dist/
 
@@ -1171,9 +1176,13 @@ jobs:
             chmod +x "./${stage}/obxodka.Avalonia"
             tar -czf "./desktop-dist/obxodka-desktop-${rid}.tar.gz" -C "./${stage}" .
 
-            PKG_ARCH="$arch" STAGE_DIR="./${stage}" nfpm package -f packaging/linux/nfpm-desktop.yaml -p deb -t ./desktop-dist/
-            PKG_ARCH="$arch" STAGE_DIR="./${stage}" nfpm package -f packaging/linux/nfpm-desktop.yaml -p rpm -t ./desktop-dist/
-            PKG_ARCH="$arch" STAGE_DIR="./${stage}" nfpm package -f packaging/linux/nfpm-desktop.yaml -p archlinux -t ./desktop-dist/
+            PKG_VERSION="$PKG_VERSION" PKG_ARCH="$arch" STAGE_DIR="./${stage}" \
+              envsubst '${PKG_VERSION} ${PKG_ARCH} ${STAGE_DIR}' \
+              < packaging/linux/nfpm-desktop.yaml \
+              > "/tmp/nfpm-desktop-${arch}.yaml"
+            nfpm package -f "/tmp/nfpm-desktop-${arch}.yaml" -p deb -t ./desktop-dist/
+            nfpm package -f "/tmp/nfpm-desktop-${arch}.yaml" -p rpm -t ./desktop-dist/
+            nfpm package -f "/tmp/nfpm-desktop-${arch}.yaml" -p archlinux -t ./desktop-dist/
           done
 
           ls -lh ./desktop-dist/
@@ -1235,7 +1244,7 @@ jobs:
         id: release-meta
         run: |
           mkdir -p ./release-dist
-          find ./release-artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.exe" -o -name "*.msix*" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" -o -name "OctoCore.Obxodka.Cli.yaml" \) -exec cp {} ./release-dist/ \;
+          find ./release-artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.exe" -o -name "*.msix*" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" -o -name "OctoCore.Obxodka.Cli*.yaml" \) -exec cp {} ./release-dist/ \;
 
           cd ./release-dist
           sha256sum * > SHA256SUMS.txt

@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+PackageIdentifier: OctoCore.Obxodka.Cli
+PackageVersion: ${PKG_VERSION}
+InstallerLocale: en-US
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: obxodka.exe
+    PortableCommandAlias: obxodka
+UpgradeBehavior: uninstallPrevious
+Commands:
+  - obxodka
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/OctoCore-Dev/obxodka/releases/download/v${PKG_VERSION}/obxodka-cli-win-x64.zip
+    InstallerSha256: ${INSTALLER_SHA256}
+ManifestType: installer
+ManifestVersion: 1.10.0

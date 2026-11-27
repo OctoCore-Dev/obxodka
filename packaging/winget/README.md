@@ -4,13 +4,13 @@
 
 ## 1. Windows — Winget (`OctoCore.Obxodka.Cli`)
 
-1. Создайте форк репозитория [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs) на своём аккаунте GitHub.
-2. Подайте первую версию пакета один раз с помощью официального `wingetcreate` (или возьмите готовый `OctoCore.Obxodka.Cli.yaml` с подставленными версией из `version.props` и реальным SHA256 прямо из ассетов последнего GitHub Release):
+1. Создайте форк репозитория [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs) на своём аккаунте GitHub (`Copy the master branch only`).
+2. Подайте первую версию пакета один раз с помощью официального `wingetcreate` (или отправьте готовые multi-file манифесты из `packaging/winget/manifests/` с подставленными версией из `version.props` и реальным SHA256 прямо из ассетов последнего GitHub Release):
    ```powershell
    winget install Microsoft.WingetCreate
-   wingetcreate submit --token <YOUR_PAT> ./OctoCore.Obxodka.Cli.yaml
+   wingetcreate submit --token <YOUR_PAT> ./winget-manifests
    ```
-   Шаблон манифеста хранится в [`OctoCore.Obxodka.Cli.yaml`](OctoCore.Obxodka.Cli.yaml) (`obxodka.exe` → `obxodka`, `obx.cmd` → `obx`).
+   Шаблоны multi-file манифестов хранятся в [`manifests/`](manifests/) (`InstallerType: zip`, `NestedInstallerType: portable`, `obxodka.exe`, локаль `en-US` + `ru-RU`, без `.cmd`/скриптов).
 3. Добавьте в **Repository Secrets** (`Settings → Secrets and variables → Actions`):
    - `WINGET_TOKEN` — GitHub Classic PAT с правом `public_repo`.
 4. Все последующие релизы в `main` будут автоматически открывать PR с новой версией и SHA256 в `microsoft/winget-pkgs` через `vedantmgoyal9/winget-releaser`.

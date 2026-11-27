@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+PackageIdentifier: OctoCore.Obxodka.Cli
+PackageVersion: ${PKG_VERSION}
+PackageLocale: en-US
+Publisher: OctoCore
+PublisherUrl: https://github.com/OctoCore-Dev
+PublisherSupportUrl: https://github.com/OctoCore-Dev/obxodka/issues
+PrivacyUrl: https://github.com/OctoCore-Dev/obxodka/blob/main/PRIVACY_POLICY.md
+Author: OctoCore
+PackageName: Obxodka CLI
+PackageUrl: https://github.com/OctoCore-Dev/obxodka
+License: GNU AGPLv3
+LicenseUrl: https://github.com/OctoCore-Dev/obxodka/blob/main/LICENSE
+Copyright: Copyright (c) OctoCore
+ShortDescription: Cross-platform CLI client for Obxodka stealth VPN (OBX-V9 Hydra, OBX-V8 Chameleon, XHTTP, Reality, WebSocket).
+Description: Obxodka CLI is a native command-line VPN client built on .NET 11 and Wintun Layer 3 with OBX-V9 Hydra, OBX-V8 Chameleon, XHTTP, Reality, and Cloudflare WebSocket Shield transports, live ANSI TUI, split tunneling, and JSON automation output.
+Moniker: obxodka
+Tags:
+  - vpn
+  - cli
+  - stealth
+  - dpi-bypass
+  - wintun
+  - obxodka
+ReleaseNotesUrl: https://github.com/OctoCore-Dev/obxodka/releases/tag/v${PKG_VERSION}
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0
