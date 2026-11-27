@@ -1398,7 +1398,7 @@ jobs:
             ./linux-repo-dist \
             ./pages-site \
             "${{ needs.check-version.outputs.version }}" \
-            "https://octocore-dev.github.io/obxodka"
+            "https://pkg.obxodka.one"
 
       - name: "[PAGES] Check GitHub Pages Configuration"
         id: pages-check

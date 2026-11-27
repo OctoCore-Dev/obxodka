@@ -38,13 +38,13 @@ winget upgrade OctoCore.Obxodka.Cli
 
 ```bash
 # Только CLI (команды obxodka и obx + systemd-юнит + completions)
-curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh
+curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh
 
 # Только графический клиент Avalonia Desktop (obxodka-desktop + ярлык в меню)
-curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh -s -- --desktop
+curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh -s -- --desktop
 
 # Всё сразу: CLI + Avalonia Desktop
-curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh -s -- --all
+curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh -s -- --all
 ```
 
 ---
@@ -54,10 +54,10 @@ curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh -s -- --a
 #### Debian / Ubuntu / Linux Mint / Pop!_OS (`apt`)
 ```bash
 sudo mkdir -p /usr/share/keyrings
-curl -fsSL https://octocore-dev.github.io/obxodka/gpg.key \
+curl -fsSL https://pkg.obxodka.one/gpg.key \
   | sudo gpg --dearmor -o /usr/share/keyrings/obxodka.gpg
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/obxodka.gpg] https://octocore-dev.github.io/obxodka/apt stable main" \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/obxodka.gpg] https://pkg.obxodka.one/apt stable main" \
   | sudo tee /etc/apt/sources.list.d/obxodka.list
 
 sudo apt update
@@ -68,7 +68,7 @@ sudo apt install -y obxodka-desktop   # Avalonia Desktop GUI
 
 #### Fedora / RHEL / Rocky / Nobara (`dnf`)
 ```bash
-sudo curl -fsSL https://octocore-dev.github.io/obxodka/rpm/obxodka.repo \
+sudo curl -fsSL https://pkg.obxodka.one/rpm/obxodka.repo \
   -o /etc/yum.repos.d/obxodka.repo
 
 sudo dnf install -y obxodka           # CLI
@@ -78,12 +78,12 @@ sudo dnf install -y obxodka-desktop   # Avalonia Desktop GUI
 
 #### Arch Linux / Manjaro / CachyOS / SteamOS (`pacman`)
 ```bash
-curl -fsSL https://octocore-dev.github.io/obxodka/gpg.key -o /tmp/obxodka.gpg
+curl -fsSL https://pkg.obxodka.one/gpg.key -o /tmp/obxodka.gpg
 sudo pacman-key --add /tmp/obxodka.gpg
 sudo pacman-key --lsign-key "$(gpg --show-keys --with-colons /tmp/obxodka.gpg | awk -F: '/^fpr:/ {print $10; exit}')"
 rm -f /tmp/obxodka.gpg
 
-printf '\n[obxodka]\nServer = https://octocore-dev.github.io/obxodka/arch/$arch\n' \
+printf '\n[obxodka]\nServer = https://pkg.obxodka.one/arch/$arch\n' \
   | sudo tee -a /etc/pacman.conf
 
 sudo pacman -Sy obxodka obxodka-desktop

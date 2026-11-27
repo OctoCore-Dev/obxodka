@@ -2,7 +2,7 @@
 set -eu
 
 # установщик obxodka для linux
-REPO_BASE="${OBXODKA_REPO_URL:-https://octocore-dev.github.io/obxodka}"
+REPO_BASE="${OBXODKA_REPO_URL:-https://pkg.obxodka.one}"
 GITHUB_REPO="OctoCore-Dev/obxodka"
 MODE="cli"
 

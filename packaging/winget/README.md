@@ -28,7 +28,7 @@
    - `GPG_PASSPHRASE` — парольная фраза ключа (если задавалась)
 4. Удалите локальный `obxodka-gpg-private.asc` после добавления в Secrets.
 5. При каждом релизе в `main` джоб `[PUBLISH-LINUX-REPO]` пересобирает подписанные индексы:
-   - **APT**: `https://octocore-dev.github.io/obxodka/apt`
-   - **DNF / RPM**: `https://octocore-dev.github.io/obxodka/rpm/$basearch`
-   - **Pacman**: `https://octocore-dev.github.io/obxodka/arch/$arch`
-   - **Установщик**: `https://octocore-dev.github.io/obxodka/install.sh`
+   - **APT**: `https://pkg.obxodka.one/apt`
+   - **DNF / RPM**: `https://pkg.obxodka.one/rpm/$basearch`
+   - **Pacman**: `https://pkg.obxodka.one/arch/$arch`
+   - **Установщик**: `https://pkg.obxodka.one/install.sh`
