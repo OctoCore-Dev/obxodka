@@ -71,13 +71,13 @@ obx connect --adblock --kill-switch
 ### Linux (Debian / Ubuntu / Fedora / Arch / openSUSE)
 ```bash
 # Установить CLI (obxodka + obx + systemd-служба + bash/zsh автодополнение)
-curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh
+curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh
 
 # Установить CLI + графический клиент Avalonia Desktop (obxodka-desktop)
-curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh -s -- --all
+curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh -s -- --all
 
 # Установить только Avalonia Desktop GUI
-curl -fsSL https://octocore-dev.github.io/obxodka/install.sh | sudo sh -s -- --desktop
+curl -fsSL https://pkg.obxodka.one/install.sh | sudo sh -s -- --desktop
 ```
 
 > Подробные команды для ручного подключения **APT**, **DNF**, **Pacman**, настройки `systemd`, **Avalonia Desktop** и полный справочник команд `obx` смотрите в **[docs/CLI_AND_LINUX.md](docs/CLI_AND_LINUX.md)**.
@@ -264,7 +264,7 @@ dotnet test tests/obxodka.Client.Tests/obxodka.Client.Tests.csproj -c Release --
 | **Google Play Store** | `OctoPublisher (Android)` | [![Google Play Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/playstore.json&style=flat-square&logo=googleplay)](https://play.google.com/store/apps/details?id=com.octocore.obxodka) | Автопубликация AAB в Google Play Console (Production). При модерации переводится в очередь `[QUEUED]`. |
 | **Microsoft Store** | `OctoPublisher (Windows)` | [![Microsoft Store Deploy](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OctoCore-Dev/obxodka/main/.github/badges/mstore.json&style=flat-square&logo=windows)](https://apps.microsoft.com/store/detail/9NZXP5WR803J) | Автопубликация MSIX в Partner Center API. Если магазин на ревью (код 3) — ставит в очередь `[QUEUED]`. |
 | **Windows Winget** | `winget-releaser (CLI)` | ![Winget](https://img.shields.io/badge/Winget-OctoCore.Obxodka.Cli-0078D4?style=flat-square&logo=windows) | Автоматический PR с новой версией и SHA256 `obxodka-cli-win-x64.zip` (`obxodka` + `obx`) в `microsoft/winget-pkgs`. |
-| **Linux Repo (APT/DNF/Pacman)** | `nFPM + GitHub Pages` | [![Linux Packages](https://img.shields.io/badge/Linux_Repo-APT_%7C_DNF_%7C_Pacman-10B981?style=flat-square&logo=linux)](docs/CLI_AND_LINUX.md) | Подписанный GPG-репозиторий для `obxodka` (CLI) и `obxodka-desktop` (Avalonia) на `octocore-dev.github.io/obxodka` + `install.sh`. |
+| **Linux Repo (APT/DNF/Pacman)** | `nFPM + GitHub Pages` | [![Linux Packages](https://img.shields.io/badge/Linux_Repo-APT_%7C_DNF_%7C_Pacman-10B981?style=flat-square&logo=linux)](docs/CLI_AND_LINUX.md) | Подписанный GPG-репозиторий для `obxodka` (CLI) и `obxodka-desktop` (Avalonia) на `https://pkg.obxodka.one` + `install.sh`. |
 | **Smart Store Watchdog** | [`store-watchdog.yml`](.github/workflows/store-watchdog.yml) | [![Store Watchdog](https://img.shields.io/github/actions/workflow/status/OctoCore-Dev/obxodka/store-watchdog.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Store%20Watchdog)](https://github.com/OctoCore-Dev/obxodka/actions/workflows/store-watchdog.yml) | Автономный фоновый сторож: отслеживает завершение проверки сторами и допушивает релиз из очереди. |
 
 ---

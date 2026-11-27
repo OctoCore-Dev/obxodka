@@ -5,7 +5,7 @@ set -euo pipefail
 DIST_DIR="${1:?Укажите каталог с .deb/.rpm/.pkg.tar.zst пакетами}"
 OUT_DIR="${2:?Укажите выходной каталог сайта репозитория}"
 VERSION="${3:?Укажите версию релиза (например 6.4.1)}"
-BASE_URL="${4:-https://octocore-dev.github.io/obxodka}"
+BASE_URL="${4:-https://pkg.obxodka.one}"
 
 rm -rf "$OUT_DIR"
 mkdir -p \
@@ -136,7 +136,7 @@ for arch in x86_64 aarch64; do
     if command -v repo-add >/dev/null 2>&1; then
       (cd "$OUT_DIR/arch/$arch" && repo-add obxodka.db.tar.gz ./*.pkg.tar.zst)
     elif command -v docker >/dev/null 2>&1; then
-      docker run --rm -v "$OUT_DIR/arch/$arch:/work" -w /work archlinux:base \
+      docker run --rm -v "$OUT_DIR/arch/$arch:/work" -w /work archlinux:latest \
         bash -c 'repo-add /work/obxodka.db.tar.gz /work/*.pkg.tar.zst'
     else
       echo "::warning::[ARCH] repo-add и docker недоступны — индекс Arch пропущен."
