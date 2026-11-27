@@ -135,88 +135,39 @@
     <Touch Files="$(_ProguardProjectConfiguration)" AlwaysCreate="true" Condition="'$(_ProguardProjectConfiguration)' != '' and !Exists('$(_ProguardProjectConfiguration)')"/>
   </Target>
 
-  <!-- Автоматический сканер JNI-ссылок из слинкованных C#-сборок -> построчные точечные -keep правила для R8 -->
-  <UsingTask TaskName="GenerateJniProguardRulesTask"
-             TaskFactory="RoslynCodeTaskFactory"
-             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll"
-             Condition="'$(Configuration)' == 'Release' and $(TargetFramework.Contains('-android'))">
-    <ParameterGroup>
-      <SearchDirectories ParameterType="System.String" Required="true"/>
-      <OutputFile ParameterType="System.String" Required="true"/>
-    </ParameterGroup>
-    <Task>
-      <Using Namespace="System"/>
-      <Using Namespace="System.Collections.Generic"/>
-      <Using Namespace="System.IO"/>
-      <Using Namespace="System.Linq"/>
-      <Using Namespace="System.Text"/>
-      <Using Namespace="System.Text.RegularExpressions"/>
-      <Code Type="Fragment" Language="cs"><![CDATA[
-        var dirs = SearchDirectories.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(Directory.Exists)
-            .ToArray();
+  <!-- Автономный .NET 11 C# оптимизатор R8 (tools/AndroidR8Optimizer.cs):
+       сканирует слинкованные .dll (System.Reflection.Metadata), нативные .so и acw-map,
+       генерирует точечные JNI-правила и (при AndroidStrictR8Obfuscation=true) снимает глобальный -keep class ** -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(AndroidLinkTool)' == 'r8' and $(TargetFramework.Contains('-android'))">
+    <AndroidStrictR8Obfuscation Condition="'$(AndroidStrictR8Obfuscation)' == ''">true</AndroidStrictR8Obfuscation>
+  </PropertyGroup>
 
-        var classes = new SortedSet<string>(StringComparer.Ordinal);
-        var rx = new Regex(
-            @"(?:androidx|com/microsoft/maui|communitytoolkit|com/google/android/material|com/google/mlkit|com/google/android/gms|com/android/billingclient|skiasharp|plugin/inappbilling)/[a-z0-9_]+(?:/[A-Za-z0-9_/$]+)+",
-            RegexOptions.Compiled);
-
-        foreach (var root in dirs)
-        {
-            foreach (var dll in Directory.EnumerateFiles(root, "*.dll", SearchOption.AllDirectories))
-            {
-                var bytes = File.ReadAllBytes(dll);
-                var ascii = Encoding.ASCII.GetString(bytes);
-                foreach (Match m in rx.Matches(ascii))
-                {
-                    var raw = m.Value.TrimEnd('/');
-                    if (raw.Length < 8 || raw.Length > 220 || raw.Contains("//") || raw.EndsWith("$"))
-                        continue;
-
-                    var cls = raw.Replace('/', '.');
-                    // пропускаем обрезанные фрагменты и артефакты не-имен
-                    if (!char.IsLetter(cls[cls.Length - 1]) && !char.IsDigit(cls[cls.Length - 1]))
-                        continue;
-                    var lastSeg = cls.Substring(cls.LastIndexOf('.') + 1);
-                    if (lastSeg.Length == 0 || !char.IsUpper(lastSeg[0]))
-                        continue;
-
-                    classes.Add(cls);
-                }
-            }
-        }
-
-        var outDir = Path.GetDirectoryName(OutputFile);
-        if (!string.IsNullOrEmpty(outDir))
-            Directory.CreateDirectory(outDir);
-
-        var sb = new StringBuilder();
-        sb.AppendLine("# Auto-generated exact JNI keep rules from linked .NET Android assemblies");
-        sb.AppendLine($"# Total exact JNI classes scanned: {classes.Count}");
-        foreach (var cls in classes)
-        {
-            sb.Append("-keep,allowoptimization class ").Append(cls).AppendLine(" { public protected *; }");
-        }
-
-        File.WriteAllText(OutputFile, sb.ToString(), new UTF8Encoding(false));
-        Log.LogMessage(MessageImportance.High, $"[JNI-R8-SCAN] Generated {classes.Count} exact JNI keep rules -> {OutputFile}");
-      ]]></Code>
-    </Task>
-  </UsingTask>
-
-  <Target Name="_GenerateJniProguardRules"
-          AfterTargets="_AfterILLinkAdditionalSteps"
-          BeforeTargets="_CalculateProguardConfigurationFiles;_CompileToDalvik"
+  <Target Name="_OptimizeAndroidR8Rules"
+          AfterTargets="_CalculateProguardConfigurationFiles"
+          BeforeTargets="_CompileToDalvik"
           Condition="'$(Configuration)' == 'Release' and '$(AndroidLinkTool)' == 'r8' and $(TargetFramework.Contains('-android'))">
     <PropertyGroup>
+      <_R8OptimizerScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../tools/AndroidR8Optimizer.cs'))</_R8OptimizerScript>
       <_AutoJniProguardFile>$(IntermediateOutputPath)proguard/proguard_jni_auto.cfg</_AutoJniProguardFile>
+      <_StrictXamarinProguardFile>$(IntermediateOutputPath)proguard/proguard_xamarin_strict.cfg</_StrictXamarinProguardFile>
+      <_R8DllDirs>$(IntermediateOutputPath)afterlink,$(IntermediateOutputPath)linked</_R8DllDirs>
+      <_R8SoDirs>$(IntermediateOutputPath)app_shared_libraries,$(IntermediateOutputPath)android-arm64/stripped,$(IntermediateOutputPath)android-arm/stripped,$(IntermediateOutputPath)lp</_R8SoDirs>
+      <_R8ProjRefs>$(_ProguardProjectConfiguration),$(IntermediateOutputPath)../$(Configuration.ToLowerInvariant())_$(TargetFramework)_android-arm64/proguard/proguard_project_references.cfg,$(IntermediateOutputPath)../$(Configuration.ToLowerInvariant())_$(TargetFramework)_android-arm/proguard/proguard_project_references.cfg</_R8ProjRefs>
+      <_R8StrictArg Condition="'$(AndroidStrictR8Obfuscation)' == 'true'">--output-xamarin-strict &quot;$(_StrictXamarinProguardFile)&quot; --mapping-file &quot;$(AndroidProguardMappingFile)&quot;</_R8StrictArg>
     </PropertyGroup>
-    <GenerateJniProguardRulesTask
-        SearchDirectories="$(IntermediateOutputPath)afterlink;$(IntermediateOutputPath)linked"
-        OutputFile="$(_AutoJniProguardFile)"/>
+
+    <Exec Command="dotnet run --file &quot;$(_R8OptimizerScript)&quot; -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false -p:ImportDirectoryPackagesProps=false -- --generate --dll-dirs &quot;$(_R8DllDirs)&quot; --so-dirs &quot;$(_R8SoDirs)&quot; --acw-map &quot;$(_AcwMapFile)&quot; --project-refs &quot;$(_R8ProjRefs)&quot; --output-jni &quot;$(_AutoJniProguardFile)&quot; $(_R8StrictArg)"
+          ConsoleToMSBuild="false"/>
+
     <ItemGroup Condition="Exists('$(_AutoJniProguardFile)')">
-      <ProguardConfiguration Include="$(_AutoJniProguardFile)"/>
+      <_ProguardConfiguration Include="$(_AutoJniProguardFile)"/>
       <FileWrites Include="$(_AutoJniProguardFile)"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(AndroidStrictR8Obfuscation)' == 'true' and Exists('$(_StrictXamarinProguardFile)')">
+      <_ProguardConfiguration Remove="@(_ProguardConfiguration)" Condition="$([System.String]::Copy('%(Filename)%(Extension)').Equals('proguard_xamarin.cfg', System.StringComparison.OrdinalIgnoreCase))"/>
+      <_ProguardConfiguration Include="$(_StrictXamarinProguardFile)"/>
+      <FileWrites Include="$(_StrictXamarinProguardFile)"/>
     </ItemGroup>
   </Target>
 
