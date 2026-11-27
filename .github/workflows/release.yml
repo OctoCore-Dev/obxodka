@@ -1202,6 +1202,7 @@ jobs:
     needs: [ check-version, build-android, build-windows, build-cli, build-linux-desktop, deploy-android, deploy-windows ]
     if: |
       always() &&
+      (inputs.dry_run != true) &&
       (needs.check-version.outputs.should_release != 'false') &&
       (needs.build-android.result == 'success' || needs.build-windows.result == 'success' || needs.build-cli.result == 'success' || needs.build-linux-desktop.result == 'success')
     runs-on: ubuntu-latest
