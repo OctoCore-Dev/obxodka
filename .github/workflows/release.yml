@@ -26,6 +26,8 @@ on:
           - all
           - windows
           - android
+          - linux
+          - cli
       version_name:
         description: "Override application display version (leave blank to use version.props)"
         required: false
@@ -54,6 +56,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: obxodka-store-release
@@ -234,7 +238,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (needs.check-version.outputs.should_release != 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'windows')
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform == 'all' || inputs.target_platform == 'android')
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v7
@@ -454,7 +458,7 @@ jobs:
     runs-on: windows-latest
     if: |
       (needs.check-version.outputs.should_release != 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.target_platform != 'android')
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform == 'all' || inputs.target_platform == 'windows')
     steps:
       - name: "[CHECKOUT] Repository Source"
         uses: actions/checkout@v7
@@ -994,15 +998,203 @@ jobs:
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
   # ============================================================
+  # [STAGE 5B] BUILD CROSS-PLATFORM CLI (WIN ZIP + LINUX DEB/RPM/PACMAN)
+  # ============================================================
+  build-cli:
+    name: "[BUILD-CLI] Cross-Platform CLI (Win ZIP & Linux DEB/RPM/Pacman)"
+    needs: [ check-version, run-tests ]
+    runs-on: ubuntu-latest
+    if: |
+      (needs.check-version.outputs.should_release != 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform == 'all' || inputs.target_platform == 'cli' || inputs.target_platform == 'linux' || inputs.target_platform == 'windows')
+    steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: "[SETUP] Ensure Build Cache Directory"
+        run: |
+          CACHE_DIR="${RUNNER_TEMP}/build-cache"
+          mkdir -p "$CACHE_DIR"
+          echo "BUILD_CACHE_PATH=$CACHE_DIR" >> "$GITHUB_ENV"
+
+      - name: "[SETUP] .NET 11 SDK"
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "11.0.x"
+
+      - name: "[CACHE] NuGet Package Dependencies"
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-cli-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-cli-
+            ${{ runner.os }}-nuget-
+
+      - name: "[SETUP] Install nFPM Packager"
+        run: |
+          NFPM_VER="2.41.2"
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin nfpm
+          nfpm --version
+
+      - name: "[BUILD] Publish obxodka.Cli (win-x64, linux-x64, linux-arm64)"
+        env:
+          PKG_VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p ./cli-dist ./stage-win-x64 ./stage-linux-x64 ./stage-linux-arm64
+
+          echo "[CLI] Публикация win-x64..."
+          dotnet publish src/apps/obxodka.Cli/obxodka.Cli.csproj \
+            -c Release -r win-x64 --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:DebugType=None -p:DebugSymbols=false -p:RestoreLockedMode=false \
+            -o ./stage-win-x64
+          cp packaging/winget/obx.cmd ./stage-win-x64/obx.cmd
+          mkdir -p ./stage-win-x64/Engine
+          cp src/core/obxodka.Platform.Windows/Engine/wintun.dll ./stage-win-x64/Engine/wintun.dll
+          cp LICENSE ./stage-win-x64/LICENSE
+          rm -f ./stage-win-x64/packaging/obxodka.service
+          rmdir ./stage-win-x64/packaging 2>/dev/null || true
+          (cd ./stage-win-x64 && zip -r9 "../cli-dist/obxodka-cli-win-x64.zip" .)
+
+          # генерация манифеста winget из шаблона
+          WIN_ZIP_SHA256="$(sha256sum ./cli-dist/obxodka-cli-win-x64.zip | awk '{print toupper($1)}')"
+          PKG_VERSION="$PKG_VERSION" INSTALLER_SHA256="$WIN_ZIP_SHA256" \
+            envsubst '${PKG_VERSION} ${INSTALLER_SHA256}' \
+            < packaging/winget/OctoCore.Obxodka.Cli.yaml \
+            > ./cli-dist/OctoCore.Obxodka.Cli.yaml
+
+          echo "[CLI] Публикация linux-x64..."
+          dotnet publish src/apps/obxodka.Cli/obxodka.Cli.csproj \
+            -c Release -r linux-x64 --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:DebugType=None -p:DebugSymbols=false -p:RestoreLockedMode=false \
+            -o ./stage-linux-x64
+          rm -rf ./stage-linux-x64/Engine
+          chmod +x ./stage-linux-x64/obxodka
+          mkdir -p ./stage-linux-x64/completions
+          ./stage-linux-x64/obxodka completion bash > ./stage-linux-x64/completions/obxodka.bash
+          ./stage-linux-x64/obxodka completion zsh > ./stage-linux-x64/completions/_obxodka
+          cp LICENSE ./stage-linux-x64/LICENSE
+          tar -czf "./cli-dist/obxodka-cli-linux-x64.tar.gz" -C ./stage-linux-x64 .
+
+          echo "[CLI] Публикация linux-arm64..."
+          dotnet publish src/apps/obxodka.Cli/obxodka.Cli.csproj \
+            -c Release -r linux-arm64 --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:DebugType=None -p:DebugSymbols=false -p:RestoreLockedMode=false \
+            -o ./stage-linux-arm64
+          rm -rf ./stage-linux-arm64/Engine
+          chmod +x ./stage-linux-arm64/obxodka
+          cp -r ./stage-linux-x64/completions ./stage-linux-arm64/completions
+          cp LICENSE ./stage-linux-arm64/LICENSE
+          tar -czf "./cli-dist/obxodka-cli-linux-arm64.tar.gz" -C ./stage-linux-arm64 .
+
+          echo "[CLI] Сборка нативных пакетов Linux (.deb / .rpm / .pkg.tar.zst)..."
+          PKG_ARCH=amd64 STAGE_DIR=./stage-linux-x64 nfpm package -f packaging/linux/nfpm-cli.yaml -p deb -t ./cli-dist/
+          PKG_ARCH=amd64 STAGE_DIR=./stage-linux-x64 nfpm package -f packaging/linux/nfpm-cli.yaml -p rpm -t ./cli-dist/
+          PKG_ARCH=amd64 STAGE_DIR=./stage-linux-x64 nfpm package -f packaging/linux/nfpm-cli.yaml -p archlinux -t ./cli-dist/
+
+          PKG_ARCH=arm64 STAGE_DIR=./stage-linux-arm64 nfpm package -f packaging/linux/nfpm-cli.yaml -p deb -t ./cli-dist/
+          PKG_ARCH=arm64 STAGE_DIR=./stage-linux-arm64 nfpm package -f packaging/linux/nfpm-cli.yaml -p rpm -t ./cli-dist/
+          PKG_ARCH=arm64 STAGE_DIR=./stage-linux-arm64 nfpm package -f packaging/linux/nfpm-cli.yaml -p archlinux -t ./cli-dist/
+
+          ls -lh ./cli-dist/
+
+      - name: "[UPLOAD] Upload CLI Distribution Artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: obxodka-cli-dist
+          path: ./cli-dist/*
+          retention-days: 14
+
+  # ============================================================
+  # [STAGE 5C] BUILD LINUX DESKTOP (AVALONIA DEB/RPM/PACMAN/TAR)
+  # ============================================================
+  build-linux-desktop:
+    name: "[BUILD-LINUX-DESKTOP] Avalonia GUI (Linux DEB/RPM/Pacman/Tar)"
+    needs: [ check-version, run-tests ]
+    runs-on: ubuntu-latest
+    if: |
+      (needs.check-version.outputs.should_release != 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.target_platform == 'all' || inputs.target_platform == 'linux')
+    steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: "[SETUP] Ensure Build Cache Directory"
+        run: |
+          CACHE_DIR="${RUNNER_TEMP}/build-cache"
+          mkdir -p "$CACHE_DIR"
+          echo "BUILD_CACHE_PATH=$CACHE_DIR" >> "$GITHUB_ENV"
+
+      - name: "[SETUP] .NET 11 SDK"
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "11.0.x"
+
+      - name: "[CACHE] NuGet Package Dependencies"
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-avalonia-${{ hashFiles('**/*.csproj', '**/*.props', '.nuget/locks/*.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-avalonia-
+            ${{ runner.os }}-nuget-
+
+      - name: "[SETUP] Install nFPM Packager"
+        run: |
+          NFPM_VER="2.41.2"
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin nfpm
+          nfpm --version
+
+      - name: "[BUILD] Publish obxodka.Avalonia (linux-x64, linux-arm64)"
+        env:
+          PKG_VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p ./desktop-dist ./stage-desktop-x64 ./stage-desktop-arm64
+
+          for pair in "linux-x64:amd64:stage-desktop-x64" "linux-arm64:arm64:stage-desktop-arm64"; do
+            IFS=':' read -r rid arch stage <<< "$pair"
+            echo "[DESKTOP] Публикация ${rid}..."
+            dotnet publish src/apps/obxodka.Avalonia/obxodka.Avalonia.csproj \
+              -c Release -r "$rid" --self-contained true \
+              -p:DebugType=None -p:DebugSymbols=false -p:RestoreLockedMode=false \
+              -o "./${stage}"
+            rm -rf "./${stage}/Engine"
+            chmod +x "./${stage}/obxodka.Avalonia"
+            tar -czf "./desktop-dist/obxodka-desktop-${rid}.tar.gz" -C "./${stage}" .
+
+            PKG_ARCH="$arch" STAGE_DIR="./${stage}" nfpm package -f packaging/linux/nfpm-desktop.yaml -p deb -t ./desktop-dist/
+            PKG_ARCH="$arch" STAGE_DIR="./${stage}" nfpm package -f packaging/linux/nfpm-desktop.yaml -p rpm -t ./desktop-dist/
+            PKG_ARCH="$arch" STAGE_DIR="./${stage}" nfpm package -f packaging/linux/nfpm-desktop.yaml -p archlinux -t ./desktop-dist/
+          done
+
+          ls -lh ./desktop-dist/
+
+      - name: "[UPLOAD] Upload Linux Desktop Distribution Artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: obxodka-linux-desktop-dist
+          path: ./desktop-dist/*
+          retention-days: 14
+
+  # ============================================================
   # [STAGE 6] AUTOMATED GITHUB RELEASE WITH ASSETS & CHECKSUMS
   # ============================================================
   create-release:
     name: "[RELEASE] GitHub Production Distribution"
-    needs: [ check-version, build-android, build-windows, deploy-android, deploy-windows ]
+    needs: [ check-version, build-android, build-windows, build-cli, build-linux-desktop, deploy-android, deploy-windows ]
     if: |
       always() &&
       (needs.check-version.outputs.should_release != 'false') &&
-      (needs.build-android.result == 'success' || needs.build-windows.result == 'success')
+      (needs.build-android.result == 'success' || needs.build-windows.result == 'success' || needs.build-cli.result == 'success' || needs.build-linux-desktop.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: "[CHECKOUT] Repository Source"
@@ -1025,11 +1217,25 @@ jobs:
           name: obxodka-windows-dist
           path: ./release-artifacts/windows
 
+      - name: "[DOWNLOAD] Download CLI Dist Artifacts"
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: obxodka-cli-dist
+          path: ./release-artifacts/cli
+
+      - name: "[DOWNLOAD] Download Linux Desktop Dist Artifacts"
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: obxodka-linux-desktop-dist
+          path: ./release-artifacts/linux-desktop
+
       - name: "[BUNDLE] Consolidate Artifacts & SHA256 Checksums"
         id: release-meta
         run: |
           mkdir -p ./release-dist
-          find ./release-artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.exe" -o -name "*.msix*" \) -exec cp {} ./release-dist/ \;
+          find ./release-artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.exe" -o -name "*.msix*" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" -o -name "OctoCore.Obxodka.Cli.yaml" \) -exec cp {} ./release-dist/ \;
 
           cd ./release-dist
           sha256sum * > SHA256SUMS.txt
@@ -1070,11 +1276,153 @@ jobs:
         run: gh release edit "${{ needs.check-version.outputs.tag }}" --draft=false
 
   # ============================================================
+  # [STAGE 6B] AUTO-PUBLISH WINDOWS CLI TO WINGET
+  # ============================================================
+  deploy-winget:
+    name: "[PUBLISH-WINGET] Windows Package Manager (OctoCore.Obxodka.Cli)"
+    needs: [ check-version, build-cli, create-release ]
+    runs-on: ubuntu-latest
+    if: |
+      (needs.check-version.outputs.should_release != 'false') &&
+      (needs.build-cli.result == 'success') &&
+      (needs.create-release.result == 'success') &&
+      (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores == true)) &&
+      (inputs.dry_run != true)
+    outputs:
+      deploy_state: ${{ steps.winget-status.outputs.deploy_state }}
+    steps:
+      - name: "[CHECK] Check WINGET_TOKEN Secret"
+        id: winget-check
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -n "$WINGET_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::[WINGET] Секрет WINGET_TOKEN не задан — публикация PR в microsoft/winget-pkgs пропущена (см. packaging/winget/README.md)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "[PUBLISH] Submit OctoCore.Obxodka.Cli to microsoft/winget-pkgs"
+        if: steps.winget-check.outputs.enabled == 'true'
+        id: winget-release
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: OctoCore.Obxodka.Cli
+          release-tag: ${{ needs.check-version.outputs.tag }}
+          installers-regex: 'obxodka-cli-win-x64\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}
+
+      - name: "[TELEMETRY] Winget Deployment Status"
+        id: winget-status
+        if: always()
+        run: |
+          if [ "${{ steps.winget-check.outputs.enabled }}" != "true" ]; then
+            echo "deploy_state=skipped" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.winget-release.outcome }}" = "success" ]; then
+            echo "deploy_state=deployed" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_state=failed" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ============================================================
+  # [STAGE 6C] PUBLISH SIGNED LINUX REPO (APT / DNF / PACMAN ON PAGES)
+  # ============================================================
+  deploy-linux-repo:
+    name: "[PUBLISH-LINUX-REPO] Signed APT / DNF / Pacman Repo (GitHub Pages)"
+    needs: [ check-version, build-cli, build-linux-desktop, create-release ]
+    runs-on: ubuntu-latest
+    if: |
+      (needs.check-version.outputs.should_release != 'false') &&
+      (needs.build-cli.result == 'success' || needs.build-linux-desktop.result == 'success') &&
+      (needs.create-release.result == 'success') &&
+      (github.ref_name == 'main' || github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores == true)) &&
+      (inputs.dry_run != true)
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      deploy_state: ${{ steps.linux-repo-status.outputs.deploy_state }}
+    steps:
+      - name: "[CHECKOUT] Repository Source"
+        uses: actions/checkout@v7
+
+      - name: "[SETUP] Install APT / RPM / GPG Repository Tools"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils createrepo-c gnupg
+
+      - name: "[DOWNLOAD] Download Linux CLI & Desktop Packages"
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: obxodka-cli-dist
+          path: ./linux-repo-dist/cli
+
+      - name: "[DOWNLOAD] Download Linux Desktop Packages"
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: obxodka-linux-desktop-dist
+          path: ./linux-repo-dist/desktop
+
+      - name: "[BUILD-REPO] Generate APT, DNF/RPM & Pacman Indexes"
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          chmod +x packaging/linux/build-repo.sh
+          ./packaging/linux/build-repo.sh \
+            ./linux-repo-dist \
+            ./pages-site \
+            "${{ needs.check-version.outputs.version }}" \
+            "https://octocore-dev.github.io/obxodka"
+
+      - name: "[PAGES] Check GitHub Pages Configuration"
+        id: pages-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::[PAGES] GitHub Pages не включён в Settings → Pages (Source: GitHub Actions). Включите Pages для активации APT/DNF/Pacman репозитория."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "[PAGES] Configure GitHub Pages"
+        if: steps.pages-check.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: "[PAGES] Upload Repository Site Artifact"
+        if: steps.pages-check.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages-site
+
+      - name: "[PAGES] Deploy Linux Package Repository"
+        if: steps.pages-check.outputs.enabled == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: "[TELEMETRY] Linux Repository Deployment Status"
+        id: linux-repo-status
+        if: always()
+        run: |
+          if [ "${{ steps.pages-check.outputs.enabled }}" != "true" ]; then
+            echo "deploy_state=skipped" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.deployment.outcome }}" = "success" ]; then
+            echo "deploy_state=deployed" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_state=failed" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ============================================================
   # [STAGE 7] EXECUTIVE DASHBOARD & TELEMETRY
   # ============================================================
   telemetry-summary:
     name: "[SUMMARY] Pipeline Telemetry & Status"
-    needs: [ check-version, run-tests, build-android, build-windows, deploy-android, deploy-windows, create-release ]
+    needs: [ check-version, run-tests, build-android, build-windows, build-cli, build-linux-desktop, deploy-android, deploy-windows, create-release, deploy-winget, deploy-linux-repo ]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1106,12 +1454,16 @@ jobs:
           | 1 | `[TESTS]` | ${{ needs.run-tests.result == 'success' && '`[PASS]`' || '`[FAIL]`' }} | xUnit Client Test Suite |
           | 2 | `[BUILD-ANDROID]` | ${{ needs.build-android.result == 'success' && '`[PASS]`' || (needs.build-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | AAB & APK Bundles |
           | 3 | `[BUILD-WINDOWS]` | ${{ needs.build-windows.result == 'success' && '`[PASS]`' || (needs.build-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | MSIX & Inno Setup EXE |
-          | 4 | `[PUBLISH-ANDROID]` | ${{ needs.deploy-android.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-android.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Google Play Console (OctoPublisher) |
-          | 5 | `[PUBLISH-WINDOWS]` | ${{ needs.deploy-windows.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-windows.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Microsoft Partner Center (OctoPublisher) |
-          | 6 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} (${{ needs.check-version.outputs.is_prerelease == 'true' && 'Pre-Release' || 'Production' }}) |
+          | 4 | `[BUILD-CLI]` | ${{ needs.build-cli.result == 'success' && '`[PASS]`' || (needs.build-cli.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | Win ZIP + Linux DEB / RPM / Pacman |
+          | 5 | `[BUILD-LINUX-DESKTOP]` | ${{ needs.build-linux-desktop.result == 'success' && '`[PASS]`' || (needs.build-linux-desktop.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | Avalonia GUI Linux DEB / RPM / Pacman |
+          | 6 | `[PUBLISH-ANDROID]` | ${{ needs.deploy-android.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-android.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Google Play Console (OctoPublisher) |
+          | 7 | `[PUBLISH-WINDOWS]` | ${{ needs.deploy-windows.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-windows.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Microsoft Partner Center (OctoPublisher) |
+          | 8 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} (${{ needs.check-version.outputs.is_prerelease == 'true' && 'Pre-Release' || 'Production' }}) |
+          | 9 | `[PUBLISH-WINGET]` | ${{ needs.deploy-winget.outputs.deploy_state == 'deployed' && '`[DEPLOYED]`' || ((needs.deploy-winget.outputs.deploy_state == 'skipped' || needs.deploy-winget.result == 'skipped') && '`[SKIP]`' || '`[FAIL]`') }} | Winget `OctoCore.Obxodka.Cli` |
+          | 10 | `[PUBLISH-LINUX-REPO]` | ${{ needs.deploy-linux-repo.outputs.deploy_state == 'deployed' && '`[DEPLOYED]`' || ((needs.deploy-linux-repo.outputs.deploy_state == 'skipped' || needs.deploy-linux-repo.result == 'skipped') && '`[SKIP]`' || '`[FAIL]`') }} | APT / DNF / Pacman (GitHub Pages) |
 
           ---
-          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) on .NET 11.*
+          *Deployment orchestrated automatically by [OctoPublisher](https://www.nuget.org/packages/octopublisher) & GitHub Actions on .NET 11.*
           EOF
 
       - name: "[CHANGELOG] Update CHANGELOG.md"

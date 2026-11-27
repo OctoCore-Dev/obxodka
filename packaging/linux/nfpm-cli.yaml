@@ -1,0 +1,63 @@
+name: obxodka
+arch: "${PKG_ARCH}"
+platform: linux
+version: "${PKG_VERSION}"
+release: "1"
+section: net
+priority: optional
+maintainer: "OctoCore <support@obxodka.one>"
+description: |
+  Obxodka VPN CLI client (Octopus Core).
+  Stealth VPN client for Linux with OBX-V9 Hydra, OBX-V8 Chameleon, XHTTP, Reality, WebSocket Shield and L3 TUN routing.
+vendor: OctoCore
+homepage: https://github.com/OctoCore-Dev/obxodka
+license: AGPL-3.0-only
+provides:
+  - obxodka-cli
+
+overrides:
+  deb:
+    depends:
+      - iproute2
+      - ca-certificates
+    recommends:
+      - libcap2-bin
+  rpm:
+    depends:
+      - iproute
+      - ca-certificates
+    recommends:
+      - libcap
+  archlinux:
+    depends:
+      - iproute2
+      - ca-certificates
+      - libcap
+
+contents:
+  - src: "${STAGE_DIR}/obxodka"
+    dst: /usr/bin/obxodka
+    file_info:
+      mode: 0755
+  - src: /usr/bin/obxodka
+    dst: /usr/bin/obx
+    type: symlink
+  - src: src/apps/obxodka.Cli/packaging/obxodka.service
+    dst: /usr/lib/systemd/system/obxodka.service
+    file_info:
+      mode: 0644
+  - src: "${STAGE_DIR}/completions/obxodka.bash"
+    dst: /usr/share/bash-completion/completions/obxodka
+    file_info:
+      mode: 0644
+  - src: "${STAGE_DIR}/completions/_obxodka"
+    dst: /usr/share/zsh/site-functions/_obxodka
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/obxodka/LICENSE
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/linux/postinstall-cli.sh

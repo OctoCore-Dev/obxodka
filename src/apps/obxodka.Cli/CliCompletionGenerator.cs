@@ -32,8 +32,8 @@ public static class CliCompletionGenerator
             }
             $sub = $elements[1].Extent.Text.ToLowerInvariant()
             $candidates = switch ($sub) {
-                'connect'    { @('--kill-switch', '--no-kill-switch', '--adblock', '--no-adblock', '--block-ipv6', '--mtu', '--json') }
-                'start'      { @('--kill-switch', '--no-kill-switch', '--adblock', '--no-adblock', '--block-ipv6', '--mtu', '--json') }
+                'connect'    { @('--protocol', '--kill-switch', '--no-kill-switch', '--adblock', '--no-adblock', '--block-ipv6', '--mtu', '--json') }
+                'start'      { @('--protocol', '--kill-switch', '--no-kill-switch', '--adblock', '--no-adblock', '--block-ipv6', '--mtu', '--json') }
                 'servers'    { @('--ping', '--json') }
                 'status'     { @('--watch', '--json') }
                 'config'     { @('get', 'set', 'kill-switch', 'adblock', 'block-ipv6', 'auto-reconnect', 'force-websocket', 'bypass-ru', 'sync-timezone') }
@@ -58,7 +58,7 @@ public static class CliCompletionGenerator
                 return 0
             fi
             case "${cmd}" in
-                connect|start) COMPREPLY=( $(compgen -W "--kill-switch --no-kill-switch --adblock --no-adblock --block-ipv6 --mtu --json" -- "${cur}") ) ;;
+                connect|start) COMPREPLY=( $(compgen -W "--protocol --kill-switch --no-kill-switch --adblock --no-adblock --block-ipv6 --mtu --json" -- "${cur}") ) ;;
                 servers)       COMPREPLY=( $(compgen -W "--ping --json" -- "${cur}") ) ;;
                 status)        COMPREPLY=( $(compgen -W "--watch --json" -- "${cur}") ) ;;
                 config)        COMPREPLY=( $(compgen -W "get set kill-switch adblock block-ipv6 auto-reconnect force-websocket bypass-ru sync-timezone" -- "${cur}") ) ;;
