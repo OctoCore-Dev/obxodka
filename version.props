@@ -7,7 +7,7 @@
 
     <!-- Версия приложения и метаданные сборки (AppVersion / AppBuildNumber используются CI, MSIX, Google Play и Inno Setup) -->
     <AppVersion>6.4.1</AppVersion>
-    <AppBuildNumber>112</AppBuildNumber>
+    <AppBuildNumber>113</AppBuildNumber>
     <VersionPrefix>$(AppVersion)</VersionPrefix>
     <Version>$(AppVersion)</Version>
     <PackageVersion>$(AppVersion)</PackageVersion>
