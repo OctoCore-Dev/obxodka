@@ -1300,16 +1300,25 @@ jobs:
     outputs:
       deploy_state: ${{ steps.winget-status.outputs.deploy_state }}
     steps:
-      - name: "[CHECK] Check WINGET_TOKEN Secret"
+      - name: "[CHECK] Check WINGET_TOKEN Secret & Existing Package"
         id: winget-check
         env:
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
-          if [ -n "$WINGET_TOKEN" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ -z "$WINGET_TOKEN" ]; then
             echo "::warning::[WINGET] Секрет WINGET_TOKEN не задан — публикация PR в microsoft/winget-pkgs пропущена (см. packaging/winget/README.md)."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no_token" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if GH_TOKEN="$WINGET_TOKEN" gh api "repos/microsoft/winget-pkgs/contents/manifests/o/OctoCore/Obxodka/Cli" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "reason=ok" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::[WINGET] Пакет OctoCore.Obxodka.Cli ещё не принят в microsoft/winget-pkgs. Подайте первый PR один раз через wingetcreate — последующие версии пойдут автоматически."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "reason=pending_first_pr" >> "$GITHUB_OUTPUT"
           fi
 
       - name: "[PUBLISH] Submit OctoCore.Obxodka.Cli to microsoft/winget-pkgs"
@@ -1320,13 +1329,16 @@ jobs:
           identifier: OctoCore.Obxodka.Cli
           release-tag: ${{ needs.check-version.outputs.tag }}
           installers-regex: 'obxodka-cli-win-x64\.zip$'
+          fork-user: irovbyte
           token: ${{ secrets.WINGET_TOKEN }}
 
       - name: "[TELEMETRY] Winget Deployment Status"
         id: winget-status
         if: always()
         run: |
-          if [ "${{ steps.winget-check.outputs.enabled }}" != "true" ]; then
+          if [ "${{ steps.winget-check.outputs.reason }}" = "pending_first_pr" ]; then
+            echo "deploy_state=queued" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.winget-check.outputs.enabled }}" != "true" ]; then
             echo "deploy_state=skipped" >> "$GITHUB_OUTPUT"
           elif [ "${{ steps.winget-release.outcome }}" = "success" ]; then
             echo "deploy_state=deployed" >> "$GITHUB_OUTPUT"
@@ -1468,7 +1480,7 @@ jobs:
           | 6 | `[PUBLISH-ANDROID]` | ${{ needs.deploy-android.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-android.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-android.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Google Play Console (OctoPublisher) |
           | 7 | `[PUBLISH-WINDOWS]` | ${{ needs.deploy-windows.outputs.deploy_state == 'queued' && '`[QUEUED]`' || (needs.deploy-windows.result == 'success' && '`[DEPLOYED]`' || (needs.deploy-windows.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`')) }} | Microsoft Partner Center (OctoPublisher) |
           | 8 | `[RELEASE]` | ${{ needs.create-release.result == 'success' && '`[PUBLISHED]`' || (needs.create-release.result == 'skipped' && '`[SKIP]`' || '`[FAIL]`') }} | GitHub Release ${{ needs.check-version.outputs.tag }} (${{ needs.check-version.outputs.is_prerelease == 'true' && 'Pre-Release' || 'Production' }}) |
-          | 9 | `[PUBLISH-WINGET]` | ${{ needs.deploy-winget.outputs.deploy_state == 'deployed' && '`[DEPLOYED]`' || ((needs.deploy-winget.outputs.deploy_state == 'skipped' || needs.deploy-winget.result == 'skipped') && '`[SKIP]`' || '`[FAIL]`') }} | Winget `OctoCore.Obxodka.Cli` |
+          | 9 | `[PUBLISH-WINGET]` | ${{ needs.deploy-winget.outputs.deploy_state == 'deployed' && '`[DEPLOYED]`' || (needs.deploy-winget.outputs.deploy_state == 'queued' && '`[QUEUED]`' || ((needs.deploy-winget.outputs.deploy_state == 'skipped' || needs.deploy-winget.result == 'skipped') && '`[SKIP]`' || '`[FAIL]`')) }} | Winget `OctoCore.Obxodka.Cli` |
           | 10 | `[PUBLISH-LINUX-REPO]` | ${{ needs.deploy-linux-repo.outputs.deploy_state == 'deployed' && '`[DEPLOYED]`' || ((needs.deploy-linux-repo.outputs.deploy_state == 'skipped' || needs.deploy-linux-repo.result == 'skipped') && '`[SKIP]`' || '`[FAIL]`') }} | APT / DNF / Pacman (GitHub Pages) |
 
           ---
